@@ -22,7 +22,7 @@ starts, salvage blocks, `locked`) is described in `content-model.md`.
 The model is pure, like `data::design::edit` for the drydock (ADR-0030): no Bevy, no I/O, wasm-safe, ordered containers
 only. Every question takes the `Content` it should be answered against.
 
-## The save (format 3)
+## The save (format 4)
 
 `Career` holds **facts only**. Everything that can be derived from content is derived on demand and never stored,
 so a content rebalance (a node's cost, a part's unlock) applies to old saves without a migration. The game stores
@@ -31,7 +31,7 @@ so a content rebalance (a node's cost, a part's unlock) applies to old saves wit
 (at most `limits::MAX_DOCUMENT_BYTES`, a leading byte order mark skipped).
 
 ```ron
-// space-game: saves, format 3, saved 1760351234
+// space-game: saves, format 4, saved 1760351234
 (
     packs: [
         ("base", "0.1.0"),
@@ -105,11 +105,17 @@ so a content rebalance (a node's cost, a part's unlock) applies to old saves wit
         skeleton: (
             galaxy: "galaxy",
             seed: 4207,
-            version: 1,
+            version: 2,
             clusters: [
                 // About 80 clusters: name, band, type, place in S/100, seed, gate.
             ],
             home: 31,
+            pieces: {
+                "corran_reach": 30,
+                "halvex_drift": 32,
+                "wardens_gate": 29,
+                "yard_approach": 33,
+            },
             trails: [
                 // The trails with their places and signals.
             ],
@@ -157,14 +163,16 @@ so a content rebalance (a node's cost, a part's unlock) applies to old saves wit
 | `underway` | the voyage launched and not ended; left out when none |
 | `log` | voyages launched, recalled, lost; items salvaged (parts and fragments unloaded) |
 | `history` | the last voyages, oldest first, at most `MAX_HISTORY` (50; GDR-0091, home's LOG): per voyage `voyage` (a content voyage, or a cluster's name), `cluster` (the generated cluster it went to; left out for a content voyage), `outcome` (`Recalled`, `Cleared` or `Lost`), `ticks`, `report` (`parts` and `fragments` by part id, `data`, `materials`, `logs`: data cores) and `new` (not shown in the LOG yet; left out when false); left out when empty. A voyage past 50 drops the oldest |
-| `galaxy` | the galaxy and what the player knows of it (format 3, [below](#the-galaxy)); left out for content without a galaxy |
+| `galaxy` | the galaxy and what the player knows of it (format 3; format 4 the set pieces and the memory log, [below](#the-galaxy)); left out for content without a galaxy |
 
 The text is written with the pack loader's options (`Some(..)` left out, four-space indent) and is deterministic;
 unknown fields are errors, fields with defaults may be left out. `career::FORMAT` (2) is the format the game's
 document header carries: raise it when a field is added or its meaning changes, and migrate older formats when
 reading. Format 1 (until 15 Oct 2026) kept only the last voyage as `last_haul`; it is no longer read (16 Oct 2026),
 as every save is written again on its first change. Format 2 (15–16 Oct 2026) had no `galaxy`; it reads as it is and
-gets its galaxy when the game loads it ([The galaxy](#the-galaxy), "Migrating a slice career"), and is written at once. Unknown fields are errors, so a field added without a new format would make an older build call a newer
+gets its galaxy when the game loads it ([The galaxy](#the-galaxy), "Migrating a slice career"), and is written at once.
+Format 3 (16–17 Oct 2026) had no set pieces in its skeleton and no memory log; it reads as it is (its pins kept, its
+Warden's cluster made a gate at load, [GDR-0098](gdr/0098-slice-in-the-galaxy-and-rim-rewards.md)). Unknown fields are errors, so a field added without a new format would make an older build call a newer
 save damaged instead of newer; with the format raised, its storage reports `Newer`. The history's reports are
 what was credited, not derived. A save that cannot be read (newer, damaged, or from a newer voyage roller,
 below) is never written over: the game keeps it as it is ("How the game uses it" below).
@@ -254,17 +262,18 @@ hand-made skeleton, and the `galaxy` crate's `tests/career.rs` for a migrated sa
 
 | Field | Meaning |
 |---|---|
-| `skeleton` | the galaxy as generated for this game (`data::skeleton::Skeleton`, ADR-0035): never regenerated on load; about 65 KB of the save's RON |
+| `skeleton` | the galaxy as generated for this game (`data::skeleton::Skeleton`, ADR-0035): never regenerated on load; about 65 KB of the save's RON. Since generator version 2 (E7) its `pieces`: the set pieces, voyage id → cluster id |
 | `charted` | charted clusters by id: home from the start, every cluster a voyage was launched into (arriving charts it, lost or not); per cluster `launched` (left out when 0) |
 | `signals` | the signals heard, in the order heard: `lead` (`Trail((trail, signal))`, skeleton indices, or `Voyage(id)`: a slice voyage), `cluster` (where it leads), `area` (`(centre, radius)` in S/100 now), `state` (`Fresh`, `Narrowed`, `Located`, `Done`) |
 | `logs` | data cores brought home and not decoded yet, as `(trail, signal)` |
 | `gates` | gate clusters opened (a guardian beaten) |
-| `pins` | the content's voyages pinned to clusters (voyage id → cluster id), provisional until E7 |
+| `pins` | the content's voyages on clusters (voyage id → cluster id): the skeleton's set pieces, or in a format 3 save the chain E4 pinned |
+| `memories` | the memory log: lore fragments (ids) found at the ends of their trails, in the order found (format 4; left out when empty) |
 | `underway` | the cluster a voyage was launched into and has not ended (left out when none) |
 
 - **New game**: `Career::begin_galaxy(&content, skeleton)` with the skeleton of the content's first galaxy, generated
   from the game seed by the game (`galaxy::generate`; `data` does not depend on the generator): home is charted, the
-  slice is pinned. A career with a galaxy keeps it.
+  slice lies on its set pieces. A career with a galaxy keeps it.
 - **Jumps** (`jump_from(cluster)`): from home or any charted cluster within the jump range (integer distances in
   S/100), the nearest one (the lowest id on a tie), not the cluster itself while another reaches it; `None` beyond them
   all. `band_open(band)`: jumps reach the galaxy's first band and each band past it once a gate of the band outside it
@@ -282,26 +291,36 @@ hand-made skeleton, and the `galaxy` crate's `tests/career.rs` for a migrated sa
   log places (a source of form `Log`) whose core is neither decoded, logged nor heard (their site's first wreck holds
   it).
 - **Signals**: `hear(signal)` adds a trail's signal fresh with the skeleton's area (once); `decode(k)` decodes log `k`
-  into its signal (free, GDR-0080); `narrow(signal, from)` is a scan's bearing heard in cluster `from`: in the signal's
-  own cluster it is located; elsewhere the radius halves (at least 1) and the centre moves towards the place until the
-  place lies within 60 % of the new radius, and once no other cluster lies inside the signal is located (its area the
-  cluster's place, radius 0). `scanned(k, skip)` is a scan taken in cluster `k`: every heard signal not located yet
+  into its signal (free, GDR-0080); `narrow(&content, signal, from)` is a scan's bearing heard in cluster `from`: in the
+  signal's own cluster it is located; elsewhere the radius shrinks to the galaxy's `signal_area.narrow` (60 %, at
+  least 1; it halved until 17 Oct 2026, GDR-0098) and the centre moves towards the place until the place lies within
+  `signal_area.offset` (60 %) of the new radius, and once no other cluster lies inside the signal is located (its area
+  the cluster's place, radius 0). `scanned(&content, k, skip)` is a scan taken in cluster `k`: every heard signal not located yet
   that leads there or whose area holds the cluster narrows from it, except those in `skip` (the game passes those
   narrowed on this voyage already). `beacon(&content, place)`: a scan swept over a trail place whose signal's source is
-  a `Beacon`: heard. `found(signal, done)`: its site was seen (found) or cleared, or seen with nothing to clear (done);
-  the area becomes the cluster's place. States only move forward (fresh, narrowed, located, found, done); the game
+  a `Beacon`: heard. `found(&content, signal, done)`: its site was seen (found) or cleared, or seen with nothing to
+  clear (done); the area becomes the cluster's place. States only move forward (fresh, narrowed, located, found, done); the game
   gives a voyage's finds to the career at its end, lost or not (GDR-0097).
-- **Gates**: `open_gate(k)` records a gate of the skeleton as opened.
-- **The slice** (provisional, GDR-0096): every voyage of the content is pinned to a cluster of its band, the first to
-  the cluster nearest home, each later one to the free cluster nearest the voyage it opens after (`opens_after`'s first);
-  a launched voyage charts its cluster, an open one not cleared is a located `Voyage` signal, a cleared one's signal is
-  done. Kept in step at every launch and end of a voyage and at load. Slice voyages keep their own records and seeds and
-  launch from the voyage map as before; the jump range does not gate them.
+- **Rewards** (E8, [GDR-0098](gdr/0098-slice-in-the-galaxy-and-rim-rewards.md)): the last signal of a trail done gives
+  the trail's reward, once: its end a gate, the gate opens; a lore trail's fragment joins `memories`; the trail
+  template's `gives` (a cache's research data and materials) goes into store. A find, so kept on a lost voyage.
+- **Gates**: `open_gate(k)` records a gate of the skeleton as opened; a trail's guardian beaten and the Warden cleared
+  open theirs.
+- **The slice** (E7, GDR-0098; E4 pinned it in a chain, GDR-0096): every voyage of the content lies on the cluster the
+  skeleton's set pieces put it on (a pin kept from a format 3 save stays); a launched voyage charts its cluster, an
+  open one not cleared is a located `Voyage` signal, a cleared one's signal is done, and a cleared one on a gate (the
+  Warden's) opens it: the slice is the rim's first gate trail. Kept in step at every launch and end of a voyage and at
+  load. Slice voyages keep their own records and seeds and launch from the voyage map as before; the jump range does
+  not gate them.
 - **Migrating a slice career** (a format 2 save): read as it is, then `begin_galaxy` charts it by the slice rules
   above and returns a note ("the galaxy is charted: 3 clusters from 3 voyages flown, 1 voyage open as a signal"); the
   game writes it at once.
+- **Migrating a format 3 career** (E4's): its skeleton has no set pieces, so it keeps its pins; at load a gate's set
+  piece (the Warden's) makes its pinned cluster a gate (a note: "The Warden's gate keeps a gate now: clearing its goal
+  opens the next band"), opened at once if the Warden is cleared.
 - **Loading** (`reconcile`): pins and `Voyage` signals of voyages the content no longer has go; signals and logs the
-  skeleton doesn't have go (a note); a cluster still underway ends as lost (a note); the slice is brought in step.
+  skeleton doesn't have go (a note); memories of fragments the content lost go; a cluster still underway ends as lost
+  (a note); the slice is brought in step.
 
 ## Voyage-readiness
 
@@ -390,7 +409,7 @@ Track 7F, 13 Oct 2026: `game::career` (`crates/client/world/src/career.rs`; test
 - **The document**: `saves/<slot>` in the player storage (ADR-0031: on the web the browser's IndexedDB since 16 Oct
   2026, ADR-0041, key `saves/career` in the database `space-game`, read into memory before the game starts and
   written behind it; `<data dir>/saves/career.ron` on desktop; memory where the platform has none, with a
-  note). The text is `Career::to_ron()` after the storage's header line `// space-game: saves, format 3, saved
+  note). The text is `Career::to_ron()` after the storage's header line `// space-game: saves, format 4, saved
   <unix seconds>` (`CareerDoc`, format `career::FORMAT`). The slot is `career`; `?save=<slot>` plays another one
   (a storage name: `a-z 0-9 _ -`; another name falls back to `career` with a note).
 - **Loading** (`career::load`, in the plugin's build before the first frame): read → `Career::from_ron` →

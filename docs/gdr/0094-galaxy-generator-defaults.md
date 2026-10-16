@@ -4,6 +4,9 @@
   [GDR-0095](0095-sensors-hidden-sites-and-scans.md) (800 m on cores; records until 600 m, no despawning); a cluster's
   interior rolls into a voyage plan (`sim::VoyagePlan::roll_interior`), its trail places signals' sites.
   2026-10-16: the format-2 migration of slice careers and the jump-range nodes set in [GDR-0096](0096-career-galaxy-format-3.md) (track E4).
+  2026-10-17: where the slice's voyages go set in [GDR-0098](0098-slice-in-the-galaxy-and-rim-rewards.md) (set pieces placed with home, the Warden on the rim's
+  first gate, whose trail is the slice); home needs 4 rim clusters without a set piece within range (was 3
+  neighbours); fresh signal areas 3–4 S; the caches', lore's, graveyards' and gates' own encounters (track E8).
 - Date: 2026-10-16
 - Decided by: lead session (defaults for Niklas to review, galaxy tracks E1 and E2)
 - Supersedes: the plan's placeholder cluster counts per band (12, 18, 22, 24, 4; `docs/plans/galaxy-voyages.md` 4.8; not a record)

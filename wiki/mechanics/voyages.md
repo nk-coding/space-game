@@ -188,7 +188,9 @@ After every voyage, home opens with the debrief on the right:
 - `SIGNAL FOUND · <voyage>` for every voyage this one opened, with VOYAGE MAP to fly straight to the gate, and the
   voyage's own closing words on a first clear;
 - after a voyage into the galaxy: `CHARTED · <cluster>` the first time, every signal heard or narrowed, located,
-  found or followed to its end, and `1 LOG TO DECODE · AT THE LOG` for every data core that came home.
+  found or followed to its end, what a trail's end gave (`CACHE OPENED`, `A MEMORY`), and `1 LOG TO DECODE · AT THE
+  LOG` for every data core that came home;
+- `GATE OPEN · <band>` for a gate a guardian's defeat opened, the Warden's too.
 
 Everything in the hold is dismantled at once: each part becomes research data for its family, and some give
 materials too. Press DISMISS (Esc, Enter) to close it. The debrief is not kept, but the LOG is.
@@ -207,7 +209,8 @@ part count and the data and materials it gave), or THE HAUL STAYED BEHIND. Openi
 Kills and ships lost are not kept in the LOG; the debrief shows them once.
 
 Data cores you bring home wait at the top of the LOG (LOGS TO DECODE), and the mast glows while one waits. DECODE is
-free: the log becomes a signal on the map, and its row says what it leads to and what found it.
+free: the log becomes a signal on the map, and its row says what it leads to and what found it. Under them,
+MEMORY keeps every lore fragment you have found at the end of a trail, newest first, to read again.
 
 ## Clearing a voyage
 
@@ -215,7 +218,9 @@ A voyage is **cleared** when you clear its goal site and then come home with a r
 
 - marks it CLEARED on the map, with your best time;
 - opens every voyage that waits for it. A newly opened voyage shows up as a SIGNAL, the debrief says
-  `SIGNAL FOUND`, and the map selects it the next time you open it.
+  `SIGNAL FOUND`, and the map selects it the next time you open it;
+- for [[voyage:wardens_gate]], opens the gate it keeps: the rim's first, and the band beyond is in reach (see
+  [the galaxy](/mechanics/galaxy)). The map says GATE · OPEN beside it from then on.
 
 A cleared voyage stays open. Fly it again for more salvage; each launch rolls a new layout, and a quicker clear
 improves your best time.

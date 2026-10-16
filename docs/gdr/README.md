@@ -106,6 +106,7 @@ overview and links to both series. Format and status rules: `CLAUDE.md`, section
 | [0095](0095-sensors-hidden-sites-and-scans.md) | Sensors, hidden sites and scans: cores see 800 m (behaviors' targets too), signals' sites show within 400 m or under a sweep, far ones get exact bearings, the `scan` action steps aside, the cluster's edge turns ships back, the mirror lock keeps a single part in place | Accepted (provisional, lead) | 2026-10-16 |
 | [0096](0096-career-galaxy-format-3.md) | The galaxy in the career: save format 3 keeps the skeleton, charting on arrival, signals that halve towards their place, data cores as one-slot logs, Jump calibration I and II (2.5 → 4 S), the slice pinned in a chain from home; the drydock's power leaves bursts apart | Accepted (provisional, lead) | 2026-10-16 |
 | [0097](0097-galaxy-map-and-voyage-flow.md) | The galaxy map and the voyage flow: the map on the career's skeleton, signals as gold areas, soft range circles, blind jumps to the nearest cluster, the warp on the map, finds kept on a lost voyage, decoding at the LOG, a cluster map in flight; the map's backdrop a tenth as heavy | Accepted (provisional, lead) | 2026-10-16 |
+| [0098](0098-slice-in-the-galaxy-and-rim-rewards.md) | The slice in the galaxy and the rim's rewards: set pieces by content, the Warden's gate the rim's first gate, signal areas 3–4 S narrowing to 60 %, four free clusters by home, caches, memories and graveyards; save format 4 | Accepted (provisional, lead) | 2026-10-17 |
 <!-- index:end -->
 
 ## How to add, supersede and deprecate

@@ -1,6 +1,9 @@
 # GDR-0097: The galaxy map and the voyage flow: the map on the career's skeleton, signals as gold areas, soft range circles, blind jumps to the nearest cluster, the warp on the map, finds kept on a lost voyage, decoding at the LOG, a cluster map in flight
 
-- Status: Accepted (provisional, lead)
+- Status: Accepted (provisional, lead). 2026-10-17: its consequences on a thin rim by home and on signals located
+  by one scan addressed (4 free clusters within range of home; areas 3–4 S narrowing to 60 %); the cut labels at a
+  wide window's left edge, the jump range's outline (one union, its arcs meeting at the crossings) and its flicker
+  while zooming fixed; the Warden's voyage says `GATE · OPEN` once cleared (tracks E7, E8, [GDR-0098](0098-slice-in-the-galaxy-and-rim-rewards.md)).
 - Date: 2026-10-16
 - Decided by: lead session (defaults for Niklas to review, galaxy tracks E5 and E6)
 - Related: [GDR-0078](0078-galaxy-exploration-v1.md), [GDR-0080](0080-exploration-searching-and-story.md), [GDR-0091](0091-log-building-and-voyage-history.md), [GDR-0093](0093-galaxy-exploration-decisions-16-oct.md), [GDR-0095](0095-sensors-hidden-sites-and-scans.md), [GDR-0096](0096-career-galaxy-format-3.md), [GDR-0065](0065-phase-7-screens-and-escort-action.md), `docs/plans/galaxy-voyages.md` (E5, E6, 4.1–4.5), `docs/client.md` "Voyage map", "Voyages", "LOG"

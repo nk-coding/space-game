@@ -6,6 +6,9 @@
   format 3, [GDR-0096](0096-career-galaxy-format-3.md)); the slice's voyages pinned into the generated galaxy until E7.
   2026-10-16: the map draws charted clusters, signal areas and the jump range, blind jumps go to the cluster nearest
   the spot, scans narrow signals in flight (tracks E5, E6, [GDR-0097](0097-galaxy-map-and-voyage-flow.md)).
+  2026-10-17: the slice's voyages are set pieces of the generated rim and the Warden's gate the rim's first gate
+  trail (clearing it opens the outer reach); trails pay their rewards: gates, caches, lore, graveyards (tracks E7, E8,
+  [GDR-0098](0098-slice-in-the-galaxy-and-rim-rewards.md)).
 - Date: 2026-10-14
 - Decided by: Niklas (eight questions, interactively, after GDR-0075)
 - Supersedes: GDR-0026 and GDR-0028 in part (travel along lanes; see Decision)

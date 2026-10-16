@@ -2782,9 +2782,9 @@ Galaxy track E3, 16 Oct 2026 ([GDR-0093](gdr/0093-galaxy-exploration-decisions-1
   hidden signal's site beyond it a `voyage::Bearing { site, from, dir, tick }` (`Voyage::bearings`,
   `SimEvent::SiteBearing`: exact, a unit vector from the scan spot) and marks the sleeping sites within its `wake`
   radius to wake. Then every hidden site within a player vessel's sensor range shows (a signal's site,
-  `SitePlan::signal`, only within `signal_reveal` as well). Signals' sites: the goal of a content voyage (until E7),
-  the trail places of a generated cluster that a signal the career has heard leads to (E4: `Leads::signals`; E3 had
-  every trail place). Found is final.
+  `SitePlan::signal`, only within `signal_reveal` as well). Signals' sites: the trail places of a generated cluster that a signal the career has heard leads to (E4: `Leads::signals`; E3 had
+  every trail place; a content voyage's goal until E7, 17 Oct 2026: now an ordinary site, its voyage the signal).
+  Found is final.
 - **Generated clusters**: `VoyagePlan::roll_interior(content, id, &galaxy::Interior, &Leads, seed)` rolls an interior
   on the same generator and draw order as `roll` (no goal; a trail place in `leads.signals` is a signal's site, one in
   `leads.cores` holds its data core, `SitePlan::core`; one without an encounter, a beacon alone, rolls no ships or wrecks

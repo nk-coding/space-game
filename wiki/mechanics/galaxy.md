@@ -10,8 +10,9 @@ you. It is mostly dark: you find places by following **signals**, or by jumping 
 describes how the galaxy is put together.
 
 The voyage map is this galaxy: home, the clusters you have charted, the signals you have heard and how far your
-jumps reach ([voyages](/mechanics/voyages) has the map itself). The first four voyages of the rim sit on clusters of it;
-everything else you find by jumping.
+jumps reach ([voyages](/mechanics/voyages) has the map itself). The first four voyages of the rim are **set pieces**
+placed into every galaxy, each on a rim cluster that takes its name, from [[voyage:yard_approach]] close to home out to
+[[voyage:wardens_gate]]; everything else you find by jumping.
 
 ## Distances: S
 
@@ -39,7 +40,7 @@ come back.
 ## Home and the jump range
 
 Home, the shipyard, is a cluster at the rim's outer edge with at least [[galaxy:galaxy.home_neighbours]] other rim
-clusters within reach. Your drive jumps [[galaxy:galaxy.jump_range]] at the start, from home or from any cluster you
+clusters within reach that hold no set piece: somewhere to jump blind from the start. Your drive jumps [[galaxy:galaxy.jump_range]] at the start, from home or from any cluster you
 have charted. A cluster is **charted** once a fleet of yours has arrived there, even if that voyage is lost. Research
 in the propulsion family grows the range: [[research:jump_calibration_1]] and [[research:jump_calibration_2]] add
 [[research:jump_calibration_1.unlocks]] each. A jump takes [[galaxy:galaxy.warp]] of distance.
@@ -62,7 +63,9 @@ beacon or a data core that starts a trail. Arriving charts it, even if the voyag
 
 Each band but the core has [[band:rim.gates]] **gates** near its inner edge, spread around the disc. A gate is a
 cluster with an old guardian; beat it and the gate opens the next band inwards. Any one gate of a band opens the next.
-Gates are hidden: each lies at the end of a trail of its own ([[trail:rim_gate]] in the rim).
+Gates are hidden: each lies at the end of a trail of its own ([[trail:rim_gate]] in the rim). The rim's first gate is
+the one [[encounter:the_warden]] keeps: the first four voyages are its trail, and clearing [[voyage:wardens_gate]] opens
+it. The rim's other gates are kept by a [[encounter:gate_sentinel]].
 
 ## Trails and signals
 
@@ -71,10 +74,13 @@ the next place of the trail; the last place holds the reward:
 
 | Trail | Signals | Leads to |
 |---|---|---|
-| [[trail:rim_gate]] | [[trail:rim_gate.length]] | a gate and its guardian, [[encounter:the_warden]] |
-| [[trail:precursor_cache]] | [[trail:precursor_cache.length]] | a precursor cache: a research node or a part found nowhere else |
-| [[trail:graveyard]] | [[trail:graveyard.length]] | a [[encounter:core_graveyard]] with far more salvage than usual |
-| [[trail:memory]] | [[trail:memory.length]] | a fragment of what happened, for the memory log |
+| [[trail:rim_gate]] | [[trail:rim_gate.length]] | a gate and its guardian, a [[encounter:gate_sentinel]]: beaten, the gate opens |
+| [[trail:precursor_cache]] | [[trail:precursor_cache.length]] | a [[encounter:sealed_cache]]: beat its keepers and research data and programmable matter go straight into store, beside rich wrecks |
+| [[trail:graveyard]] | [[trail:graveyard.length]] | a [[encounter:deep_graveyard]] with far more salvage than usual |
+| [[trail:memory]] | [[trail:memory.length]] | a [[encounter:memory_wreck]]: see it and its fragment of what happened joins the memory log |
+
+Following a trail to its end gives its reward once, even if the voyage is lost on the way home: a gate, a cache's
+store and a memory are knowledge, not haul. A banner says so in flight, and the debrief lists it.
 
 A signal says roughly where and what kind of thing: on the map it marks an area [[galaxy:galaxy.signal_area]] across
 that holds the place it leads to, though not in its middle. Its first line names what it leads to
@@ -89,7 +95,7 @@ that holds the place it leads to, though not in its middle. Its first line names
 
 On the map a signal you have heard is a gold area: a dotted edge, a faint fill, a slow pulse running out to the edge,
 and its two lines over it. A signal you have heard **narrows** as you search: a scan in another cluster inside its
-area halves the area towards the place (NARROWED; the old edge fades out), still holding it, and once no other
+area shrinks it to [[galaxy:galaxy.signal_narrow]] of its radius towards the place (NARROWED; the old edge fades out), still holding it, and once no other
 cluster lies inside, the signal is **LOCATED**: you know the cluster, and the map marks it in gold. A scan in the
 place's own cluster locates it at once. One voyage narrows a signal once: scanning again in the same cluster tells
 you nothing new about where else to look.
@@ -110,8 +116,7 @@ A cluster is dark when you arrive. Your ships see as far as their **sensors** re
 for a [[part:logic_core]], and never less than [[sim:always_seen]]. A site shows once one of your vessels has it
 within its sensors; behaviors only pick targets they see, so an enemy that gets away beyond the sensors is let go.
 
-A **signal's place** (a trail's place in the cluster, and for now the goal of each of the first four voyages) is
-quieter: it shows only within [[sim:signal_reveal]] of one of your vessels, or under a scan.
+A **signal's place** (a trail's place in the cluster that a signal you have heard leads to) is quieter: it shows only within [[sim:signal_reveal]] of one of your vessels, or under a scan.
 
 A **scan** needs a [[part:scanner]] built into the ship ([[part:scanner.build_points]]; the starter ship carries one).
 Press [[control:scan.keys]] ([[control:scan]]) or the SCAN pill under the target panel; ships under a behavior scan
@@ -131,5 +136,6 @@ pushed back.
 
 ## Lore
 
-Lore trails end at a fragment of the story, kept in the memory log: in the rim [[lore:last_launch]],
-[[lore:the_quiet]] and [[lore:a_note_to_myself]]. Each fragment is placed once per galaxy.
+Lore trails end at a fragment of the story, kept in the memory log, which the **LOG** at home shows under MEMORY: in
+the rim [[lore:last_launch]], [[lore:the_quiet]] and [[lore:a_note_to_myself]]. Each fragment is placed once per
+galaxy.

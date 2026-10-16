@@ -458,6 +458,27 @@ Next session:
   fingerprint changed (the voyages' `map` went), so saved lab runs restore stale.
 - Next: E7 (the slice pinned by content, the Warden's gate the rim's first gate trail), E8 (rim content).
 
+### 17 Oct 2026: galaxy tracks E7 and E8, the galaxy track done (`plans/galaxy-voyages.md`)
+
+- **E7 built** ([GDR-0098](gdr/0098-slice-in-the-galaxy-and-rim-rewards.md), lead defaults): the slice's voyages are
+  set pieces in `galaxy.ron`, placed by the generator (version 2) at Niklas's distances from home, the Warden on the
+  rim gate nearest the inner edge: its four voyages are the rim's first gate trail and clearing it opens the outer
+  reach (the map says `GATE · OPEN`, the debrief `GATE OPEN · THE OUTER REACH`). The slice's goal is an ordinary site
+  again (E3's stopgap). Save format 4: a format 3 save keeps E4's pins, its Warden's cluster becomes a gate at load.
+- **E8 built**: the rim's trails end at their own encounters (gate sentinel, sealed cache, memory wreck, deep
+  graveyard) and pay their rewards on their last signal done, kept on a lost voyage: gates open, caches give research
+  data and programmable matter, lore fragments join the memory log (the LOG's MEMORY rows), graveyards are rich
+  salvage; banners in flight, debrief lines.
+- **Tunings**: signals located too fast (one scan located 83 % of them): fresh areas 3–4 S, a scan keeps 60 % of the
+  radius: 15 % located by the first scan, 2 or 3 voyages to find one 66 % of the time (`content-tool galaxy --seeds
+  8000`). Home had 1–4 free clusters in range (median 2): now at least 4 in every seed. The generation hash changed
+  (seed 1: `8a509f91bd8fd0b8`); native = wasm. The rules' fingerprint changed (new encounters): saved lab runs
+  restore stale.
+- **The map** (Niklas): labels cut at a wide window's stage edge, the jump range's arcs meeting with a notch, and its
+  flicker while zooming fixed (the outline is the union's exact arcs now).
+- The galaxy plan's tracks are done. Next candidates: caches with a node or part of their own, milestone cards
+  (GDR-0080), the bands past the rim with their races and guardians.
+
 ## Phase 4: measurement
 
 Status 12 Oct 2026 (new VM): `results/spike-summary.md` written. Determinism native vs wasm IDENTICAL on the new VM

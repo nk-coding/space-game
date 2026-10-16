@@ -696,13 +696,17 @@ off, the flash and its ring where it left), `voyage-warp-emergency.png` (the eme
   career (`VoyageRun::knows`) and the finds (`Find`): a player's scan narrows every heard signal whose area holds the
   cluster (`Career::scanned`, once per signal per voyage) and hears the beacon of every trail place its sweep reaches
   (`Career::beacon`); a signal's site revealed is found, cleared (or revealed with no ships) done (`Career::found`). Each
-  has a gold banner: `SIGNAL NARROWED · A GATE` / `ITS AREA ON THE MAP HALVED TOWARDS ITS PLACE`, `SIGNAL LOCATED · …`,
-  `SIGNAL HEARD · …` over the source's line, `SIGNAL FOUND · …` / `RAIDER PAIR · CLEAR IT`. The end gives the finds to
-  the career before `cluster_ended`, recalled or lost (a voyage cut short too).
+  has a gold banner: `SIGNAL NARROWED · A GATE` / `ITS AREA ON THE MAP SHRANK TOWARDS ITS PLACE`, `SIGNAL LOCATED · …`,
+  `SIGNAL HEARD · …` over the source's line, `SIGNAL FOUND · …` / `RAIDER PAIR · CLEAR IT`. A trail's last site done
+  gives its reward (E8, [GDR-0098](gdr/0098-slice-in-the-galaxy-and-rim-rewards.md), `voyage::reward_words`): `GATE OPEN ·
+  THE OUTER REACH` (coral), `CACHE OPENED` over what went into store (`LOGIC +8 · PROPULSION +8 · PROGRAMMABLE MATTER
+  +4`, teal), `A MEMORY · THE LAST LAUNCH` / `READ IT AT THE LOG`, `SIGNAL FOLLOWED · A GRAVEYARD`. The end gives the
+  finds to the career before `cluster_ended`, recalled or lost (a voyage cut short too).
 - **The cluster map** (`flight_hud/overview.rs`): N (`cluster_map`) lays the cluster over the view's middle (a disc of
   0.4 of the view's short side, dark at 86 %): its edge dotted, the entry a small diamond, every scan's sweep a faint
   violet circle, the bearings dashed gold to the map's edge, the sites found as dots in rings (a signal's two), the
-  fleet teal dots (the flown one with a heading tick); over it `CLUSTER MAP · NYOST FIELD · 4.3 KM ACROSS · N CLOSES`.
+  fleet teal dots (the flown one with a heading tick); over it `CLUSTER MAP · NYOST FIELD · 4.3 KM ACROSS · N CLOSES`
+  (at least 60 px down: in a short window it ran over the HUD's title).
   The site markers at the screen's edge step aside while it shows; the flight goes on. Screenshot:
   `docs/results/galaxy-cluster-map.png`.
 - **Recall**: R or the pill asks; the next tick starts the 3 s warp-out only if the sim allows it (else `NO
@@ -760,8 +764,11 @@ off, the flash and its ring where it left), `voyage-warp-emergency.png` (the eme
   now; `SIGNAL FOUND · HALVEX DRIFT` after a beacon mark for each voyage it opened (GDR-0078: the name from
   the content; Barlow has no ◆ either, so the materials have a diamond mark too); after a cluster voyage
   (`voyage::debrief::galaxy_finds`, [GDR-0097](gdr/0097-galaxy-map-and-voyage-flow.md)) `CHARTED · NYOST FIELD` (its first launch), each signal heard or come further
-  in gold (`SIGNAL HEARD / NARROWED / LOCATED / FOUND / FOLLOWED · A GATE`) and `1 LOG TO DECODE · AT THE LOG`
-  (`docs/results/galaxy-debrief.png`). The two marks are bevy_ui nodes
+  in gold (`SIGNAL HEARD / NARROWED / LOCATED / FOUND / FOLLOWED · A GATE`), what a trail's end gave (`CACHE OPENED ·
+  LOGIC +8 · …`, `A MEMORY · THE LAST LAUNCH · READ IT AT THE LOG`), each gate opened (`GATE OPEN · THE OUTER REACH`,
+  coral; also after the Warden) and `1 LOG TO DECODE · AT THE LOG` (`docs/results/galaxy-debrief.png`: a real voyage
+  into a charted cluster inside a signal's area, one scan, recalled: `SIGNAL NARROWED · A GATE`, `SIGNAL HEARD · A
+  GRAVEYARD` from a distress call the sweep reached). The two marks are bevy_ui nodes
   drawn like the vector glyphs (◆ a square turned 45°, the beacon a dot between two rings showing only their left
   and right borders), not `ui_icons` glyphs: those are world meshes, which the panel's opaque backing covered (15
   Oct 2026), and the backing can't be a world scrim as BLUEPRINTS' is, since home's words under the panel are UI
@@ -784,7 +791,11 @@ the map's screen opens once the window is all map. Esc or the ring button top le
 same path backwards;
 `?scene=map` starts here. The galaxy's map since tracks E5 and E6 ([GDR-0097](gdr/0097-galaxy-map-and-voyage-flow.md)); screenshots (16 Oct 2026, a career with
 charted clusters, a fresh, a narrowed and a located signal): `docs/results/galaxy-map.png` (1600 × 900),
-`galaxy-map-2560.png`, `galaxy-map-blind-jump.png`, `galaxy-map-warp.png`. Older: `docs/results/map-signals-new-game.png` (a new game: the shipyard and the
+`galaxy-map-2560.png`, `galaxy-map-blind-jump.png`, `galaxy-map-warp.png`; 17 Oct 2026 (E7, E8): `galaxy-map-new-game.png` (a new
+game: home, the Shipyard approach, the jump range), `galaxy-map-signal-near-home.png` (a signal's area holding a charted
+cluster), `galaxy-map-warden-gate.png` (the slice cleared: the Warden's `GATE · OPEN`), `galaxy-map-wide-labels.png`
+(2200 × 900, panned: labels past the stage's left edge drawn whole), `galaxy-cache-bearings.png` (a practice run in a
+cluster holding a sealed cache: the cluster map after a scan, bearings towards it). Older: `docs/results/map-signals-new-game.png` (a new game: the shipyard and the
 first voyage, nothing else), `map-signals-found.png` (the first voyage cleared: Halvex Drift a new signal). The older
 `map-1280.png`, `map-1600.png`, `map-1600-locked.png`, `map-wide.png` (3440 × 1305) and `map-tall.png` (900 × 1400)
 show the window sizes but still the chain and the locked voyages the map drew before GDR-0078.
@@ -799,8 +810,9 @@ show the window sizes but still the chain and the locked voyages the map drew be
   fits the window whole (1 at 1280 × 720, 1.25 at 1600 × 900, any aspect: centred, nothing cut off; 0.3 to 2). The
   map fills the stage left of the panel (904 px). It is the career's galaxy skeleton (GDR-0096) at **120 px a S** at
   the default view, turned so the galaxy's centre lies right of home (x 300), flipped so the slice's voyages lie above
-  home, home's height chosen so home, the voyages and the charted clusters sit in the map's middle (150–560). A slice
-  voyage sits on the cluster it is pinned to (the content's `map` place went with this, [GDR-0097](gdr/0097-galaxy-map-and-voyage-flow.md)). The bands' edges are the
+  home, home's height chosen so home, the known voyages and the charted clusters sit in the map's middle (150–560;
+  17 Oct 2026: the unknown voyages no longer count, they pushed charted clusters below the legend). A slice voyage
+  sits on its set piece's cluster (the content's `map` place went with this, [GDR-0097](gdr/0097-galaxy-map-and-voyage-flow.md); E7, [GDR-0098](gdr/0098-slice-in-the-galaxy-and-rim-rewards.md)). The bands' edges are the
   content's (`bands.ron`): home's band and the next one along the top, the rest seen zoomed out. No route joins
   anything (GDR-0078).
 - **What the career knows** (`map::known`, pure): `Known` (rebuilt when the career changes): the clusters the map shows
@@ -820,7 +832,8 @@ show the window sizes but still the chain and the locked voyages the map drew be
   saved), **open** (a teal ring with a glow, `OPEN`), **cleared** (a filled teal dot, `CLEARED · BEST 7:42`: the
   quickest voyage that cleared the goal and came home; it may launch again), and a **guardian** (a voyage whose goal
   encounter is tagged `boss`: a coral diamond, `OPEN · GUARDIAN`, a signal's pulses coral). Under a voyage's name a
-  dot per site (coral enemies, gold wrecks, a diamond for the goal). The selection is a dotted ring; hover a faint
+  dot per site (coral enemies, gold wrecks, a diamond for the goal). A voyage on a gate it opened (the Warden's)
+  says `GATE · OPEN` in coral, its panel `CLEARED · ITS GATE IS OPEN`. The selection is a dotted ring; hover a faint
   ring and a brighter name. The legend bottom left (home, open, cleared, signal; enemies, wrecks, goal site,
   guardian; charted, signal area, located, `JUMP RANGE · 2.5 S`); top left `RIM · 3 CHARTED · 2 CLEARED · 5 SIGNALS`
   and "Voyages". **Clusters**: charted a small teal ring with its name and `CHARTED`; a located signal's a gold one,
@@ -829,7 +842,16 @@ show the window sizes but still the chain and the locked voyages the map drew be
   GATE` over "a log from a hauler's wreck", `NARROWED`) above it, else below, right, left or inside, wherever it keeps
   clear of the other labels (`signal_labels`, widths estimated from the words); when an area changes its old edge fades
   out over 1.6 s. **The jump range**: the union of circles of the reach round home and every charted cluster, its edge
-  only (a thin teal line over a glow fading inwards; runs inside another circle are left out).
+  only (a thin teal line over a glow fading inwards). `draw::union_outline` (17 Oct 2026, Niklas: the arcs met with a
+  notch and overlapping ends, and flickered while zooming): each circle's arcs outside every other circle, cut exactly
+  where two circles cross, joined into closed loops that turn at the crossings (mitred, nothing overhangs); the glows
+  are the outlines of the unions of the circles shrunk by their inset, so they turn in the same corners; points about
+  6 px apart with each arc's ends exact, so a zoom only scales the outline (it was sampled every 6 px and cut where a
+  sample fell inside another circle: the cut jumped as the sampling changed with the zoom). The panel's edge cuts it
+  exactly. **Labels** are cut at the panel and at the window's edges: in a window wider or taller than the stage the
+  clip runs out past the stage (`MapClip`, set by `fit`), as the galaxy does; it ended at the stage's left edge, which
+  cut labels a pan had moved there (`…N REACH`). The top band names stay right of the header's words (`HEADER_END`,
+  stage x 420; the next band's name hides rather than run under them).
 - **The panel** (the selected voyage): `DESTINATION · VOYAGE 2` (no total: the rest is unknown), the name, chips (the band; the factions of its
   ships, coral; `WRECKS` gold when any site holds wrecks; `GUARDIAN`), the summary, `SITES · 5` with a row per site
   entry (`Raider pack ×2`, right `3 SHIPS` / `WRECKS` / `GOAL · 4–5 SHIPS` / `GUARDIAN`, under it what it gives: the
@@ -930,6 +952,9 @@ the records mast by the gate, once the camera has flown there).
   DECODE). DECODE decodes it (`Career::decode`, saved): the row shows `NEW`, `SIGNAL · A GATE` over its source's line and
   `ON THE MAP` until the LOG closes. The mast glows while a core waits and home's label says `1 LOG TO DECODE`.
   Screenshots: `docs/results/galaxy-log-decode.png`, `galaxy-log-decoded.png`.
+- **The memory log** (E8, [GDR-0098](gdr/0098-slice-in-the-galaxy-and-rim-rewards.md)): after the logs, `MEMORY · 3 ·
+  WHAT THE TRAILS LED BACK TO` and a row per lore fragment found, newest first: `LORE`, its name, its text (the
+  content's). Screenshot: `docs/results/galaxy-log-memory.png`.
 - **Seen**: opening it marks every result seen (`Career::read_log`) and writes the save; the mast stops glowing.
   The rows are built when it opens.
 - **The mast's tooltip** is the last voyage in one line (`LogRow::line`: `LAST VOYAGE · THE WARDEN'S GATE · GOAL

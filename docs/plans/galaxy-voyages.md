@@ -6,7 +6,8 @@ gates) and [GDR-0080](../gdr/0080-exploration-searching-and-story.md) / [ADR-003
 (searching, the scanner part, the story, the skeleton in the save). The first version (13 Oct, written before phase 7 was built) laid out lanes, routes and visible gates; it is
 in git history (commit `e1f3d67`) for its technical detail. Every number marked *(placeholder)* is for feel, not a
 spec. Niklas answered the questions of [section 9](#9-questions-for-niklas) the same day; the roadmap and the
-record indexes are the lead's to update.
+record indexes are the lead's to update. **All tracks (E0–E8) built by 17 Oct 2026**; the last two in
+[GDR-0098](../gdr/0098-slice-in-the-galaxy-and-rim-rewards.md).
 
 ## 1. Summary
 
@@ -85,11 +86,13 @@ A signal is a pointer from a **source** to a **target**, stored in the save.
 - **Target**: a hidden place: a site in a cluster (a cache, a lore wreck, a graveyard, a gate's guardian), fixed by
   the galaxy generator, so it is the same for every way of finding it.
 - **Area**: a circle on the galaxy map that holds the target's cluster. A fresh signal's circle is wide *(placeholder:
-  2–3 cluster spacings across, usually 3–6 clusters inside)*. Its centre is offset from the target by a seeded
+  2–3 cluster spacings across, usually 3–6 clusters inside; 17 Oct 2026: 3–4 S across, about 5.6 clusters inside,
+  [GDR-0098](../gdr/0098-slice-in-the-galaxy-and-rim-rewards.md))*. Its centre is offset from the target by a seeded
   amount, so the target is not simply in the middle.
 - **Narrowing**:
   - *On the map*: a scan in a cluster inside the area but not the target's shrinks the area to the side the bearing
-    points to *(placeholder: the circle halves, still holding the target)*. A second source for the same target
+    points to *(placeholder: the circle halves, still holding the target; 17 Oct 2026: it keeps 60 % of its radius,
+    since halving located 83 % of signals with the first scan, GDR-0098)*. A second source for the same target
     (another log of the same trail) shrinks it too.
   - *In the target's cluster*: a scan gives a bearing to the site; a second scan from elsewhere crosses it. At close
     range *(placeholder: 400 m)* the site is revealed.
@@ -115,13 +118,20 @@ last place holds the reward:
 
 | Reward | What it is | Trail length *(placeholder)* |
 |---|---|---|
-| **Band gate** | The gate cluster of the next band with its guardian. Any one gate per boundary opens the band (GDR-0078). The rim's first gate is the Warden's (the slice) | 3–4 |
+| **Band gate** | The gate cluster of the next band with its guardian. Any one gate per boundary opens the band (GDR-0078). The rim's first gate is the Warden's (the slice; built 17 Oct 2026, its four voyages the gate's trail) | 3–4 |
 | **Precursor cache** | A research node or a rare part found nowhere else | 2–3 |
 | **Lore** | A fragment of what happened to the precursors and to the ship-mind, kept in a memory log | 1–2 |
 | **Rich salvage** | A graveyard or a wreck field with far more to collect than usual, often guarded | 1–2 |
 
 Gates come in 3 per boundary *(placeholder)*, each at the end of its own trail; the first signal of each gate trail
 is reachable from the band's start without the others, so there is always more than one way on.
+
+Built 17 Oct 2026 (E8, [GDR-0098](../gdr/0098-slice-in-the-galaxy-and-rim-rewards.md)): the last signal of a trail done
+gives its reward once, kept on a lost voyage like every find: a gate's guardian beaten opens the gate (the rim's
+generated gates keep a gate sentinel); a cache's trail gives research data and programmable matter into store
+(`trails.ron`'s `gives`; a node or a part found nowhere else is later) beside a sealed cache's rich wrecks; a lore
+trail's memory wreck, seen, puts its fragment into the memory log (the LOG's MEMORY rows); a graveyard trail ends
+at a deep graveyard. Milestone cards (GDR-0080) wait.
 
 ### 4.4 Blind jumps
 
@@ -159,7 +169,8 @@ the cluster. Empty space between clusters is not a destination; a jump picks the
   gives each active signal it can hear a bearing. It wakes sleeping enemies nearby *(placeholder: within 300 m)*,
   so where you scan matters. The starter or an early research node must give a scanner (E8). Built 16 Oct 2026
   (E3, [GDR-0095](../gdr/0095-sensors-hidden-sites-and-scans.md)): the starter carries one (GDR-0093); the charge is
-  2 s on the scanner's power; until E4 every trail place (and the slice's goal) counts as a signal a scan hears.
+  2 s on the scanner's power; until E4 every trail place (and the slice's goal, until E7) counts as a signal a scan
+  hears.
 - **Bearings** show in flight as a line from the scan spot and on the cluster map overlay; two crossing lines mark
   the place. (In flight since E3: dashed gold lines; since E6 also on the cluster map, N, [GDR-0097](../gdr/0097-galaxy-map-and-voyage-flow.md).)
 
@@ -171,15 +182,20 @@ own cluster, Halvex Drift and Corran Reach are hand-made clusters inside the fir
 is the rim's first gate trail. Until the generator exists they stay as they are. Until E7 (16 Oct 2026, E4,
 [GDR-0096](../gdr/0096-career-galaxy-format-3.md)): the career pins each voyage to a rim cluster, the first nearest home
 and each later one nearest the voyage it opens after; flown voyages chart their clusters, the open one is a located
-signal, and that is how a slice save migrates.
+signal, and that is how a slice save migrates. Built 17 Oct 2026 (E7, [GDR-0098](../gdr/0098-slice-in-the-galaxy-and-rim-rewards.md)):
+`galaxy.ron`'s set pieces place them at Niklas's distances from home (the Shipyard approach 0.9 S out, not home's own
+cluster, which the map draws as the shipyard), the Warden on the rim gate nearest the band's inner edge 2.8–3.5 S
+out, its voyages the gate's trail: clearing it opens the outer reach. Their signals stay located when they open. A
+format 3 save keeps E4's pins; its Warden's cluster becomes a gate at load.
 
 ### 4.8 Placeholder numbers
 
 | What | Value |
 |---|---|
 | Clusters per band (rim, outer, middle, inner, core) | by the bands' areas at 0.9 S spacing: about 37, 18, 13, 8, 3 (77–85; GDR-0094, was 12, 18, 22, 24, 4) |
-| Fresh signal area | 2–3 S across |
-| Narrowing per scan or second source | the area halves |
+| Fresh signal area | 2–3 S across (17 Oct 2026: 3–4 S, GDR-0098) |
+| Narrowing per scan or second source | the area halves (17 Oct 2026: to 60 % of its radius) |
+| Free clusters within the starting range of home | 3 neighbours (17 Oct 2026: 4 without a set piece) |
 | Site revealed within | 400 m |
 | Trails open at once | usually 2–4 |
 | Gate trails per boundary | 3, each 3–4 signals long |
@@ -202,14 +218,16 @@ steps 1–4 and 6 as below, step 1 changed: the plan's counts per band could not
    (syllables from content, on their own stream). Every band's clusters must be reachable hop by hop within the
    starting jump range from its entrances, else the placement is re-rolled (bounded).
 2. **Home** is the rim cluster nearest a random angle; at least 3 rim clusters *(placeholder)* lie within the
-   starting jump range, otherwise the angle is re-rolled (bounded, deterministic).
+   starting jump range, otherwise the angle is re-rolled (bounded, deterministic). (17 Oct 2026: with the set pieces
+   placed from it, and 4 rim clusters without one in range, GDR-0098.)
 3. **Gates**: per boundary, 3 clusters of the outer band near its inner edge, spread around the disc.
 4. **Trails**: for each gate, and for a number of caches, lore fragments and graveyards per band (content counts),
    pick the target's cluster, then walk outward towards home picking 0–3 earlier places for the trail's sources
    (each the previous one's target), and decide each source's form (a log in a wreck site, a beacon site). Checks:
    every gate trail's first source is reachable from the band's start; no two targets share a site. (Built: the
    walk prefers places nearer the band's entrances, 0.9–2.5 S per step; no two rewards share a cluster.)
-5. **Hand-made set pieces** (the slice's voyages first) are pinned to clusters by content.
+5. **Hand-made set pieces** (the slice's voyages first) are pinned to clusters by content. (Built 17 Oct 2026, E7: with
+   home, step 2, so its free neighbours are counted without them; generator version 2.)
 6. **Interiors** are generated on demand at warp time from the cluster's seed and type, with the trail places the
    cluster holds put in as fixed sites.
 
@@ -267,8 +285,8 @@ Sizes: **S** one agent session, **M** one or two, **L** several.
 | E4 Career format 2 | Charted, signals and narrowing, logs, gates, range; migration from format 1. **Done 16 Oct 2026** ([GDR-0096](../gdr/0096-career-galaxy-format-3.md); the save's format 3, as format 2 had gone to the history): the career keeps the skeleton (`data::skeleton`), charted clusters (on arrival), signals (fresh → narrowed → located: halved towards the place), logs from data cores (one cargo unit, lost with the haul), gates, `Unlock::JumpRange` with Jump calibration I and II (2.5 → 3.25 → 4 S), jumps from home or any charted cluster, cluster voyages (`cluster_launched`/`cluster_ended`) and their `Leads` for `roll_interior`; slice saves migrate at load (voyages pinned in a chain from home, flown ones charted, the open one a located signal) | E1 | M |
 | E5 Map | Unknown space, charted clusters, signal areas, range circles, blind-jump picking; the panel says what a signal knows. **Done 16 Oct 2026** ([GDR-0097](../gdr/0097-galaxy-map-and-voyage-flow.md)): the map on the career's skeleton (120 px a S; the voyages' content `map` place gone), charted clusters, gates, located signals, signal areas (dotted gold edge, faint fill, a pulse; the old edge fades when one narrows) worded from the content, the jump range as soft teal circles; a click on empty space picks a blind jump (the nearest cluster within 1.5 spacings); the galaxy's backdrop a tenth as heavy (the 2560 × 1440 timeout) | E2, E4 | M |
 | E6 Voyage flow | Launch into a generated cluster, scanning in flight (control, bearing lines, the cluster overlay), finding, the debrief's finds, decoding logs at home. **Done 16 Oct 2026** ([GDR-0097](../gdr/0097-galaxy-map-and-voyage-flow.md)): the warp on the map (3 s + 2 s per S, Esc ends it), recorded launches (`cluster_launched`), scans narrow signals once a voyage and hear beacons, signals' sites found and done, the finds kept on a lost voyage, the debrief's lines, decoding at the LOG, the cluster map in flight (N) | E3, E4, E5 | L |
-| E7 Slice into the galaxy | The four voyages pinned as set pieces; the Warden's gate as the rim's first gate trail | E2, E6 | S |
-| E8 Content | Rim trails: one gate trail beyond the Warden's, two caches, three lore fragments, two graveyards | E1, E6 | M |
+| E7 Slice into the galaxy | The four voyages pinned as set pieces; the Warden's gate as the rim's first gate trail. **Done 17 Oct 2026** ([GDR-0098](../gdr/0098-slice-in-the-galaxy-and-rim-rewards.md)): `galaxy.ron`'s set pieces at Niklas's distances, home with 4 free clusters in range, the Warden on a rim gate whose trail is the slice, its clearing opens the outer reach; the slice's goal an ordinary site (E3's stopgap gone); save format 4 (a format 3 save keeps its pins, its Warden's cluster becomes a gate); signal areas 3–4 S narrowing to 60 % (2–3 voyages to find one, `content-tool galaxy --seeds`) | E2, E6 | S |
+| E8 Content | Rim trails: one gate trail beyond the Warden's, two caches, three lore fragments, two graveyards. **Done 17 Oct 2026** (GDR-0098): two gate trails beyond the Warden's (three gates a band) to a gate sentinel, two caches (a sealed cache; data and programmable matter into store), three lore fragments (memory wrecks; the memory log at the LOG), two graveyards (a deep graveyard); rewards on a trail's last signal done, banners in flight, debrief lines | E1, E6 | M |
 
 Order: E0, E1 first; then E2, E3, E4 side by side; then E5; then E6; E7 and E8 last.
 

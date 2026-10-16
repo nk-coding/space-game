@@ -629,8 +629,8 @@ bring it to 4), voyage `yard_approach` open.
 
 A voyage is one small hand-made cluster with seeded sites (GDR-0062). Each launch rolls where its sites lie and what
 each holds (`sim::voyage`, `docs/sim.md` "Voyages"); the career remembers launches and clears (`docs/career.md`).
-The voyage map shows it on the cluster of the career's galaxy it is pinned to (GDR-0096); its `map` place (0 to 1)
-went on 16 Oct 2026 with the galaxy's map (GDR-0097), until track E7 pins the voyages by content.
+The voyage map shows it on the cluster of the career's galaxy it lies on: the galaxy's `set_pieces` place it (E7,
+GDR-0098); its `map` place (0 to 1) went on 16 Oct 2026 with the galaxy's map (GDR-0097).
 
 ```ron
 // voyages/rim.ron (one of four). PLACEHOLDER NUMBERS.
@@ -748,16 +748,18 @@ is in the rules' fingerprint: a game keeps its generated galaxy (ADR-0035).
 
 | Kind | Fields besides the common header |
 |---|---|
-| `galaxy` (`galaxy.ron`) | `bands` (ids, rim first, each inside the one before), `spacing` (S, no two clusters closer), `jump_range` (S at the start; at least twice the spacing), `home_neighbours` (home's band clusters within the jump range), `warp` (`(seconds, seconds per S)`), `signal_area: (across: (min, max) S, offset: share of the radius the place may lie off-centre, below 1)`, `trail_step` (`(min, max)` S between a trail's places), `names: (starts, ends)` (syllables of a cluster name's first word) |
+| `galaxy` (`galaxy.ron`) | `bands` (ids, rim first, each inside the one before), `spacing` (S, no two clusters closer), `jump_range` (S at the start; at least twice the spacing), `home_neighbours` (home's band clusters without a set piece within the jump range), `warp` (`(seconds, seconds per S)`), `signal_area: (across: (min, max) S, offset: share of the radius the place may lie off-centre, below 1, narrow: share of the radius a scan from another cluster keeps, above 0 and below 1)`, `trail_step` (`(min, max)` S between a trail's places), `names: (starts, ends)` (syllables of a cluster name's first word), `set_pieces` (`[(voyage, distance: (min, max) S from home, gate)]`: hand-made voyages placed on clusters of their band that take their names; a `gate` piece keeps its band's first gate, its voyages the gate's trail, at most one a band, its goal with ships for sure; E7, GDR-0098) |
 | `band` (`bands.ron`) | `edge` (S from the centre to its outer edge; the next band's edge is its inner one), `clusters` (`[(id: cluster type, weight)]`), `gates` (optional `(count, trail)`: gates near its inner edge, each at the end of a `Gate` trail; every band but the innermost has them), `trails` (`[(trail, count)]`, `Cache` or `Salvage` trails) |
 | `cluster_type` (`cluster_types/*.ron`) | `radius` (`(min, max)` m, at most 4000: one `f32` space, ADR-0022), `spacing` (`(min, max)` m between sites, as a voyage's), `words` (the second word of its clusters' names), `sites` (`[(encounter, count: (min, max))]`, at most 64 sites) |
-| `trail` (`trails.ron`) | `reward` (`Gate`, `Cache`, `Lore`, `Salvage`), `length` (`(min, max)` signals, 1 to 4), `target` (the encounter at its end; a gate's must have ships for sure), `sources` (signal source ids, equally likely), `hint` (text: the signal's first line, "SIGNAL · A GATE") |
+| `trail` (`trails.ron`) | `reward` (`Gate`, `Cache`, `Lore`, `Salvage`), `length` (`(min, max)` signals, 1 to 4), `target` (the encounter at its end; a gate's must have ships for sure), `sources` (signal source ids, equally likely), `hint` (text: the signal's first line, "SIGNAL · A GATE"), `gives` (optional `(data: {family: amount}, materials: {material: count})`: what its end puts into store, a cache's; E8) |
 | `signal_source` (`signal_sources.ron`) | `form` (`Log`: a data core in a wreck, decoded at home; `Beacon`: scanned in the cluster), `line` (text: the signal's second line, "a log from a hauler's wreck"), `site` (the encounter at its place: required for a log and must hold wrecks; a beacon's keeper, none for the beacon alone) |
 | `lore` (`lore/*.ron`) | `band`, `trail` (a `Lore` trail: one is placed per fragment), `text` (the fragment, for the memory log) |
 
 Texts keyed as usual: `trail.<id>.hint`, `signal_source.<id>.line`, `lore.<id>.text`. Name syllables and words are
 not keyed (they make proper names). Validation warns when a band is in no galaxy, a cluster type in no band, or a
-trail placed by no band or fragment. The jump range's research is two propulsion nodes of +0.75 S (GDR-0093, built 16
+trail placed by no band or fragment, and when a voyage of the galaxy's bands has no set piece (never on the map). The
+rim's trails end at their own encounters since E8 (17 Oct 2026, GDR-0098): a gate sentinel, a sealed cache, a memory
+wreck, a deep graveyard. The jump range's research is two propulsion nodes of +0.75 S (GDR-0093, built 16
 Oct 2026 in track E4: `Unlock::JumpRange`, "Research nodes" above). A game's generated skeleton is kept in its career
 (`docs/career.md` "The galaxy"; its types are `data::skeleton`).
 
