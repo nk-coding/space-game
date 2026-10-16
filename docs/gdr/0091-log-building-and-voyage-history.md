@@ -1,6 +1,8 @@
 # GDR-0091: The LOG: a records mast by the gate and a screen of the last voyages, in place of the summary line
 
 - Status: Accepted. 2026-10-16: a format 1 save's `last_haul` is no longer read (lead session, removing legacy readers; every save is written again on its first change).
+  2026-10-16: the LOG also decodes the data cores brought home into signals, and its mast glows while one waits
+  (galaxy track E6, [GDR-0097](0097-galaxy-map-and-voyage-flow.md)).
 - Date: 2026-10-15
 - Decided by: Niklas (a LOG building instead of the line; its place by the gate, the glow, the hover and the
   screen: interactively); lead session (the look, the screen's layout, the history's size; defaults for Niklas to

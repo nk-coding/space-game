@@ -1,6 +1,7 @@
 # GDR-0096: The galaxy in the career: save format 3 keeps the skeleton, charting on arrival, signals that halve towards their place, data cores as one-slot logs, two jump calibrations, the slice pinned in a chain from home
 
-- Status: Accepted (provisional, lead)
+- Status: Accepted (provisional, lead). 2026-10-16: found comes between located and done, jumps reach only bands a
+  gate opened and never start at their target, logs are decoded at the LOG (tracks E5, E6, [GDR-0097](0097-galaxy-map-and-voyage-flow.md)).
 - Date: 2026-10-16
 - Decided by: lead session (defaults for Niklas to review, galaxy track E4)
 - Related: [GDR-0078](0078-galaxy-exploration-v1.md), [GDR-0080](0080-exploration-searching-and-story.md), [GDR-0093](0093-galaxy-exploration-decisions-16-oct.md), [GDR-0094](0094-galaxy-generator-defaults.md), [GDR-0095](0095-sensors-hidden-sites-and-scans.md), [GDR-0029](0029-mild-death-bonded-matter.md), [ADR-0033](../adr/0033-career-model-save-and-voyage-director.md), [ADR-0035](../adr/0035-saves-keep-the-galaxy-skeleton.md), [ADR-0042](../adr/0042-galaxy-generator-crate.md), `docs/plans/galaxy-voyages.md` (E4, 4.1, 4.2, 4.5, 4.7), `docs/career.md`

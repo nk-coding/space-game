@@ -2,6 +2,8 @@
 
 - Status: Accepted. 2026-10-15: the one-line summary over home after the debrief is replaced by the LOG building
   and screen ([GDR-0091](0091-log-building-and-voyage-history.md)).
+  2026-10-16: the voyage map is the career's galaxy (charted clusters, signals, jump range, blind jumps; galaxy
+  tracks E5, E6, [GDR-0097](0097-galaxy-map-and-voyage-flow.md)).
 - Date: 2026-10-13
 - Decided by: Niklas (interactively, from the mockups in `docs/plans/mockups/`)
 - Supersedes: the hiding of locked parts in [GDR-0054](0054-drydock-locked-parts-tools-saving-sharing.md), for the career's drydock

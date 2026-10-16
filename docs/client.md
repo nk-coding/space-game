@@ -48,6 +48,7 @@ per sim tick with `sim::flight::turn_ramp_step` (like the lock's nudge with `nud
 | Drydock (back to the ship editor; the design is untouched); in TEST IN RANGE back to where the test started; nothing in a voyage | T | – |
 | Home (the shipyard; the flight ends); in a voyage M opens the ABANDON VOYAGE? panel instead (GDR-0077: Enter abandons the voyage, lost; Esc or M again close it) | M, or the ring top left (not in a voyage) | the ring top left |
 | Recall home from a voyage (when no armed awake enemy is within 200 m, or the fleet has no working gun left: the emergency recall; a 3 s warp-out) | R, or the RECALL pill | the RECALL pill |
+| The cluster map on a voyage: the whole cluster laid over the view (galaxy plan E6) | N | — |
 | Raider waves off / on (sandbox; off removes the raiders) | C | – |
 | Tuning panel (flight only; it was T until 12 Oct 2026) | U | – |
 | Debug overlay (fps, frame and sim times, the focus ship's heading, turn rate, speed and whether the last resort turns it, the locked ship's active behavior rule; in TEST IN RANGE every rule of the tested behavior with why) | F8 (F3 until 15 Oct 2026: the assist toggles took F1–F4) | – |
@@ -645,8 +646,9 @@ off, the flash and its ring where it left), `voyage-warp-emergency.png` (the eme
 `voyage-abandon-panel.png` (M: the ABANDON VOYAGE? panel), `voyage-abandoned.png` (the lost banner after abandoning), `voyage-debrief.png`, `voyage-debrief-lost.png`,
 `voyage-summary.png` (home after DISMISS).
 
-- **Launch** (`voyage::StartVoyage { voyage }`, sent by the voyage map's SET COURSE with the selected voyage; `None`
-  is the first open voyage whose goal is not cleared): the fleet must be voyage-ready (`career::voyage_ready` against what the career grants: unlocked parts,
+- **Launch** (`voyage::StartVoyage { to }`, sent by the voyage map's SET COURSE: `Destination::Voyage(id)` at once,
+  `Destination::Cluster(k)` after the warp; a cluster's launch is `Career::cluster_launched`, saved, its interior rolled
+  with `Career::leads`, galaxy plan E6, [GDR-0097](gdr/0097-galaxy-map-and-voyage-flow.md)): the fleet must be voyage-ready (`career::voyage_ready` against what the career grants: unlocked parts,
   materials and frame, cores within the mind) and every ship flight-ready (the design report); a refusal is a coral
   note on home (`CAN'T LAUNCH`) and a `voyage::LaunchRefused(why)` the map shows. The career records the launch (`Career::voyage_launched`: the seed, `underway`)
   and the save is written at once, so closing or reloading mid-voyage loses the voyage (GDR-0062).
@@ -690,6 +692,19 @@ off, the flash and its ring where it left), `voyage-warp-emergency.png` (the eme
   signals, data cores at the logs it has not got). With `galaxy=<seed>` the base galaxy generated from that seed
   instead, rolled from the cluster's own seed, every trail place a signal's site and every log's core in place
   (`voyage::every_lead`).
+- **Finds** (a recorded cluster voyage, galaxy plan E6, [GDR-0097](gdr/0097-galaxy-map-and-voyage-flow.md); `voyage::note_finds`): the run keeps a copy of the
+  career (`VoyageRun::knows`) and the finds (`Find`): a player's scan narrows every heard signal whose area holds the
+  cluster (`Career::scanned`, once per signal per voyage) and hears the beacon of every trail place its sweep reaches
+  (`Career::beacon`); a signal's site revealed is found, cleared (or revealed with no ships) done (`Career::found`). Each
+  has a gold banner: `SIGNAL NARROWED · A GATE` / `ITS AREA ON THE MAP HALVED TOWARDS ITS PLACE`, `SIGNAL LOCATED · …`,
+  `SIGNAL HEARD · …` over the source's line, `SIGNAL FOUND · …` / `RAIDER PAIR · CLEAR IT`. The end gives the finds to
+  the career before `cluster_ended`, recalled or lost (a voyage cut short too).
+- **The cluster map** (`flight_hud/overview.rs`): N (`cluster_map`) lays the cluster over the view's middle (a disc of
+  0.4 of the view's short side, dark at 86 %): its edge dotted, the entry a small diamond, every scan's sweep a faint
+  violet circle, the bearings dashed gold to the map's edge, the sites found as dots in rings (a signal's two), the
+  fleet teal dots (the flown one with a heading tick); over it `CLUSTER MAP · NYOST FIELD · 4.3 KM ACROSS · N CLOSES`.
+  The site markers at the screen's edge step aside while it shows; the flight goes on. Screenshot:
+  `docs/results/galaxy-cluster-map.png`.
 - **Recall**: R or the pill asks; the next tick starts the 3 s warp-out only if the sim allows it (else `NO
   RECALL · ARMED ENEMIES WITHIN 200 M`; a disarmed fleet always may, and the banner says `EMERGENCY WARP`). The warp-out can't be broken off (`WARPING HOME · 2`, for the emergency recall `EMERGENCY WARP · 2` in gold); what it looks like: **Transitions** below; losing every vessel
   during it still loses the voyage. At its end the haul is every player vessel's cargo (dormant and dark ones
@@ -743,7 +758,10 @@ off, the flash and its ring where it left), `voyage-warp-emergency.png` (the eme
   `14 PARTS DISMANTLED` with a row per part (fragments apart, most first, six at most) and what it gave; research
   data per family with what is now in store; the materials; `RESEARCH READY · n` with the nodes the stores pay for
   now; `SIGNAL FOUND · HALVEX DRIFT` after a beacon mark for each voyage it opened (GDR-0078: the name from
-  the content; Barlow has no ◆ either, so the materials have a diamond mark too). The two marks are bevy_ui nodes
+  the content; Barlow has no ◆ either, so the materials have a diamond mark too); after a cluster voyage
+  (`voyage::debrief::galaxy_finds`, [GDR-0097](gdr/0097-galaxy-map-and-voyage-flow.md)) `CHARTED · NYOST FIELD` (its first launch), each signal heard or come further
+  in gold (`SIGNAL HEARD / NARROWED / LOCATED / FOUND / FOLLOWED · A GATE`) and `1 LOG TO DECODE · AT THE LOG`
+  (`docs/results/galaxy-debrief.png`). The two marks are bevy_ui nodes
   drawn like the vector glyphs (◆ a square turned 45°, the beacon a dot between two rings showing only their left
   and right borders), not `ui_icons` glyphs: those are world meshes, which the panel's opaque backing covered (15
   Oct 2026), and the backing can't be a world scrim as BLUEPRINTS' is, since home's words under the panel are UI
@@ -764,7 +782,9 @@ map at once and the portal takes the camera (`map/portal.rs`, Niklas 14 Oct 2026
 shows through an aperture in the ring that opens like an iris and widens over the yard, the map coming up from depth;
 the map's screen opens once the window is all map. Esc or the ring button top left goes back to the shipyard by the
 same path backwards;
-`?scene=map` starts here. Screenshots: `docs/results/map-signals-new-game.png` (a new game: the shipyard and the
+`?scene=map` starts here. The galaxy's map since tracks E5 and E6 ([GDR-0097](gdr/0097-galaxy-map-and-voyage-flow.md)); screenshots (16 Oct 2026, a career with
+charted clusters, a fresh, a narrowed and a located signal): `docs/results/galaxy-map.png` (1600 × 900),
+`galaxy-map-2560.png`, `galaxy-map-blind-jump.png`, `galaxy-map-warp.png`. Older: `docs/results/map-signals-new-game.png` (a new game: the shipyard and the
 first voyage, nothing else), `map-signals-found.png` (the first voyage cleared: Halvex Drift a new signal). The older
 `map-1280.png`, `map-1600.png`, `map-1600-locked.png`, `map-wide.png` (3440 × 1305) and `map-tall.png` (900 × 1400)
 show the window sizes but still the chain and the locked voyages the map drew before GDR-0078.
@@ -777,13 +797,22 @@ show the window sizes but still the chain and the locked voyages the map drew be
 
 - **Layout** (`map::layout`, pure; placeholders): a stage of 1280 × 720 logical px, scaled to the largest size that
   fits the window whole (1 at 1280 × 720, 1.25 at 1600 × 900, any aspect: centred, nothing cut off; 0.3 to 2). The
-  map fills the stage left of the panel (904 px); content's `map` coordinates (0 to 1) land in its rect
-  `(28, 64)–(876, 650)`. The shipyard sits at `(0.12, 0.86)` (bottom left; content has no place for home yet). No
-  route joins the voyages or the shipyard (GDR-0078). **The band**: the galaxy's centre lies off the stage to the
-  right (`(1500, 400)`), so the band edges are arcs; the rim band's outer edge (the galaxy's edge) lies 34 px outside
-  the place farthest from the centre, its inner edge (the gate to the next band) 34 px inside the nearest, the next
-  band's edge as far again in at 0.6 of the depth (placed from every voyage, known or not, so the edges don't move as
-  voyages are found). The band names come from the voyages' `band` key and the order rim, outer, middle, inner, core.
+  map fills the stage left of the panel (904 px). It is the career's galaxy skeleton (GDR-0096) at **120 px a S** at
+  the default view, turned so the galaxy's centre lies right of home (x 300), flipped so the slice's voyages lie above
+  home, home's height chosen so home, the voyages and the charted clusters sit in the map's middle (150–560). A slice
+  voyage sits on the cluster it is pinned to (the content's `map` place went with this, [GDR-0097](gdr/0097-galaxy-map-and-voyage-flow.md)). The bands' edges are the
+  content's (`bands.ron`): home's band and the next one along the top, the rest seen zoomed out. No route joins
+  anything (GDR-0078).
+- **What the career knows** (`map::known`, pure): `Known` (rebuilt when the career changes): the clusters the map shows
+  besides home and the voyages (charted ones, opened gates, those a located or found signal leads to), the signals
+  heard and not done (the trail's `hint` and the source's `line` from the content), the jump starts (home and every
+  charted cluster) and the reach (`Career::jump_range`). `Pick`: a voyage, a cluster, a signal (a blind jump to its
+  middle) or a spot (a blind jump: `Career::blind_target`, the nearest cluster within 1.5 spacings that a jump reaches);
+  `jump_blocker` says why one can't launch (another voyage underway, out of jump range, `EMPTY SPACE · NO CLUSTER NEAR
+  THIS SPOT`, `BEYOND THE GATE`, the fleet); `place_words` writes the panel for a cluster (`CHARTED CLUSTER · 1.3 S FROM
+  HOME`, its type's summary, the signals leading there, `WARP 6 S`, `FLOWN 1 ×`), a spot (`BLIND JUMP`, `Unknown space`
+  or `Empty space`, the signals whose area holds it, `WARP ≈ 5 S`) or a signal (`SIGNAL · NARROWED`, its hint, its line,
+  how many clusters its area holds, how wide it is).
 - **States** (from the career, `map::layout::VoyageState`): **unknown** (not open yet: not drawn at all, no
   marker, label, beacon or click area, not counted), a **new signal** (open because the voyages it `opens_after` were
   cleared, and never launched: the open ring and dot with two teal rings pulsing out of it every 1.6 s and a glow,
@@ -793,7 +822,14 @@ show the window sizes but still the chain and the locked voyages the map drew be
   encounter is tagged `boss`: a coral diamond, `OPEN · GUARDIAN`, a signal's pulses coral). Under a voyage's name a
   dot per site (coral enemies, gold wrecks, a diamond for the goal). The selection is a dotted ring; hover a faint
   ring and a brighter name. The legend bottom left (home, open, cleared, signal; enemies, wrecks, goal site,
-  guardian); top left `RIM · 2 VOYAGES · 1 CLEARED · 1 SIGNAL` (the known voyages) and "Voyages".
+  guardian; charted, signal area, located, `JUMP RANGE · 2.5 S`); top left `RIM · 3 CHARTED · 2 CLEARED · 5 SIGNALS`
+  and "Voyages". **Clusters**: charted a small teal ring with its name and `CHARTED`; a located signal's a gold one,
+  `SIGNAL · A GATE · LOCATED`; an opened gate a coral diamond, `GATE · OPEN`. **Signals** (fresh, narrowed): a gold area,
+  its edge dotted like the band edges, a faint fill, a ring running out to the edge every 3.2 s; its label (`SIGNAL · A
+  GATE` over "a log from a hauler's wreck", `NARROWED`) above it, else below, right, left or inside, wherever it keeps
+  clear of the other labels (`signal_labels`, widths estimated from the words); when an area changes its old edge fades
+  out over 1.6 s. **The jump range**: the union of circles of the reach round home and every charted cluster, its edge
+  only (a thin teal line over a glow fading inwards; runs inside another circle are left out).
 - **The panel** (the selected voyage): `DESTINATION · VOYAGE 2` (no total: the rest is unknown), the name, chips (the band; the factions of its
   ships, coral; `WRECKS` gold when any site holds wrecks; `GUARDIAN`), the summary, `SITES · 5` with a row per site
   entry (`Raider pack ×2`, right `3 SHIPS` / `WRECKS` / `GOAL · 4–5 SHIPS` / `GUARDIAN`, under it what it gives: the
@@ -804,11 +840,18 @@ show the window sizes but still the chain and the locked voyages the map drew be
   `ONLY UNLOCKED PARTS` or the first locked part, `CORES n / m`, `CARGO 8` or `NO CARGO` as a gold warning;
   `data::career::voyage_ready` and the design report); the status line (`A NEW SIGNAL · THE GATE IS OPEN` for a
   signal); SET COURSE.
-- **SET COURSE** (`map::layout::course_blocker`): dimmed while the selected voyage can't launch, the status line says
+- **Picking** (galaxy plan E5): a click on a cluster's marker or label, or on a signal's label, selects it; a click on
+  empty map space (not a drag) picks the spot for a blind jump, or the known cluster a jump there would go to. A jump's
+  course shows as a dotted line from where it starts. ←/→ step through the known voyages, then the known clusters.
+- **The warp** (galaxy plan E6, GDR-0093): SET COURSE (or Enter) on a cluster, a spot or a signal runs the warp on the
+  map: a light along the course from the jump's start to the cluster, rings closing on it, the status `WARP · 4 S · ESC
+  ENDS IT`, SET COURSE dimmed; Esc ends it (`WARP ENDED · NOTHING LAUNCHED`). Then `voyage::StartVoyage { to:
+  Destination::Cluster(k) }`.
+- **SET COURSE** (`map::layout::course_blocker`, `map::known::jump_blocker`): dimmed while the selected voyage can't launch, the status line says
   why (in order: another voyage still underway, `LOCKED · CLEAR HALVEX DRIFT FIRST` (a guard: a voyage not open
   can't be selected), `NOT VOYAGE-READY · <the fleet's
-  first blocker>`, `voyage::fleet_blocker`); a click then repeats it. Else it sends `voyage::StartVoyage { voyage:
-  Some(id) }`; a launch `voyage/mod.rs` still refuses shows its reason. With `?unlock=all` a fleet the career's own unlocks
+  first blocker>`, `voyage::fleet_blocker`); a click then repeats it. Else it sends `voyage::StartVoyage { to:
+  Destination::Voyage(id) }` (a jump: the warp first); a launch `voyage/mod.rs` still refuses shows its reason. With `?unlock=all` a fleet the career's own unlocks
   don't allow flies as a practice run (`PRACTICE RUN, NOT SAVED · …` in gold). Entering the map selects the first
   open voyage whose goal is not cleared (after a first clear: the signal it found).
 - **Zoom and pan** (`map::view`, Niklas 14 Oct 2026: "zoom in/out (even see the whole galaxy)"): the wheel or a
@@ -823,17 +866,20 @@ show the window sizes but still the chain and the locked voyages the map drew be
   UNCHARTED`, ...), the charted band, the known voyages' beacons and the shipyard's diamond fade in from 70 % down
   to 40 %.
   Zoomed out, a click on a voyage's beacon selects it and zooms in to it; ←/→ bring a voyage off the view into it.
-- **Drawing** (`map::draw`, `map::galaxy`): the star map is four atlas meshes (z 550 and a little above: over the
+- **Drawing** (`map::draw`, `map::galaxy`): the star map is five atlas meshes (z 550 and a little above: over the
   world, under the UI icons), placed over the stage node through the camera rig as `ui_icons` places icons, so they
   scale with the stage, each with its own material for its fade. Bottom to top: **the galaxy** (built once, in the
-  default view's stage px, moved and scaled with the view): haze along four spiral arms and a warm core, fog over
+  default view's stage px, moved and scaled with the view): haze along four spiral arms (160 glows) and a warm core, fog over
   the uncharted bands under a faint coral tint inside the gate, seeded star dust with a few faint constellation
-  lines in the charted band and a sparse halo past the rim, every band edge as a dotted ring (where the bands past
-  the next one end is a placeholder); **the far layer** (the same frame; rebuilt when the states change): the
-  charted band lit, a beacon per known voyage (a ring around a signal's; no routes), the shipyard's diamond; **the
-  detail** (rebuilt when the states, the selection, the hover, the glow setting, the view or, while a signal shows,
-  its pulse step (32 per pulse) change, a few hundred vertices): the known voyages' markers and the shipyard, faded
-  where they reach the panel; **the chrome** (fixed): the legend's symbols, the panel's
+  lines in home's band and a sparse halo past the rim, every band edge as a dotted ring; it blends under 5 times its
+  disc's area (it was about 12 on a disc 4.6 times larger, and the 2560 × 1440 screenshot timed out; `galaxy::overdraw`,
+  a test keeps it under 6); **the far layer** (the same frame; rebuilt when the states change): the
+  charted band lit, a beacon per known voyage (a ring around a signal's; no routes) and known cluster, the shipyard's
+  diamond; **the areas** (stage px through the view, rebuilt when the signals, the range, the view or the areas' pulse
+  step (48 per 3.2 s) change): the jump range and the signal areas; **the detail** (rebuilt when the states, the
+  selection, the hover, the glow setting, the view or, while a signal shows, its pulse step (32 per pulse) change, a
+  few hundred vertices): the known voyages' and clusters' markers, the shipyard, a blind jump's crosshair, the course
+  and the warp's light, faded where they reach the panel; **the chrome** (fixed): the legend's symbols, the panel's
   backing (it runs on past the stage, so wide and tall windows are covered). Everything else is `ui_kit` text and
   nodes, hit-tested by hand, so touch works; the map's labels move with the view (`UiTransform`) and are cut at the
   panel.
@@ -879,6 +925,11 @@ the records mast by the gate, once the camera has flown there).
   (`GOAL CLEARED` teal, `RECALLED`, `LOST` coral), the time, and what came home (`7 PARTS » HULL AND ARMOUR +1 ·
   PROGRAMMABLE MATTER +6`, or `THE HAUL STAYED BEHIND` in coral). Without a voyage: `NO VOYAGES YET` and a line about
   what it will hold.
+- **Logs to decode** (galaxy plan E6, [GDR-0097](gdr/0097-galaxy-map-and-voyage-flow.md)): the list starts with the data cores brought home (`LOGS TO DECODE · 1 ·
+  DATA CORES FROM YOUR VOYAGES, FREE TO READ`; a row each: `LOG`, the source's name and summary from the content,
+  DECODE). DECODE decodes it (`Career::decode`, saved): the row shows `NEW`, `SIGNAL · A GATE` over its source's line and
+  `ON THE MAP` until the LOG closes. The mast glows while a core waits and home's label says `1 LOG TO DECODE`.
+  Screenshots: `docs/results/galaxy-log-decode.png`, `galaxy-log-decoded.png`.
 - **Seen**: opening it marks every result seen (`Career::read_log`) and writes the save; the mast stops glowing.
   The rows are built when it opens.
 - **The mast's tooltip** is the last voyage in one line (`LogRow::line`: `LAST VOYAGE · THE WARDEN'S GATE · GOAL

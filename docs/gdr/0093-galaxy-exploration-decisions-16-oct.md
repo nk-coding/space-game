@@ -6,6 +6,8 @@
   2026-10-16: the jump range built (track E4, [GDR-0096](0096-career-galaxy-format-3.md)): the `JumpRange` unlock kind and Jump calibration I and II in
   the propulsion lane, jumps from home or any charted cluster; a data core takes one cargo unit and stays in its wreck
   when the voyage is lost.
+  2026-10-16: the signal's look and words, the range circles and the warp time built on the map (tracks E5, E6,
+  [GDR-0097](0097-galaxy-map-and-voyage-flow.md)).
 - Date: 2026-10-16
 - Decided by: Niklas (the open questions of `docs/plans/galaxy-voyages.md` section 9, interactively)
 - Supersedes: GDR-0078 in part (jumps start from home and opened gates only; now from home or any charted cluster)

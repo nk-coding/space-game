@@ -94,14 +94,14 @@ A signal is a pointer from a **source** to a **target**, stored in the save.
   - *In the target's cluster*: a scan gives a bearing to the site; a second scan from elsewhere crosses it. At close
     range *(placeholder: 400 m)* the site is revealed.
 - **States**: fresh → narrowed (any number of times) → located (the cluster is known) → found (the site was seen)
-  → done (cleared or salvaged). The map draws fresh and narrowed as areas, located as a mark on a cluster.
+  → done (cleared or salvaged; built 16 Oct 2026: cleared, or seen with nothing to clear, [GDR-0097](../gdr/0097-galaxy-map-and-voyage-flow.md)). The map draws fresh and narrowed as areas, located as a mark on a cluster.
 - **How many at once**: no limit in the rules; the generator places trails so that 2–4 are usually open
   *(placeholder)*. Old signals never expire.
 
 ### 4.2 Where signals come from (GDR-0078: derelicts and in-cluster signals)
 
 - **Logs in wrecks**: some wrecks carry a **data core** (a salvage item, like a core fragment). Brought home, it
-  is decoded in the research screen, free (GDR-0080), into a signal. The
+  is decoded in the research screen, free (GDR-0080), into a signal (built 16 Oct 2026 at the LOG instead, [GDR-0097](../gdr/0097-galaxy-map-and-voyage-flow.md)). The
   debrief lists it as "1 LOG TO DECODE".
 - **Signals heard in a cluster**: a beacon, a distress call or an odd reading is a site with no enemies. Flying close
   and scanning it turns it into a signal at once, during the voyage.
@@ -128,7 +128,8 @@ is reachable from the band's start without the others, so there is always more t
 Any unknown spot within jump range can be a destination. The generator already knows what is there (the galaxy is
 fixed per seed): an ordinary cluster of its band's type, with patrols, wreck fields and, now and then, a beacon or a
 wreck with a log that starts a short trail *(placeholder: 1 in 3 clusters holds a source)*. A blind jump charts
-the cluster. Empty space between clusters is not a destination; a jump picks the cluster nearest the chosen spot.
+the cluster. Empty space between clusters is not a destination; a jump picks the cluster nearest the chosen spot
+(built 16 Oct 2026, [GDR-0097](../gdr/0097-galaxy-map-and-voyage-flow.md): within 1.5 spacings, never home or a slice voyage's; a scan narrows a signal once per voyage).
 
 ### 4.5 Jump range and travel
 
@@ -138,7 +139,7 @@ the cluster. Empty space between clusters is not a destination; a jump picks the
   range as soft circles.
 - A target outside every circle is a reason to research range or open a nearer gate.
 - Warp time grows with distance (3 s + 2 s per S, GDR-0093); the voyage starts at the
-  destination's edge. Coming home stays the recall (GDR-0062).
+  destination's edge. Built 16 Oct 2026 as a warp on the map before the launch ([GDR-0097](../gdr/0097-galaxy-map-and-voyage-flow.md)). Coming home stays the recall (GDR-0062).
 - Built 16 Oct 2026 (E4, [GDR-0096](../gdr/0096-career-galaxy-format-3.md)): `Unlock::JumpRange` and Jump calibration I
   and II (propulsion 8, then 16 and 3 programmable matter); `Career::jump_range` and `jump_from` (the nearest of home
   and the charted clusters within range); arriving charts a cluster.
@@ -160,7 +161,7 @@ the cluster. Empty space between clusters is not a destination; a jump picks the
   (E3, [GDR-0095](../gdr/0095-sensors-hidden-sites-and-scans.md)): the starter carries one (GDR-0093); the charge is
   2 s on the scanner's power; until E4 every trail place (and the slice's goal) counts as a signal a scan hears.
 - **Bearings** show in flight as a line from the scan spot and on the cluster map overlay; two crossing lines mark
-  the place. (In flight since E3: dashed gold lines; the overlay is E6.)
+  the place. (In flight since E3: dashed gold lines; since E6 also on the cluster map, N, [GDR-0097](../gdr/0097-galaxy-map-and-voyage-flow.md).)
 
 ### 4.7 The slice's four voyages
 
@@ -264,8 +265,8 @@ Sizes: **S** one agent session, **M** one or two, **L** several.
 | E2 Generator | The `galaxy` crate: clusters, home, gates, trails, interiors; generation hash native vs wasm. **Done 16 Oct 2026** (ADR-0042, GDR-0094): `galaxy::generate` and `interior`, `content-tool galaxy [--svg]`, `scripts/determinism-check.sh --galaxy N` (50 seeds identical native vs wasm) | E1 | M |
 | E3 Sim: bigger clusters | Sensor range, frozen sites, hidden sites, `Scan` with bearings, beacon sites; determinism green. **Done 16 Oct 2026** ([GDR-0095](../gdr/0095-sensors-hidden-sites-and-scans.md)): the scanner part on the starter, SCAN (G) and the `scan` action; cores see 800 m; sites hidden until sensors (a signal's site: 400 m) or a sweep reach them, bearings to the far ones, wakes within 300 m; the edge turns ships back; `VoyagePlan::roll_interior` (beacons alone as quiet sites); no despawning (E0); native = wasm. Fly a generated cluster: `?scene=voyage&cluster=signal` | E0 | M |
 | E4 Career format 2 | Charted, signals and narrowing, logs, gates, range; migration from format 1. **Done 16 Oct 2026** ([GDR-0096](../gdr/0096-career-galaxy-format-3.md); the save's format 3, as format 2 had gone to the history): the career keeps the skeleton (`data::skeleton`), charted clusters (on arrival), signals (fresh → narrowed → located: halved towards the place), logs from data cores (one cargo unit, lost with the haul), gates, `Unlock::JumpRange` with Jump calibration I and II (2.5 → 3.25 → 4 S), jumps from home or any charted cluster, cluster voyages (`cluster_launched`/`cluster_ended`) and their `Leads` for `roll_interior`; slice saves migrate at load (voyages pinned in a chain from home, flown ones charted, the open one a located signal) | E1 | M |
-| E5 Map | Unknown space, charted clusters, signal areas, range circles, blind-jump picking; the panel says what a signal knows | E2, E4 | M |
-| E6 Voyage flow | Launch into a generated cluster, scanning in flight (control, bearing lines, the cluster overlay), finding, the debrief's finds, decoding logs at home | E3, E4, E5 | L |
+| E5 Map | Unknown space, charted clusters, signal areas, range circles, blind-jump picking; the panel says what a signal knows. **Done 16 Oct 2026** ([GDR-0097](../gdr/0097-galaxy-map-and-voyage-flow.md)): the map on the career's skeleton (120 px a S; the voyages' content `map` place gone), charted clusters, gates, located signals, signal areas (dotted gold edge, faint fill, a pulse; the old edge fades when one narrows) worded from the content, the jump range as soft teal circles; a click on empty space picks a blind jump (the nearest cluster within 1.5 spacings); the galaxy's backdrop a tenth as heavy (the 2560 × 1440 timeout) | E2, E4 | M |
+| E6 Voyage flow | Launch into a generated cluster, scanning in flight (control, bearing lines, the cluster overlay), finding, the debrief's finds, decoding logs at home. **Done 16 Oct 2026** ([GDR-0097](../gdr/0097-galaxy-map-and-voyage-flow.md)): the warp on the map (3 s + 2 s per S, Esc ends it), recorded launches (`cluster_launched`), scans narrow signals once a voyage and hear beacons, signals' sites found and done, the finds kept on a lost voyage, the debrief's lines, decoding at the LOG, the cluster map in flight (N) | E3, E4, E5 | L |
 | E7 Slice into the galaxy | The four voyages pinned as set pieces; the Warden's gate as the rim's first gate trail | E2, E6 | S |
 | E8 Content | Rim trails: one gate trail beyond the Warden's, two caches, three lore fragments, two graveyards | E1, E6 | M |
 

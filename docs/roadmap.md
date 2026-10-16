@@ -443,6 +443,21 @@ Next session:
   scanner's power block), so saved lab runs restore stale.
 - Next: E5 (the map: unknown space, charted clusters, signal areas, range circles, blind-jump picking), then E6.
 
+### 16 Oct 2026: galaxy tracks E5 and E6 (`plans/galaxy-voyages.md`)
+
+- **E5 built** ([GDR-0097](gdr/0097-galaxy-map-and-voyage-flow.md), lead defaults): the voyage map is the career's
+  galaxy (the skeleton at 120 px a S, home left of the centre, the slice's voyages on their pinned clusters; the
+  voyages' content `map` place is gone): charted clusters, opened gates, located signals, signal areas as Niklas chose
+  (dotted gold edge, faint fill, a pulse to the edge; a narrowed one's old edge fades) worded `SIGNAL · A GATE` over
+  the source's line, the jump range as soft teal circles; a click on empty space picks a blind jump. The galaxy's
+  backdrop blended about 12 times its disc (73 M px² a frame at the default view, the 2560 × 1440 screenshot timed
+  out): now under 5 times a smaller disc, about a tenth.
+- **E6 built**: SET COURSE warps on the map (3 s + 2 s per S, Esc ends it), then records the launch; in flight scans
+  narrow signals (once a voyage), hear beacons, signals' sites are found and done, kept on a lost voyage; the debrief
+  lists charts, signals and logs; the LOG decodes data cores; N lays a cluster map over the flight view. The rules'
+  fingerprint changed (the voyages' `map` went), so saved lab runs restore stale.
+- Next: E7 (the slice pinned by content, the Warden's gate the rim's first gate trail), E8 (rim content).
+
 ## Phase 4: measurement
 
 Status 12 Oct 2026 (new VM): `results/spike-summary.md` written. Determinism native vs wasm IDENTICAL on the new VM

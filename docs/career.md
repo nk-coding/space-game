@@ -266,13 +266,17 @@ hand-made skeleton, and the `galaxy` crate's `tests/career.rs` for a migrated sa
   from the game seed by the game (`galaxy::generate`; `data` does not depend on the generator): home is charted, the
   slice is pinned. A career with a galaxy keeps it.
 - **Jumps** (`jump_from(cluster)`): from home or any charted cluster within the jump range (integer distances in
-  S/100), the nearest one (the lowest id on a tie); `None` beyond them all.
+  S/100), the nearest one (the lowest id on a tie), not the cluster itself while another reaches it; `None` beyond them
+  all. `band_open(band)`: jumps reach the galaxy's first band and each band past it once a gate of the band outside it
+  is open. `warp_seconds(k)`: the galaxy's `warp`, 3 s + 2 s per S from `jump_from` (GDR-0093). `blind_target(spot)`:
+  where a blind jump to a spot goes, the cluster nearest it that a jump reaches, within 1.5 of the galaxy's spacings
+  (`BLIND_REACH`), neither home nor a slice voyage's (GDR-0097).
 - **Cluster voyages**: `cluster_seed(k)` is `splitmix64(seed ^ splitmix64(cluster seed ^ launched))`;
   `cluster_launched(&content, k)` (refused `Underway` while a voyage or cluster voyage is underway, `NoGalaxy`,
-  `UnknownCluster`, `OutOfReach`) charts it, counts the launch and marks it underway; `cluster_ended(&content, k, end)`
+  `UnknownCluster`, `OutOfReach`, `BandClosed`) charts it, counts the launch and marks it underway; `cluster_ended(&content, k, end)`
   ends it like `voyage_ended` (recalled: unloaded, every data core of the haul a log unless its signal is heard or
   logged already; lost: the haul, cores included, stays behind) and adds a history entry with the cluster's name and id.
-  The voyage map does not launch them yet (E6); `?scene=voyage&cluster=` flies one as a practice run.
+  The voyage map launches them after their warp (E6, GDR-0097); `?scene=voyage&cluster=` flies one as a practice run.
 - **What a launch carries** (`leads(&content, k) -> Leads`, for `sim::VoyagePlan::roll_interior`): the trail places in
   the cluster that a heard signal not done leads to (signals' sites: hidden until close, bearings from a scan), and the
   log places (a source of form `Log`) whose core is neither decoded, logged nor heard (their site's first wreck holds
@@ -281,7 +285,12 @@ hand-made skeleton, and the `galaxy` crate's `tests/career.rs` for a migrated sa
   into its signal (free, GDR-0080); `narrow(signal, from)` is a scan's bearing heard in cluster `from`: in the signal's
   own cluster it is located; elsewhere the radius halves (at least 1) and the centre moves towards the place until the
   place lies within 60 % of the new radius, and once no other cluster lies inside the signal is located (its area the
-  cluster's place, radius 0). Located and done are final.
+  cluster's place, radius 0). `scanned(k, skip)` is a scan taken in cluster `k`: every heard signal not located yet
+  that leads there or whose area holds the cluster narrows from it, except those in `skip` (the game passes those
+  narrowed on this voyage already). `beacon(&content, place)`: a scan swept over a trail place whose signal's source is
+  a `Beacon`: heard. `found(signal, done)`: its site was seen (found) or cleared, or seen with nothing to clear (done);
+  the area becomes the cluster's place. States only move forward (fresh, narrowed, located, found, done); the game
+  gives a voyage's finds to the career at its end, lost or not (GDR-0097).
 - **Gates**: `open_gate(k)` records a gate of the skeleton as opened.
 - **The slice** (provisional, GDR-0096): every voyage of the content is pinned to a cluster of its band, the first to
   the cluster nearest home, each later one to the free cluster nearest the voyage it opens after (`opens_after`'s first);
