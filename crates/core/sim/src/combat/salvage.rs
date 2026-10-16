@@ -1,7 +1,9 @@
 //! Salvage v1 (GDR-0063, `docs/sim.md` "Salvage"): cargo, collecting, fragments and wrecks spawned as wrecks.
 //!
-//! * **Items** ([`Item`]): a whole part by content id (hull parts carry their armour material), or the fragment
-//!   a destroyed part leaves. The content's `salvage` blocks decide what counts (compiled into the design,
+//! * **Items** ([`Item`]): a whole part by content id (hull parts carry their armour material), the fragment
+//!   a destroyed part leaves, or a data core (a log of a trail's signal, galaxy plan E4: one cargo unit, worth
+//!   [`DATA_CORE_VALUE`], so it is taken first and dropped last; a voyage's log site puts it into its first wreck's
+//!   cargo, [`Sim::stow_data_core`]). The content's `salvage` blocks decide what counts (compiled into the design,
 //!   `PartSpec::salvageable` and `PartSpec::fragment`): only parts with a block (hull parts: their material's)
 //!   are collected, and only parts whose block names a `fragment` leave one. A part takes its footprint cells in cargo units
 //!   (`PartSpec::cargo_units`), a fragment one.
@@ -59,13 +61,30 @@ pub enum Item {
     },
     /// What a destroyed part whose salvage block names a `fragment` leaves (content part id of that part).
     Fragment { part: String },
+    /// A data core: the log of signal `signal` of the galaxy's trail `trail` (skeleton indices), decoded at home.
+    DataCore { trail: u32, signal: u32 },
 }
 
+/// A data core's value per cargo unit (lead default, GDR-0096): above any part's build points, so a hold takes it
+/// first and a shrinking hold keeps it last.
+pub const DATA_CORE_VALUE: f32 = 1000.0;
+
 impl Item {
-    /// The content part id behind the item.
-    pub fn part(&self) -> &str {
+    /// The content part id behind the item (none for a data core).
+    pub fn part(&self) -> Option<&str> {
         match self {
-            Item::Part { part, .. } | Item::Fragment { part } => part,
+            Item::Part { part, .. } | Item::Fragment { part } => Some(part),
+            Item::DataCore { .. } => None,
+        }
+    }
+
+    /// The career's copy of the item (`data::career::HaulItem`): what a haul brings home.
+    pub fn haul(&self) -> data::career::HaulItem {
+        use data::career::HaulItem;
+        match self {
+            Item::Part { part, material } => HaulItem::Part { part: part.clone(), material: material.clone() },
+            Item::Fragment { part } => HaulItem::Fragment { part: part.clone() },
+            &Item::DataCore { trail, signal } => HaulItem::DataCore { trail, signal },
         }
     }
 }
@@ -87,6 +106,11 @@ impl StateHash for Item {
             Item::Fragment { part } => {
                 h.u8(1);
                 h.str(part);
+            }
+            Item::DataCore { trail, signal } => {
+                h.u8(2);
+                h.u32(*trail);
+                h.u32(*signal);
             }
         }
     }
@@ -613,6 +637,29 @@ impl Sim {
         self.ships[k].id
     }
 
+    /// Puts the data core of `(trail, signal)` into the cargo of `wreck` (a voyage's log site), or, with no such
+    /// ship, leaves it as a loose item at `at` that never expires.
+    pub(crate) fn stow_data_core(&mut self, wreck: Option<ShipId>, at: Vec2, (trail, signal): (u32, u32)) {
+        let item = Item::DataCore { trail, signal };
+        match wreck.and_then(|id| self.ship_index(id)) {
+            Some(k) => self.ships[k].cargo.add(item, 1, DATA_CORE_VALUE),
+            None => {
+                let st = &mut self.salvage;
+                st.loose.push(Loose {
+                    id: LooseId(st.next_loose),
+                    item,
+                    units: 1,
+                    value: DATA_CORE_VALUE,
+                    pos: at,
+                    prev_pos: at,
+                    vel: Vec2::ZERO,
+                    expires: None,
+                });
+                st.next_loose += 1;
+            }
+        }
+    }
+
     /// Fragments for ship `k`'s parts that leave one (`PartSpec::fragment`) destroyed by damage since its last
     /// breakage resolution (call before it): at each part's centroid, with the velocity of that point of its piece.
     pub(crate) fn spawn_fragments(&mut self, k: usize) {
@@ -835,7 +882,7 @@ mod tests {
         assert_eq!(c.used(), 7);
         assert_eq!(c.count(&part("armor_block")), 0);
         assert_eq!(c.count(&part("radiator")), 0);
-        let left: Vec<&str> = c.items().map(|(i, _)| i.part()).collect();
+        let left: Vec<&str> = c.items().filter_map(|(i, _)| i.part()).collect();
         assert_eq!(left, ["beam_laser", "capacitor", "fusion_reactor"]);
         c.shed(6);
         assert_eq!(c.count(&part("capacitor")), 0);

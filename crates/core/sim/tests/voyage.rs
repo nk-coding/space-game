@@ -638,6 +638,7 @@ fn one_site(ships: Vec<sim::Spawn>, wake_radius: f32) -> VoyagePlan {
             encounter: Some("raider_pack".into()),
             goal: true,
             signal: false,
+            core: None,
             pos: Vec2::ZERO,
             wake_radius,
             ships,

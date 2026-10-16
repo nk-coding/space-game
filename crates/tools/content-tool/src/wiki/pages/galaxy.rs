@@ -59,6 +59,31 @@ impl Wiki<'_> {
         v.join("<br>")
     }
 
+    /// The jump range research grows to, and the nodes that grow it (in load order): `4 S (Jump calibration I +0.75
+    /// S, …)`.
+    fn jump_research(&self, root: &str, start: f32) -> String {
+        let gains: Vec<(&data::ResearchNode, f32)> = self
+            .c
+            .research
+            .iter()
+            .flat_map(|n| {
+                n.unlocks.iter().filter_map(move |u| match u {
+                    data::Unlock::JumpRange(x) => Some((n, *x)),
+                    _ => None,
+                })
+            })
+            .collect();
+        if gains.is_empty() {
+            return "no research grows it yet".into();
+        }
+        let total = gains.iter().fold(start, |r, (_, x)| r + x);
+        let items: Vec<String> = gains
+            .iter()
+            .map(|(n, x)| format!("{} +{}", self.a(root, Kind::Research, &n.id), self.value("jump_range", *x)))
+            .collect();
+        format!("{} ({})", self.value("jump_range", total), items.join(", "))
+    }
+
     pub(crate) fn galaxy_page(&self, g: &Galaxy) -> String {
         let root = UP;
         let c = self.c;
@@ -66,6 +91,7 @@ impl Wiki<'_> {
             ("Bands".to_string(), g.bands.len().to_string()),
             ("Spacing".into(), format!("<span title=\"No two clusters closer\">{}</span>", self.value("galaxy_distance", g.spacing))),
             ("Jump range at the start".into(), self.value("jump_range", g.jump_range)),
+            ("With research".into(), self.jump_research(root, g.jump_range)),
             ("Home".into(), format!("{} or more clusters within the jump range", g.home_neighbours)),
             ("Warp time".into(), format!("{} s + {} s per S", format_number(g.warp.0, 1), format_number(g.warp.1, 1))),
             ("Fresh signal area".into(), format!("{} across", self.s_range(g.signal_area.across))),

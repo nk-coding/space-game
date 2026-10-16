@@ -5,7 +5,9 @@
 //! * **The save** ([`CareerDoc`]) is `Career::to_ron` as a document `saves/<slot>` (`saves/career`, or another
 //!   slot with `?save=<slot>`), with the storage layer's header and format (`data::career::FORMAT`).
 //! * **At start** ([`load`], before the first frame, so the drydock opens the right ship): the save is read and
-//!   reconciled with the content (what changed comes back as notes, never a panic). Without a save, or with
+//!   reconciled with the content (what changed comes back as notes, never a panic). A career without a galaxy (a
+//!   new game, a format 2 save) gets the content's first galaxy, generated once from its game seed and kept in the
+//!   save (ADR-0035, [`chart`]; a migrated save is written at once). Without a save, or with
 //!   `?newgame=1`, a new game begins from the content's first start and is written at once; the drydock then
 //!   docks a copy of the start's ship (`drydock::blueprints`). A save that doesn't read (broken, or written by a
 //!   newer build) is kept as it is: the game runs a new career in memory, never writes it, and says so.
@@ -139,7 +141,7 @@ pub fn load(storage: &mut Storage, content: &Content, switches: Switches, seed: 
             None
         }
     };
-    let (career, new_game) = match loaded {
+    let (mut career, new_game) = match loaded {
         Some(mut career) => {
             let changed = career.reconcile(content);
             for p in &changed {
@@ -154,6 +156,7 @@ pub fn load(storage: &mut Storage, content: &Content, switches: Switches, seed: 
         // A stand-in for a kept save is no new game: the drydock keeps its design.
         None => (new_career(content, seed, &mut notes, &mut kept), kept.is_none()),
     };
+    let migrated = chart(content, &mut career, &mut notes) && !new_game && kept.is_none();
     if slot != DEFAULT_SLOT {
         let body = format!("This game is {key}; the usual one, {}/{DEFAULT_SLOT}, is untouched.", CareerDoc::NAMESPACE);
         notes.push(Note::new(format!("SAVE SLOT  ·  ?SAVE={}", slot.to_uppercase()), body, Tone::Gold));
@@ -162,10 +165,34 @@ pub fn load(storage: &mut Storage, content: &Content, switches: Switches, seed: 
         notes.push(Note::new("ALL UNLOCKED  ·  ?UNLOCK=ALL", "Every part, material and frame is in the drydock; the save is untouched.", Tone::Gold));
     }
     let mut out = PlayerCareer { career, slot, kept, free, new_game, notes };
-    if new_game && let Err(e) = out.write(storage, now) {
+    if (new_game || migrated) && let Err(e) = out.write(storage, now) {
         out.notes.push(Note::new("NOT SAVED", e, Tone::Coral));
     }
     out
+}
+
+/// Gives a career without a galaxy the content's first galaxy, generated from its game seed (ADR-0035: once; the
+/// save keeps it): a new game charts home, a format 2 save its slice voyages too (`Career::begin_galaxy`, with a
+/// note). True when it got one. Content without a galaxy leaves it without; a galaxy that doesn't generate too, with
+/// a note.
+fn chart(content: &Content, career: &mut Career, notes: &mut Vec<Note>) -> bool {
+    let Some(g) = content.galaxies.iter().next().filter(|_| career.exploration().is_none()) else {
+        return false;
+    };
+    match galaxy::generate(content, &g.id, career.seed()) {
+        Ok(skeleton) => {
+            for p in career.begin_galaxy(content, skeleton) {
+                info!("career: {p}");
+                notes.push(Note::new("THE GALAXY", format!("{}.", shortened(&p.message, 110)), Tone::Teal));
+            }
+            career.exploration().is_some()
+        }
+        Err(e) => {
+            warn!("career: the galaxy doesn't generate: {e}");
+            notes.push(Note::new("NO GALAXY", format!("The galaxy doesn't generate: {}.", shortened(&e.0, 90)), Tone::Coral));
+            false
+        }
+    }
 }
 
 /// At most `n` characters of `s`, an ellipsis when cut (notes stay a few lines; the console has them whole).
@@ -490,6 +517,31 @@ mod tests {
             assert!(fresh.notes.iter().all(|n| n.tone != Tone::Coral), "{:?}", fresh.notes);
             assert_eq!(stored_text(&storage, "career"), Some(fresh.career().to_ron()));
         }
+    }
+
+    /// A format 2 save (before the galaxy) gets its galaxy at load, with a note, and is written at once in format 3;
+    /// read again, it keeps that galaxy. A new game has one from the start.
+    #[test]
+    fn a_format_2_save_is_charted_into_its_galaxy_and_written() {
+        let content = data::base_content();
+        let mut mem = MemoryBackend::default();
+        let text = "// space-game: saves, format 2, saved 5\n(start: \"rim_awakening\", seed: 3, generator: 2, voyages: {\"yard_approach\": (launched: 2, cleared: true)})";
+        crate::storage::Backend::write(&mut mem, "saves", "career", text).unwrap();
+        let mut storage = Storage::new(mem);
+        let c = load(&mut storage, &content, switches(""), 1, 10);
+        assert!(!c.new_game());
+        let note = c.notes.iter().find(|n| n.head == "THE GALAXY").expect("a note on the migration");
+        assert!(note.body.starts_with("the galaxy is charted: 1 cluster from 1 voyage flown, 1 voyage open as a signal"), "{note:?}");
+        let g = c.career().exploration().expect("charted");
+        assert_eq!(*g.skeleton(), galaxy::generate(&content, "galaxy", 3).unwrap());
+        assert!(g.is_charted(g.pins()["yard_approach"]));
+        let stored = storage.read::<CareerDoc>("career").unwrap().unwrap();
+        assert_eq!((&stored.doc.0, stored.saved), (c.career(), Some(10)), "written at once");
+        let again = load(&mut storage, &content, switches(""), 1, 20);
+        assert!(again.notes.is_empty(), "{:?}", again.notes);
+        assert_eq!(again.career(), c.career());
+        let fresh = load(&mut storage, &content, switches("?newgame=1"), 9, 30);
+        assert!(fresh.career().exploration().is_some_and(|g| g.charted().len() == 1));
     }
 
     /// Another slot, a new game over an old one, free mode leaving the save as it is.

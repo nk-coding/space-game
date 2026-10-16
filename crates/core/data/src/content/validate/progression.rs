@@ -32,6 +32,13 @@ impl<'a> Validator<'a> {
                     self.mind_capacity(n, &f, *x);
                     continue;
                 }
+                Unlock::JumpRange(x) => {
+                    self.number(n, &f, *x, 0.0, true);
+                    if *x > MAX_GALAXY_RADIUS {
+                        self.err(n, &f, format!("a galaxy-map distance, at most {MAX_GALAXY_RADIUS} S"));
+                    }
+                    continue;
+                }
                 Unlock::Part(id) => (Kind::Part, id, c.parts.get(id).map(|p| p.locked)),
                 Unlock::Material(id) => (Kind::Material, id, c.materials.get(id).map(|m| m.locked)),
                 Unlock::Frame(id) => (Kind::Frame, id, c.frames.get(id).map(|x| x.locked)),

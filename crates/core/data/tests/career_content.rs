@@ -678,6 +678,8 @@ fn base_research_nodes() {
             "beam_laser",
             "fusion_reactor",
             "torch_drive",
+            "jump_calibration_1",
+            "jump_calibration_2",
             "tamed_core",
             "mind_expansion_1",
             "mind_expansion_2",
@@ -694,6 +696,7 @@ fn base_research_nodes() {
                 Unlock::Frame(id) => c.frames.get(id).unwrap().locked,
                 Unlock::Facility(id) => c.facilities.get(id).unwrap().locked,
                 Unlock::MindCapacity(n) => *n > 0,
+                Unlock::JumpRange(s) => *s > 0.0,
             };
             assert!(locked, "{}: {u:?}", n.id);
         }

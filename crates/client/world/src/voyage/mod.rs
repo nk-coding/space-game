@@ -3,7 +3,8 @@
 //! `SceneKind::Voyage`), the HUD shows it (`flight_hud/`), the debrief reports it at home (`debrief.rs`).
 //!
 //! * **Launch** ([`StartVoyage`], or `?scene=voyage&voyage=<id>` at start; `?scene=voyage&cluster=<id or
-//!   signal>[&galaxy=<seed>]` flies a generated cluster as a practice run, galaxy plan E3): the career records the launch
+//!   signal>[&galaxy=<seed>]` flies a generated cluster of the career's galaxy, with what the career knows, as a
+//!   practice run, galaxy plan E3, E4): the career records the launch
 //!   (`Career::voyage_launched`: the voyage's seed, `underway`) and the save is written at once, so closing or
 //!   reloading mid-voyage loses it (GDR-0062). The fleet is the drydock's working design (the flagship) and the
 //!   FLEET escorts; it must be voyage-ready (`data::career::voyage_ready` against what the career grants) and every
@@ -28,9 +29,9 @@ pub mod debrief;
 use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
 use bevy_egui::input::egui_wants_any_keyboard_input;
-use data::career::{Haul, HaulItem, Outcome, Refusal, Unlocks, VoyageEnd, VoyageResult, voyage_ready};
-use data::{Blueprint, Career, Content};
-use sim::{Item, Owner, SimConfig, SimEvent, SiteState};
+use data::career::{Haul, Leads, Outcome, Refusal, Unlocks, VoyageEnd, VoyageResult, voyage_ready};
+use data::{Blueprint, Career, Content, SourceForm};
+use sim::{Owner, SimConfig, SimEvent, SiteState};
 use kit::params::Params;
 use kit::ui_kit::Tone;
 
@@ -71,9 +72,17 @@ pub struct Launched {
     pub escorts: Vec<Blueprint>,
     /// `None`: recorded in the career (its end is too). `Some(why)`: a practice run (URL only), never saved.
     pub practice: Option<String>,
-    /// A generated cluster instead of a content voyage (galaxy plan E3, for testing: `?scene=voyage&cluster=`): the
-    /// galaxy's seed and the cluster's id; `voyage` is its name.
-    pub cluster: Option<(u64, u32)>,
+    /// A generated cluster instead of a content voyage (galaxy plan E3, E4, for testing: `?scene=voyage&cluster=`);
+    /// `voyage` is its name.
+    pub cluster: Option<ClusterLaunch>,
+}
+
+/// A launch into a generated cluster: its id, its interior and what the launch carries from the career.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ClusterLaunch {
+    pub cluster: u32,
+    pub interior: galaxy::Interior,
+    pub leads: Leads,
 }
 
 /// Where a voyage is.
@@ -191,32 +200,45 @@ impl LaunchInputs<'_> {
         Ok(())
     }
 
-    /// A practice run into a generated cluster (galaxy plan E3; [`url_launch`]): the base galaxy from `galaxy` (the
-    /// career's game seed if `None`), cluster `cluster` (`signal`: the first that holds a trail's place), its
-    /// interior rolled from the cluster's seed. Never saved.
+    /// A practice run into a generated cluster (galaxy plan E3, E4; [`url_launch`]): cluster `cluster` (`signal`: the
+    /// first that holds a trail's place) of the career's galaxy, rolled from the seed its next launch would get and
+    /// carrying what the career knows (`Career::leads`: what a recorded launch carries). With `galaxy`, the base
+    /// galaxy generated from that seed instead, rolled from the cluster's own seed, every trail place a signal's site
+    /// and every log's data core in place ([`every_lead`]). Never saved.
     fn launch_cluster(&mut self, galaxy: Option<u64>, cluster: &str) -> Result<(), String> {
         let content = &self.content.0;
         let flagship = self.design.blueprint();
         if let Some(b) = fleet_blocker(content, &self.granted.unlocks, self.granted.mind_capacity, flagship, &self.escorts.0) {
             return Err(format!("NOT VOYAGE-READY · {b}"));
         }
-        let id = content.galaxies.iter().next().map(|g| g.id.clone()).ok_or("THE CONTENT HAS NO GALAXY")?;
-        let seed = galaxy.unwrap_or_else(|| self.career.career().seed());
-        let sk = galaxy::generate(content, &id, seed).map_err(|e| e.0.to_uppercase())?;
+        let career = self.career.career();
+        let own = career.exploration().filter(|_| galaxy.is_none()).map(|g| g.skeleton().clone());
+        let sk = match own.clone() {
+            Some(sk) => sk,
+            None => {
+                let id = content.galaxies.iter().next().map(|g| g.id.clone()).ok_or("THE CONTENT HAS NO GALAXY")?;
+                galaxy::generate(content, &id, galaxy.unwrap_or_else(|| career.seed())).map_err(|e| e.0.to_uppercase())?
+            }
+        };
         let k = match cluster.parse::<u32>() {
             Ok(k) => k,
             Err(_) => sk.trails.iter().flat_map(|t| &t.places).map(|p| p.cluster).find(|&k| k != sk.home).ok_or("NO CLUSTER HOLDS A TRAIL'S PLACE")?,
         };
         let c = sk.clusters.get(k as usize).ok_or_else(|| format!("THE GALAXY HAS {} CLUSTERS", sk.clusters.len()))?;
-        info!("voyage: cluster {k} ({}) of galaxy seed {seed} launched (practice)", c.name);
+        let interior = galaxy::interior(content, &sk, k).map_err(|e| e.0.to_uppercase())?;
+        let (seed, leads) = match own {
+            Some(_) => (career.cluster_seed(k), career.leads(content, k)),
+            None => (c.seed, every_lead(content, &sk, &interior)),
+        };
+        info!("voyage: cluster {k} ({}) of galaxy seed {} launched (practice)", c.name, sk.seed);
         *self.run = VoyageRun {
             launched: Some(Launched {
                 voyage: c.name.clone(),
-                seed: c.seed,
+                seed,
                 mind: self.granted.mind_capacity,
                 escorts: self.escorts.0.clone(),
                 practice: Some("A GENERATED CLUSTER, FOR TESTING".into()),
-                cluster: Some((seed, k)),
+                cluster: Some(ClusterLaunch { cluster: k, interior, leads }),
             }),
             ..default()
         };
@@ -225,13 +247,15 @@ impl LaunchInputs<'_> {
     }
 }
 
-/// The plan of a launched generated cluster ([`Launched::cluster`]), rolled from `content` (the content the enemies
-/// fly with).
-pub fn cluster_plan(content: &Content, launched: &Launched, (galaxy, cluster): (u64, u32)) -> Result<sim::VoyagePlan, String> {
-    let id = content.galaxies.iter().next().map(|g| g.id.clone()).ok_or("no galaxy")?;
-    let sk = galaxy::generate(content, &id, galaxy).map_err(|e| e.0)?;
-    let interior = galaxy::interior(content, &sk, cluster).map_err(|e| e.0)?;
-    sim::VoyagePlan::roll_interior(content, &launched.voyage, &interior, launched.seed)
+/// Everything a cluster's interior holds, as leads (a practice run into another galaxy, [`LaunchInputs::launch_cluster`]):
+/// every trail place a signal's site, every log's place with its data core.
+pub fn every_lead(content: &Content, sk: &galaxy::Skeleton, interior: &galaxy::Interior) -> Leads {
+    let places: Vec<(u32, u32)> = interior.sites.iter().filter_map(|s| s.place).collect();
+    let log = |&(i, j): &(u32, u32)| {
+        let signal = sk.trails.get(i as usize).and_then(|t| t.signals.get(j as usize));
+        signal.and_then(|x| content.signal_sources.get(&x.source)).is_some_and(|x| x.form == SourceForm::Log)
+    };
+    Leads { cores: places.iter().copied().filter(log).collect(), signals: places }
 }
 
 /// The voyage the map selects when it opens: the first open one whose goal is not cleared, else the first open one.
@@ -350,18 +374,11 @@ fn voyage_keys(keys: Res<ButtonInput<KeyCode>>, act: Act, mut run: ResMut<Voyage
 }
 
 /// The haul item of a cargo item (`data` doesn't depend on `sim`).
-pub fn haul_item(item: &Item) -> HaulItem {
-    match item {
-        Item::Part { part, material } => HaulItem::Part { part: part.clone(), material: material.clone() },
-        Item::Fragment { part } => HaulItem::Fragment { part: part.clone() },
-    }
-}
-
 /// What `owner`'s vessels carry (dormant and dark ones too): the haul a recall brings home.
 pub fn fleet_haul(sim: &sim::Sim, owner: Owner) -> Haul {
     sim.vessels(owner)
         .filter_map(|v| sim.ship(v.ship))
-        .flat_map(|s| s.cargo().items().map(|(item, stack)| (haul_item(item), stack.count)))
+        .flat_map(|s| s.cargo().items().map(|(item, stack)| (item.haul(), stack.count)))
         .collect()
 }
 
@@ -608,7 +625,7 @@ fn unrecorded_haul(content: &Content, voyage: &str, how: VoyageEnd) -> VoyageRes
         }
         VoyageEnd::Lost { ticks } => (Outcome::Lost, ticks, Default::default()),
     };
-    VoyageResult { voyage: voyage.to_string(), outcome, ticks, report, new: false }
+    VoyageResult { voyage: voyage.to_string(), cluster: None, outcome, ticks, report, new: false }
 }
 
 /// Flight ends while a recorded voyage still runs (it shouldn't: T does nothing in a voyage, abandoning goes
@@ -639,6 +656,8 @@ mod tests {
     use super::*;
     use crate::career::{Switches, load};
     use crate::storage::MemoryBackend;
+    use data::career::HaulItem;
+    use sim::Item;
 
     fn fresh() -> (Content, Storage, PlayerCareer) {
         let content = data::base_content();
@@ -751,8 +770,9 @@ mod tests {
     #[test]
     fn cargo_becomes_the_haul() {
         let part = Item::Part { part: "steel_block".into(), material: Some("steel".into()) };
-        assert_eq!(haul_item(&part), HaulItem::Part { part: "steel_block".into(), material: Some("steel".into()) });
-        assert_eq!(haul_item(&Item::Fragment { part: "logic_core".into() }), HaulItem::Fragment { part: "logic_core".into() });
+        assert_eq!(part.haul(), HaulItem::Part { part: "steel_block".into(), material: Some("steel".into()) });
+        assert_eq!(Item::Fragment { part: "logic_core".into() }.haul(), HaulItem::Fragment { part: "logic_core".into() });
+        assert_eq!(Item::DataCore { trail: 3, signal: 1 }.haul(), HaulItem::DataCore { trail: 3, signal: 1 });
 
         let content = data::base_content();
         let mut sc = sim::voyage::scenario::Scenario::with_kind(&content, 42, sim::ScenarioKind::Salvage).unwrap();
@@ -764,7 +784,7 @@ mod tests {
         let mut want = Haul::default();
         for v in sim.vessels(PLAYER) {
             for (item, stack) in sim.ship(v.ship).unwrap().cargo().items() {
-                want.add(haul_item(item), stack.count);
+                want.add(item.haul(), stack.count);
             }
         }
         assert_eq!(haul, want);
@@ -834,13 +854,19 @@ mod tests {
         assert!(sub.contains("BEARING") || sub.starts_with("SWEPT 1.2 KM"), "{sub}");
         assert!(scan_banner(&sim, PLAYER).is_none(), "one banner per sweep");
 
+        // Another galaxy's cluster carries everything it holds: every trail place a signal's site.
         let (_, _, pc) = fresh();
-        let id = content.galaxies.iter().next().unwrap().id.clone();
-        let sk = galaxy::generate(&content, &id, pc.career().seed()).unwrap();
+        let sk = pc.career().exploration().expect("a new game has its galaxy").skeleton();
         let k = sk.trails[0].places.iter().map(|p| p.cluster).find(|&k| k != sk.home).unwrap();
-        let mut l = launched(&sk.clusters[k as usize].name, sk.clusters[k as usize].seed, Some("TEST".into()));
-        l.cluster = Some((pc.career().seed(), k));
-        let plan = cluster_plan(&content, &l, l.cluster.unwrap()).unwrap();
+        let interior = galaxy::interior(&content, sk, k).unwrap();
+        let every = every_lead(&content, sk, &interior);
+        assert_eq!(every.signals.len(), interior.sites.iter().filter(|s| s.place.is_some()).count());
+        let plan = sim::VoyagePlan::roll_interior(&content, "test", &interior, &every, 1).unwrap();
         assert!(plan.sites.iter().any(|s| s.signal));
+        // The career's own launch carries what it knows: a new game has heard nothing yet.
+        let own = pc.career().leads(&content, k);
+        assert!(own.signals.is_empty());
+        let plan = sim::VoyagePlan::roll_interior(&content, "test", &interior, &own, 1).unwrap();
+        assert!(!plan.sites.iter().any(|s| s.signal));
     }
 }

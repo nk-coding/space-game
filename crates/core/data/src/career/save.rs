@@ -23,6 +23,7 @@ impl Career {
             underway: None,
             log: Log::default(),
             history: Vec::new(),
+            galaxy: None,
         })
     }
 
@@ -75,8 +76,9 @@ impl Career {
     /// and in the history, voyage records and the history's entries of such voyages), an unknown start is
     /// replaced by the content's first start, numbers are made finite, non-negative and bounded ([`MAX_DATA`],
     /// [`MAX_MATERIALS`]), a history past [`MAX_HISTORY`] loses its oldest, a voyage still underway counts as
-    /// lost (the game was closed mid-voyage, GDR-0062), and the pack list is updated. Returns a warning for each
-    /// change, for the status line. Never fails.
+    /// lost (the game was closed mid-voyage, GDR-0062), the galaxy drops what neither the content nor its skeleton
+    /// has (`Career::reconcile_galaxy`), and the pack list is updated. Returns a warning for each change, for the
+    /// status line. Never fails.
     pub fn reconcile(&mut self, content: &Content) -> Vec<Problem> {
         let mut notes = Vec::new();
         let now = packs_of(content);
@@ -175,7 +177,11 @@ impl Career {
         let mut kept = Vec::new();
         for (k, mut v) in std::mem::take(&mut self.history).into_iter().enumerate() {
             let field = format!("history[{k}]");
-            if !content.voyages.contains(&v.voyage) {
+            let known = match v.cluster {
+                Some(c) => self.galaxy.as_ref().is_some_and(|g| (c as usize) < g.skeleton().clusters.len()),
+                None => content.voyages.contains(&v.voyage),
+            };
+            if !known {
                 notes.push(
                     Problem::warning(format!(
                         "the content has no voyage `{}` any more: its entry in the log is dropped",
@@ -210,6 +216,7 @@ impl Career {
             kept.drain(..gone);
         }
         self.history = kept;
+        self.reconcile_galaxy(content, &mut notes);
 
         // Last: the least interesting change for the status line, which shows the first.
         if self.generator == 0 {

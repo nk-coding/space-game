@@ -168,7 +168,7 @@ fn a_full_hold_takes_nothing_and_the_best_that_fits_goes_first() {
         0,
     );
     let got = run(&mut w, 120);
-    let items: Vec<(String, u32)> = got.iter().map(|g| (g.2.part().to_string(), g.3)).collect();
+    let items: Vec<(String, u32)> = got.iter().map(|g| (g.2.part().unwrap().to_string(), g.3)).collect();
     assert_eq!(
         items,
         [
@@ -265,7 +265,7 @@ fn a_lost_ship_keeps_its_cargo_and_its_wreck_gives_fragments_and_cargo_first() {
         .iter()
         .map(|g| {
             assert_eq!(g.0, b);
-            (g.1, g.2.part().to_string())
+            (g.1, g.2.part().unwrap().to_string())
         })
         .collect();
     assert!(
@@ -666,7 +666,7 @@ fn a_shrinking_full_hold_reports_what_it_drops() {
         .iter()
         .filter_map(|e| match e {
             SimEvent::CargoLost { ship, item, count } if *ship == me => {
-                Some((item.part().to_string(), *count))
+                Some((item.part()?.to_string(), *count))
             }
             _ => None,
         })

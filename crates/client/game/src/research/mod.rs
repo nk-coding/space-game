@@ -245,7 +245,8 @@ pub fn apply(
                 view.say = Some(match (done, written) {
                     (Ok(id), Ok(())) => {
                         let n = content.research.get(&id).expect("a researched node is content's");
-                        (tree::unlocked_words(n, career.career().mind_capacity(content)), Tone::Teal)
+                        let c = career.career();
+                        (tree::unlocked_words(content, n, tree::Now::of(content, c, c.mind_capacity(content))), Tone::Teal)
                     }
                     (Ok(_), Err(e)) => (format!("UNLOCKED, BUT NOT SAVED: {e}").to_uppercase(), Tone::Coral),
                     (Err(r), _) => (tree::refusal_words(content, &r), Tone::Coral),

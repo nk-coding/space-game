@@ -33,7 +33,7 @@
 use std::collections::BTreeSet;
 use std::sync::Arc;
 
-use data::career::{Haul, HaulItem};
+use data::career::Haul;
 
 use crate::behavior::{BehaviorId, BehaviorLibrary};
 use crate::config::SimConfig;
@@ -43,7 +43,6 @@ use crate::ids::{PieceId, ShipId};
 use crate::flight::maneuver::Maneuver;
 use crate::math::Vec2;
 use crate::report::DesignReport;
-use crate::combat::salvage::Item;
 use crate::ship::vessel::Owner;
 use crate::voyage::{Site, SiteState, VoyagePlan};
 use crate::world::{ShipCommand, Sim, TickInputs};
@@ -585,14 +584,7 @@ impl VoyageRunner {
                 .filter(|s| s.id() == self.me || (self.wing.contains(&s.id()) && s.is_vessel()))
             {
                 for (item, stack) in s.cargo().items() {
-                    let item = match item {
-                        Item::Part { part, material } => HaulItem::Part {
-                            part: part.clone(),
-                            material: material.clone(),
-                        },
-                        Item::Fragment { part } => HaulItem::Fragment { part: part.clone() },
-                    };
-                    haul.add(item, stack.count);
+                    haul.add(item.haul(), stack.count);
                 }
             }
         }

@@ -2,10 +2,11 @@
 //! for the drydock. No Bevy, no I/O, wasm-safe. The rules are documented in `docs/career.md`.
 //!
 //! A [`Career`] holds the save's **facts** only: the start, the game seed, the researched nodes, the research data
-//! and materials in store, the escorts, a record per voyage, the voyage underway, a small log and the history of
-//! the last voyages ([`MAX_HISTORY`]). Everything else is derived from the content on demand ([`Career::unlocks`],
-//! [`Career::mind_capacity`], [`Career::open_voyages`], [`Career::can_pay`]), so a rebalance of the content
-//! applies to old saves without a migration. The game stores it as RON ([`Career::to_ron`],
+//! and materials in store, the escorts, a record per voyage, the voyage underway, a small log, the history of
+//! the last voyages ([`MAX_HISTORY`]) and what the player knows of the galaxy ([`Exploration`]: its skeleton, charted
+//! clusters, signals, logs, gates). Everything else is derived from the content on demand ([`Career::unlocks`],
+//! [`Career::mind_capacity`], [`Career::jump_range`], [`Career::open_voyages`], [`Career::can_pay`]), so a rebalance
+//! of the content applies to old saves without a migration. The game stores it as RON ([`Career::to_ron`],
 //! [`Career::from_ron`]) in its `saves/` namespace and calls [`Career::reconcile`] after loading, which drops what
 //! the current content no longer has.
 //!
@@ -20,6 +21,7 @@
 //! assert!(career.unlocks(&content).has_part("automaton_cannon"));
 //! ```
 
+mod galaxy;
 mod save;
 mod voyages;
 
@@ -34,6 +36,7 @@ use crate::content::load::{Content, parse_error, ron_options, strip_bom};
 use crate::content::model::{Blueprint, Frame, ResearchNode, Unlock};
 use crate::content::problem::Problem;
 
+pub use galaxy::{Charted, Exploration, Lead, Leads, SignalRecord, SignalState, TrailSignal};
 pub use voyages::{unload, voyage_ready};
 
 /// The format version of the save's RON text ([`Career::to_ron`]). The game's storage writes it into the
@@ -44,7 +47,11 @@ pub use voyages::{unload, voyage_ready};
 /// * 1: the last voyage only, as `last_haul`.
 /// * 2 (15 Oct 2026, GDR-0091): the last voyages as `history`. Format 1 is no longer read (16 Oct 2026: every save
 ///   is written again on its first change).
-pub const FORMAT: u32 = 2;
+/// * 3 (16 Oct 2026, galaxy plan E4, GDR-0096; the plan's "format 2"): the galaxy as `galaxy` ([`Exploration`]). A
+///   format 2 save reads as it is (the field has a default) and gets its galaxy when the game loads it
+///   ([`Career::begin_galaxy`]: the slice's voyages pinned to clusters, the cleared and launched ones charted, the
+///   open ones signals).
+pub const FORMAT: u32 = 3;
 
 /// How many voyages the history keeps (home's LOG, GDR-0091): the oldest go first. A placeholder.
 pub const MAX_HISTORY: usize = 50;
@@ -117,6 +124,10 @@ pub struct Career {
     /// debrief, home's LOG).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     history: Vec<VoyageResult>,
+    /// The galaxy and what the player knows of it (format 3). `None` until the game generates it
+    /// ([`Career::begin_galaxy`]), and for content without a galaxy.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    galaxy: Option<Exploration>,
 }
 
 /// What a career remembers about one voyage.
@@ -167,7 +178,11 @@ pub enum Outcome {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct VoyageResult {
+    /// The voyage (content id), or a generated cluster's name.
     pub voyage: String,
+    /// The generated cluster (id in the skeleton) the voyage went to, if it was one ([`Career::cluster_ended`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cluster: Option<u32>,
     pub outcome: Outcome,
     /// How long the voyage took, in sim ticks (0 when the game was closed mid-voyage).
     #[serde(default)]
@@ -191,6 +206,9 @@ pub enum HaulItem {
     },
     /// What a destroyed part left (content id of that part), such as a core's programmable-matter fragment.
     Fragment { part: String },
+    /// A data core from a log's wreck (GDR-0093: one hold slot, lost with the haul): decoded at home into the
+    /// trail's signal `signal` of trail `trail` (skeleton indices).
+    DataCore { trail: u32, signal: u32 },
 }
 
 /// The items a voyage brought home, with counts, in item order.
@@ -233,15 +251,22 @@ pub struct HaulReport {
     /// Materials by id.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub materials: BTreeMap<String, u32>,
+    /// Data cores: logs to decode at home.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub logs: u32,
+}
+
+fn is_zero(n: &u32) -> bool {
+    *n == 0
 }
 
 impl HaulReport {
-    /// Items that came home: whole parts and fragments (saturating).
+    /// Items that came home: whole parts, fragments and data cores (saturating).
     pub fn items(&self) -> u32 {
         self.parts
             .values()
             .chain(self.fragments.values())
-            .fold(0, |n, &k| n.saturating_add(k))
+            .fold(self.logs, |n, &k| n.saturating_add(k))
     }
 }
 
@@ -325,6 +350,12 @@ pub enum Refusal {
     Underway(String),
     /// This voyage is not underway, so it cannot end.
     NotUnderway(String),
+    /// The career has no galaxy (content without one).
+    NoGalaxy,
+    /// The galaxy has no cluster with this id.
+    UnknownCluster(u32),
+    /// The cluster lies beyond the jump range from home and every charted cluster.
+    OutOfReach(u32),
 }
 
 /// One cost of a research node that the stores can't meet.
@@ -515,7 +546,7 @@ impl Career {
                 Unlock::Material(id) => u.materials.insert(id.clone()),
                 Unlock::Frame(id) => u.frames.insert(id.clone()),
                 Unlock::Facility(id) => u.facilities.insert(id.clone()),
-                Unlock::MindCapacity(_) => false,
+                Unlock::MindCapacity(_) | Unlock::JumpRange(_) => false,
             };
         }
         u

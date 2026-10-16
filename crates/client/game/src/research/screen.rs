@@ -164,6 +164,7 @@ fn node_icon(content: &Content, style: &Style, node: &ResearchNode) -> UiIcon {
         },
         Some(Unlock::Frame(_)) => UiIcon::Glyph { glyph: Glyph::Formation, color: style.ui.teal },
         Some(Unlock::Facility(_)) => UiIcon::Glyph { glyph: Glyph::Diamond, color: style.ui.violet },
+        Some(Unlock::JumpRange(_)) => UiIcon::Glyph { glyph: Glyph::Play, color: style.ui.teal },
         Some(Unlock::MindCapacity(_)) | None => UiIcon::Glyph { glyph: Glyph::Menu, color: style.ui.violet },
     }
 }
@@ -496,8 +497,9 @@ pub struct Stat {
 
 /// What the preview shows for a node: a head, the icon, stat cells and bonus lines. A part: its stat lines from
 /// content (as the drydock's palette part); a material: the armour block in it; a frame: its size; mind
-/// capacity: the mind before and after.
-pub fn preview(content: &Content, style: &Style, node: &ResearchNode, capacity: u32) -> (String, UiIcon, Vec<Stat>, Vec<String>) {
+/// capacity: the mind before and after; jump range: the drive's reach before and after.
+pub fn preview(content: &Content, style: &Style, node: &ResearchNode, now: tree::Now) -> (String, UiIcon, Vec<Stat>, Vec<String>) {
+    let capacity = now.mind;
     let icon = node_icon(content, style, node);
     let lines = |part: &data::Part, material: Option<&data::Material>| {
         let all = content.part_stats(part, material);
@@ -542,6 +544,11 @@ pub fn preview(content: &Content, style: &Style, node: &ResearchNode, capacity: 
             ("THE SHIP-MIND".into(), icon, stats, Vec::new())
         }
         Some(Unlock::Facility(f)) => (content.facilities.get(f).map_or_else(|| f.to_uppercase(), |x| format!("{} AT HOME", x.name.to_uppercase())), icon, Vec::new(), Vec::new()),
+        Some(Unlock::JumpRange(s)) => {
+            let label = content.stats.get("jump_range").map_or("JUMP RANGE".into(), |d| d.name.to_uppercase());
+            let value = format!("{} » {}", tree::range_text(content, now.range), tree::range_text(content, now.range + s));
+            ("THE DRIVE".into(), icon, vec![Stat { label, value }], Vec::new())
+        }
         None => (String::new(), icon, Vec::new(), Vec::new()),
     }
 }
@@ -569,10 +576,11 @@ pub(super) fn sync(
     }
     let (content, tree, ui) = (&content.0, &tree.0, &style.ui);
     let c = career.career();
-    let now: Vec<CardState> = tree.cards.iter().map(|card| tree::state(content, c, &card.node)).collect();
-    if states.0 != now {
-        states.0 = now;
+    let cards: Vec<CardState> = tree.cards.iter().map(|card| tree::state(content, c, &card.node)).collect();
+    if states.0 != cards {
+        states.0 = cards;
     }
+    let now = tree::Now::of(content, c, granted.mind_capacity);
     let states = &states.0;
     let node_of = |k: usize| content.research.get(&tree.cards[k].node);
     let selected = view.selected.as_deref().and_then(|s| content.research.get(s));
@@ -581,7 +589,7 @@ pub(super) fn sync(
     // A researched node shows what it cost, not what the stores hold now.
     let done = matches!(sel_state, Some(CardState::Done));
     let sel_chips = selected.map_or(Vec::new(), |n| if done { tree::cost_chips(n) } else { tree::chips(c, n) });
-    let (head, icon, stats, bonuses) = selected.map_or((String::new(), UiIcon::Glyph { glyph: Glyph::Menu, color: ui.dim }, Vec::new(), Vec::new()), |n| preview(content, &style, n, granted.mind_capacity));
+    let (head, icon, stats, bonuses) = selected.map_or((String::new(), UiIcon::Glyph { glyph: Glyph::Menu, color: ui.dim }, Vec::new(), Vec::new()), |n| preview(content, &style, n, now));
     let ready = tree::ready(content, c);
     let lane_families: Vec<&str> = tree.lanes.iter().map(|l| l.family.as_str()).collect();
     let mats = cost_materials(content);
@@ -630,7 +638,7 @@ pub(super) fn sync(
                 (chip.map_or(String::new(), |ch| ch.text.clone()), tone)
             }
             RText::InStore => (selected.filter(|_| !done).map_or(String::new(), |n| in_store(content, c, n)), Tone::Dim),
-            RText::Gives => (selected.map_or(String::new(), |n| tree::gives(content, n, granted.mind_capacity)), Tone::Number),
+            RText::Gives => (selected.map_or(String::new(), |n| tree::gives(content, n, now)), Tone::Number),
             RText::Requires => {
                 let words = selected.map_or(Vec::new(), |n| {
                     n.requires

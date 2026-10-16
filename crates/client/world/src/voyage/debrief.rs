@@ -95,13 +95,14 @@ impl DebriefData {
         let family = |id: &str| content.families.get(id);
         let upper = |s: &str| s.to_uppercase();
 
-        // Rows: per part (fragments apart), what its items gave, most first.
+        // Rows: per part (fragments apart), what its items gave, most first. Data cores are no part (the finds, E6).
         let mut rows: BTreeMap<(bool, String), Gave> = BTreeMap::new();
         for (item, &n) in &haul.items {
             let one = unload(content, &[(item.clone(), n)].into_iter().collect());
             let key = match item {
                 HaulItem::Part { part, .. } => (false, part.clone()),
                 HaulItem::Fragment { part } => (true, part.clone()),
+                HaulItem::DataCore { .. } => continue,
             };
             let row = rows.entry(key).or_default();
             row.0 = row.0.saturating_add(n);

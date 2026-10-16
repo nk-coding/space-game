@@ -50,6 +50,28 @@
         cost: (data: {"propulsion": 10}),
         unlocks: [Part("torch_drive")],
     ),
+    // The drive's reach on the galaxy map (GDR-0093, Niklas: 2.5 S at the start, 4 S with both). Costs: lead
+    // placeholders (16 Oct 2026, GDR-0096); the first should come within the slice, as it reaches the Warden's gate.
+    (
+        id: "jump_calibration_1",
+        name: "Jump calibration I",
+        summary: "Tune the drive's field: every jump reaches further.",
+        description: "Jumps start from home or any charted cluster; this one step takes all of them further on the galaxy map.",
+        family: "propulsion",
+        kind: Refinement,
+        cost: (data: {"propulsion": 8}),
+        unlocks: [JumpRange(0.75)],
+    ),
+    (
+        id: "jump_calibration_2",
+        name: "Jump calibration II",
+        summary: "Tune the drive's field again: jumps reach as far as this drive goes.",
+        family: "propulsion",
+        kind: Refinement,
+        cost: (data: {"propulsion": 16}, materials: {"programmable_matter": 3}),
+        requires: ["jump_calibration_1"],
+        unlocks: [JumpRange(0.75)],
+    ),
     (
         id: "tamed_core",
         name: "Tamed automaton core",

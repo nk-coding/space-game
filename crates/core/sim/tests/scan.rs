@@ -239,22 +239,32 @@ fn the_edge_turns_ships_back() {
     assert!(p.com_world().x < edge + 150.0, "{:?}", p.com_world());
 }
 
-/// A generated cluster's interior rolls into a plan: trail places are signals' sites, a beacon alone spawns nothing.
+/// A generated cluster's interior rolls into a plan with what the career knows (`data::career::Leads`): the places
+/// heard signals lead to are signals' sites, a log's place holds its data core in its first wreck, a beacon alone
+/// spawns nothing.
 #[test]
 fn a_generated_interior_rolls_into_a_plan() {
     let c = content();
     let galaxy = c.galaxies.iter().next().unwrap().id.clone();
     let sk = galaxy::generate(&c, &galaxy, 1).unwrap();
+    // The trail places of the skeleton that hold a log (the source of signal `j`, a data core in a wreck).
+    let log = |(i, j): (u32, u32)| {
+        let t = &sk.trails[i as usize];
+        t.signals.get(j as usize).is_some_and(|x| c.signal_sources.get(&x.source).unwrap().form == data::SourceForm::Log)
+    };
     let k = (0..sk.clusters.len() as u32)
-        .find(|&k| galaxy::interior(&c, &sk, k).unwrap().sites.iter().any(|s| s.place.is_some()))
+        .find(|&k| galaxy::interior(&c, &sk, k).unwrap().sites.iter().any(|s| s.place.is_some_and(log)))
         .unwrap();
     let interior = galaxy::interior(&c, &sk, k).unwrap();
-    let a = VoyagePlan::roll_interior(&c, "cluster", &interior, 9).unwrap();
-    let b = VoyagePlan::roll_interior(&c, "cluster", &interior, 9).unwrap();
+    let places: Vec<(u32, u32)> = interior.sites.iter().filter_map(|s| s.place).collect();
+    let leads = data::career::Leads { signals: places[..1].to_vec(), cores: places.iter().copied().filter(|&p| log(p)).collect() };
+    let a = VoyagePlan::roll_interior(&c, "cluster", &interior, &leads, 9).unwrap();
+    let b = VoyagePlan::roll_interior(&c, "cluster", &interior, &leads, 9).unwrap();
     assert_eq!(format!("{a:?}"), format!("{b:?}"));
     assert_eq!((a.radius, a.sites.len()), (interior.radius, interior.sites.len()));
     for (p, s) in a.sites.iter().zip(&interior.sites) {
-        assert_eq!(p.signal, s.place.is_some());
+        assert_eq!(p.signal, s.place == Some(places[0]), "only the heard signal's place is a signal's site");
+        assert_eq!(p.core, s.place.filter(|&x| log(x)));
         assert_eq!(p.encounter, s.encounter);
         assert!(!p.goal);
         assert!(p.pos.length() <= interior.radius * 1.0001);
@@ -262,4 +272,20 @@ fn a_generated_interior_rolls_into_a_plan() {
             assert!(p.ships.is_empty() && p.wrecks.is_empty());
         }
     }
+
+    // Flying to the log's site spawns it: its first wreck carries the data core (one cargo unit, GDR-0093).
+    let (site, core) = a.sites.iter().enumerate().find_map(|(n, p)| Some((n, p.core?))).unwrap();
+    let at = a.sites[site].pos;
+    let mut w = Sim::new(9);
+    w.set_behaviors(sim::BehaviorLibrary::new(&c).unwrap());
+    let entry = a.entry;
+    w.start_voyage(a, Owner::PLAYER, ENEMY);
+    let me = w.spawn_ship(design(&c, "rim_skiff"), Owner::PLAYER, entry);
+    put(&mut w, me, at + Vec2::new(0.0, -300.0));
+    step(&mut w);
+    let s = &w.voyage().unwrap().sites()[site];
+    let wreck = w.ship(*s.wrecks().first().expect("a log lies in a wreck")).unwrap();
+    let item = sim::Item::DataCore { trail: core.0, signal: core.1 };
+    assert_eq!(wreck.cargo().count(&item), 1);
+    assert_eq!(wreck.cargo().items().find(|(i, _)| **i == item).unwrap().1.units, 1);
 }

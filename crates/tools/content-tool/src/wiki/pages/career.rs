@@ -56,6 +56,7 @@ impl Wiki<'_> {
             Unlock::Frame(id) => self.a_badged(root, Kind::Frame, id),
             Unlock::Facility(id) => self.a_badged(root, Kind::Facility, id),
             Unlock::MindCapacity(x) => format!("Mind capacity&nbsp;+{x}"),
+            Unlock::JumpRange(x) => format!("Jump range&nbsp;+{}", self.value("jump_range", *x).replace(' ', "&nbsp;")),
         }
     }
 
@@ -304,6 +305,14 @@ impl Wiki<'_> {
                     format!(
                         "The ship-mind runs {x} more {} at once.",
                         if *x == 1 { "logic core" } else { "logic cores" }
+                    ),
+                ),
+                Unlock::JumpRange(x) => (
+                    String::new(),
+                    format!("Jump range +{}", self.value("jump_range", *x)),
+                    format!(
+                        "Every jump, from home or a charted cluster, reaches {} further on the galaxy map.",
+                        self.value("jump_range", *x)
                     ),
                 ),
             };

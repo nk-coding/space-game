@@ -7,7 +7,7 @@
 
 use bevy::math::{Rect, Vec2};
 use data::career::{Refusal, Shortfall};
-use data::design::stats::format_number;
+use data::design::stats::{format_number, with_unit};
 use data::{Career, Content, ResearchKind, ResearchNode, Unlock};
 
 /// One node's card in the tree.
@@ -267,12 +267,30 @@ pub fn kind_words(kind: ResearchKind) -> &'static str {
     }
 }
 
+/// What the career has now, for a node's words: the mind's capacity and the jump range (S).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Now {
+    pub mind: u32,
+    pub range: f32,
+}
+
+impl Now {
+    pub fn of(content: &Content, career: &Career, mind: u32) -> Now {
+        Now { mind, range: career.jump_range(content) }
+    }
+}
+
+/// A jump range in words, with the content's unit and decimals (`stats.ron`'s `jump_range`): `3.25 S`.
+pub fn range_text(content: &Content, s: f32) -> String {
+    let (decimals, unit) = content.stats.get("jump_range").map_or((2, "S"), |d| (d.decimals, d.unit.as_str()));
+    with_unit(&format_number(s, decimals), unit)
+}
+
 /// What a node's unlocks give, in words: `Beam laser in the drydock, unlimited`, `Composite armour in the
 /// drydock`, `The cruiser frame in the drydock`, `One more logic core in the mind (runs 3)`, `Evolution opens at
-/// home`; joined by `; `.
-/// `capacity` is the mind's capacity now.
-pub fn gives(content: &Content, node: &ResearchNode, capacity: u32) -> String {
-    let mut capacity = capacity;
+/// home`, `Jumps reach 0.75 S further (3.25 S)`; joined by `; `.
+pub fn gives(content: &Content, node: &ResearchNode, now: Now) -> String {
+    let (mut capacity, mut range) = (now.mind, now.range);
     node.unlocks
         .iter()
         .map(|u| match u {
@@ -284,6 +302,10 @@ pub fn gives(content: &Content, node: &ResearchNode, capacity: u32) -> String {
                 let more = if *n == 1 { "One more logic core".to_string() } else { format!("{n} more logic cores") };
                 format!("{more} in the mind (runs {capacity})")
             }
+            Unlock::JumpRange(s) => {
+                range += s;
+                format!("Jumps reach {} further ({})", range_text(content, *s), range_text(content, range))
+            }
             Unlock::Facility(f) => format!("{} opens at home", content.facilities.get(f).map_or(f.as_str(), |f| f.name.as_str())),
         })
         .collect::<Vec<_>>()
@@ -291,15 +313,17 @@ pub fn gives(content: &Content, node: &ResearchNode, capacity: u32) -> String {
 }
 
 /// The line after an UNLOCK: `BEAM LASER · NOW IN THE DRYDOCK`, `MIND EXPANSION I · YOUR MIND RUNS 3 CORES`,
-/// `SIMULATION VAULT · OPEN AT HOME` (`capacity` is the mind's capacity after it).
-pub fn unlocked_words(node: &ResearchNode, capacity: u32) -> String {
+/// `SIMULATION VAULT · OPEN AT HOME`, `JUMP CALIBRATION I · JUMPS REACH 3.25 S` (`now`: the career after it).
+pub fn unlocked_words(content: &Content, node: &ResearchNode, now: Now) -> String {
     let name = node.name.to_uppercase();
     if node.unlocks.iter().any(|u| matches!(u, Unlock::Part(_) | Unlock::Material(_) | Unlock::Frame(_))) {
         format!("{name}  ·  NOW IN THE DRYDOCK")
     } else if node.unlocks.iter().any(|u| matches!(u, Unlock::Facility(_))) {
         format!("{name}  ·  OPEN AT HOME")
+    } else if node.unlocks.iter().any(|u| matches!(u, Unlock::JumpRange(_))) {
+        format!("{name}  ·  JUMPS REACH {}", range_text(content, now.range).to_uppercase())
     } else {
-        format!("{name}  ·  YOUR MIND RUNS {capacity} CORES")
+        format!("{name}  ·  YOUR MIND RUNS {} CORES", now.mind)
     }
 }
 
@@ -344,9 +368,9 @@ mod tests {
         (tree.lanes[c.lane].family.clone(), c.row, c.column)
     }
 
-    /// The base pack's ten nodes: six lanes (families with nodes, content order), three columns (the mind
-    /// expansions' chain), connectors along the chains; the simulation vault under the tamed core (both need
-    /// nothing).
+    /// The base pack's twelve nodes: six lanes (families with nodes, content order), three columns (the mind
+    /// expansions' chain), connectors along the chains; the simulation vault under the tamed core and the first jump
+    /// calibration under the torch drive (both need nothing).
     #[test]
     fn lanes_follow_the_families_and_columns_the_requirement_depth() {
         let content = data::base_content();
@@ -361,9 +385,19 @@ mod tests {
         assert_eq!(at(&tree, "mind_expansion_1"), ("logic".into(), 0, 1));
         assert_eq!(at(&tree, "mind_expansion_2"), ("logic".into(), 0, 2));
         assert_eq!(at(&tree, "simulation_vault"), ("logic".into(), 1, 0));
+        assert_eq!(at(&tree, "jump_calibration_1"), ("propulsion".into(), 1, 0));
+        assert_eq!(at(&tree, "jump_calibration_2"), ("propulsion".into(), 0, 1));
         let link = |a: &str, b: &str| Link { from: tree.card_of(a).unwrap(), to: tree.card_of(b).unwrap() };
-        assert_eq!(tree.links, [link("tamed_core", "mind_expansion_1"), link("mind_expansion_1", "mind_expansion_2"), link("composite_plating", "cruiser_drydock")]);
-        assert!(tree.lanes.iter().all(|l| l.rows == if l.family == "logic" { 2 } else { 1 }));
+        assert_eq!(
+            tree.links,
+            [
+                link("jump_calibration_1", "jump_calibration_2"),
+                link("tamed_core", "mind_expansion_1"),
+                link("mind_expansion_1", "mind_expansion_2"),
+                link("composite_plating", "cruiser_drydock")
+            ]
+        );
+        assert!(tree.lanes.iter().all(|l| l.rows == if matches!(l.family.as_str(), "logic" | "propulsion") { 2 } else { 1 }));
     }
 
     /// Nodes of one lane in one column stack in rows; a requirement in another lane still sets the column; the
@@ -441,7 +475,8 @@ mod tests {
         let refused = c.research(&content, "mind_expansion_1").unwrap_err();
         assert_eq!(refusal_words(&content, &refused), "NEEDS TAMED AUTOMATON CORE FIRST");
         let n = c.research(&content, "automaton_cannon").unwrap();
-        assert_eq!(unlocked_words(n, 2), "REVERSE-ENGINEERED CANNON  ·  NOW IN THE DRYDOCK");
+        let now = |mind| Now { mind, range: 2.5 };
+        assert_eq!(unlocked_words(&content, n, now(2)), "REVERSE-ENGINEERED CANNON  ·  NOW IN THE DRYDOCK");
         assert_eq!(state(&content, &c, "automaton_cannon"), CardState::Done);
         assert!(c.unlocks(&content).has_part("automaton_cannon"));
         assert!(c.fresh_parts(&content).contains("automaton_cannon"), "the drydock shows it NEW");
@@ -451,12 +486,16 @@ mod tests {
         let short = c.research(&content, "mind_expansion_1").unwrap_err();
         assert_eq!(refusal_words(&content, &short), "NOT ENOUGH DATA  ·  LOGIC 6.5 / 10  ·  PROGRAMMABLE MATTER 0 / 3");
         let me = content.research.get("mind_expansion_1").unwrap();
-        assert_eq!(unlocked_words(me, 3), "MIND EXPANSION I  ·  YOUR MIND RUNS 3 CORES");
-        assert_eq!(gives(&content, me, 2), "One more logic core in the mind (runs 3)");
-        assert_eq!(gives(&content, content.research.get("beam_laser").unwrap(), 2), "Beam laser in the drydock, unlimited");
-        assert_eq!(gives(&content, content.research.get("cruiser_drydock").unwrap(), 2), "The cruiser frame in the drydock");
+        assert_eq!(unlocked_words(&content, me, now(3)), "MIND EXPANSION I  ·  YOUR MIND RUNS 3 CORES");
+        assert_eq!(gives(&content, me, now(2)), "One more logic core in the mind (runs 3)");
+        assert_eq!(gives(&content, content.research.get("beam_laser").unwrap(), now(2)), "Beam laser in the drydock, unlimited");
+        assert_eq!(gives(&content, content.research.get("cruiser_drydock").unwrap(), now(2)), "The cruiser frame in the drydock");
         let vault = content.research.get("simulation_vault").unwrap();
-        assert_eq!((gives(&content, vault, 2).as_str(), unlocked_words(vault, 2).as_str()), ("Evolution opens at home", "SIMULATION VAULT  ·  OPEN AT HOME"));
+        assert_eq!((gives(&content, vault, now(2)).as_str(), unlocked_words(&content, vault, now(2)).as_str()), ("Evolution opens at home", "SIMULATION VAULT  ·  OPEN AT HOME"));
+        // GDR-0093: two propulsion nodes take the jump range from 2.5 S to 4 S.
+        let jump = content.research.get("jump_calibration_1").unwrap();
+        assert_eq!(gives(&content, jump, now(2)), "Jumps reach 0.75 S further (3.25 S)");
+        assert_eq!(unlocked_words(&content, jump, Now { mind: 2, range: 3.25 }), "JUMP CALIBRATION I  ·  JUMPS REACH 3.25 S");
         assert_eq!(refusal_words(&content, &c.research(&content, "tamed_core").unwrap_err()), "ALREADY RESEARCHED");
     }
 

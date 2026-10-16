@@ -56,7 +56,7 @@ pub struct ResearchCost {
 }
 
 /// What a research node unlocks for the player who researched it.
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum Unlock {
     /// A `locked` part (id).
     Part(String),
@@ -68,6 +68,9 @@ pub enum Unlock {
     MindCapacity(u32),
     /// A `locked` facility (id): its building at home opens (GDR-0092: the evolution lab).
     Facility(String),
+    /// A longer jump: the drive reaches this many S further (GDR-0093: two propulsion nodes of 0.75 S take the
+    /// galaxy's starting 2.5 S to 4 S).
+    JumpRange(f32),
 }
 
 /// `research/*.ron`: a research node. Unlocks at once when paid (GDR-0063); the player's set of researched nodes

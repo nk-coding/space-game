@@ -7,7 +7,9 @@
 //!   the entry; the goal last, the farthest from the entry of a few good spots), how many ships and wrecks each
 //!   holds, where they lie around it, each wreck's damage seed, and the compiled designs. The fleet enters at the cluster's edge
 //!   ([`VoyagePlan::entry`]). [`VoyagePlan::roll_interior`] rolls a generated cluster's interior (`galaxy::interior`)
-//!   the same way: its trail places are signals' sites, a place with no encounter a beacon alone (a quiet site).
+//!   the same way, with what the career knows (`data::career::Leads`, galaxy plan E4): the trail places a heard
+//!   signal leads to are signals' sites, a log's place holds its data core in its first wreck (or loose at the site
+//!   without one, `Sim::stow_data_core`), a place with no encounter is a beacon alone (a quiet site).
 //! * **Hidden sites** (galaxy plan E3, GDR-0095): a site shows ([`Site::known`], `SimEvent::SiteRevealed`) once a
 //!   player vessel has it within its sensor range (`Ship::sensor_range`; a signal's site only within
 //!   `VoyageTuning::signal_reveal`), or a player's scan sweeps over it (`SimEvent::Scanned`, within the scanner's
@@ -118,6 +120,10 @@ const GOAL_CHOICES: u32 = 8;
 /// save format (`data::career::GENERATOR` 2): never change it.
 pub const PLAN_STREAM: u64 = 0x766f_7961_6765;
 
+/// One site to roll (`VoyagePlan::roll_sites`): its encounter (none: a beacon alone), whether it is the goal,
+/// whether it is a signal's site, and the data core it holds.
+type SiteRoll<'c> = (Option<&'c data::Encounter>, bool, bool, Option<(u32, u32)>);
+
 /// One ship or wreck a site spawns.
 #[derive(Clone, Debug)]
 pub struct Spawn {
@@ -138,9 +144,11 @@ pub struct SitePlan {
     pub encounter: Option<String>,
     /// Clearing it clears the voyage.
     pub goal: bool,
-    /// A signal leads here (a trail's place; a slice voyage's goal, GDR-0095): it shows only within
-    /// `VoyageTuning::signal_reveal` or under a scan's sweep, and a scan farther away gives it a bearing.
+    /// A signal leads here (a trail's place a heard signal leads to; a slice voyage's goal, GDR-0095): it shows
+    /// only within `VoyageTuning::signal_reveal` or under a scan's sweep, and a scan farther away gives it a bearing.
     pub signal: bool,
+    /// The data core it holds: the log of signal `.1` of trail `.0` (a log's place the career has not got yet).
+    pub core: Option<(u32, u32)>,
     pub pos: Vec2,
     /// From the encounter (m).
     pub wake_radius: f32,
@@ -176,15 +184,22 @@ impl VoyagePlan {
                 )
             })?;
             // The goal is the slice's signal until the slice is pinned into the galaxy (E7; GDR-0095).
-            list.extend((0..s.count).map(|_| (Some(e), s.goal, s.goal)));
+            list.extend((0..s.count).map(|_| (Some(e), s.goal, s.goal, None)));
         }
         Self::roll_sites(content, &voyage.id, voyage.radius, voyage.spacing, &list, seed)
     }
 
     /// Rolls a launch into a generated cluster's interior (`galaxy::interior`), named `id`: its ordinary sites and
-    /// its trail places (each a signal's site, none a goal), on the same generator as [`VoyagePlan::roll`]. `Err`
-    /// for content that does not validate.
-    pub fn roll_interior(content: &Content, id: &str, interior: &galaxy::Interior, seed: u64) -> Result<VoyagePlan, String> {
+    /// its trail places (none a goal), on the same generator as [`VoyagePlan::roll`]. `leads` (the career's,
+    /// `Career::leads`) says which places are signals' sites and which hold a data core. `Err` for content that
+    /// does not validate.
+    pub fn roll_interior(
+        content: &Content,
+        id: &str,
+        interior: &galaxy::Interior,
+        leads: &data::career::Leads,
+        seed: u64,
+    ) -> Result<VoyagePlan, String> {
         let list = interior
             .sites
             .iter()
@@ -193,20 +208,20 @@ impl VoyagePlan {
                     Some(e) => Some(content.encounters.get(e).ok_or_else(|| format!("cluster `{id}`: unknown encounter `{e}`"))?),
                     None => None,
                 };
-                Ok((e, false, s.place.is_some()))
+                let signal = s.place.is_some_and(|p| leads.signals.contains(&p));
+                Ok((e, false, signal, s.place.filter(|p| leads.cores.contains(p))))
             })
             .collect::<Result<Vec<_>, String>>()?;
         Self::roll_sites(content, id, interior.radius, interior.spacing, &list, seed)
     }
 
-    /// The roll of both: `list` holds each site's encounter (none: a beacon alone), whether it is the goal and
-    /// whether it is a signal's site.
+    /// The roll of both: `list` holds each site to roll ([`SiteRoll`]).
     fn roll_sites(
         content: &Content,
         id: &str,
         radius: f32,
         spacing: (f32, f32),
-        list: &[(Option<&data::Encounter>, bool, bool)],
+        list: &[SiteRoll],
         seed: u64,
     ) -> Result<VoyagePlan, String> {
         let rng = &mut Pcg32::new(splitmix64(seed ^ splitmix64(PLAN_STREAM)), PLAN_STREAM);
@@ -216,7 +231,7 @@ impl VoyagePlan {
         let mut pos = vec![Vec2::ZERO; list.len()];
         let mut placed = vec![entry];
         for goal in [false, true] {
-            for (k, &(_, g, _)) in list.iter().enumerate() {
+            for (k, &(_, g, _, _)) in list.iter().enumerate() {
                 if g == goal {
                     pos[k] = place_site(rng, radius, spacing, &placed, entry, goal);
                     placed.push(pos[k]);
@@ -238,7 +253,7 @@ impl VoyagePlan {
             Ok(d)
         };
         let mut sites = Vec::with_capacity(list.len());
-        for (k, &(e, goal, signal)) in list.iter().enumerate() {
+        for (k, &(e, goal, signal, core)) in list.iter().enumerate() {
             let mut ships = Vec::new();
             for s in e.map_or(&[][..], |e| &e.ships) {
                 for _ in 0..roll_count(rng, s.count) {
@@ -274,6 +289,7 @@ impl VoyagePlan {
                 encounter: e.map(|e| e.id.clone()),
                 goal,
                 signal,
+                core,
                 pos: pos[k],
                 wake_radius: e.map_or(0.0, |e| e.wake_radius),
                 ships,
@@ -598,6 +614,11 @@ impl StateHash for Site {
         h.str(p.encounter.as_deref().unwrap_or(""));
         h.bool(p.goal);
         h.bool(p.signal);
+        // Only when there is one, so plans without data cores (the slice's) hash as before.
+        if let Some((trail, signal)) = p.core {
+            h.u32(trail);
+            h.u32(signal);
+        }
         h.vec2(p.pos);
         h.f32(p.wake_radius);
         for list in [&p.ships, &p.wrecks] {
@@ -897,6 +918,9 @@ impl Sim {
             let id = self.spawn_wreck(Arc::clone(&w.design), *enemy, w.body, w.damage, w.seed);
             site.wrecks.push(id);
             site_of.insert(id, k as u32);
+        }
+        if let Some(core) = site.plan.core {
+            self.stow_data_core(site.wrecks.first().copied(), site.plan.pos, core);
         }
         site.state = if site.ships.is_empty() {
             SiteState::Quiet

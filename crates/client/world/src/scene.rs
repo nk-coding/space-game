@@ -455,8 +455,8 @@ fn build_voyage(scene: &mut Scene, focus: &mut PilotFocus, inputs: &SceneInputs,
         Err(problems) => error!("behavior library: {} problems, first: {:?}", problems.len(), problems.first()),
     }
     // The sites' ships compile from the content every other owner flies with (`SimWorld::design` for ENEMY).
-    let plan = match launched.cluster {
-        Some(cluster) => crate::voyage::cluster_plan(&others, launched, cluster),
+    let plan = match &launched.cluster {
+        Some(c) => sim::VoyagePlan::roll_interior(&others, &launched.voyage, &c.interior, &c.leads, launched.seed),
         None => others.voyages.get(id).ok_or_else(|| format!("no voyage `{id}`")).and_then(|v| sim::VoyagePlan::roll(&others, v, launched.seed)),
     };
     let mut world = SimWorld::new(sim, content).with_others(others);
