@@ -147,6 +147,14 @@ struct MapRoot;
 #[derive(Component)]
 struct Stage;
 
+/// What cuts the map's labels: the map left of the panel, run out to the window's edges.
+#[derive(Component)]
+struct MapClip;
+
+/// The map's labels' frame inside the clip: the stage's part left of the panel.
+#[derive(Component)]
+struct MapFrame;
+
 /// One of the star map's meshes, its material (for its fade) and what it shows.
 #[derive(Component)]
 struct MapMesh {
@@ -436,9 +444,11 @@ fn spawn(
         root.spawn((Stage, Node { width: px(STAGE.x), height: px(STAGE.y), flex_shrink: 0.0, ..default() })).with_children(|stage| {
             // ---- The map (everything left of the panel) ----
             // It fades in place: the map's drawing is placed from the stage. Labels moved past its edges by the view
-            // are cut there (and can't be clicked).
-            let map = Node { position_type: PositionType::Absolute, left: px(0), top: px(0), width: px(PANEL_X), height: px(STAGE.y), overflow: Overflow::clip(), ..default() };
-            stage.spawn((ScreenPart::new(Edge::Fade, 0), map)).with_children(|m| {
+            // are cut there (and can't be clicked): at the panel, and at the window's edges (`fit` runs the clip out
+            // past the stage, where the galaxy is drawn too in a window wider or taller than the stage).
+            let clip = Node { position_type: PositionType::Absolute, left: px(0), top: px(0), width: px(PANEL_X), height: px(STAGE.y), overflow: Overflow::clip(), ..default() };
+            let frame = Node { position_type: PositionType::Absolute, left: px(0), top: px(0), width: px(PANEL_X), height: px(STAGE.y), ..default() };
+            stage.spawn((ScreenPart::new(Edge::Fade, 0), MapClip, clip)).with_children(|clip| { clip.spawn((MapFrame, frame)).with_children(|m| {
                 // Under everything else: the galaxy's band names (seen zoomed out), halfway across each band: home's
                 // (`CHARTED`) and the next (`UNCHARTED`) above the centre, the narrower deeper ones below it.
                 let b = &geo.band;
@@ -557,7 +567,7 @@ fn spawn(
                     z.spawn((ring_node(28.0), MapButton::View(ViewButton::ZoomIn), Tip::new("ZOOM IN"), ActionTip(Action::ZoomIn))).with_child(ring_glyph(Glyph::Plus, 13.0));
                     z.spawn((ring_node(28.0), MapButton::View(ViewButton::Reset), Tip::new("RESET VIEW"), ActionTip(Action::ResetView))).with_child(ring_glyph(Glyph::Fit, 13.0));
                 });
-            });
+            }); });
 
             // ---- The panel: the selected voyage, the fleet, SET COURSE ----
             stage
@@ -642,11 +652,31 @@ fn spawn(
     });
 }
 
-/// The stage fits the window; the camera rig knows the window (the mesh and the icons are placed through it).
-fn fit(window: Single<&Window, With<PrimaryWindow>>, size: Res<kit::ui_kit::UiSize>, mut ui_scale: ResMut<UiScale>, mut rig: ResMut<CameraRig>) {
+/// The stage fits the window; the map's clip runs out to the window's edges left of the panel, its labels' frame
+/// staying on the stage; the camera rig knows the window (the mesh and the icons are placed through it).
+#[allow(clippy::type_complexity)]
+fn fit(
+    window: Single<&Window, With<PrimaryWindow>>,
+    size: Res<kit::ui_kit::UiSize>,
+    mut ui_scale: ResMut<UiScale>,
+    mut rig: ResMut<CameraRig>,
+    mut clip: Single<&mut Node, (With<MapClip>, Without<MapFrame>)>,
+    mut frame: Single<&mut Node, (With<MapFrame>, Without<MapClip>)>,
+) {
     let s = stage_scale(window.size()) * size.0;
     if (ui_scale.0 - s).abs() > 1e-3 {
         ui_scale.0 = s;
+    }
+    // The window's margins round the stage, in stage px.
+    let margin = ((window.size() / s - STAGE) / 2.0).max(Vec2::ZERO).round();
+    let (left, top) = (px(-margin.x), px(-margin.y));
+    if clip.left != left || clip.top != top {
+        clip.left = left;
+        clip.top = top;
+        clip.width = px(PANEL_X + margin.x);
+        clip.height = px(STAGE.y + 2.0 * margin.y);
+        frame.left = px(margin.x);
+        frame.top = px(margin.y);
     }
     if rig.viewport != window.size() || rig.view_offset != Vec2::ZERO {
         rig.viewport = window.size();

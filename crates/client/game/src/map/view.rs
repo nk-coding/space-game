@@ -255,17 +255,21 @@ impl MapView {
         let b = Band { centre: self.to_screen(band.centre), outer: band.outer * self.zoom, inner: band.inner * self.zoom, ..band.clone() };
         let inner = b.x_at(b.inner, TOP_Y);
         let this = match (b.x_at(b.outer, TOP_Y), inner) {
-            (Some(o), Some(i)) => Some(((o.max(0.0) + i) / 2.0).max(330.0)).filter(|x| *x <= i - 16.0),
-            (Some(o), None) => Some(((o.max(0.0) + PANEL_X) / 2.0).max(330.0)),
+            (Some(o), Some(i)) => Some(((o.max(0.0) + i) / 2.0).max(HEADER_END)).filter(|x| *x <= i - 16.0),
+            (Some(o), None) => Some(((o.max(0.0) + PANEL_X) / 2.0).max(HEADER_END)),
             (None, _) => None,
         };
-        let next = inner.filter(|_| band.next_key.is_some()).map(|i| i + 34.0);
+        // The next band's name only where it clears the header.
+        let next = inner.filter(|_| band.next_key.is_some()).map(|i| i + 34.0).filter(|x| *x >= HEADER_END);
         [this.filter(|x| *x < PANEL_X - 30.0), next.filter(|x| *x + 26.0 < PANEL_X)]
     }
 }
 
 /// The line the top band names sit on (stage y).
 pub const TOP_Y: f32 = 30.0;
+/// The top band names stay right of this (stage x): the header's words end before it (`RIM · 4 CHARTED · 4 CLEARED · 2
+/// SIGNALS`).
+const HEADER_END: f32 = 420.0;
 
 /// The view's buttons (bottom right of the map).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -671,7 +675,7 @@ mod tests {
     }
 
     /// The top band names sit halfway between the band's arcs on the top line (the next one past the gate) and
-    /// slide with them.
+    /// slide with them, never over the header.
     #[test]
     fn the_top_band_names_follow_their_arcs() {
         let band = Band { centre: Vec2::new(1500.0, 400.0), outer: 1414.0, inner: 1100.0, next: 700.0, key: "rim".into(), next_key: Some("outer".into()) };
@@ -680,9 +684,12 @@ mod tests {
         let b = &band;
         let (outer, inner) = (b.x_at(b.outer, TOP_Y).unwrap_or(0.0).max(0.0), b.x_at(b.inner, TOP_Y).unwrap());
         let near = |a: Option<f32>, b: f32| a.is_some_and(|a| (a - b).abs() < 1e-3);
-        assert!(near(this, ((outer + inner) / 2.0).max(330.0)), "{this:?}");
+        assert!(near(this, ((outer + inner) / 2.0).max(HEADER_END)), "{this:?}");
         assert!(near(next, inner + 34.0), "{next:?}");
-        v.pan(Vec2::new(-200.0, 0.0));
-        assert!(near(v.top_band_x(&band)[1], inner + 34.0 - 200.0));
+        v.pan(Vec2::new(-50.0, 0.0));
+        assert!(near(v.top_band_x(&band)[1], inner + 34.0 - 50.0));
+        // Past the header's end it hides.
+        v.pan(Vec2::new(-150.0, 0.0));
+        assert_eq!(v.top_band_x(&band)[1], None);
     }
 }

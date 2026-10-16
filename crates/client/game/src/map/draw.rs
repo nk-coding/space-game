@@ -170,8 +170,13 @@ impl Pen {
 
     /// An open line through `pts`.
     pub fn polyline(&mut self, pts: &[Vec2], half: f32, col: [f32; 4]) {
+        self.path(pts, false, half, col);
+    }
+
+    /// A line through `pts`, back to the first when `closed` (its corners mitred).
+    pub fn path(&mut self, pts: &[Vec2], closed: bool, half: f32, col: [f32; 4]) {
         let pts: Vec<Vec2> = pts.iter().map(|q| p(*q)).collect();
-        self.m.strip(&pts, false, half, &self.white, col);
+        self.m.strip(&pts, closed, half, &self.white, col);
     }
 
     /// Dots every `step` from `a` to `b`.
@@ -244,24 +249,12 @@ pub fn build_areas(geo: &Geometry, look: &Look, to: impl Fn(Vec2) -> Vec2, zoom:
     let r = known.reach * PX_PER_S * zoom;
     let circles: Vec<Vec2> = known.starts.iter().filter_map(|k| geo.clusters.get(*k as usize)).map(|g| to(*g)).collect();
     if r > 0.0 {
-        let n = ((std::f32::consts::TAU * r / 6.0) as usize).clamp(48, 480);
-        for (i, c) in circles.iter().enumerate() {
-            let free = |q: Vec2| circles.iter().enumerate().all(|(j, o)| j == i || o.distance(q) >= r - 0.5);
-            for (inset, half, a) in [(0.0, 0.7, 0.2), (2.5, 2.0, 0.07), (7.0, 4.5, 0.035)] {
-                let mut run: Vec<Vec2> = Vec::new();
-                for k in 0..=n {
-                    let dir = Vec2::from_angle(k as f32 / n as f32 * std::f32::consts::TAU);
-                    let q = *c + dir * (r - inset);
-                    let shows = free(*c + dir * r) && edge(q.x) > 0.0;
-                    if shows {
-                        run.push(q);
-                    }
-                    if (!shows || k == n) && run.len() > 1 {
-                        pen.polyline(&run, half, vcol(ui.teal, a));
-                    }
-                    if !shows {
-                        run.clear();
-                    }
+        // The glows run along the edges of the unions of smaller circles: they meet in the same kind of corners as
+        // the line, so nothing overhangs where two circles cross.
+        for (inset, half, a) in [(0.0, 0.7, 0.2), (2.5, 2.0, 0.07), (7.0, 4.5, 0.035)] {
+            for (outline, closed) in union_outline(&circles, r - inset, 6.0) {
+                for (run, closed) in left_of(&outline, closed, PANEL_X - EDGE_FADE.0) {
+                    pen.path(&run, closed, half, vcol(ui.teal, a));
                 }
             }
         }
@@ -286,6 +279,112 @@ pub fn build_areas(geo: &Geometry, look: &Look, to: impl Fn(Vec2) -> Vec2, zoom:
         dotted_edge(&mut pen, c, r, if lit { 1.25 } else { 1.0 }, vcol(ui.gold, if lit { 0.95 } else { 0.7 }));
     }
     pen.into_mesh()
+}
+
+/// The outline of the union of the circles of radius `r` round `centres` (the jump range): for each circle the arcs
+/// no other circle covers (cut where two circles cross, kept when their middle lies outside every other circle),
+/// joined end to end into loops that turn exactly at the crossings; points about `step` px apart, each arc's ends
+/// exact, so the outline holds still while the view zooms. Each loop with whether it closed (it always should).
+pub fn union_outline(centres: &[Vec2], r: f32, step: f32) -> Vec<(Vec<Vec2>, bool)> {
+    use std::f32::consts::TAU;
+    if r <= 0.0 {
+        return Vec::new();
+    }
+    // A circle on top of another (a cluster charted twice over) is left to the first of them.
+    let same = |a: Vec2, b: Vec2| a.distance_squared(b) < 1e-6;
+    let circles: Vec<Vec2> = centres.iter().enumerate().filter(|(i, c)| !centres[..*i].iter().any(|o| same(*o, **c))).map(|(_, c)| *c).collect();
+    // (circle, from angle, to angle), counter-clockwise.
+    let mut arcs: Vec<(usize, f32, f32)> = Vec::new();
+    for (i, &c) in circles.iter().enumerate() {
+        let mut cuts: Vec<f32> = Vec::new();
+        for (j, &o) in circles.iter().enumerate() {
+            let d = o.distance(c);
+            if j != i && d < 2.0 * r {
+                let (phi, alpha) = ((o - c).to_angle(), (d / (2.0 * r)).acos());
+                cuts.extend([(phi - alpha).rem_euclid(TAU), (phi + alpha).rem_euclid(TAU)]);
+            }
+        }
+        let outside = |a: f32| {
+            let q = c + Vec2::from_angle(a) * r;
+            circles.iter().enumerate().all(|(j, o)| j == i || o.distance(q) > r)
+        };
+        if cuts.is_empty() {
+            arcs.push((i, 0.0, TAU));
+            continue;
+        }
+        cuts.sort_by(f32::total_cmp);
+        for k in 0..cuts.len() {
+            let (a0, a1) = (cuts[k], if k + 1 < cuts.len() { cuts[k + 1] } else { cuts[0] + TAU });
+            if a1 - a0 > 1e-6 && outside((a0 + a1) / 2.0) {
+                arcs.push((i, a0, a1));
+            }
+        }
+    }
+    let end = |&(i, _, a1): &(usize, f32, f32)| circles[i] + Vec2::from_angle(a1) * r;
+    let start = |&(i, a0, _): &(usize, f32, f32)| circles[i] + Vec2::from_angle(a0) * r;
+    let close = (r * 1e-3).max(1e-3);
+    let mut used = vec![false; arcs.len()];
+    let mut out = Vec::new();
+    for first in 0..arcs.len() {
+        if used[first] {
+            continue;
+        }
+        used[first] = true;
+        let (mut pts, mut at, mut closed) = (Vec::new(), first, false);
+        loop {
+            let (i, a0, a1) = arcs[at];
+            let n = (((a1 - a0) * r / step).ceil() as usize).max(2);
+            pts.extend((0..n).map(|k| circles[i] + Vec2::from_angle(a0 + (a1 - a0) * k as f32 / n as f32) * r));
+            let here = end(&arcs[at]);
+            if a1 - a0 >= TAU - 1e-6 || start(&arcs[first]).distance(here) < close {
+                closed = true;
+                break;
+            }
+            let next = (0..arcs.len()).filter(|&k| !used[k]).map(|k| (start(&arcs[k]).distance(here), k)).min_by(|a, b| a.0.total_cmp(&b.0));
+            match next {
+                Some((d, k)) if d < close => {
+                    used[k] = true;
+                    at = k;
+                }
+                _ => {
+                    pts.push(here);
+                    break;
+                }
+            }
+        }
+        out.push((pts, closed));
+    }
+    out
+}
+
+/// The runs of the line through `pts` (back to the first when `closed`) left of `x`, cut exactly at `x`: the line
+/// itself when it lies wholly left of it.
+fn left_of(pts: &[Vec2], closed: bool, x: f32) -> Vec<(Vec<Vec2>, bool)> {
+    let Some(right) = pts.iter().position(|q| q.x >= x) else {
+        return vec![(pts.to_vec(), closed)];
+    };
+    // A closed line starts at a point right of `x`, so every run left of it has both its ends on `x`.
+    let walk: Vec<Vec2> = if closed { pts[right..].iter().chain(&pts[..=right]).copied().collect() } else { pts.to_vec() };
+    let cut = |a: Vec2, b: Vec2| a.lerp(b, (x - a.x) / (b.x - a.x));
+    let mut runs = Vec::new();
+    let mut run: Vec<Vec2> = Vec::new();
+    for (k, &q) in walk.iter().enumerate() {
+        let prev = k.checked_sub(1).map(|j| walk[j]);
+        if q.x < x {
+            if let Some(a) = prev.filter(|a| a.x >= x) {
+                run.push(cut(a, q));
+            }
+            run.push(q);
+        } else if let Some(a) = prev.filter(|a| a.x < x) {
+            run.push(cut(a, q));
+            runs.push((std::mem::take(&mut run), false));
+        }
+    }
+    if run.len() > 1 {
+        runs.push((run, false));
+    }
+    runs.retain(|r| r.0.len() > 1);
+    runs
 }
 
 /// A dotted circle like the band edges, its dots faded towards the panel.
@@ -487,6 +586,42 @@ mod tests {
     fn the_detail_stops_at_the_panel() {
         assert_eq!((edge(PANEL_X - 100.0), edge(PANEL_X - EDGE_FADE.0)), (1.0, 0.0));
         assert!((edge(PANEL_X - (EDGE_FADE.0 + EDGE_FADE.1) / 2.0) - 0.5).abs() < 1e-5);
+    }
+
+    /// The jump range's outline: two crossing circles make one loop that turns exactly at both crossings, a third
+    /// apart its own; a circle inside the others' union adds nothing; the panel's edge cuts a loop into runs.
+    #[test]
+    fn the_range_outline_is_the_union_s_edge() {
+        let r = 100.0;
+        let (a, b, far) = (Vec2::ZERO, Vec2::new(120.0, 0.0), Vec2::new(500.0, 0.0));
+        let loops = union_outline(&[a, b, far], r, 6.0);
+        assert_eq!(loops.len(), 2);
+        assert!(loops.iter().all(|(_, closed)| *closed));
+        let pair = loops.iter().find(|(pts, _)| pts.iter().any(|q| q.x < 0.0)).unwrap();
+        // Every point lies on the union's edge: on one circle, outside the other.
+        for q in &pair.0 {
+            let (da, db) = (q.distance(a), q.distance(b));
+            assert!(((da - r).abs() < 1e-3 && db >= r - 1e-3) || ((db - r).abs() < 1e-3 && da >= r - 1e-3), "{q}");
+        }
+        // Both crossings are corners of the loop.
+        let h = (r * r - 60.0f32 * 60.0).sqrt();
+        for crossing in [Vec2::new(60.0, h), Vec2::new(60.0, -h)] {
+            assert!(pair.0.iter().any(|q| q.distance(crossing) < 1e-3), "{crossing}");
+        }
+        // Points no further apart than the step, the last back to the first included.
+        let n = pair.0.len();
+        assert!((0..n).all(|k| pair.0[k].distance(pair.0[(k + 1) % n]) <= 6.0 + 1e-3));
+        // A circle in the middle of three adds nothing; the same circle twice is one.
+        let round = [Vec2::new(60.0, 0.0), Vec2::new(0.0, 60.0), Vec2::new(-60.0, 0.0), Vec2::new(0.0, -60.0)];
+        let inner = union_outline(&[round.as_slice(), &[a, a]].concat(), r, 6.0);
+        assert_eq!(inner.len(), 1);
+        assert!(inner[0].1 && inner[0].0.iter().all(|q| q.length() > r - 1e-3));
+        // Cut at x = 50: one open run of the pair's loop, ending on the cut both ways.
+        let runs = left_of(&pair.0, true, 50.0);
+        assert_eq!(runs.len(), 1);
+        let run = &runs[0].0;
+        assert!(!runs[0].1 && (run[0].x - 50.0).abs() < 1e-3 && (run[run.len() - 1].x - 50.0).abs() < 1e-3);
+        assert!(run.iter().all(|q| q.x <= 50.0 + 1e-3));
     }
 
     /// The pulse runs through its steps while a signal shows and stands still at 0 otherwise.

@@ -101,7 +101,8 @@ pub(super) fn draw(
     let s = r / (v.radius() * ROOM);
     // Cluster metres (y up) → the screen (y down) → the world, where the queue draws.
     let to = |p: Vec2| rig.screen_to_world(centre + Vec2::new(p.x, -p.y) * s);
-    let top = (centre.y - r - 26.0).max(8.0);
+    // Over the disc, clear of the HUD's title and its line under it (a short window put it on them).
+    let top = (centre.y - r - 26.0).max(60.0);
     if node.top != Val::Px(top) {
         node.top = Val::Px(top);
     }
