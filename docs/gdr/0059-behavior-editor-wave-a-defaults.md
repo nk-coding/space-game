@@ -1,6 +1,7 @@
 # GDR-0059: Behavior editor wave A defaults: editing rules, storage and tests, the screen
 
-- Status: Accepted (provisional, lead); flying the faction default with a banner confirmed by Niklas in [GDR-0079](0079-review-of-lead-defaults-14-oct.md)
+- Status: Accepted (provisional, lead); flying the faction default with a banner confirmed by Niklas in [GDR-0079](0079-review-of-lead-defaults-14-oct.md). 2026-10-16: `SGD1` (and `SGD2`)
+  codes no longer import; only the current share format is read.
 - Date: 2026-10-13
 - Decided by: lead session (defaults for Niklas to review); details by the wave-A behavior agents
 - Related: [GDR-0057](0057-behavior-editor-v1.md), [GDR-0034](0034-behavior-first-match-fire-at-will.md)–[GDR-0037](0037-behavior-vocabulary-as-content.md), [ADR-0031](../adr/0031-player-storage-and-design-sharing.md), `docs/behavior-format.md` "Editing model", `docs/drydock.md` "Behaviors", `docs/client.md` "Behavior screen"

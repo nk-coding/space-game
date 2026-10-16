@@ -79,7 +79,8 @@ running the fight again.
   parts when the lab loads. The web keeps everything in IndexedDB now; the 5 MB limit, and with it the reason for at
   most 8 runs (still the placeholder), is gone. A checkpoint the web's storage failed to keep pauses the run as before,
   with "delete runs you don't need to make room" for a full storage; RUNS shows the storage used and the quota and
-  warns before it runs out.
+  warns before it runs out. 2026-10-16: share codes of the formats before `SGD3:` are no longer read (an older code
+  is refused as older); designs of format 1 still read, as the same reader takes both.
 - Date: 2026-10-15
 - Decided by: Niklas (the requirements quoted below, and four answers on 15 Oct 2026: a research node unlocks the
   building and runs are free; runs compute at home and on every screen and pause in flight; as many trials as

@@ -622,12 +622,12 @@ closes it; Esc first leaves a rename, a delete question or a selected box):
   `// behavior: behaviors/<id>.ron`, then that behavior file with every line commented out. Pack loaders skip it
   (it is the file to put into the pack's `behaviors/` folder); an import reads it.
 - **Share code** (share format 3 since 16 Oct 2026, GDR-0092: the ship may carry its `origin`, so an older build
-  refuses it as newer; format 2 since 13 Oct 2026, GDR-0057): `SGD3:` + base64url (no padding) of the
+  refuses it as newer): `SGD3:` + base64url (no padding) of the
   zlib-compressed payload, a RON `(packs: [("base", "0.1.0"), ...], ship: (...), behavior: (...))` with the content
   packs (id, version) the design was made with and, when the design names one of the player's behaviors, that
   behavior in the content format (a content behavior goes by its id in the ship only). The Halvex Runner is 955
-  characters; with a copy of the skirmisher (six rules with notes, its summary and description) 1429. Format 2
-  (`SGD2:`, the same without an origin) and format 1 codes (`SGD1:`, no behavior) still import. zlib's checksum catches damaged codes; whitespace inside a code (a chat program's line breaks), a
+  characters; with a copy of the skirmisher (six rules with notes, its summary and description) 1429. A code of
+  another format is refused (an older one "made by an older version of the game"). zlib's checksum catches damaged codes; whitespace inside a code (a chat program's line breaks), a
   lower-case tag and `=` padding are ignored. The code shows in a box: click it (it turns teal) and press Ctrl+C,
   or COPY.
 - **Imports are bounded**: `share::read` takes at most 1 MB of text (a pasted code, RON text, a file: files are

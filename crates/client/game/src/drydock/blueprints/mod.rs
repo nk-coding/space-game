@@ -563,7 +563,7 @@ mod tests {
             shelf.code_selected = true;
         }
         world.resource_mut::<Clipboard>().accept = true;
-        world.resource_mut::<Clipboard>().offer = Some("SGD2:x".into());
+        world.resource_mut::<Clipboard>().offer = Some("SGD3:x".into());
         let root = world.spawn((ShelfRoot, Visibility::Inherited)).id();
         world.run_system_once(leave).unwrap();
         assert_eq!(world.get::<Visibility>(root), Some(&Visibility::Hidden));

@@ -254,7 +254,7 @@ EXPORT shows the design as a file and as a share code.
 
 - **The file**: DOWNLOAD .RON in the browser (WRITE .RON FILE in the desktop game). It is the game's own ship format,
   so it can go straight into a content pack.
-- **The share code**: a line of text that starts with `SGD2:`. Click the box (it turns teal) and press Ctrl+C, or
+- **The share code**: a line of text that starts with `SGD3:`. Click the box (it turns teal) and press Ctrl+C, or
   press COPY. Send it to anyone.
 
 Both carry the design trimmed to its parts, with its pilot assists and the behavior it flies when that is one of

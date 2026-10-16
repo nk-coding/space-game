@@ -11,8 +11,8 @@
 //!   content packs the design was made with (id, version), the exported ship and, when the ship names one of the
 //!   player's behaviors, that behavior (the content behavior format); content behaviors go by id only. zlib's
 //!   checksum catches damaged codes; the pack list explains missing content. About 950 characters for the Halvex
-//!   Runner. Format 3 (GDR-0092) may carry an evolved ship's `origin`, so an older build refuses it as newer;
-//!   format 2 (the same without it) and format 1 (13 Oct 2026, no behavior) still import.
+//!   Runner. Format 3 (GDR-0092) may carry an evolved ship's `origin`; codes of other formats are refused (an older
+//!   one as older, a newer one as newer).
 //! * **Import** ([`read`], [`check`]): a share code, or RON text (a `.ron` file, or pasted). A newer share format,
 //!   a damaged code, text that is no blueprint, and parts or materials this game doesn't have give a message
 //!   (with the packs the design was made with) instead of a crash; an unknown faction is replaced, an unknown
@@ -35,7 +35,7 @@ use world::player::behaviors::{behavior_to_ron, parse_behavior};
 
 /// The share code's tag; the full prefix is `SGD<version>:`.
 const TAG: &str = "SGD";
-/// The share format this build writes (it reads every format up to this one).
+/// The share format this build writes and reads.
 pub const CODE_VERSION: u32 = 3;
 /// The longest text an import reads: a pasted code or blueprint text, a `.ron` file (the RON of a full 64 × 64
 /// frame is about 280 kB).
@@ -56,7 +56,7 @@ pub struct Shared {
     pub behavior: Option<Behavior>,
 }
 
-/// The payload of every share format (format 1 has no `behavior`).
+/// The payload of a share code.
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Payload {
@@ -73,6 +73,8 @@ pub enum ShareError {
     NotADesign,
     /// A share code of a newer format.
     Newer(u32),
+    /// A share code of an older format.
+    Older(u32),
     /// The code is damaged or incomplete (not base64url, not zlib, wrong checksum).
     Damaged,
     /// Longer than any design ([`MAX_TEXT`] of text, [`MAX_PACKED`] packed, [`MAX_PAYLOAD`] unpacked).
@@ -88,6 +90,7 @@ impl fmt::Display for ShareError {
         match self {
             ShareError::NotADesign => f.write_str("that is neither a share code nor a blueprint"),
             ShareError::Newer(v) => write!(f, "made by a newer version of the game (share format {v}; this one reads {CODE_VERSION})"),
+            ShareError::Older(v) => write!(f, "made by an older version of the game (share format {v}; this one reads {CODE_VERSION})"),
             ShareError::Damaged => f.write_str("the code is damaged or incomplete"),
             ShareError::TooLarge => write!(f, "that is too large for a design (over {} kB)", MAX_TEXT >> 10),
             ShareError::Unreadable(why) => write!(f, "the design doesn't read: {why}"),
@@ -168,6 +171,9 @@ fn decode(rest: &str) -> Result<Shared, ShareError> {
     }
     if version == 0 {
         return Err(ShareError::Damaged);
+    }
+    if version < CODE_VERSION {
+        return Err(ShareError::Older(version));
     }
     let data: String = data.chars().filter(|c| !c.is_whitespace()).collect();
     let data = data.trim_end_matches('=');
@@ -380,13 +386,6 @@ mod tests {
         b
     }
 
-    /// A code in share format 1 (13 Oct 2026): the payload without `behavior`, as that build wrote it.
-    fn code_v1(ship: &Blueprint) -> String {
-        let ship = data::blueprint_to_ron(ship).trim_end().replace('\n', "\n    ");
-        let payload = format!("(\n    packs: [(\"base\", \"0.1.0\")],\n    ship: {ship},\n)\n");
-        format!("SGD1:{}", URL_SAFE_NO_PAD.encode(miniz_oxide::deflate::compress_to_vec_zlib(payload.as_bytes(), 10)))
-    }
-
     #[test]
     fn codes_round_trip() {
         let content = data::base_content();
@@ -400,14 +399,12 @@ mod tests {
         }
         let code = encode(&content, &runner(&content), None);
         assert!(code.len() < 1400, "{} characters", code.len());
-        // An evolved design's origin travels with it (format 3); a format 2 code, the same payload without one, still
-        // reads.
+        // An evolved design's origin travels with it.
         let origin = data::Origin { run: "evolving".into(), genome: 9, generation: 2, from: vec!["rim_skiff".into()], score: 0.5 };
         let evolved = Blueprint { origin: Some(origin), ..runner(&content) };
         assert_eq!(read(&encode(&content, &evolved, None)).unwrap().ship.origin, evolved.origin);
-        assert_eq!(read(&format!("SGD2:{}", &code[5..])).unwrap().ship, runner(&content));
         // Wrapped by a chat program, lower-case tag, padding: still reads.
-        let wrapped = format!("  sgd2:{}\n{}==\n", &code[5..40], &code[40..]);
+        let wrapped = format!("  sgd3:{}\n{}==\n", &code[5..40], &code[40..]);
         assert_eq!(read(&wrapped).unwrap().ship.parts, runner(&content).parts);
         // Strings with quotes, backslashes and unicode survive.
         let odd = Blueprint { name: "Läufer \"Mk\" \\ II ★".into(), ..runner(&content) };
@@ -415,7 +412,7 @@ mod tests {
     }
 
     #[test]
-    fn codes_carry_the_player_behavior_and_format_1_still_imports() {
+    fn codes_carry_the_player_behavior() {
         let content = data::base_content();
         let b = careful(&content);
         let ship = Blueprint { behavior: Some(b.id.clone()), ..runner(&content) };
@@ -433,16 +430,14 @@ mod tests {
         let shared = Shared { ship: content_named, packs: Vec::new(), behavior: Some(Behavior { id: "skirmisher".into(), ..b }) };
         let (fixed, carried, _) = check(&content, shared, "ship_mind").unwrap();
         assert_eq!((fixed.behavior.as_deref(), carried), (Some("skirmisher"), None));
-        // A code from the first share format (no behavior) imports as before.
-        let old = read(&code_v1(&runner(&content))).unwrap();
-        assert_eq!(old, Shared { ship: runner(&content), packs: vec![("base".into(), "0.1.0".into())], behavior: None });
+        // A player behavior the code doesn't carry is dropped.
         let named = Blueprint { behavior: Some("careful".into()), ..runner(&content) };
-        let (fixed, carried, notes) = check(&content, read(&code_v1(&named)).unwrap(), "ship_mind").unwrap();
+        let (fixed, carried, notes) = check(&content, read(&encode(&content, &named, None)).unwrap(), "ship_mind").unwrap();
         assert_eq!((fixed.behavior, carried, notes), (None, None, vec!["unknown behavior careful dropped".to_string()]));
     }
 
     #[test]
-    fn damaged_and_newer_codes_say_so() {
+    fn damaged_older_and_newer_codes_say_so() {
         let content = data::base_content();
         let code = encode(&content, &runner(&content), None);
         // A changed character: base64 still decodes, zlib's checksum or the inflater refuses it.
@@ -452,7 +447,7 @@ mod tests {
         assert_eq!(read(&String::from_utf8(bytes).unwrap()), Err(ShareError::Damaged));
         // Cut short, not base64, no version, version 0.
         assert_eq!(read(&code[..code.len() - 30]), Err(ShareError::Damaged));
-        assert_eq!(read("SGD1:not*base64!"), Err(ShareError::Damaged));
+        assert_eq!(read("SGD3:not*base64!"), Err(ShareError::Damaged));
         assert_eq!(read("SGD:abc"), Err(ShareError::Damaged));
         assert_eq!(read("SGDx"), Err(ShareError::Damaged));
         assert_eq!(read("SGD0:abc"), Err(ShareError::Damaged));
@@ -460,8 +455,12 @@ mod tests {
         let newer = read("SGD7:whatever").unwrap_err();
         assert_eq!(newer, ShareError::Newer(7));
         assert!(newer.to_string().contains("newer version"));
+        // So is an older one (the share formats before 3 are no longer read).
+        let older = read(&format!("SGD2:{}", &code[5..])).unwrap_err();
+        assert_eq!(older, ShareError::Older(2));
+        assert!(older.to_string().contains("older version"));
         // Valid zlib around something that is no payload.
-        let junk = format!("SGD2:{}", URL_SAFE_NO_PAD.encode(miniz_oxide::deflate::compress_to_vec_zlib(b"(packs: [])", 6)));
+        let junk = format!("SGD3:{}", URL_SAFE_NO_PAD.encode(miniz_oxide::deflate::compress_to_vec_zlib(b"(packs: [])", 6)));
         assert!(matches!(read(&junk), Err(ShareError::Unreadable(_))));
         assert_eq!(read("hello"), Err(ShareError::NotADesign));
         assert_eq!(read(""), Err(ShareError::NotADesign));
@@ -483,12 +482,12 @@ mod tests {
         let long = format!("({})", " ".repeat(MAX_TEXT));
         assert_eq!(read(&long), Err(ShareError::TooLarge));
         assert!(ShareError::TooLarge.to_string().contains("too large"));
-        let packed = format!("SGD2:{}", "A".repeat(MAX_PACKED / 3 * 4 + 8));
+        let packed = format!("SGD3:{}", "A".repeat(MAX_PACKED / 3 * 4 + 8));
         assert_eq!(read(&packed), Err(ShareError::TooLarge));
         // A small code that unpacks to more than any design (a zip bomb).
         let bomb = miniz_oxide::deflate::compress_to_vec_zlib(&vec![b' '; MAX_PAYLOAD + 1], 10);
         assert!(bomb.len() < 8 << 10);
-        assert_eq!(read(&format!("SGD2:{}", URL_SAFE_NO_PAD.encode(bomb))), Err(ShareError::TooLarge));
+        assert_eq!(read(&format!("SGD3:{}", URL_SAFE_NO_PAD.encode(bomb))), Err(ShareError::TooLarge));
     }
 
     #[test]
