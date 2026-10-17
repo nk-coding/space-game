@@ -41,6 +41,7 @@ content/base/
   cluster_types/*.ron      kinds of cluster: radius, site spacing, name words, ordinary sites, scenery
   rocks.ron                kinds of asteroid rock: material, size, outline, ram factor, tone (GDR-0104)
   landmarks.ron            landmarks seen far off: form, size, parallax (GDR-0104)
+  planets.ron              planet and moon kinds of a cluster's sky: body, form, palettes, air, rings (GDR-0105)
   trails.ron               trail templates: reward, length, target encounter, signal sources, hint
   signal_sources.ron       where signals come from: logs in wrecks, beacons
   lore/*.ron               lore fragments at the ends of lore trails
@@ -60,7 +61,7 @@ File rules:
 - A kind's data lives in `<dir>.ron` or anywhere under `<dir>/` (any depth), with `<dir>` one of `stats`,
   `categories`, `factions`, `materials`, `parts`, `frames`, `ships`, `behavior_nodes`, `behaviors`, `families`,
   `research`, `facilities`, `starts`, `voyages`, `encounters`, `galaxy`, `bands`, `cluster_types`, `rocks`,
-  `landmarks`, `trails`, `signal_sources`, `lore`, `controls`. File names are free; group however reads
+  `landmarks`, `planets`, `trails`, `signal_sources`, `lore`, `controls`. File names are free; group however reads
   best. `lab.ron` is one file of its own (one `( ... )`, not an entry kind).
 - A file holds **one entry** `( ... )` or **a list** `[ ( ... ), ... ]`. Comments (`//`, `/* */`) are fine.
 - `Some(...)` may be omitted (`power: (output: 10)`); RON's `implicit_some` is always on.
@@ -811,6 +812,20 @@ A voyage's `scenery` is left out of its serde form when empty, so voyages withou
 materials (`materials/ores.ron`: `nickel_iron`, `water_ice`, no `armor`) are what the base rock is made of. The wiki
 has a page per rock kind (with a few rocks rolled by the sim's own outline) and landmark, and a "Between the sites"
 section on every cluster type's and voyage's page.
+
+### The sky: planet kinds and a `sky` (`planets.ron`; added 17 Oct 2026, GDR-0105)
+
+What a cluster shows far behind the play: a planet, its moons, a nebula and a far galaxy, drawn by the client only
+(`docs/client.md` "Voyages", the sky), rolled from the cluster's seed. Not in the rules' fingerprint.
+
+| Kind or block | Fields besides the common header |
+|---|---|
+| `planet` (`planets.ron`) | `body` (`Planet` or `Moon`), `form` (the client's painter: `Jovian`, `Ringed`, `IceGiant`, `HotGiant`, `Toxic`, `Living`, `Garden`, `Ocean`, `Eyeball`, `Desert`, `Ice`, `Lava`, `Rock`, `Geyser`, `Sulfur`, `Crystal`, `Rubble`), `palettes` (1 to 16 `(colors: ["#rrggbb", ...], air: "#rrggbb")`, one rolled per body; the colours in the order the form reads them, `data::PlanetForm`, at least `PlanetForm::colors`; `air` needed with an atmosphere), `atmosphere` (`None` default, `Thin`, `Moderate`, `Thick`), `rings` (optional `(chance, color, bright)`) |
+| `sky` (on a `cluster_type`, and on a `band` for its content voyages and its cluster types without one; optional) | `planets` (`[(kind, weight)]` of `Planet` kinds; empty: any alike), `moons` (`[(kind, weight)]` of `Moon` kinds, at least one; a cluster shows each once at most), `nebula` (two colours along it), `nebula_core`, `nebula_strength` and `galaxy` (0 to 2, 1 the base), `backlit` (the planet against its light) |
+
+A kind's colours are its art (like a part's icon in the pack), so they sit in the content rather than in
+`art/tokens.json`. The wiki has a page per planet kind (its colour sets as swatches, where it is seen) and "The sky"
+on cluster type and band pages.
 
 ### The evolution lab (`lab.ron`, GDR-0092; completed 16 Oct 2026, step 8)
 

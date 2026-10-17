@@ -482,7 +482,7 @@ PostUpdate            ship_view::sync_piece_views (render_pose(alpha) → Transf
 - **Smaller modules**: `params.rs` (launch parameters: the page URL's query, natively `GAME_PARAMS`;
   `Params::flag` / `f32` / `text`), `controls.rs` (keyboard, mouse and touch → `PlayerInput`: stick, A/D ramp and
   nudge, lock, fire, drift, V / Tab / Esc; the touch widgets), `backdrop.rs` (the radial gradient, two parallax dust
-  layers drifting slowly outside flight (0.16 m/s in the far layer), a far layer of stars twinkling in three groups, dotted range rings around
+  layers drifting slowly outside flight (0.16 m/s in the far layer), a far layer of stars twinkling in three groups (parallax 0.02, 0.12 until 17 Oct 2026: farther than a cluster's planet, GDR-0105), dotted range rings around
   the followed ship whose dots keep at least 2.6 px across and 11 px apart at any zoom, rebuilt per zoom step), `meshbuf.rs` (`MeshBuf`, the CPU builder for
   atlas-textured, vertex-coloured 2D meshes; index order = draw order; their data lives only on the GPU, so a
   PostUpdate system that replaces one runs before `TransformSystems::Propagate`, where `atlas.rs` moves Bevy's mesh
@@ -742,6 +742,28 @@ off, the flash and its ring where it left), `voyage-warp-emergency.png` (the eme
     few hundred vertices. The log line `scenery: …` counts what a voyage spawned.
   - Screenshots (headless, 1280 × 720): `docs/results/scenery-rim.png` (a wreck drift's field, debris and glints),
     `scenery-corona.png` (the scorched deep's corona over the star's glow), `scenery-fight.png` (a distant fight).
+  - **The sky** (`sky/`, 17 Oct 2026, [GDR-0105](gdr/0105-cluster-sky-planets-nebula-galaxy.md)): behind
+    everything, from the cluster type's `sky` (else its band's; a content voyage its band's), rolled from the
+    cluster's own seed (`ClusterLaunch::sky_seed`, the skeleton's; a content voyage's from its id) on named streams
+    (`roll.rs`: `planet`, `moons`, `nebula`, `galaxy`, one per body's look): a planet of the sky's weighted kinds
+    (`planets.ron`), large and cut by a corner or small and whole, 0–3 moons each of a different kind, a nebula of
+    soft blobs along a curve (at most 3 over a point, 2 beside a hot star) with faint dust lanes, and a spiral
+    galaxy. Composed in a 1600 × 900 design frame scaled to the view's height, each body at its distance from the
+    view's left or right edge, the nebula stretched to its width; drawn the same size at any zoom. `paint.rs` builds a
+    body: an even polar mesh (40–84 rings for a planet, 10–26 for a moon) whose every vertex is coloured on the CPU
+    like a shader (the surface of its form, `kinds.rs`: bands and ripples, storms, land caps with rough coasts,
+    patches, ice caps, mottling; the clouds as one smooth density of noisy blobs, streaks and log-spiral swirls; the
+    air's tint and haze; then the light: a soft terminator, limb darkening, a highlight, the night side in the sky's
+    dark), a one-pixel feather at the limb, and over it thin lit geometry (streaks, craters, cracks) and glowing
+    geometry (rifts, vents, a garden's lights, plumes); the air's glow a strip outside the limb; rings two halves
+    of feathered elliptical bands (the back under the body, darkened in its shadow). Colours are veiled 15 % towards
+    the sky's dark (strength 85 %). Depth: the layer shifts against the camera's motion on screen (galaxy 0, nebula
+    0.005, planet 0.05, moons 0.075; `sky::place`), kept within 0.3 of the view's height. Z: galaxy −897, the
+    backdrop's stars −893, nebula −890, rings −887 / −885, planet −886, moons −883, under the star glow (−880).
+    The log line `sky: …` names the planet and moons and counts vertices (a large planet 21–33 k with rings, a small
+    one 7–10 k, moons 0.5–3 k, nebula about 2.9 k, galaxy 6.6 k) and the build time. `?planet=<kind>` shows that
+    planet kind instead (for looking at kinds). Screenshots (1280 × 720): `docs/results/sky-rim.png`,
+    `sky-grove.png`, `sky-scorched.png`, `sky-uncharted.png`, `sky-clouds.png` (a cloudy world close up).
 - **Hot stars and living parts** (17 Oct 2026, [GDR-0102](gdr/0102-grown-mechanics-and-parts-defaults.md)): in a
   cluster beside a hot star (`Voyage::star`) a soft glow in the heat colour rises at the edge of the view towards the
   star (`backdrop.rs`, a camera child over the gradient, under the dust; a disc as wide as the view centred just past

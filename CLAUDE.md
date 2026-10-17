@@ -31,7 +31,7 @@ Owner: Niklas (hobby developer, works with AI help). This file is the brief for 
   crates, each using only the ones below it (ADR-0038): `kit` (the toolkit: runtime atlas and its shader, style
   tokens, mesh building, the bevy_ui widget kit and fonts, UI icons, clipboard, launch parameters; knows nothing about
   ships or the sim), `world` (the running game: the sim bridge, scenes and the fight viewer, ship views, effects, shields, camera,
-  controls, the flight HUD and fleet bar, test range, voyages and their transitions, the scenery between a cluster's sites, storage, the career and what
+  controls, the flight HUD and fleet bar, test range, voyages and their transitions, the scenery between a cluster's sites and its sky, storage, the career and what
   the player owns, `world::player`, the player's settings and the action map's input, `world::settings`) and `game` (the screens and `main`: drydock, BEHAVIOR screen, research, FLEET,
   voyage map, shipyard, home, debrief). What two screens share moves down into `world`.
 - Inside every crate: feature folders, one plugin per feature (`mod.rs` holds the plugin and the public surface;

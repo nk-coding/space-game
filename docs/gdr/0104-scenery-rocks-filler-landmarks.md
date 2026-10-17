@@ -78,3 +78,8 @@ the fleet comes near, spawned things asleep.
 - Mining (GDR-0031) needs a laser part, a rock's hit points or yield, and `RockHit` turned into ore; the rock kind's
   `material` already names what it gives. Drifting or breakable rock, rocks in the test range and the cluster map's
   rocks are open.
+
+Note (17 Oct 2026): a cluster's sky (a planet, moons, a nebula, a far galaxy) is drawn by the same client feature
+(`world::scenery::sky`) behind everything here, from a `sky` block on cluster types and bands, and the backdrop's far
+stars move at 0.02 of the camera's motion (0.12 before), farther than the sky's planet
+([GDR-0105](0105-cluster-sky-planets-nebula-galaxy.md)).

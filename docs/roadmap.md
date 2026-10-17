@@ -548,6 +548,15 @@ Next session:
   (`world::scenery`). The slice's curve holds with rock (120 seeds), up to 13 points harder.
 - Open: mining (a laser part, rock yield, `RockHit` into ore), drifting or breakable rock, rock on the cluster map.
 
+### 17 Oct 2026: a cluster's sky
+
+- ([GDR-0105](gdr/0105-cluster-sky-planets-nebula-galaxy.md), style B by Niklas, numbers lead defaults) A planet,
+  its moons, a nebula and a far galaxy behind every cluster, rolled from the cluster's seed (`world::scenery::sky`),
+  painted per vertex so every edge is soft; content kind `planet` (13 planet and 6 moon kinds) and a `sky` block on
+  cluster types and bands; the far stars slowed to 0.02. Screenshots `results/sky-*.png`.
+- Open: the sky tinting the gradient and the stars, turning planets and drifting clouds, the sky at the station and
+  on the map.
+
 ## Phase 4: measurement
 
 Status 12 Oct 2026 (new VM): `results/spike-summary.md` written. Determinism native vs wasm IDENTICAL on the new VM

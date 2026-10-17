@@ -113,6 +113,7 @@ overview and links to both series. Format and status rules: `CLAUDE.md`, section
 | [0102](0102-grown-mechanics-and-parts-defaults.md) | The Grown's mechanics and parts: one regrown part every 2.5 s from a working heart, tissue that heals, a prow that deals twice and takes half, thorn guns, wary sites that wake on provocation and stripped wrecks, hot stars by the inverse square | Accepted (provisional, lead) | 2026-10-17 |
 | [0103](0103-the-grown-in-play-defaults.md) | The Grown in play: rammers, thornbacks, grove guardians and elders on a ganglion beside the heart, prows that charge from thorn range, small groves, a bastion at each outer gate, elders at the end of their own trail, one Grown research chain | Accepted (provisional, lead) | 2026-10-18 |
 | [0104](0104-scenery-rocks-filler-landmarks.md) | Scenery between the sites: anchored asteroid rock as bodies placed by the cluster's scenery (fields, belts, scattered; rams scaled by the rock, behaviors steer round it), drawn-only dust, debris, derelicts, landmarks, a hot star's corona and distant fights | Accepted (provisional, lead) | 2026-10-17 |
+| [0105](0105-cluster-sky-planets-nebula-galaxy.md) | A cluster's sky: a planet (13 kinds), its moons (6 kinds, never two alike), a nebula and a far galaxy in soft vertex-colour style B, rolled from the cluster's seed, kinds and skies in content, drawn only at 85 % | Accepted (provisional, lead; style Niklas's) | 2026-10-17 |
 <!-- index:end -->
 
 ## How to add, supersede and deprecate
