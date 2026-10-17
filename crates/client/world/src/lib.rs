@@ -28,7 +28,7 @@
 //!   toggles, live tuning panel (egui).
 //! - `backdrop`: gradient, parallax dust, range rings.
 //! - `scenery`: what fills a cluster between its sites (GDR-0104): the sim's asteroid rocks, glints, drifting debris
-//!   and derelicts, landmarks far off, a hot star's corona, distant fights.
+//!   and derelicts, landmarks far off, a hot star's corona.
 
 // The screens read the arena's runs and fights (the evolution lab's pages) through the world, which holds them.
 pub use arena;

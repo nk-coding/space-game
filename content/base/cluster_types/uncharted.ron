@@ -19,7 +19,6 @@
         debris: 0.5,
         derelicts: (1, 3),
         landmarks: [(landmark: "silent_beacon", chance: 0.4)],
-        fights: 1.0,
     ),
     sky: (
         // No planet weights: any planet kind alike, standing against its light.

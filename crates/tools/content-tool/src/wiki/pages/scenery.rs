@@ -113,8 +113,7 @@ impl Wiki<'_> {
         let root = UP;
         let facts = vec![
             ("Form".to_string(), form_word(l.form).into()),
-            ("Size".into(), format!("{}–{}", format_number(l.size.0, 0), metres(l.size.1))),
-            ("Depth".into(), format!("moves {} % as fast as the ships' plane", format_number(100.0 * l.parallax, 0))),
+            ("Depth".into(), format!("moves {} % as fast as the ships' plane, behind the sky's planet; about the same size at any zoom", format_number(100.0 * l.parallax, 1))),
         ];
         let what = "<p>Seen far off behind the play, drawn only: it is no body, nothing can reach it, and it changes nothing in a fight.</p>\n".to_string();
         let seen = self.scenery_users(root, |s| {
@@ -167,9 +166,6 @@ impl Wiki<'_> {
         }
         for p in &s.landmarks {
             facts.push(format!("{} in {} % of clusters", self.a(root, Kind::Landmark, &p.landmark), format_number(100.0 * p.chance, 0)));
-        }
-        if s.fights > 0.0 {
-            facts.push(format!("A fight flashing in the distance about {} times a minute", format_number(s.fights, 1)));
         }
         if !facts.is_empty() {
             out.push_str("<p class=\"note\">Drawn only, never in the way:</p>\n");

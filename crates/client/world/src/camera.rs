@@ -45,6 +45,17 @@ use crate::sim_bridge::{PilotFocus, SimWorld, piece_com, v2};
 
 pub const MIN_PX_PER_M: f32 = 3.0;
 pub const MAX_PX_PER_M: f32 = 160.0;
+/// The camera's starting zoom (px per metre), and the zoom every layer before or behind the play is drawn as authored
+/// at ([`depth_scale`]).
+pub const REF_ZOOM: f32 = 18.0;
+
+/// Depth (GDR-0107): a layer of parallax `p` follows `p` of the camera's motion and its size on screen goes with the
+/// zoom to the power `p`, so the play (1) scales fully with the zoom, the sky (about 0) hardly, and every layer between
+/// in its measure. This is the factor the layer's world size and its offset from the camera take at an orthographic
+/// scale of `metres_per_px` (1 at [`REF_ZOOM`]).
+pub fn depth_scale(metres_per_px: f32, parallax: f32) -> f32 {
+    (REF_ZOOM * metres_per_px).powf(1.0 - parallax)
+}
 /// Follow lag (time constant, s).
 const FOLLOW_TAU: f32 = 0.12;
 /// Focus-switch glide: duration for a short hop and for a jump of [`GLIDE_FAR`] metres or more.
@@ -121,8 +132,8 @@ impl Default for CameraRig {
     fn default() -> Self {
         Self {
             pos: Vec2::ZERO,
-            zoom: 18.0,
-            zoom_target: 18.0,
+            zoom: REF_ZOOM,
+            zoom_target: REF_ZOOM,
             floor: MIN_PX_PER_M,
             mode: CamMode::Follow,
             auto_mode: CamMode::Follow,

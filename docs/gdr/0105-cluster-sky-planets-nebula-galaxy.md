@@ -1,7 +1,11 @@
 # GDR-0105: A cluster's sky: a planet, its moons, a nebula and a far galaxy, rolled from the cluster's seed, in soft vertex-colour style ("style B"), drawn only
 
 - Status: Accepted (provisional, lead), 17 Oct 2026: the style is Niklas's (B, "soft banded", from the design study),
-  the numbers are lead defaults for him to review
+  the numbers are lead defaults for him to review.
+  2026-10-17: after Niklas's play-test ([GDR-0107](0107-depth-layers-zoom-and-draw-order.md)): the far stars at 0.02
+  alone felt static; the stars are three layers now (far 0.02, mid 0.07, a sparse near 0.2; 70 / 30 / 12 a 60 m tile,
+  all behind the planet), the sky's pieces scale with the zoom to the power of their parallax (hardly), and the hot
+  star's glow, its corona and the landmarks draw behind the planet.
 - Date: 2026-10-17
 - Decided by: Niklas (style B; planets "too simple", clouds "stepped blobs" in the study: they must be soft and
   gradual) and lead session (numbers, layout, content shape)

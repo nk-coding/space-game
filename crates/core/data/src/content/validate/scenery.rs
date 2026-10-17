@@ -12,8 +12,6 @@ pub const MAX_ROCK_CORNERS: u32 = 16;
 pub const MAX_CLUSTER_ROCKS: u32 = 600;
 /// Most derelict shells drawn in a cluster.
 pub const MAX_DERELICTS: u32 = 32;
-/// Most distant fights a minute.
-pub const MAX_DISTANT_FIGHTS: f32 = 20.0;
 
 impl<'a> Validator<'a> {
     /// A rock kind: a known material, a size, an outline of at least 3 corners, a roughness below 1, a stretch of at
@@ -87,9 +85,6 @@ impl<'a> Validator<'a> {
             }
         }
         self.count_range(e, "scenery.derelicts", s.derelicts, MAX_DERELICTS);
-        if !(s.fights.is_finite() && (0.0..=MAX_DISTANT_FIGHTS).contains(&s.fights)) {
-            self.err(e, "scenery.fights", format!("fights a minute from 0 to {MAX_DISTANT_FIGHTS}, got {}", s.fights));
-        }
         for (k, p) in s.landmarks.iter().enumerate() {
             let f = format!("scenery.landmarks[{k}]");
             match c.landmarks.get(&p.landmark) {

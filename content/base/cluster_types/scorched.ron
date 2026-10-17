@@ -28,7 +28,6 @@
         debris: 0.6,
         derelicts: (0, 2),
         landmarks: [(landmark: "star_corona", chance: 1.0)],
-        fights: 0.2,
     ),
     sky: (
         planets: [(kind: "lava", weight: 4), (kind: "hot_giant", weight: 3), (kind: "desert", weight: 3), (kind: "toxic", weight: 3), (kind: "rock", weight: 2)],

@@ -57,9 +57,10 @@ pub struct Landmark {
     pub tags: Vec<String>,
     /// How the client draws it.
     pub form: LandmarkForm,
-    /// Its size `(min, max)` in metres of its own layer, rolled per cluster.
+    /// Its size `(min, max)` in metres of its own layer (at the camera's starting zoom; GDR-0107), rolled per cluster.
     pub size: (f32, f32),
-    /// The share of the camera's motion its layer follows (0: fixed to the sky; below 1: behind the ships' plane).
+    /// The share of the camera's motion its layer follows (0: fixed to the sky; below 1: behind the ships' plane); its
+    /// size on screen goes with the zoom to this power (GDR-0107).
     pub parallax: f32,
     #[serde(skip_deserializing)]
     pub source: Source,
@@ -99,13 +100,10 @@ pub struct Scenery {
     /// The landmarks that may be seen there, each with its chance per cluster.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub landmarks: Vec<LandmarkPlace>,
-    /// Distant fights (tracers and flashes far off, drawn only), on average per minute.
-    #[serde(default)]
-    pub fights: f32,
 }
 
 impl Scenery {
-    /// Nothing at all: no rocks, dust, debris, derelicts, landmarks or fights.
+    /// Nothing at all: no rocks, dust, debris, derelicts, or landmarks.
     pub fn is_empty(&self) -> bool {
         *self == Scenery::default()
     }

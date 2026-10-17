@@ -1,14 +1,13 @@
 //! Far things (GDR-0104), drawn only:
 //!
 //! * **Landmarks**: each of the scenery's landmarks that its chance gives this cluster (rolled from the voyage's
-//!   seed), anchored somewhere in the cluster on a layer of the landmark's parallax, as a dim silhouette between the
-//!   backdrop's stars and its dust: a derelict station (hub, spokes, a torn ring, two faint lights), a beacon (a mast
-//!   whose light turns slowly), a ring of junk round a dead hub.
+//!   seed), anchored somewhere in the cluster on a layer of the landmark's parallax (below the planet's: far off,
+//!   about the same size on screen at any zoom, GDR-0107), as a dim silhouette behind the sky's planet: a derelict
+//!   station (hub, spokes, a torn ring, two faint lights), a beacon (a mast whose light turns slowly), a ring of junk
+//!   round a dead hub.
 //! * **The corona** (a landmark of form `Corona`, only beside a hot star): arcs of the corona's light and a few loops
-//!   off them at the edge of the view towards the star, over the backdrop's star glow, flickering softly; thin
-//!   strips, so one more large translucent layer at most.
-//! * **Distant fights**: now and then (the scenery's `fights` a minute on average) a skirmish far off on a layer of
-//!   parallax [`FIGHT_PARALLAX`]: two knots of tiny ships, tracers between them, flashes, and a burst at the end.
+//!   off them at the edge of the view towards the star, over the backdrop's star glow and behind the planet,
+//!   flickering softly; thin strips, so one more large translucent layer at most.
 
 use bevy::prelude::*;
 use data::LandmarkForm;
@@ -21,20 +20,13 @@ use super::{Build, Layered, Scenery, SceneryPart, Spec, clock, salted, view};
 use crate::camera::MainCamera;
 use crate::sim_bridge::SimWorld;
 
-/// Landmarks: over the backdrop's stars (z −893) and the sky (`sky/`, −897 to −883), under its dust (−800).
-const Z_LANDMARKS: f32 = -800.5;
-/// Over the backdrop's star glow (−880), under its dust.
-const Z_CORONA: f32 = -870.0;
-const Z_FIGHTS: f32 = -800.3;
+/// Landmarks hang farther off than the sky's planet (their parallax below its 0.05, GDR-0107): over the backdrop's
+/// stars (−893 to −892) and the nebula (−890), under the planet's rings and the planet (−887 to −885).
+const Z_LANDMARKS: f32 = -888.5;
+/// The corona round the hot star: over its glow (−889, `backdrop.rs`), under the landmarks.
+const Z_CORONA: f32 = -888.8;
 /// Landmarks lie within this share of the cluster's radius.
 const LANDMARK_REACH: f32 = 0.7;
-/// Distant fights hang this far off (their layer's share of the camera's motion) ...
-const FIGHT_PARALLAX: f32 = 0.06;
-/// ... somewhere within this share of the view round its centre, and last this long (s).
-const FIGHT_SPREAD: f32 = 0.35;
-const FIGHT_SECONDS: (f32, f32) = (4.0, 7.0);
-/// A fight's sizes (m) are for a view this wide; it is drawn as large on screen at any zoom.
-const FIGHT_VIEW: f32 = 70.0;
 
 /// What [`spawn`] made (for the log line).
 pub(super) struct FarCounts {
@@ -232,114 +224,6 @@ pub(super) fn corona(
         }
         let s = clock(&world, &fixed);
         set_alpha(&mut materials, &c.0, 0.75 + 0.25 * (s * 1.3).sin() * (s * 0.7).cos());
-    }
-}
-
-/// The distant fights under way, the next one's start and the mesh they are drawn into.
-#[derive(Resource, Default)]
-pub(super) struct Fights {
-    rng: Option<Rng>,
-    next: Option<f32>,
-    active: Vec<Fight>,
-    view: Option<(Entity, Handle<Mesh>)>,
-}
-
-/// One distant fight: its anchor (on its layer), when it started and how long it lasts, its ships (relative to the
-/// anchor, side 0 then side 1), and its tracers' and flashes' phases.
-struct Fight {
-    anchor: Vec2,
-    start: f32,
-    seconds: f32,
-    ships: Vec<(Vec2, usize)>,
-    phase: Vec<f32>,
-}
-
-/// Starts distant fights at the scenery's rate and draws those under way (one mesh, rebuilt while any is on).
-#[allow(clippy::too_many_arguments)]
-pub(super) fn fights(
-    mut commands: Commands,
-    world: Res<SimWorld>,
-    fixed: Res<Time<Fixed>>,
-    state: Res<Scenery>,
-    mut fights: ResMut<Fights>,
-    atlas: Res<kit::atlas::Atlas>,
-    mut meshes: ResMut<Assets<Mesh>>,
-    camera: Single<(&Camera, &Projection, &Transform), With<MainCamera>>,
-) {
-    let Some(spec) = state.spec.as_ref().filter(|s| s.scenery.fights > 0.0) else { return };
-    let now = clock(&world, &fixed);
-    let (cam, proj, tf) = camera.into_inner();
-    let (at, size) = view(cam, proj, tf);
-    let f = &mut *fights;
-    let rng = f.rng.get_or_insert_with(|| Rng::new(salted(spec.seed, 5)));
-    let mean = 60.0 / spec.scenery.fights;
-    let next = *f.next.get_or_insert(now + mean * 0.3);
-    if now >= next {
-        // Somewhere in the view's middle now, anchored so that it stays put on its layer.
-        let offset = Vec2::new(rng.range(-1.0, 1.0), rng.range(-1.0, 1.0)) * size * FIGHT_SPREAD;
-        let anchor = at + offset / FIGHT_PARALLAX;
-        let spread = rng.range(3.0, 6.0);
-        let mut ships = Vec::new();
-        for side in 0..2 {
-            let centre = Vec2::new(if side == 0 { -spread } else { spread }, rng.range(-1.0, 1.0));
-            for _ in 0..2 + (rng.next_f32() * 2.0) as usize {
-                ships.push((centre + Vec2::new(rng.range(-1.2, 1.2), rng.range(-1.2, 1.2)), side));
-            }
-        }
-        let phase = (0..12).map(|_| rng.next_f32()).collect();
-        f.active.push(Fight { anchor, start: now, seconds: rng.range(FIGHT_SECONDS.0, FIGHT_SECONDS.1), ships, phase });
-        f.next = Some(now + mean * (-(rng.range(0.05, 1.0)).ln()));
-    }
-    f.active.retain(|x| now - x.start < x.seconds + 1.0);
-    let hard = atlas.region("fx/dot_hard");
-    let soft = atlas.region("fx/dot_soft");
-    let white = atlas.region("fx/white");
-    let tracer = [atlas.token_color("world.distant_tracer"), atlas.token_color("world.distant_fire")];
-    let fire = atlas.token_color("world.distant_fire");
-    // Drawn at the same size on screen at any zoom (so far off, the zoom hardly changes it).
-    let k = size.x / FIGHT_VIEW;
-    let mut m = MeshBuf::default();
-    for x in &f.active {
-        let centre = at + (x.anchor - at) * FIGHT_PARALLAX;
-        let age = now - x.start;
-        let fade = (1.0 - (age - x.seconds).max(0.0)).clamp(0.0, 1.0) * (age / 0.6).min(1.0);
-        let n = x.ships.len();
-        for (i, &(p, side)) in x.ships.iter().enumerate() {
-            let (q, other) = x.ships[(i + n / 2) % n];
-            let (p, q) = (centre + p * k, centre + q * k);
-            m.region_at(&hard, p, Vec2::splat(0.14 * k), 0.0, vcol(tracer[side], 0.7 * fade));
-            let ph = x.phase[i % x.phase.len()];
-            if age < x.seconds && other != side {
-                // A tracer towards a ship of the other side: a streak running along the line.
-                let t = (age * (1.6 + ph) + ph).fract();
-                m.strip(&[p.lerp(q, t), p.lerp(q, (t + 0.15).min(1.0))], false, 0.035 * k, &white, vcol(tracer[side], 0.85 * fade));
-                // A hit's flash on the target now and then.
-                let flash = (age * 0.9 + ph * 7.0).fract();
-                if flash < 0.15 {
-                    m.region_at(&soft, q, Vec2::splat((1.0 + flash * 9.0) * k), 0.0, vcol(fire, (0.8 - flash * 5.0).max(0.0) * fade));
-                }
-            }
-        }
-        // The end: one side's ship bursts.
-        let end = age - x.seconds;
-        if (0.0..1.0).contains(&end) {
-            let p = centre + x.ships[0].0 * k;
-            m.region_at(&soft, p, Vec2::splat((1.5 + end * 7.0) * k), 0.0, vcol(fire, 0.85 * (1.0 - end)));
-            m.region_at(&hard, p, Vec2::splat((0.3 + end * 0.8) * k), 0.0, vcol(Color::WHITE, 0.9 * (1.0 - end)));
-        }
-    }
-    let mesh = if m.is_empty() { MeshBuf::placeholder() } else { m.into_mesh() };
-    match &f.view {
-        Some((_, h)) => {
-            if let Some(mut slot) = meshes.get_mut(h) {
-                *slot = mesh;
-            }
-        }
-        None => {
-            let h = meshes.add(mesh);
-            let e = commands.spawn((SceneryPart, Mesh2d(h.clone()), MeshMaterial2d(atlas.material.clone()), Transform::from_xyz(0.0, 0.0, Z_FIGHTS))).id();
-            f.view = Some((e, h));
-        }
     }
 }
 

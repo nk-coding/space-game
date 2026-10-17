@@ -25,7 +25,6 @@
             debris: 0.4,
             derelicts: (0, 2),
             landmarks: [(landmark: "silent_beacon", chance: 0.3)],
-            fights: 0.3,
         ),
     ),
     (
@@ -50,7 +49,6 @@
             debris: 1.2,
             derelicts: (2, 4),
             landmarks: [(landmark: "derelict_station", chance: 0.3), (landmark: "silent_beacon", chance: 0.3)],
-            fights: 0.6,
         ),
         sky: (
             planets: [

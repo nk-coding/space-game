@@ -5,14 +5,15 @@
 //! * **Filler** (`filler.rs`, drawn only, never in the way): glints and motes on a near parallax layer, bits of hull
 //!   drifting about (thicker round the sites), derelict shells drifting slowly along the way a little below the play.
 //! * **Far things** (`far.rs`): landmarks far off on layers of their own (a derelict station, a beacon, a junk ring),
-//!   a hot star's corona at the edge of the view towards it, and fights flashing in the distance now and then.
+//!   and a hot star's corona at the edge of the view towards it.
 //! * **The sky** (`sky/`, GDR-0105): a planet, its moons, a nebula and a far galaxy behind everything, from the cluster
 //!   type's or the band's `sky`, rolled from the cluster's own seed (the same sky at every visit), drawn the same size
 //!   at any zoom.
 //!
 //! Everything but the rocks is seeded from the voyage's seed in the client and never touches the sim; it moves with
-//! the sim's clock (paused with it). Each piece sits at an anchor in the world with a parallax `p`: it is drawn at
-//! `camera + (anchor − camera) · p`, so at `p = 1` it lies in the play and nearer 0 it hangs further off.
+//! the sim's clock (paused with it). Each piece sits at an anchor in the world with a parallax `p` (GDR-0107): it is
+//! drawn at `camera + (anchor − camera) · p · s` and `s` times its size, `s = camera::depth_scale(p)`, so at `p = 1` it
+//! lies in the play and scales with the zoom, nearer 0 it hangs further off and keeps its size on screen.
 
 mod far;
 mod filler;
@@ -23,7 +24,7 @@ use bevy::prelude::*;
 use kit::atlas::{Atlas, AtlasMaterial};
 use kit::style::Style;
 
-use crate::camera::{CameraSet, MainCamera};
+use crate::camera::{CameraSet, MainCamera, depth_scale};
 use crate::mode::AppMode;
 use crate::sim_bridge::{SimWorld, v2};
 use crate::voyage::VoyageRun;
@@ -33,12 +34,11 @@ pub struct SceneryPlugin;
 impl Plugin for SceneryPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<Scenery>()
-            .init_resource::<far::Fights>()
             .init_resource::<sky::SkyDrift>()
             .add_systems(Update, (sync, rocks::draw_rocks).chain())
             .add_systems(
                 PostUpdate,
-                (place, filler::place_tiles, far::corona, far::fights, far::blink, sky::place)
+                (place, filler::place_tiles, far::corona, far::blink, sky::place)
                     .after(CameraSet)
                     .before(bevy::transform::TransformSystems::Propagate),
             );
@@ -88,13 +88,17 @@ fn clock(world: &SimWorld, fixed: &Time<Fixed>) -> f32 {
     (world.sim.tick() as f32 + fixed.overstep_fraction().clamp(0.0, 1.0)) / sim::TICK_HZ as f32
 }
 
-/// The view's centre and size in metres.
-fn view(cam: &Camera, proj: &Projection, tf: &Transform) -> (Vec2, Vec2) {
-    let scale = match proj {
+/// The camera's metres a logical pixel.
+fn metres_per_px(proj: &Projection) -> f32 {
+    match proj {
         Projection::Orthographic(o) => o.scale,
         _ => 1.0,
-    };
-    (tf.translation.truncate(), cam.logical_viewport_size().unwrap_or(Vec2::splat(1000.0)) * scale)
+    }
+}
+
+/// The view's centre and size in metres.
+fn view(cam: &Camera, proj: &Projection, tf: &Transform) -> (Vec2, Vec2) {
+    (tf.translation.truncate(), cam.logical_viewport_size().unwrap_or(Vec2::splat(1000.0)) * metres_per_px(proj))
 }
 
 /// A seed for the client's decoration generator from the voyage's seed and a salt (each part rolls on its own).
@@ -116,7 +120,6 @@ fn sync(
     style: Res<Style>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<AtlasMaterial>>,
-    mut fights: ResMut<far::Fights>,
     mut drift: ResMut<sky::SkyDrift>,
     params: Res<kit::params::Params>,
     parts: Query<Entity, With<SceneryPart>>,
@@ -129,7 +132,6 @@ fn sync(
     for e in &parts {
         commands.entity(e).despawn();
     }
-    *fights = far::Fights::default();
     state.key = key;
     state.rocks_drawn = 0;
     state.spec = voyage.and_then(|v| {
@@ -193,19 +195,23 @@ struct Build<'a, 'w, 's> {
     materials: &'a mut Assets<AtlasMaterial>,
 }
 
-/// Puts every layered piece where its parallax shows it now.
+/// Puts every layered piece where its parallax shows it now, at its depth's scale (`camera::depth_scale`).
+#[allow(clippy::type_complexity)]
 fn place(
     world: Res<SimWorld>,
     fixed: Res<Time<Fixed>>,
-    camera: Single<&Transform, (With<MainCamera>, Without<Layered>)>,
+    camera: Single<(&Projection, &Transform), (With<MainCamera>, Without<Layered>)>,
     mut parts: Query<(&Layered, &mut Transform)>,
 ) {
-    let cam = camera.translation.truncate();
+    let (proj, cam) = camera.into_inner();
+    let (cam, k) = (cam.translation.truncate(), metres_per_px(proj));
     let t = clock(&world, &fixed);
     for (l, mut tf) in &mut parts {
-        let at = cam + (l.anchor + l.drift * t - cam) * l.parallax;
+        let s = depth_scale(k, l.parallax);
+        let at = cam + (l.anchor + l.drift * t - cam) * l.parallax * s;
         tf.translation.x = at.x;
         tf.translation.y = at.y;
         tf.rotation = Quat::from_rotation_z(l.angle + l.spin * t);
+        tf.scale = Vec3::new(s, s, 1.0);
     }
 }

@@ -15,8 +15,8 @@ use kit::meshbuf::MeshBuf;
 use kit::rng::Rng;
 use kit::style::vcol;
 
-use super::{Build, Layered, SceneryPart, Spec, clock, salted, view};
-use crate::camera::MainCamera;
+use super::{Build, Layered, SceneryPart, Spec, clock, metres_per_px, salted, view};
+use crate::camera::{MainCamera, depth_scale};
 use crate::sim_bridge::SimWorld;
 
 const Z_GLINTS: f32 = -660.0;
@@ -237,13 +237,17 @@ pub(super) fn place_tiles(
 ) {
     let (cam, proj, tf) = camera.into_inner();
     let (cam_pos, size) = view(cam, proj, tf);
+    let k = metres_per_px(proj);
     for (tile, mut t) in &mut tiles {
+        // In the layer's own metres: where the camera is and how much of the layer the view shows.
+        let s = depth_scale(k, tile.parallax);
         let q = cam_pos * tile.parallax;
-        let first = ((q - size / 2.0) / tile.size).floor();
+        let first = ((q - size / s / 2.0) / tile.size).floor();
         let slot = first + Vec2::new((tile.slot % COPIES) as f32, (tile.slot / COPIES) as f32);
-        let at = slot * tile.size - q + cam_pos;
+        let at = cam_pos + (slot * tile.size - q) * s;
         t.translation.x = at.x;
         t.translation.y = at.y;
+        t.scale = Vec3::new(s, s, 1.0);
     }
     if let Some(Twinkle(m)) = twinkle.iter().next() {
         let s = clock(&world, &fixed);

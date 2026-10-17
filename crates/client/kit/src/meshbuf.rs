@@ -48,6 +48,22 @@ impl MeshBuf {
         }
     }
 
+    /// A polygon that is star-shaped round `centre` (every edge seen from it, e.g. a convex outline with a little
+    /// noise on it): a fan from `centre`, one flat colour, sampling a single texel position.
+    pub fn fan(&mut self, centre: Vec2, pts: &[Vec2], uv: Vec2, c: [f32; 4]) {
+        if pts.len() < 3 {
+            return;
+        }
+        let base = self.vert(centre, uv, c);
+        for p in pts {
+            self.vert(*p, uv, c);
+        }
+        let n = pts.len() as u32;
+        for k in 0..n {
+            self.idx.extend_from_slice(&[base, base + 1 + k, base + 1 + (k + 1) % n]);
+        }
+    }
+
     /// A quad with explicit corner UVs. Corners in order: a, b, c, d around the quad.
     pub fn quad_uv(&mut self, p: [Vec2; 4], uv: [Vec2; 4], c: [f32; 4]) {
         let base = self.vert(p[0], uv[0], c);

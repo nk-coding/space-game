@@ -23,7 +23,7 @@ use data::{BodyClass, PlanetKind, Sky};
 use kit::params::RenderToggles;
 
 use super::{Build, SceneryPart};
-use crate::camera::MainCamera;
+use crate::camera::{MainCamera, REF_ZOOM};
 use paint::{Body, Paint};
 use roll::{Stream, mix};
 
@@ -39,7 +39,8 @@ const PARALLAX_MOONS: f32 = 0.075;
 /// The planet layer's shift stays within this share of the view's height.
 const DRIFT_REACH: f32 = 0.3;
 /// Draw order: the galaxy over the gradient, the far stars (−893, `backdrop.rs`), the nebula, the rings' back
-/// halves, the planet, the rings' front halves, the moons; the hot star's glow (−880) over them all.
+/// halves, the planet, the rings' front halves, the moons. The hot star's glow (−889), its corona and the landmarks
+/// (−888.5) lie between the nebula and the planet: nothing farther off draws over the planet (GDR-0107).
 const Z_GALAXY: f32 = -897.0;
 const Z_NEBULA: f32 = -890.0;
 const Z_PLANET: f32 = -886.0;
@@ -237,7 +238,7 @@ fn roll_moons(r: &mut Stream, s: &SkySpec, content: &data::Content, p: &Body, ho
 }
 
 /// Places the sky's pieces for the view: each at its distance from its edge of the view, scaled to the view's
-/// height, shifted by its share of the planet layer's drift.
+/// height (and the zoom to the power of its parallax), shifted by its share of the planet layer's drift.
 #[allow(clippy::type_complexity)]
 pub(super) fn place(
     toggles: Res<RenderToggles>,
@@ -266,6 +267,9 @@ pub(super) fn place(
     }
     drift.last = Some(at);
     let s = view.y / H;
+    // Each piece's size on screen goes with the zoom to the power of its parallax (GDR-0107: hardly, the sky being
+    // far), about the scale its place is measured in.
+    let zoom = 1.0 / (REF_ZOOM * k.max(1e-6));
     let shown = if toggles.debug_shapes { Visibility::Hidden } else { Visibility::Inherited };
     for (p, mut t, mut vis) in &mut parts {
         let x = if p.stretch {
@@ -279,8 +283,9 @@ pub(super) fn place(
         let off = drift.shift * p.depth;
         t.translation.x = at.x + (x + off.x) * k;
         t.translation.y = at.y + (y + off.y) * k;
-        let sx = if p.stretch { view.x / W } else { s };
-        t.scale = Vec3::new(sx * k, s * k, 1.0);
+        let g = zoom.powf(p.depth * PARALLAX_PLANET);
+        let sx = if p.stretch { view.x / W } else { s * g };
+        t.scale = Vec3::new(sx * k, s * g * k, 1.0);
         if *vis != shown {
             *vis = shown;
         }

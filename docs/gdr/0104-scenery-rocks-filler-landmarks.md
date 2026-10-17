@@ -1,6 +1,8 @@
 # GDR-0104: Scenery between the sites, lead defaults: anchored asteroid rock as real bodies placed by the cluster's scenery, drawn-only dust, debris, derelicts, landmarks, a hot star's corona and distant fights
 
-- Status: Accepted (provisional, lead), 17 Oct 2026, for Niklas to review
+- Status: Accepted (provisional, lead), 17 Oct 2026, for Niklas to review.
+  2026-10-17: the rocks spawned so far show on the minimap and the cluster map as faint specks ([GDR-0106](0106-flight-minimap.md)).
+  2026-10-17: after Niklas's play-test ([GDR-0107](0107-depth-layers-zoom-and-draw-order.md)): the distant fights removed (code, content field `scenery.fights`, tokens); every layer scales with the zoom by its depth; landmarks moved behind the sky's planet (parallax 0.03–0.04, sizes in metres of their layer at 18 px/m); rocks drawn finer than their colliders (rounded, roughened outlines, shading and craters).
 - Date: 2026-10-17
 - Decided by: lead session (defaults for Niklas's request of 17 Oct 2026: "currently flying somewhere is extremely
   empty except the few destinations"; future content adds more, so data-driven and extensible)
