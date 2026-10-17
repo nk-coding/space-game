@@ -506,6 +506,12 @@ Next session:
   the re-measurement is in `results/slice-balance-2026-10-17.md`: the Warden's raiders 2–3 and Corran Reach's
   hunter packs ×2 bring the Warden to 44 % (was 62 %); open: the first voyages stay easy for the starter, the cannon
   starter clears the Warden alone 37 %, shields collapse in 0–9 % of waves.
+- **A different first enemy and shield capacity 2** (Niklas, same day; second pass
+  `results/slice-balance-2026-10-17b.md`): the automaton gunner ([GDR-0101](gdr/0101-the-automaton-gunner.md): twin
+  cannons, `gunner_pack` aims at the engines) in three new encounters on the first two voyages, a gunner pair in
+  Corran Reach and wreck drifts; shield capacity 3 → 2 (one collapse in six sustained waves). The starter 57 / 37 / 22
+  / 15 %, the Runner 74 / 65 / 40 / 25 %, a Runner with an escort 42 % at the Warden; open: the cannon starter (37 %
+  alone at the Warden).
 - **Lead defaults accepted**: twenty records' defaults, and GDR-0089's except the speed governor (judge in play);
   `gdr/README.md` lists them.
 

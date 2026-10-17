@@ -6,6 +6,11 @@
   Runner 66 / 68 / 49 / 26 %, a Runner with the starter as escort the Warden 44 % (was 62 %). The first two voyages
   stay above this record's curve (raiders hardly hurt the starter since its emitters moved forward; counts would
   crush the Runner first), and the cannon starter alone clears the Warden 37 %: open for Niklas.
+  2026-10-17 (second pass, `docs/results/slice-balance-2026-10-17b.md`): with the automaton gunner on the first two
+  voyages ([GDR-0101](0101-the-automaton-gunner.md)), a gunner pair in Corran Reach and shield capacity 2 the starter
+  clears 57 / 37 / 22 / 15 % (this record's 58 / 37 / 15 / 3), the Runner 74 / 65 / 40 / 25 %, a Runner with the
+  starter as escort 82 / 70 / 51 / 42 %; the cannon starter 93 / 68 / 46 / 37 %, at the Warden level with a Runner and
+  an escort (open for Niklas).
 - Date: 2026-10-13
 - Decided by: balance agent (proposal, tracks 7J/7K); accepted by Niklas on 13 Oct 2026
 - Related: [GDR-0061](0061-fight-balance-after-turning-v2.md), [GDR-0062](0062-first-playable-loop.md), [GDR-0063](0063-salvage-and-research-v1.md), [GDR-0064](0064-lock-feed-forward-and-ai-flight-fixes.md), [GDR-0066](0066-phase-7-wave-1-defaults.md), [GDR-0068](0068-voyage-sites-clear-when-enemies-are-disarmed.md), `docs/results/slice-balance-2026-10-13.md`, `docs/plans/first-playable-loop.md` 3.5, `docs/sim.md` "The headless voyage runner"

@@ -400,6 +400,8 @@ prongs, one core) and `automaton_warden` (9×7, the boss of `wardens_gate`: a sh
 three cores, so it fights on in pieces), both from `../space-game-archive/plans/slice-content.md` 2 (placeholders). Since GDR-0068
 (a site clears when its enemies are destroyed or disarmed) the Warden's heart has a cannon in its nose in place of
 its second shield emitter, so the heart must be beaten too and each section still runs on its own core's 6 MW.
+`automaton_gunner` (17 Oct 2026, GDR-0101: 4×3, a raider's frame with two cannons side by side, one core, its own
+behavior `gunner_pack`) is the first two voyages' answer to a shielded nose.
 
 **Blueprint text** (added 12 Oct 2026, for the drydock). Saved player designs and exported blueprints use exactly
 the format of the content ships, so an export can go into a pack's `ships/` folder as is:
@@ -508,8 +510,9 @@ keyword), so there is no second representation to keep in sync and errors point 
 `target` is optional (default `nearest`); a rule may end in a `# note`. Rules are written in canonical form
 (the printer's output; a test checks the base pack). Base behaviors: `raider_basic` (the automatons' default,
 two rules for one automaton core; it replaced the hard-coded raider brain), `skirmisher` (the ship-mind's
-default for unpiloted ships, four rules since GDR-0061, uses the Rhai condition) and `escort` (three rules: fight
-the leader's lock, keep near the leader between fights; GDR-0065).
+default for unpiloted ships, four rules since GDR-0061, uses the Rhai condition), `escort` (three rules: fight
+the leader's lock, keep near the leader between fights; GDR-0065) and `gunner_pack` (the automaton gunner's own,
+GDR-0101: `raider_basic`'s rules with the target `nearest(engines)`).
 
 ### Salvage (added 13 Oct 2026)
 
@@ -643,12 +646,12 @@ GDR-0098); its `map` place (0 to 1) went on 16 Oct 2026 with the galaxy's map (G
     radius: 900,                         // m: the sites lie inside; the fleet enters at the edge
     spacing: (400, 700),                 // m between sites (see below)
     minutes: (6, 10),                    // expected length, for the map ("≈ 6–10 MIN")
-    cleared: "The raiders' den is broken. Their hunters still hold the [[voyage:corran_reach]].",
+    cleared: "The gunners' den is broken. Their hunters still hold the [[voyage:corran_reach]].",
     sites: [
-        (encounter: "raider_pair"),
+        (encounter: "gunner_pair"),
         (encounter: "precursor_wrecks"),
         (encounter: "core_graveyard"),
-        (encounter: "raider_den", goal: true),   // clearing it clears the voyage
+        (encounter: "gunner_den", goal: true),   // clearing it clears the voyage
     ],
 )
 ```
@@ -695,14 +698,17 @@ gone (`Sim::spawn_wreck`). Variants by count (a pair, a pack, a den) are entries
 | `wake_radius` | m, above 0 and at most 20000 |
 
 An encounter needs ships or wrecks. Base encounters (placeholders, `../space-game-archive/plans/slice-content.md` 3.2, counts tuned
-by GDR-0073, re-measured 17 Oct 2026): `raider_pair` (2 raiders), `raider_pack` (3), `raider_den` (2–3, wakes at 300 m), `hunter_pack` (1
+by GDR-0073, re-measured 17 Oct 2026): `raider_pair` (2 raiders), `raider_pack` (3), `raider_den` (2–3, wakes at 300 m), `gunner_pair`
+(2 `automaton_gunner`s, GDR-0101), `raiding_party` (a gunner and a raider), `gunner_den` (3 gunners, wakes at 300 m), `hunter_pack` (1
 hunter, 1 raider), `hunter_den` (2–3 hunters), `derelict_field` (0–1 raider; a `sample_early` and 2–3 raider wrecks,
 half their parts gone), `precursor_wrecks` (0–1 raider; 1–2 `sample_mid` wrecks), `core_graveyard` (0–1 raider; 4–6
 raider wrecks, 30 % gone, so most of their cores are intact), `the_warden` (the `automaton_warden` and 2–3 raiders; 1–2 until 17 Oct 2026).
 Packs wake at 250 m, wreck sites at 200 m, dens and the Warden at 300 m. The voyages (`voyages/rim.ron`): Shipyard
-approach (raider pair ×2, derelict field, goal raider pair), Halvex Drift (raider pair, precursor wrecks, core
-graveyard, goal raider den), Corran Reach (hunter pack ×2 (one until 17 Oct 2026), precursor wrecks, goal hunter den), the Warden's gate (raider
-pack, core graveyard, goal the Warden).
+approach (gunner pair ×2, derelict field, goal raiding party; raider pairs until 17 Oct 2026, GDR-0101), Halvex Drift
+(gunner pair, precursor wrecks, core graveyard, goal gunner den; a raider pair and the raider den until 17 Oct 2026),
+Corran Reach (hunter pack ×2 (one until 17 Oct 2026), gunner pair (since 17 Oct 2026), precursor wrecks, goal hunter
+den), the Warden's gate (raider pack, core graveyard, goal the Warden). The raider pair and den wait only in the
+kinds of cluster now (`cluster_types/rim.ron`; a wreck drift also holds 0–1 gunner pairs).
 
 ### Controls (`controls.ron`, added 15 Oct 2026, GDR-0090)
 

@@ -1100,6 +1100,10 @@ handles keep working. `default_for(&design)` = the blueprint's or faction's beha
   70 m (93.3%). Until 12 Oct it stood off at 50 m (67%) and orbited at 45 m
   (60%); from 12 to 13 Oct it orbited at 50 m (67%), exactly where the Halvex Runner's beams stop touching a
   raider (GDR-0061); see [Sandbox fights at the new speeds](#sandbox-fights-at-the-new-speeds).
+- **`gunner_pack`** (the automaton gunner's own, its blueprint's `behavior`; 17 Oct 2026, GDR-0101): the rules of
+  `raider_basic` with the target `nearest(engines)`. Aimed at the engines (behind the starter's shielded nose)
+  rather than the centre, it costs the starter far more than raiders do and the Halvex Runner less
+  (`docs/results/slice-balance-2026-10-17b.md`).
 - **`skirmisher`** (the ship-mind's default for unpiloted vessels): flee below 25% hull, orbit at 80% while its
   shield is down and the target aims at it, face a fast attacker that is still out of reach, else approach to
   67% and keep the nose on the target. Its two other orbit rules (`enemies_near(100m) >= 3 -> orbit(90%)` and a

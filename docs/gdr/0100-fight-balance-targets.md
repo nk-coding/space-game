@@ -4,6 +4,12 @@
   2026-10-17: measured (`docs/results/slice-balance-2026-10-17.md`): B1 met by two counts (GDR-0073's status: the
   Warden with a Runner and an escort 44 %); B2 not met at capacity 3, regen 0.2: a bubble collapses in 0–9 % of the
   test range's waves (capacity 2 gives 16.5 %, 1.5 gives 31 % under a passive pilot); open for Niklas.
+  2026-10-17 (second pass, `docs/results/slice-balance-2026-10-17b.md`): Niklas set B2's capacity to 2 (regen 0.2
+  stays; [GDR-0021](0021-shields.md)): a bubble collapses in 16 % of the Runner's test-range waves under a passive
+  pilot, about one in six. A different first enemy ([GDR-0101](0101-the-automaton-gunner.md), the automaton gunner)
+  brings the starter to 57 / 37 / 22 / 15 % and the Runner to 74 / 65 / 40 / 25 %; B1 met (each voyage harder than
+  the last for every fleet, a Runner with an escort 42 % at the Warden, unchanged); Corran Reach gained a gunner pair
+  (a count, B3).
 - Date: 2026-10-17
 - Decided by: Niklas (interactively, 17 Oct 2026; the recommended option on every question)
 - Related: [GDR-0073](0073-slice-tuning-v1.md), [GDR-0074](0074-test-range-waves-emergency-recall-cannon.md), [GDR-0061](0061-fight-balance-after-turning-v2.md), [GDR-0064](0064-lock-feed-forward-and-ai-flight-fixes.md), [GDR-0089](0089-play-test-15-oct-speed-salvage-waves-station.md), [GDR-0021](0021-shields.md), [GDR-0055](0055-slower-crisper-turning.md), [GDR-0058](0058-turning-v2-defaults.md), [GDR-0066](0066-phase-7-wave-1-defaults.md), [GDR-0099](0099-the-grown-and-the-outer-reach.md), `docs/results/slice-balance-2026-10-17.md`

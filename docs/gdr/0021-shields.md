@@ -2,6 +2,9 @@
 
 - Status: Accepted. 2026-10-16: the point-blank pass is the muzzle's only; a projectile in flight is taken by every
   bubble once, also by one whose ship moved onto it between ticks (a bug fix approved by Niklas; Notes)
+  2026-10-17: the shield emitter's capacity 3 → 2 (Niklas, [GDR-0100](0100-fight-balance-targets.md) B2; regen 0.2
+  stays): a bubble collapses in about one wave in six under sustained fire
+  (`docs/results/slice-balance-2026-10-17b.md`). The rules above are unchanged.
 - Date: 2026-10-10 (bubbles); 2026-10-11 (v1 rules confirmed)
 - Decided by: Niklas
 - Related: [GDR-0014](0014-power-tiers-and-weights.md), [GDR-0018](0018-weapon-families.md), [GDR-0019](0019-damage-model.md), [GDR-0020](0020-damage-v1-defaults.md), `docs/sim.md` "Weapons"
