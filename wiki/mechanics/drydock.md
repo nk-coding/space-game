@@ -158,6 +158,7 @@ The warnings, most important first:
 | GUN BLOCKED | gold | a gun's line of fire runs into your own parts |
 | PULLS LEFT / RIGHT UNDER THRUST | gold | forward thrust misses the centre of mass and the turning parts can't hold it |
 | RUNS HOT AT FULL LOAD | gold | parts go over their heat limit, but only a little |
+| A BLAST TAKES A LOGIC CORE / A GUN, A BLAST SETS OFF A CHAIN | gold | if a part that explodes is shot off, its blast destroys a logic core, a gun or another part that explodes |
 
 Parts named in a warning get a small triangle at their corner on the grid: coral for blocked guns, burned parts,
 parts that fall off and parts that overheat badly, gold for parts that only run hot.
@@ -178,6 +179,13 @@ The OVERLAY pills draw over the design, in any combination:
 - **SHIELDS**: every shield bubble at its real size.
 - **ARCS**: every gun's line of fire to its range (coral up to the first part that blocks it) and every engine's
   plume (coral where it burns your own part).
+- **BLAST**: every part that explodes when destroyed: its reach (a dashed coral ring), the logic cores and guns its
+  blast would destroy (filled coral), the other parts it would destroy (outlined coral), the ones that would survive
+  it (gold) and the armour on the line that covers them (teal). See
+  [explosions and chain reactions](/mechanics/damage#explosions-and-chain-reactions).
+
+A shield part you place or select shows its bubble, and a part that explodes its blast, with what it would take
+where it is.
 
 ## The stats panel
 

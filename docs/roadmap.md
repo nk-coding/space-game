@@ -58,7 +58,9 @@ Open questions for Niklas (ask interactively):
 
 Client leftovers:
 - Blur at high zoom: fixed 13 Oct (5I). Region steps at tier 512 still cost up to ~50 ms (large plumes).
-- Two non-focus ships still show each other's shield bubbles over their hulls (ADR-0029 note).
+- Two non-focus ships still show each other's shield bubbles over their hulls (ADR-0029 note): halved 13 Oct (the
+  higher ship's bubble still showed over the lower one's hull), fixed 17 Oct (two passes: over space and over the
+  own hull only; `?scene=showcase&twin=1`).
 - Browser load-test numbers (`?load=1|5|20`) need Niklas's real browser (headless timings are meaningless).
 
 ## State at the end of the 12–13 Oct 2026 session (new VM)
@@ -208,8 +210,8 @@ Next session:
   `SimEvent::Explosion` is emitted. The old shutter design falls from 52 to 12 of 60 wins; the new best design (59
   of 60) keeps every exploding part out of its lines of fire but stacks reserve guns behind guns. Hashes changed,
   native vs wasm IDENTICAL. Voyage clear rates: the starter a little harder, the Runner's Corran Reach 89 → 70 of
-  120. Follow-ups: an explosion visual in the client, blast reach and warnings in the drydock, and the rule
-  questions listed in GDR-0084.
+  120. Follow-ups: an explosion visual in the client, blast reach and warnings in the drydock (built 17 Oct: the
+  BLAST overlay and the status line's warning), and the rule questions listed in GDR-0084.
 - **Chain reactions v2** ([GDR-0085](gdr/0085-chain-reactions-v2.md)): blasts reach every piece and ship (other ships'
   shields absorb, friends are hit), intact armour on the line shields, reactors and drives reach two cells deep, the
   automaton core, shield emitter and RCS pod explode. Niklas confirmed the reach and friendly damage. The automaton
@@ -478,6 +480,21 @@ Next session:
   flicker while zooming fixed (the outline is the union's exact arcs now).
 - The galaxy plan's tracks are done. Next candidates: caches with a node or part of their own, milestone cards
   (GDR-0080), the bands past the rim with their races and guardians.
+
+### 17 Oct 2026: blast reach in the drydock, FLEET's preview and formation, bubbles over other hulls
+
+- **Blast reach and warnings** (the follow-up of GDR-0084 and GDR-0085): the design report lists every part that
+  explodes with the sim's own targets, damage and cover (`DesignReport::blasts`, tested against a world), and warns
+  when a blast would take a logic core, a gun or another exploding part (`Issue::BlastTakes`). The drydock's BLAST
+  pill draws each reach, the cores and guns a blast takes (coral), the rest it destroys, what survives (gold) and the
+  armour that covers (teal); a reactor being placed or selected shows its blast. The starter and the Runner show the
+  warning (their reactors sit beside cores and guns). `docs/drydock.md` "Overlays".
+- **FLEET** (`docs/client.md` "FLEET"): a click or ←/→ previews a design in the picked slot (dimmed ship, `PREVIEW ·
+  ENTER ADDS IT`), Enter or a second click adds it; the dotted formation ring round the flagship with a line to each
+  escort (dashed to a preview); an escort's line says the behavior it flies (`1 CORE · FLIES ESCORT`). The research
+  screen's arrow keys step between cards.
+- **Shield bubbles** (ADR-0029 note): one mesh, two passes (over space under every ship's tiles; over the own
+  piece's tiles at their exact depth), so no bubble shows over another ship's hull.
 
 ## Phase 4: measurement
 

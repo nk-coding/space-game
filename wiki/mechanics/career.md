@@ -101,7 +101,7 @@ A card shows what it unlocks, its name and a mark:
 
 Under the card, its kind and its cost: each cost in gold when your store pays it, `HELD / COST` in grey when not.
 
-Click a card to see its detail on the right: what it unlocks (a part with its stats, an armour, a frame's grid, or
+Click a card (or move between cards with the arrow keys) to see its detail on the right: what it unlocks (a part with its stats, an armour, a frame's grid, or
 your mind before and after), COST against IN STORE, UNLOCKS in words, and REQUIRES. **UNLOCK** pays and unlocks at
 once. There is no research time. The line above the button says what happened, or why it can't happen
 (`NEEDS … FIRST`, `NOT ENOUGH DATA`, `NOT ENOUGH MATERIALS`). At the bottom, `‹ HOME`, the nodes that are ready now, and DRYDOCK
@@ -180,16 +180,18 @@ choose the escorts that fly with you on every voyage.
 
 - In the middle is your **flagship**: always the drydock's working design. Under it its name, cores and cargo, and
   the fleet's voyage-ready line.
-- Around it are the **escort slots** (the screen shows how many). Each filled slot shows its design, `ESCORT n`, its
-  cores and cargo, and REMOVE. One empty slot more says how many cores are free for it.
+- Around it, outside a dotted formation ring, are the **escort slots** (the screen shows how many), each escort
+  joined to the flagship by a line. Each filled slot shows its design, `ESCORT n`, its cores and the behavior it flies
+  (`FLIES SKIRMISHER`), and REMOVE. One empty slot more says how many cores are free for it.
 - At the bottom, your saved designs as cards (`YOUR DESIGNS · PICK ONE FOR ESCORT n`). Each card says what picking
   it would do: FITS, IN THE FLEET, a gold USES … (it can fly, but a locked part keeps the fleet from being
   voyage-ready), NEEDS n CORES · n FREE, CAN'T FLY, or NO LOGIC CORE.
 - Top right: CORES with one dot per core of your mind, filled for the fleet's, coral past your capacity.
 
-Click a slot to pick it, then click a design to put it there; the empty slot adds an escort. A design that would
-take the fleet over your mind capacity, has no logic core or can't fly is refused, with the reason. One design may
-fly in several slots. Every change is saved at once, and your escorts are drawn at the moorings at home.
+Click a slot to pick it, then click a design (or step through them with ←/→) to preview it in the slot, dimmed
+and joined by a dashed line; **Enter**, or a second click on it, puts it there (the empty slot adds an escort), and
+Esc drops the preview. A design that would take the fleet over your mind capacity, has no logic core or can't fly
+is refused, with the reason (the preview already says so). One design may fly in several slots. Every change is saved at once, and your escorts are drawn at the moorings at home.
 
 Escorts must be saved designs: save a design in the drydock (or in BLUEPRINTS) first. If you delete a design that
 flies as an escort, its slot empties and the shipyard notes it.

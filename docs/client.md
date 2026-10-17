@@ -84,6 +84,7 @@ what fits the window, `kit::ui_kit::UiSize`, applied by every screen's UI scale)
 | `scene=map` | start on the voyage map ([Voyage map](#voyage-map)) |
 | `behavior=<id>` | the BEHAVIOR screen opens this content or saved behavior (e.g. `raider_basic`) instead of the design's |
 | `scene=showcase` | the player's design holding position, three raiders orbiting it, no combat |
+| `scene=showcase&twin=1` | the same with a second copy holding just under the design, its bubbles reaching the design's hull: for looking at whose shield bubbles show over whose hull ([Shield bubbles](#shield-bubbles)) |
 | `scene=showcase&fire=1` | the same, but the raiders (`raiders=N` of them, default 3) attack the design under their behavior: for looking at shield hits (add `zoom=70` for a close-up) |
 | `scene=watch&behavior=<id>` | TEST IN RANGE, watch: the player's design flies unpiloted on the behavior (a content or saved one; without `behavior` the design's own) against raider waves, the camera follows it; T returns to the drydock |
 | `scene=alongside&behavior=<id>` | TEST IN RANGE, fly alongside: you fly the design, a second copy is a wingman on the behavior |
@@ -926,14 +927,25 @@ there). Screenshots:
   scrolling rarely gives a card node another design and builds its ship again): the ship, name, size, cores, cargo, and what a pick would do
   (`FITS · 1 CORE` teal, `IN THE FLEET · 1 CORE`, `USES BEAM LASER` gold: it may fly but the fleet is not voyage-ready,
   `NEEDS 2 CORES · 1 FREE`, `CAN'T FLY · NO THRUST`, `NO LOGIC CORE` coral). The last line says what happened.
-- **Picking** (`fleet::pick`): a click on a slot picks it (teal outline); a click on a card puts that design into the
-  picked slot (the empty slot adds an escort) when the mind runs the fleet then: the flagship's cores, the other
-  escorts' and the design's together within the capacity (`Granted::mind_capacity`); a design without a logic core
-  or that can't fly is refused too, with the reason. A design may fly in more than one slot. Every change writes the
-  save (`escorts`); the slot then moves on to the next empty one.
+- **Picking** (`fleet::pick`): a click on a slot picks it (teal outline). A click on a card **previews** it in the
+  picked slot (17 Oct 2026, the mockup's; until then one click added it): the card lit, the slot showing its ship
+  dimmed under a veil, its name and `PREVIEW · ENTER ADDS IT` (gold with a locked part; the refusal in coral, as
+  the card says), the status `ENTER ADDS PICKET AS ESCORT 2` (or the refusal). **Enter**, or a second click on the
+  previewed card, puts the design into the picked slot (the empty slot adds an escort) when the mind runs the fleet
+  then: the flagship's cores, the other escorts' and the design's together within the capacity
+  (`Granted::mind_capacity`); a design without a logic core or that can't fly is refused too, with the reason (the
+  preview stays). **←/→** step the preview through the designs (from the first card in view), the row scrolling to
+  keep it in view; **Esc** drops a preview before it closes FLEET. A design may fly in more than one slot. Every
+  change writes the save (`escorts`); the slot then moves on to the next empty one.
+- **The formation** (17 Oct 2026): a dotted ellipse round the flagship and its words, inside the slots (round the
+  slots it ran through their words), and a line from each escort's box to the flagship's (a curve leaving both
+  sideways; teal), dashed to the slot that shows a preview (coral when it would be refused). One `UiIcon::Sketch`
+  over the stage, rebuilt with the layer. The slots' words sit 4 px apart (6 before: an upper slot's REMOVE ran into
+  the box of the slot under it).
+- **Escorts say what they fly**: a filled slot's line is `1 CORE · FLIES SKIRMISHER`, the behavior an escort flies
+  on a voyage (`fleet::flies`: the one its design names when that flies, a content behavior or one of the player's
+  without errors, else its faction's; a voyage flies the same, `behaviors::fallback`). Its cargo is on its card.
 - **Ships** are `ui_icons::UiIcon::Ship`: the design drawn as the drydock draws it, fitted into the node.
-- Not yet: the mockup's preview of a picked card before ENTER adds it (one click adds), the dotted formation ring
-  and the lines to the flagship, the escort's behavior name.
 
 ## LOG
 
@@ -1227,11 +1239,13 @@ lanes of [GDR-0065](gdr/0065-phase-7-screens-and-escort-action.md) after `../spa
 `research/`: research data from salvage becomes parts, materials, frames and mind capacity. Screenshots:
 `docs/results/research-1280.png`, `research-1600.png` (1280 × 720 and 1600 × 900), `research-unlocked.png` (after an
 UNLOCK), `research-drydock-new.png` (the part NEW in the drydock afterwards), `research-from-locked-row.png` (opened
-from the drydock's LOCKED fusion reactor row), `research-flight.png` (home's camera on its way to the lab).
+from the drydock's LOCKED fusion reactor row), `research-flight.png` (home's camera on its way to the lab),
+`research-arrows.png` (→ then ↓ from the first card).
 
 | Keys | |
 |---|---|
 | Show a node's detail | click its card |
+| Select the next card that way (17 Oct 2026; the nearest on the grid of columns and rows, `Tree::step`) | ←, →, ↑, ↓ |
 | Research it | UNLOCK (enabled while the node can be paid now) |
 | Back to the shipyard (home flies out from the lab) | Esc, `‹ HOME`, or the ring button top left |
 | The drydock | D, or `DRYDOCK` |
@@ -1279,7 +1293,8 @@ from the drydock's LOCKED fusion reactor row), `research-flight.png` (home's cam
 - **Camera and scale**: entering keeps the flight zoom and leaving gives it back (home then starts on the lab and
   flies out); the layout is 1280 × 720 logical px scaled with the window (`ui_kit::ui_scale_for`).
 - Not yet: the mockup's `SOURCE` line (where a part's salvage comes from: needs voyages and encounters to say it),
-  a camera flight from the drydock to the lab, arrow keys between cards.
+  a camera flight from the drydock to the lab. The arrow keys don't scroll the tree to the selected card (the base
+  game's tree fits the screen).
 
 ## Drydock
 
@@ -1513,7 +1528,9 @@ the sides, a taller one above and below (`ui_kit::ui_scale`, tested for every pl
   the world, so nodes over an icon should have at most a faint background; a layer that has to hide what is under
   it and still show icons backs itself with a `UiIcon::Scrim` whose insets meet (`[f32::INFINITY; 4]` fills the
   node; BLUEPRINTS, whose locks were hidden under its opaque background until 15 Oct 2026, the empty room
-  pushing the labels right of centre). bevy_ui's clipping doesn't reach the
+  pushing the labels right of centre). A `UiIcon::Sketch` (17 Oct 2026) is a few strokes in the node's UI px:
+  rings of dots and lines, solid or dashed (`ui_icons::Stroke`), drawn like a scrim just under the icons (z 599);
+  FLEET's formation ring and lines. bevy_ui's clipping doesn't reach the
   meshes: an icon that a scrolled parent clips (`CalculatedClip`) is hidden until it is whole again. A new icon's
   mesh is spawned and placed in the frame its node first lays out (by commands that apply before the transforms
   propagate), so an icon appears together with its node (15 Oct 2026: BLUEPRINTS' preview ship came a frame
@@ -1790,28 +1807,34 @@ falloff), and `piece.cruise[i]`, the calm cruise level: how much of its top spee
 The look is [GDR-0043](gdr/0043-shields-as-energy-bubbles.md) (values: `ship.shield_bubble` in `art/tokens.json`);
 the technique is [ADR-0029](adr/0029-shield-bubbles-batched-procedural-mesh.md). Written 12 Oct 2026.
 
-- **One mesh, one material, one draw call for every bubble.** `draw_bubbles` walks the piece views every
+- **One mesh, two materials, two draw calls for every bubble.** `draw_bubbles` walks the piece views every
   frame and writes one quad per visible bubble (centre at the render pose, half-size = radius + 4 glow widths,
   more while shattering) into a world-space mesh, in place, like the FX meshes. Each quad carries its bubble's
   state as vertex attributes: offset from the centre, radius, seed; charge, presence, shatter progress; four
-  hits (direction in world space, age, strength). The material (`BubbleMaterial`) holds only the style tokens
-  and is never changed, so there are no per-frame material updates; the shimmer and flicker run on
+  hits (direction in world space, age, strength). The materials (`BubbleMaterial`) hold only the style tokens
+  and are never changed, so there are no per-frame material updates; the shimmer and flicker run on
   `globals.time` (virtual time: they pause with P). Why: per-bubble materials (the old rings) cost a draw call
   and a bind-group update per bubble per frame; WebGL2 has no storage buffers, and a uniform array would still
   change the material every frame.
-- **Between the ship layers, by depth** (13 Oct 2026). The mesh draws after every ship (z 200, below the weapon
-  effects), but each quad's vertex z puts it at its own piece's draw layer + 1/16 (`ship_view::BUBBLE_DZ`; the
-  focus: z 100 + 1/16), and the lit ship tiles write depth: they are a second mesh per lit piece with the opaque
-  twin of the atlas material (`Atlas::opaque`, Bevy's `Opaque2d` pass, drawn before every transparent mesh). The
-  bubble pipeline tests depth (`GreaterEqual`, as every 2D mesh) without writing it, so a bubble is hidden under
-  the tiles of every ship above its own and shows over every ship below, the focus's over all of them. Bevy sorts
-  transparent 2D meshes per entity by z only, so no quad order inside one mesh could do this. History: until
-  12 Oct all bubbles were one mesh above every ship; then two meshes (the focus's at z 200, every other bubble at
-  z 95), which left two non-focus ships showing each other's bubbles over their hulls. What stays: a bubble can
-  still show over the transparent parts of a higher ship that lie beside its tiles (hull halo, muzzle glows,
-  aura) and over dark pieces (salvage and unpowered pieces keep their half-transparent tiles in one blended mesh);
-  with max blending only where the bubble is brighter. Cost: one more mesh entity and draw per lit piece (opaque
-  pass), one bubble draw instead of two. Screenshots: `docs/results/shield-order-*.png`.
+- **Over space and over its own hull, never over another ship's** (17 Oct 2026). The lit ship tiles write depth:
+  they are a second mesh per lit piece with the opaque twin of the atlas material (`Atlas::opaque`, Bevy's
+  `Opaque2d` pass, drawn before every transparent mesh). The bubble mesh draws after every ship (z 200, below the
+  weapon effects) through two entities sharing it, each with its own `BubbleMaterial`: **over space**, the shader
+  puts every quad at z 1 (`shield::Z_SPACE`), under every ship's tiles (layers from z 10), tested `GreaterEqual` as
+  every 2D mesh, so it shows only where no lit tile is; **over its own hull**, each quad keeps its vertex z, its
+  own piece's draw layer exactly (the focus: z 100), tested `Equal`, so it shows only on its own piece's tiles.
+  Both come from the same z through the same transforms (a z rotation leaves z alone; the layers are exact in
+  f32), so the depths match to the bit. Neither writes depth; with max blending a pixel both passes draw would not
+  double up. So two ships that overlap never show each other's bubbles over their hulls, whichever is higher, and
+  the focus's bubble no longer shows over the ships under it either. History: until 12 Oct all bubbles were one
+  mesh above every ship; then two meshes (the focus's at z 200, every other bubble at z 95), which left two
+  non-focus ships showing each other's bubbles over their hulls; on 13 Oct one mesh between the layers by depth
+  (a bubble at its layer + 1/16, `GreaterEqual`), which still showed a higher ship's bubble over a lower ship's
+  hull (`docs/results/shield-order-twin-after.png`). What stays: a bubble shows over the transparent parts of
+  other ships beside their tiles (hull halo, muzzle glows, aura) and over dark pieces (salvage and unpowered pieces
+  keep their half-transparent tiles in one blended mesh), with max blending only where the bubble is brighter.
+  Cost: two bubble draws (one more than before), no more vertex data (the mesh is shared); a covered pixel runs
+  the shader once (early depth test). Screenshots: `docs/results/shield-order-*.png` (`-17oct` the two passes).
 - **Max blending** (colour and alpha, factors One/One): overlapping bubbles of a ship show the brighter of the two
   instead of a bright lens, and quad order does not matter. A bubble only adds light: its faint fill vanishes over
   hull tiles (keeps the ship readable), the rim and the hits still show. The shader outputs `colour × intensity`,

@@ -344,7 +344,10 @@ corner would get. A **shield part** (any part with a `shield`) shows its bubble 
 twin's: centre and radius after bonuses from one `sim::design_report` of the design as the edit would leave it (the
 drydock report's tuned content and config; made only when the ghost changes, tens of µs for a frigate; the part's
 own radius if that design can't be compiled), drawn like the SHIELDS overlay (faint disc, soft rim,
-`overlays::bubbles_mesh`). The selected shield part shows its bubble from the report in the select tool. The pointer's mark (`ghost::hover_mark`, 13 Oct
+`overlays::ghost_marks_mesh`). The selected shield part shows its bubble from the report in the select tool. An
+**exploding part** (any part with an `explosion`, 17 Oct 2026) shows its blast the same way, from the same report:
+its reach and what it would destroy, damage and cover, drawn like the BLAST overlay (only its reach, from the
+content's radius, if that design can't be compiled); the selected one shows its blast in the select tool. The pointer's mark (`ghost::hover_mark`, 13 Oct
 2026, Niklas): the cell under it (a faint teal fill and outline), but in SELECT and ERASE (and a right-button erase
 stroke) over a part the part's whole footprint instead, filled and outlined once (teal to select, coral to erase:
 what a click takes), whichever of its cells is hovered; erase outlines the mirror twin in coral too. The selected
@@ -421,7 +424,10 @@ line), `overlays.rs` (the overlays and issue marks); both read `report::DrydockR
 own. Tests: `cargo test -p game drydock` (the pure mappings: report → cells, report → status line and tone, the
 heat colour ramp, issue marks, bonus link cells, the first blocker of a line of fire). Screenshots (1280 × 720,
 195 %): `docs/results/drydock-stats-heat.png` (the Halvex Runner runs hot: the beams and shield emitters over
-their limit, gold marks), `drydock-stats-overlays.png` (all five overlays), `drydock-stats-grounded.png`
+their limit, gold marks), `drydock-stats-overlays.png` (the first five overlays), `drydock-blast-*.png` (17 Oct
+2026: the BLAST overlay on the starter at 1280 × 720 and 2560 × 1440, and fission reactors being placed beside its
+hull, `-place`),
+`drydock-stats-grounded.png`
 (`?scene=drydock&thrust=0`: the tuning's thrust scale 0 grounds it, `CAN'T FLY · NO THRUST`, TEST-FLY disabled;
 bonus and shields).
 
@@ -469,10 +475,14 @@ Every case with `CAN'T FLY` sets `DrydockStatus::grounded` (TEST-FLY disabled). 
 6. `GUN BLOCKED` / `N GUNS BLOCKED` (gold)
 7. `PULLS LEFT UNDER THRUST` / `RIGHT` (gold; the client's own, from the yaw balance, when not held)
 8. `RUNS HOT AT FULL LOAD` (gold: parts over their limit, the peak up to `RUNS_HOT_MAX`; the Halvex Runner)
+9. What blasts would take (gold, 17 Oct 2026; the report's `Issue::BlastTakes`, GDR-0084's follow-up): `A BLAST
+   TAKES A LOGIC CORE` / `N LOGIC CORES IN BLAST REACH`, else `A BLAST TAKES A GUN` / `N GUNS IN BLAST REACH`, else
+   `A BLAST SETS OFF A CHAIN` (it destroys another part that explodes). Last: it only happens once the part that
+   explodes is shot off. The Halvex Runner shows it among its `+N`.
 
 ### Overlays
 
-The OVERLAY pills switch any combination. All of them are one world-space mesh (atlas material, vertex colours)
+The OVERLAY pills (HEAT, MASS, BONUS, SHIELDS, ARCS, BLAST) switch any combination. All of them are one world-space mesh (atlas material, vertex colours)
 over the design's tiles, a child of the design's mesh, rebuilt only when the report is recomputed or a pill
 changes (never per frame); sizes are in cells, so it zooms with the ship. Bottom to top:
 
@@ -495,10 +505,22 @@ changes (never per frame); sizes are in cells, so it zooms with the ship. Bottom
   hits, the part outlined). Ranges reach far beyond a frigate frame (45–75 m): outside the frame the lines fade
   to 30 %, and they end at the grid viewport's edge (before 13 Oct 2026 they ran on under the veil, through the
   pills and the status line).
+- **BLAST** (17 Oct 2026, the follow-up of GDR-0084 and GDR-0085; coral pill): every part that explodes when
+  destroyed, from the report's `blasts` (the sim's own compiled targets and cover, `ShipDesign::blast`, no numbers
+  of the client's): its reach as a faint coral disc with a soft rim, the rim dashed (unlike a shield's bubble) and a
+  coral burst on a dark backing at its centre (over everything); a logic core or gun a blast destroys washed and
+  outlined coral (what the status line warns about), any other part a blast destroys outlined coral (a 1-hit-point
+  machine beside a reactor nearly always goes: washing them all turned a starter ship coral), a part that survives
+  every blast reaching it outlined gold, and the armour on the line that covers a part (each plate lets its
+  `blast_factor` through) outlined teal just inside. So a reactor beside a logic core or a gun shows the core or
+  gun in coral, and a plate between them shows where it helps. `overlays::BlastMarks` (a blast as shapes) is shared
+  with the ghost.
 
 **Issue marks** (always, overlays on or off): a small triangle in the top-right corner of the bounding box of
 every part an issue names: coral for blocked guns, parts a plume burns, parts that fall off and parts
-overheating past `RUNS_HOT_MAX`; gold for parts that only run hot. Idle and power-short parts get no mark (the
+overheating past `RUNS_HOT_MAX`; gold for parts that only run hot. What blasts would take gets no marks (nearly
+every reactor has a core or gun beside it, so they marked half of every ship): the status line and the BLAST
+overlay say it. Idle and power-short parts get no mark (the
 CONTROL and POWER cells say it).
 
 Placeholders: `stats::RUNS_HOT_MAX` (1.2, GDR-0052), `stats::BALANCED_ARM` (0.05 m), the warning ranking, the

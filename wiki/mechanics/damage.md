@@ -171,6 +171,12 @@ from the centre of a big part, the [[part:fusion_reactor]].*
 
 Only parts destroyed by damage explode. Parts you collect as salvage leave quietly.
 
+In the drydock the **BLAST** overlay shows every part that would explode: its reach, the parts its blast would
+destroy in coral (the logic cores and guns filled), the ones that would survive it in gold, and the armour that
+covers them in teal. A reactor being
+placed shows the same where it would go. The status line warns when a blast would take a logic core, a gun or
+another part that explodes (see [the drydock](/mechanics/drydock)).
+
 ## Engine plumes
 
 An engine's exhaust reaches [[stat:plume_length]] straight back from the engine and burns the **first part in its

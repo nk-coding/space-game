@@ -3,7 +3,9 @@
 - Status: Accepted (provisional, lead). 14 Oct 2026: Niklas answered the open questions; blasts now reach other pieces
   and ships (their shields absorb), intact armour on the line shields what lies behind it, the radii grew to two cells
   deep and the automaton core, shield emitter and RCS pod explode too: [GDR-0085](0085-chain-reactions-v2.md). The
-  rest stands.
+  rest stands. 17 Oct 2026: the drydock follow-up is built: the BLAST overlay shows every exploding part's reach,
+  what it destroys and the armour that covers, and the status line warns when a blast would take a logic core, a
+  gun or another exploding part (`docs/drydock.md` "Overlays", "Status line").
 - Date: 2026-10-14
 - Decided by: Niklas (build chain reactions now, 14 Oct 2026); the numbers and v1 rules are lead defaults for him to
   review
@@ -77,6 +79,10 @@ if clear and powered (latent firepower), so shuttered designs sit with the other
   a reactor next to a logic core or a gun.
   - 14 Oct 2026: the blast visual is in: a flash and a ring out to the blast's radius, a chain playing link by link
     (`docs/client.md` "Chain-reaction blasts", [`results/chain-blast.png`](../results/chain-blast.png)).
+  - 17 Oct 2026: the drydock shows blast reach and warns: the design report lists every blast with the sim's own
+    targets, damage and cover (`DesignReport::blasts`, `Issue::BlastTakes`), the BLAST overlay draws them and the
+    ghost of a reactor being placed shows what it would take
+    ([`results/drydock-blast-1280x720.png`](../results/drydock-blast-1280x720.png)).
 
 ## Open (for Niklas)
 

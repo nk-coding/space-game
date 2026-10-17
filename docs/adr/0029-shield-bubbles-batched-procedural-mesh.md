@@ -1,6 +1,7 @@
 # ADR-0029: Shield bubbles are one batched world-space mesh with a procedural WESL material and max blending
 
-- Status: Accepted (provisional, lead)
+- Status: Accepted (provisional, lead). 17 Oct 2026: the one mesh is drawn in two passes, so a bubble shows over
+  space and its own hull only, never over another ship's (note below).
 - Date: 2026-10-12
 - Decided by: lead session (default for Niklas to review); approach chosen by the shield agent
 - Related: [GDR-0043](../gdr/0043-shields-as-energy-bubbles.md), [GDR-0021](../gdr/0021-shields.md), [ADR-0020](0020-style-2a-renderer.md), [ADR-0021](0021-no-fixed-raster-graphics.md), `docs/client.md` "Shield bubbles"
@@ -69,3 +70,16 @@ one more mesh entity and draw call per lit piece in the opaque pass. Left: a bub
 ship's blended parts beside its tiles (halo, glows) and over dark pieces, whose half-transparent tiles stay
 blended. Not chosen: a mesh per ship (a draw call and a mesh upload per shielded ship per frame) and a few bucket
 meshes at fixed z (ships in the same bucket keep the bug). See `docs/client.md` "Shield bubbles".
+
+Note (17 Oct 2026): with one depth per bubble, the 13 Oct order still showed the bubble of the higher of two
+overlapping ships over the lower one's hull. Now the one mesh is drawn by **two** entities sharing it, each with a
+`BubbleMaterial` (a pipeline key picks the depth test): over space, the vertex shader moves every quad to z 1
+(`shield::Z_SPACE`), under every ship's tiles (layers from z 10), tested `GreaterEqual`, so it shows where no lit
+tile is; over its own hull, each quad keeps its piece's draw layer as its z (no `BUBBLE_DZ` any more) and is
+tested `Equal`, so it shows only on its own piece's tiles. Tiles and quads get their z through the same transforms
+(a rotation about z leaves it alone, the layers are exact in f32), so the depths are equal to the bit. Neither
+pass writes depth; max blending makes a pixel drawn twice harmless. So no bubble shows over another ship's tiles,
+above or below its own, the focus's included. Cost: two draw calls instead of one, no more vertex data, each
+covered pixel shaded once (early depth test). Left: as before, the transparent parts of other ships beside their
+tiles and dark pieces. Not chosen: a stencil per ship (Bevy's 2D depth target has no stencil). See `docs/client.md`
+"Shield bubbles".

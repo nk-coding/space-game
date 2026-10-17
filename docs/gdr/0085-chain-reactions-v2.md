@@ -1,6 +1,7 @@
 # GDR-0085: Chain reactions v2: reach, armour shielding, more exploders
 
-- Status: Accepted
+- Status: Accepted. 17 Oct 2026: the drydock shows blast reach and cover (the BLAST overlay: reach, what a blast
+  destroys and what survives it, the armour on the line outlined; `docs/drydock.md` "Overlays").
 - Date: 2026-10-14
 - Decided by: Niklas (the rules: blasts reach other ships and shields absorb them, armour shields, which parts
   explode, reserve guns stay; 14 Oct 2026); the mechanics details and every number are lead defaults for him to

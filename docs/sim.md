@@ -2530,10 +2530,11 @@ steady-state heat solve and the turn estimate are the report's own, on the sim's
 | `guns`, `firepower` | per gun: muzzle, facing, clear, blockers, range, dps, rate, family, delivery; Σ dps of the main piece's working guns (clear, not idle) |
 | `engines` | per engine: facing, thrust, its plume lanes (origin, exhaust direction, length, the own part it burns and how far it reaches) |
 | `shields` | per emitter: centre and bubble radius after bonuses |
+| `blasts` | per part with an `explosion` (all pieces, 17 Oct 2026): centre, damage, radius and every part it reaches, each with the damage it takes (its `blast_factor` and the cover's), the cover (the armour on the line, on the exploding piece or the target's, as `chain.rs` counts it) and whether it is destroyed, on the design as built; from the compiled `ShipDesign::blast` and `blast_cover`, so the drydock's BLAST overlay shows the sim's numbers (`blasts_agree_with_the_sim`: a blast without a chain destroys in a world exactly what it says and leaves the rest with what it says) |
 | `control` | load, capacity, the parts that idle |
 | `build_points` | Σ part `build_points` × the material's `build_point_factor` for hull parts (`Content::ship_totals`, the same rule as `Content::part_stats`) |
 | `device` | estimated native µs per tick, a class (`Light`, `Moderate`, `Heavy`, `TooHeavy`) and the cost drivers |
-| `issues` | blockers: `NoLogicCore`, `CoresUnpowered`, `NoThrust`; warnings: `PowerDeficit`, `Overheat`, `GunBlocked`, `PlumeBurnsOwnPart`, `FallsOff`, `ControlOverCapacity` (part lists in each) |
+| `issues` | blockers: `NoLogicCore`, `CoresUnpowered`, `NoThrust`; warnings: `PowerDeficit`, `Overheat`, `GunBlocked`, `PlumeBurnsOwnPart`, `FallsOff`, `ControlOverCapacity`, `BlastTakes` (a part whose blast would destroy logic cores, guns or parts that explode in turn; GDR-0084's warning) (part lists in each) |
 
 **Assumptions.**
 
