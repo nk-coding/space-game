@@ -18,6 +18,7 @@
   2026-10-17: "about two steps locate": fresh areas widened to 3–4 S and narrowed to 60 % a scan, so a signal takes
   2–3 voyages to find; the memory log is built (the LOG's MEMORY rows); milestone cards wait (tracks E7, E8,
   [GDR-0098](0098-slice-in-the-galaxy-and-rim-rewards.md)).
+  2026-10-17: the space between the sites filled ([GDR-0104](0104-scenery-rocks-filler-landmarks.md)): asteroid rock as bodies (fields, belts, scattered rock that give cover), dust, debris and derelicts drawn on the way, landmarks far off and distant fights, per cluster type in content.
 - Date: 2026-10-14
 - Decided by: Niklas (eight questions from `docs/plans/galaxy-voyages.md` section 9, interactively)
 - Related: [GDR-0078](0078-galaxy-exploration-v1.md), [GDR-0075](0075-voyages-feel-like-exploration.md), [GDR-0002](0002-awakened-ship-mind-light-story.md), [GDR-0028](0028-clusters-and-voyages.md), [ADR-0035](../adr/0035-saves-keep-the-galaxy-skeleton.md), `docs/plans/galaxy-voyages.md`

@@ -2,6 +2,7 @@
 
 - Status: Accepted
   2026-10-17: a ram prow as the touching part scales the damage each side takes (2 × dealt, 0.5 × taken, [GDR-0102](0102-grown-mechanics-and-parts-defaults.md)); the rule above is unchanged.
+  2026-10-17: a ram on an anchored asteroid rock follows this rule, scaled by the rock kind's `ram` (iron and slag 0.5, ice 0.35; [GDR-0104](0104-scenery-rocks-filler-landmarks.md)): against a body that gives nothing the impulse carries the ship's whole mass; the rock takes nothing.
 - Date: 2026-10-12
 - Decided by: Niklas (options and numbers by the lead session)
 - Related: [GDR-0019](0019-damage-model.md) (ramming), [GDR-0045](0045-shields-absorb-rams-no-friendly-ram-damage.md) (shields, same team), [GDR-0041](0041-engine-rated-speed.md) and [GDR-0042](0042-agility-target.md) (the new speeds), `docs/sim.md` design question 11

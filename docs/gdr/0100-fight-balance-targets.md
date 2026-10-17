@@ -15,6 +15,7 @@
   shot still 1 hit point); the automatons keep `automaton_cannon`, so no enemy fight changed. The cannon starter
   clears 91 / 63 / 38 / 28 % (was 93 / 68 / 46 / 37), below a Runner with an escort at the Warden (42 %); no count
   re-tuned.
+  2026-10-17 (`docs/results/scenery-2026-10-17.md`, 120 seeds): asteroid rock in the slice's first three voyages ([GDR-0104](0104-scenery-rocks-filler-landmarks.md)) keeps the curve (each voyage at most as easy as the one before; the Warden's gate has no rock and is unchanged); clear rates fall up to 13 points (the Runner at Halvex Drift and Corran Reach), the cannon starter 92 / 65 / 38 / 26 → 82 / 65 / 34 / 26 %.
 - Date: 2026-10-17
 - Decided by: Niklas (interactively, 17 Oct 2026; the recommended option on every question)
 - Related: [GDR-0073](0073-slice-tuning-v1.md), [GDR-0074](0074-test-range-waves-emergency-recall-cannon.md), [GDR-0061](0061-fight-balance-after-turning-v2.md), [GDR-0064](0064-lock-feed-forward-and-ai-flight-fixes.md), [GDR-0089](0089-play-test-15-oct-speed-salvage-waves-station.md), [GDR-0021](0021-shields.md), [GDR-0055](0055-slower-crisper-turning.md), [GDR-0058](0058-turning-v2-defaults.md), [GDR-0066](0066-phase-7-wave-1-defaults.md), [GDR-0099](0099-the-grown-and-the-outer-reach.md), `docs/results/slice-balance-2026-10-17.md`

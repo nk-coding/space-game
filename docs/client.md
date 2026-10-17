@@ -713,6 +713,35 @@ off, the flash and its ring where it left), `voyage-warp-emergency.png` (the eme
   signals, data cores at the logs it has not got). With `galaxy=<seed>` the base galaxy generated from that seed
   instead, rolled from the cluster's own seed, every trail place a signal's site and every log's core in place
   (`voyage::every_lead`).
+- **Scenery** (17 Oct 2026, [GDR-0104](gdr/0104-scenery-rocks-filler-landmarks.md); `scenery/`, one plugin): what
+  fills a cluster between its sites, from the voyage's or (a generated cluster) its type's `scenery`, rebuilt when the
+  voyage (id and seed) changes and gone when flight ends. All vector meshes from the atlas's white texel and dots,
+  moving with the sim's clock (the tick plus the overstep: paused with P, alike at any frame rate). Every piece sits at
+  an anchor with a parallax `p`, drawn at `camera + (anchor − camera) · p`.
+  - **Rocks** (`rocks.rs`): the sim's rocks (`Voyage::rocks`) as they spawn, the rocks spawned together in one mesh
+    in world coordinates (z 3, under trails and ships): the outline in the kind's tone (`world.rock.*`), facet lines
+    from a point off the centre away from the light, an edge line brighter on the sides facing the light (from the
+    upper left).
+  - **Filler** (`filler.rs`, drawn only): glints and motes on a near layer (`p` 0.85, a 260 m tile repeated 3 × 3 round
+    the view like the backdrop's dust, the glints twinkling as one), hull debris everywhere on a tiled layer just
+    under the play (`p` 0.97, a 400 m tile of 320 bits at `debris` 1, so a few are always in sight) and thicker round
+    each site in three drifting groups, derelict shells (16–36 m, broken in two or three, ribs and a hole) drifting
+    and turning slowly 20–120 m off the way between the entry and the sites (`p` 0.9).
+  - **Far things** (`far.rs`): each landmark the cluster rolls (its chance, from the voyage's seed) anchored within
+    0.7 of the radius on its own layer between the backdrop's stars and its dust: a station (hub, spokes, a torn ring
+    with modules, two faint lights), a beacon (a mast, crossbars, a light passing every 3.2 s), a junk ring at a slant
+    round a dead hub; beside a hot star the **corona**: three arcs and six loops in the corona colour at the view's
+    edge towards the star, placed and scaled as the backdrop's star glow, flickering softly (thin strips: with the glow
+    the only large translucent layers, two at most); **distant fights** at the scenery's rate (exponential gaps, the
+    first after 0.3 of the mean) somewhere in the view's middle on a layer of `p` 0.06: two knots of tiny ships,
+    tracers running between them, flashes on hits, a burst at the end, 4–7 s, drawn the same size at any zoom (one
+    small mesh rebuilt while a fight shows).
+  - Budget (a wreck drift): 18 tiles (about 9 × 1.3 k glint vertices and 9 × 1.1 k debris vertices, static meshes,
+    moved each frame), 12–24 site debris groups, up to 6 derelicts, 1–2 landmarks, one mesh per rock group (20 rocks
+    about 2.4 k vertices); per frame the transforms of about 50 entities and, while a fight shows, a mesh of up to a
+    few hundred vertices. The log line `scenery: …` counts what a voyage spawned.
+  - Screenshots (headless, 1280 × 720): `docs/results/scenery-rim.png` (a wreck drift's field, debris and glints),
+    `scenery-corona.png` (the scorched deep's corona over the star's glow), `scenery-fight.png` (a distant fight).
 - **Hot stars and living parts** (17 Oct 2026, [GDR-0102](gdr/0102-grown-mechanics-and-parts-defaults.md)): in a
   cluster beside a hot star (`Voyage::star`) a soft glow in the heat colour rises at the edge of the view towards the
   star (`backdrop.rs`, a camera child over the gradient, under the dust; a disc as wide as the view centred just past

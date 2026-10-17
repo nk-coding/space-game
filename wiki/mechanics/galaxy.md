@@ -146,6 +146,20 @@ where you came in, what your scans swept, the bearings, the sites found and your
 [[sim:edge_margin]] outside its radius (never more than [[sim:max_edge]] from its centre): beyond it your ship is
 pushed back.
 
+## Between the sites: rock, debris and what lies far off
+
+Each kind of cluster has its own **scenery**, listed on its page. **Asteroid rock** is real: fields, belts and
+scattered rocks of [[rock:iron_rock]], [[rock:ice_rock]] or, beside a hot star, [[rock:slag_rock]]. A rock never
+moves. It stops ships, shots and engine plumes, so it is **cover**: put one between you and a gun. Hitting one hurts
+like any ram, scaled by the rock ([[rock:iron_rock.ram]] for iron rock, [[rock:ice_rock.ram]] for ice), and a fast ship
+loses parts: fly round it. Ships under a behavior steer round rocks by themselves, and the pilot assist
+[[behavior_node:avoid_collisions]] sidesteps them. Rock is made of [[material:nickel_iron]] or [[material:water_ice]];
+mining it comes later.
+
+The rest is only seen, never in the way: dust and glints, bits of hull drifting about (thicker round the sites),
+dead hulls drifting along the way, a landmark far off such as a [[landmark:derelict_station]], beside a hot star its
+[[landmark:star_corona]] at the edge of your view, and now and then a fight flashing in the distance.
+
 ## Lore
 
 Lore trails end at a fragment of the story, kept in the memory log, which the **LOG** at home shows under MEMORY: in

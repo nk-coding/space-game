@@ -54,7 +54,7 @@ A page is Markdown with front matter (`title`, `description`; quote values with 
 | `[[control:recall.keys]]` | the default keys as key caps |
 | `[[behavior_node:orbit.signature]]`, `[[behavior_node:orbit.default.radius]]` | how a node is written; a parameter's default |
 | `[[research:tamed_core.cost]]`, `.requires`, `.unlocks`; `[[frame:frigate.grid]]`; `[[start:rim_awakening.mind_capacity]]`; `[[voyage:yard_approach.sites]]`, `.length`, `.band`, `.opens_after`; `[[encounter:the_warden.wake_radius]]`; `[[behavior:escort.rules]]`; `[[stat:mass.unit]]` | more values |
-| `[[galaxy:galaxy.jump_range]]`, `.spacing`, `.home_neighbours`, `.warp`, `.signal_area`, `.trail_step`, `.bands`; `[[band:rim.edge]]`, `.gates`; `[[cluster_type:wreck_drift.radius]]`; `[[trail:rim_gate.length]]`, `.hint`; `[[signal_source:hauler_log.line]]` | the galaxy's values (16 Oct 2026) |
+| `[[galaxy:galaxy.jump_range]]`, `.spacing`, `.home_neighbours`, `.warp`, `.signal_area`, `.trail_step`, `.bands`; `[[band:rim.edge]]`, `.gates`; `[[cluster_type:wreck_drift.radius]]`; `[[rock:iron_rock.size]]`, `.ram` (17 Oct 2026, GDR-0104); `[[trail:rim_gate.length]]`, `.hint`; `[[signal_source:hauler_log.line]]` | the galaxy's values (16 Oct 2026) |
 | `[[lab:trial.voyages]]`, `[[lab:size.standard.population]]` | an entry of `lab.ron` (`goal`, `goal_preset`, `kind`, `trial`, `gene`, `gene_preset`, `pilot`, `size`, `measure`), linked to its row on the lab's page with its name, and its values (`summary`, a trial's `kind`, `weight`, `seeds`, `time_limit`, `default`, `target`, `count`, `ships`, `waves`, the arms race's numbers; a pilot's `lock`, `close_to`, `stick`, `fire`; a size's `population`, `generations`; a preset's `weights` or `genes`; a measure's `unit`); `[[lab:spread.design]]`, `[[lab:budget.layer_open]]`, `[[lab:palette.automatons]]` (`wiki::pages::lab`) |
 | `[[sim:tick_hz]]` | a simulation constant with its unit, read from the sim's own constants and `SimConfig::default()` (the list: `wiki::refs::sim_values`; add a constant there before using it) |
 
@@ -103,6 +103,12 @@ keys, prose file).
   starting jump range, each trail from its first source to its reward coloured by what it leads to, the rim's signal
   areas. A generator that fails on the content is a wiki warning, so the completeness test fails too. The hand-written
   page `mechanics/galaxy` explains bands, S, home, gates, trails, signals and lore from the data.
+- **Rock kinds and landmarks** (17 Oct 2026, GDR-0104, `wiki::pages::scenery`): a rock kind's page draws five rocks
+  rolled from it by the sim's own outline (`sim::voyage::rocks::outline`, vector) in its tone, its material, size,
+  corners, roughness, stretch and ram factor, and where it lies (every cluster type's and voyage's groups); a
+  landmark's page its form, size, depth and where it is seen; every cluster type's and voyage's page a "Between the
+  sites" section (its rock groups and what is drawn only), a material's page the rock it is in. The hand-written
+  `mechanics/galaxy` has a section on rock and the scenery.
 
 - **Parts are drawn as technical drawings** from the data: the tile as the drydock's palette shows it on its cell
   grid, the sides that link to neighbours, and what the part does: thrust out of the forward side with the gimbal's

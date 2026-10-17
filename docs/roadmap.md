@@ -539,6 +539,15 @@ Next session:
 - Open: careers made before keep their galaxy (their outer reach keeps the stand-ins but for the hot clusters);
   the Grown's materials; heat research.
 
+### 17 Oct 2026: scenery between the sites
+
+- ([GDR-0104](gdr/0104-scenery-rocks-filler-landmarks.md), lead defaults; `results/scenery-2026-10-17.md`) Asteroid
+  rock as anchored bodies per cluster type and slice voyage (fields, belts, scattered; shots, plumes and rams stop on
+  it, behaviors and the scripted pilot steer round it, `avoid_collisions` sidesteps it); content kinds `rock` and
+  `landmark` and a `scenery` block; the client's glints, debris, derelicts, landmarks, the corona and distant fights
+  (`world::scenery`). The slice's curve holds with rock (120 seeds), up to 13 points harder.
+- Open: mining (a laser part, rock yield, `RockHit` into ore), drifting or breakable rock, rock on the cluster map.
+
 ## Phase 4: measurement
 
 Status 12 Oct 2026 (new VM): `results/spike-summary.md` written. Determinism native vs wasm IDENTICAL on the new VM

@@ -283,6 +283,10 @@ impl Refs {
         for t in &c.cluster_types {
             put(format!("cluster_type:{}.radius", t.id), esc(&pages::cluster_radius(t)));
         }
+        for r in &c.rocks {
+            put(format!("rock:{}.size", r.id), format!("{}–{}", format_number(r.size.0, 1), esc(&pages::metres(r.size.1))));
+            put(format!("rock:{}.ram", r.id), format!("{} ×", format_number(r.ram, 2)));
+        }
         for t in &c.trails {
             let (lo, hi) = t.length;
             put(format!("trail:{}.length", t.id), if lo == hi { lo.to_string() } else { format!("{lo}–{hi}") });

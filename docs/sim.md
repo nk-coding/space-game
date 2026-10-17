@@ -457,6 +457,18 @@ the probes, `runner_vs_raiders` `1bd3a842a2c5dfdd`, `--galaxy 20`; `--run mixed_
 (seed 1) native = wasm, last lines `891760365f7ece43`, `5799a287e48aef13`. The content's fingerprint changed with the part, so earlier
 fight codes and lab runs are fought under other rules.
 
+**Scenery** ([GDR-0104](gdr/0104-scenery-rocks-filler-landmarks.md), 17 Oct 2026, release builds), native x86_64 vs
+wasm32-wasip1 **identical** everywhere. Only streams with a voyage whose scenery has rocks change: voyage (seed 42, 900
+ticks) `eccebb0844ea0e6e`, seeds 42 and 7 at 1800 ticks `09651e7c8e3212c1` / `15a02b22859c97bb` (11 and 9 rocks
+spawned, the scenario's new `rocks` and `rock_hits` counts); core `31b368b328356716`, flight `5b57ad1328766ee9`, assists
+`cc347ad03a8628c6`, behavior `46170123f1496acc`, salvage `d8693e4105581fb1`, grown `a14b909055122d30`,
+`runner_vs_raiders` `92f877f393ca148f` and the probes `close_quarters` `d75310c995d5753e`, `warden` `11186687c4a56d6b`
+byte-identical to the build before (no rocks: steering returns the goal untouched). `--run mixed_trials` and
+`two_starts_locked` (seed 1, voyage trials fly the slice) last lines `bce6e0c4d1bb48d2`, `16937b397cba07b8`, resumed =
+straight. The galaxy (`--galaxy 20`) last line `5c71f969886ec4ec763d0b113f74a720`: the skeletons unchanged (seed 1
+`f898e1535374653d`), the interiors' hash changed (`Interior::kind`). The content's fingerprint covers voyages and rock
+kinds, so earlier fight codes and lab runs are fought under other rules.
+
 **The Grown in play** ([GDR-0103](gdr/0103-the-grown-in-play-defaults.md), 18 Oct 2026, release builds), native
 x86_64 vs wasm32-wasip1 **identical** everywhere. The outer reach's new ships are tagged `outer` and left out of the
 scenarios that spawn every blueprint, so those fly what they flew before; but the Grown's three content behaviors
@@ -511,6 +523,8 @@ those tagged `outer`, since 18 Oct 2026):
   Rhai evaluations, 74 impacts (11 rams). Since the vessel model (12 Oct) the leader is the player's focus and
   the player's mind capacity is 8 cores, so some ship-mind vessels start dormant; counters in
   [Vessels](#determinism-and-scenarios).
+- `voyage`: counts the rocks spawned and the shots that struck one since 17 Oct 2026 (GDR-0104; the content's first
+  voyage has a field).
 - `salvage`: wrecks spawned as wrecks, collectors, core fragments, a shrinking hold and a lost ship's cargo; see
   [Salvage](#determinism-and-scenarios-1).
 - `grown` (17 Oct 2026, GDR-0102, `scenario/grown.rs`): a voyage built in code, 600 m, a wary grove 450 m in from the
@@ -2339,11 +2353,54 @@ ids; some may be gone or salvage by now), `plan()`.
 
 The layout numbers of the roll (30 m spread, 5 m gap, 64 tries, 8 goal choices) are constants in `voyage/mod.rs`.
 
+### Rocks (`voyage/rocks.rs`, 17 Oct 2026, [GDR-0104](gdr/0104-scenery-rocks-filler-landmarks.md))
+
+A voyage's or a generated cluster type's `scenery.rocks` (`docs/content-model.md` "Scenery") puts asteroid rock into
+the plan (`VoyagePlan::rocks`, a list of `FieldPlan`s: a centre, a reach and its `Rock`s). Placeholders and lead
+defaults throughout.
+
+- **Rolling** (`rocks::roll`, after the sites, on a generator of its own: `ROCK_STREAM`, `"rock"` in ASCII, salted
+  with the seed like the plan's, so the sites' draws are as before): each group in content order rolls how many
+  fields, belts or scatterings it places, then for each how many rocks. A field's rocks lie in a disc of its radius
+  round a centre (the first of 12 spots that keeps the field's middle 0.6 of its radius plus 70 m off every site and
+  its radius plus 150 m off the entry), thicker in the middle; a belt's along an arc round the cluster's centre
+  (0.4–0.85 of the radius out, as long as 28 m a rock, thicker along its middle line, cut into pieces of about 180 m
+  that spawn on their own); a scattering's anywhere within 0.95 of the radius, each rock its own group. Each rock
+  takes the first of 12 spots inside the cluster that keeps 4 m from every other rock, 70 m from every site's spot and
+  150 m from the entry (else it is left out), then its outline (`rocks::outline`: the kind's corners round a radius in
+  its `size`, each pulled in by up to `roughness`, stretched by `stretch` along x and squeezed along y, the convex
+  hull) and its turn. `+ − × ÷`, `sqrt` and libm trig: the same rocks everywhere.
+- **Spawning**: the director spawns a group's rocks once a player vessel comes within `spawn_radius` of its reach
+  (as sites spawn, E0), as **anchored** Rapier bodies (fixed; the outline as a convex polyline, hull friction and
+  bounce) keyed `BodyKey::rock(k)`: ship id `BodyKey::ROCKS` (`u32::MAX`, no ship's), piece `k` = the rock's index in
+  `Voyage::rocks()`, so they order after every ship's pieces. `start_voyage` removes a voyage's rocks it replaces.
+- **Shots and plumes** stop on a rock (`Sim::cast_part` lands on it as `Cast::Rock`): a projectile is gone (`Hit`),
+  a pulse or beam ends there, `SimEvent::RockHit { by, rock, point, normal, family }` (the hook for mining later); the
+  rock takes nothing. `Sim::raycast` (the first alive part) gives `None` behind a rock. A plume lane ends on a rock.
+- **Rams**: a contact with a rock is always `a` = the piece, `b` = the rock: the closing speed is the piece's own,
+  `part_b` is `None`, and the damage is GDR-0047's from the impulse, times the rock's `ram` (iron and slag 0.5, ice
+  0.35): against a body that gives nothing the impulse carries the ship's whole mass. The piece's shields and crush
+  take it as from any ram; the rock nothing.
+- **Steering** (`rocks::steer`): every behavior's and maneuver's velocity goal (`flight::plan`; not a pilot's, not
+  `HelmMode::Goal`) bends round the rocks. It looks ahead at least 3 s at the faster of its speed and the goal's,
+  and a second more than it takes to stop (`Kin::stop_accel`); for the rock whose gap (its radius, the ship's and
+  8 m) the straight way enters first it takes the tangent past the near side at the same speed, then again for the
+  way that gives (three passes); a way still blocked (a gap too narrow between two rocks) slows to what it can stop
+  from before the gap; a ship already inside a gap is pushed out, and one whose own motion carries it into a gap
+  before it could stop (`Mover::heading_into`) is bent aside first whatever its goal. The pilot assist
+  `avoid_collisions` takes rocks as anchored circles on its course test (`AssistState::avoiding` gives a rock as
+  `(BodyKey::ROCKS, k)`). `Sim::rock_between(a, b)`: is a rock on the line (the voyage runner's fire check).
+- **Checked** (`tests/rocks.rs`): the roll's clearances and determinism, sites unmoved by rocks, convex outlines,
+  lazy spawning, shots stopping and rams hurting only the ship, a held maneuver reaching a point behind a rock
+  without touching it, the narrow gap and the momentum bend. Over 20 seeds each of Corran Reach and four cluster types
+  flown by the voyage runner (`docs/results/scenery-2026-10-17.md`) no ship stayed pressed on a rock for 3 s.
+
 ### State hash
 
 After the loose items: the voyage, if one is underway: its id, seed, radius, entry, owners, and per site the plan
 (encounter id, goal, spot, wake radius, every spawn's design id, pose, damage and seed), the state and the ids of its ships
-and wrecks. `VoyageTuning` with the config.
+and wrecks; then, only with rocks, every rock group (centre, reach, spawned, each rock's kind, `ram`, pose, radius and
+outline) and how many rocks spawned (the rocks' bodies are in the physics' hash). `VoyageTuning` with the config.
 
 ### Cost
 
@@ -2353,7 +2410,10 @@ nothing allocates once warm except the ships a
 site spawns. Spawning a site costs its ships' `Ship::new` and bodies once (a raider pair or a den: a few
 microseconds). The voyage runner below steps whole voyages (a ship, one to three sites' ships and wrecks in the
 world) at 0.005–0.007 ms median and 0.008–0.017 ms p95 per step (native release, 13 Oct 2026, load average 8–11 from
-other agents' builds, 20 seeds per voyage).
+other agents' builds, 20 seeds per voyage). With rocks (17 Oct 2026): steering is one gap test per spawned rock and
+steered ship each tick (up to three passes), an anchored rock costs the solver nothing and the broad phase little; the
+runner's whole voyages through Corran Reach and four cluster types made into voyages (9–28 rocks spawned a run) took
+0.005–0.009 ms a step (native release, load average about 1.5).
 
 ### Determinism and scenarios
 
@@ -2395,7 +2455,9 @@ and prints per seed the outcome
 (recalled, lost, out of time), goal, sites cleared, time, hull lost, kills, awake enemies left (how many disarmed),
 haul items and research data per family (`data::career::unload`; every player vessel's hold), then medians, p95 and
 the step time. `--design` and `--escort` also take a blueprint file (`*.ron`, a saved or exported drydock design),
-for ships a player would build that are not content.
+for ships a player would build that are not content. With asteroid rock (17 Oct 2026, GDR-0104) the pilot steers round it as a player who sees
+it would: its maneuvers bend as every maneuver does, its stick through `rocks::steer`, it holds fire with a rock in its
+line of fire and slides aside, and lets go of its lock when its motion carries it into a rock.
 
 The pilot and the run are a library since 14 Oct 2026 (`sim::voyage::runner`, for the evolution lab's voyage fitness,
 `arena::voyage`): `VoyageRunner::new(content, voyage, Flagship { design, reach, behavior }, behaviors, escorts,

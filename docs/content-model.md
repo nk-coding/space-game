@@ -38,7 +38,9 @@ content/base/
   encounters/*.ron         what waits at a voyage site (ships, wrecks)
   galaxy.ron               the galaxy's generator numbers (spacing, jump range, home, signal areas, trail steps, names)
   bands.ron                the galaxy's bands from the rim inwards: edges, cluster types, gates, trails
-  cluster_types/*.ron      kinds of cluster: radius, site spacing, name words, ordinary sites
+  cluster_types/*.ron      kinds of cluster: radius, site spacing, name words, ordinary sites, scenery
+  rocks.ron                kinds of asteroid rock: material, size, outline, ram factor, tone (GDR-0104)
+  landmarks.ron            landmarks seen far off: form, size, parallax (GDR-0104)
   trails.ron               trail templates: reward, length, target encounter, signal sources, hint
   signal_sources.ron       where signals come from: logs in wrecks, beacons
   lore/*.ron               lore fragments at the ends of lore trails
@@ -57,8 +59,8 @@ File rules:
 
 - A kind's data lives in `<dir>.ron` or anywhere under `<dir>/` (any depth), with `<dir>` one of `stats`,
   `categories`, `factions`, `materials`, `parts`, `frames`, `ships`, `behavior_nodes`, `behaviors`, `families`,
-  `research`, `facilities`, `starts`, `voyages`, `encounters`, `galaxy`, `bands`, `cluster_types`, `trails`,
-  `signal_sources`, `lore`, `controls`. File names are free; group however reads
+  `research`, `facilities`, `starts`, `voyages`, `encounters`, `galaxy`, `bands`, `cluster_types`, `rocks`,
+  `landmarks`, `trails`, `signal_sources`, `lore`, `controls`. File names are free; group however reads
   best. `lab.ron` is one file of its own (one `( ... )`, not an entry kind).
 - A file holds **one entry** `( ... )` or **a list** `[ ( ... ), ... ]`. Comments (`//`, `/* */`) are fine.
 - `Some(...)` may be omitted (`power: (output: 10)`); RON's `implicit_some` is always on.
@@ -792,6 +794,23 @@ rim's trails end at their own encounters since E8 (17 Oct 2026, GDR-0098): a gat
 wreck, a deep graveyard. The jump range's research is two propulsion nodes of +0.75 S (GDR-0093, built 16
 Oct 2026 in track E4: `Unlock::JumpRange`, "Research nodes" above). A game's generated skeleton is kept in its career
 (`docs/career.md` "The galaxy"; its types are `data::skeleton`).
+
+### Scenery: rocks, landmarks and a cluster's `scenery` (`rocks.ron`, `landmarks.ron`; added 17 Oct 2026, GDR-0104)
+
+What fills a cluster between its sites. Rocks are bodies in the sim (`docs/sim.md` "Rocks"); everything else is
+drawn by the client only (`docs/client.md` "Voyages", the scenery). Rock kinds are in the rules' fingerprint (a rock
+changes a fight), landmarks are not.
+
+| Kind or block | Fields besides the common header |
+|---|---|
+| `rock` (`rocks.ron`) | `material` (a material id: what mining will give, GDR-0031; none yet), `size` (`(min, max)` m radius, at most 120), `corners` (`(min, max)`, 3 to 16), `roughness` (share of the radius a corner may sit inside it, below 0.8), `stretch` (`(min, max)` along its long axis, 1 to 4), `ram` (the share of a ram's damage a ship takes against it, 0 to 4: an anchored rock gives nothing; base iron and slag 0.5, ice 0.35), `tone` (`world.rock.<tone>` in `art/tokens.json`: `iron`, `ice`, `slag`) |
+| `landmark` (`landmarks.ron`) | `form` (`Station`, `Beacon`, `Ring`, `Corona`: how the client draws it; a corona only beside a hot star), `size` (`(min, max)` m of its layer), `parallax` (the share of the camera's motion its layer follows, 0 to below 1) |
+| `scenery` (on a `cluster_type` and a `voyage`; all optional, default nothing) | `rocks` (`[(rock, layout, count: (min, max), rocks: (min, max))]` with `layout` `Field(radius: m)`, `Belt(width: m)` or `Scatter`; at most 600 rocks at the largest counts; a field's or belt's size at most the cluster's smallest radius), `dust` and `debris` (densities, 0 to 4, 1 the base amount), `derelicts` (`(min, max)`, at most 32), `landmarks` (`[(landmark, chance)]`, chance above 0 and at most 1), `fights` (distant fights a minute, 0 to 20) |
+
+A voyage's `scenery` is left out of its serde form when empty, so voyages without it keep their fingerprint. Two ore
+materials (`materials/ores.ron`: `nickel_iron`, `water_ice`, no `armor`) are what the base rock is made of. The wiki
+has a page per rock kind (with a few rocks rolled by the sim's own outline) and landmark, and a "Between the sites"
+section on every cluster type's and voyage's page.
 
 ### The evolution lab (`lab.ron`, GDR-0092; completed 16 Oct 2026, step 8)
 

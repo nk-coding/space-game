@@ -206,6 +206,9 @@ pub struct ScenarioStats {
     pub recall_ticks: u32,
     /// Parts re-grown by hearts (`PartRegrown`, GDR-0102).
     pub regrown: u32,
+    /// Asteroid rocks spawned so far and shots that struck one (`RockHit`, GDR-0104).
+    pub rocks: u32,
+    pub rock_hits: u32,
 }
 
 pub struct Scenario {
@@ -325,6 +328,7 @@ impl Scenario {
                 SimEvent::Hit { .. } => self.stats.hits += 1,
                 SimEvent::ShieldHit { .. } => self.stats.shield_hits += 1,
                 SimEvent::Ricochet { .. } => self.stats.ricochets += 1,
+                SimEvent::RockHit { .. } => self.stats.rock_hits += 1,
                 SimEvent::Impact(c) => {
                     self.stats.impacts += 1;
                     self.stats.rams += (c.damage > 0.0) as u32;
@@ -353,6 +357,7 @@ impl Scenario {
         if let Some(l) = self.sim.loose().last() {
             self.stats.fragments = self.stats.fragments.max(l.id.0 + 1);
         }
+        self.stats.rocks = self.sim.voyage().map_or(0, |v| v.rocks().len() as u32);
         for ship in self.sim.ships() {
             self.stats.overheated_part_ticks += ship
                 .parts()

@@ -250,6 +250,7 @@ https://claude.ai/artifact/MhdtJiNFHLnnwP2Ayruimh (revision 16, 11 Oct 2026). Up
 - Allies: only inside specific race missions. → [GDR-0027](gdr/0027-races.md)
 - First hour: wake as a tiny drone in a dead shipyard → salvage nearby automaton wrecks → repair the drydock → build first real ship → first rim voyage → first research. → [GDR-0002](gdr/0002-awakened-ship-mind-light-story.md)
 - Galaxy size ~80 clusters for now; MUST stay expandable (cluster count, band sizes, races, set pieces are generator params/data; saves must tolerate added clusters/bands). → [GDR-0026](gdr/0026-procedural-galaxy-and-bands.md), [ADR-0024](adr/0024-saves-seed-and-deltas.md)
+- **Scenery between the sites (Niklas's request, 17 Oct 2026; lead defaults):** flying through a cluster was empty but for its sites. Each cluster type and voyage now has a `scenery` in content: asteroid rock as real anchored bodies (fields, belts, scattered rock; cover against shots, rams on them scaled by the rock, behaviors steer round them; made of two ore materials, the hook for mining later), and drawn only: glints, hull debris thicker round the sites, derelict shells along the way, landmarks far off (a derelict station, a beacon, a junk ring), a hot star's corona and fights flashing in the distance. New content kinds `rock` and `landmark`. → [GDR-0104](gdr/0104-scenery-rocks-filler-landmarks.md)
 
 ## Materials and fabrication (decided 10 Oct 2026)
 
