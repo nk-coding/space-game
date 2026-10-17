@@ -76,7 +76,7 @@
             (encounter: "hunter_den", goal: true),
         ],
         scenery: (
-            rocks: [(rock: "iron_rock", layout: Belt(width: 140), count: (1, 1), rocks: (24, 34))],
+            rocks: [(rock: "iron_rock", layout: Belt(width: 120), count: (1, 1), rocks: (14, 20))],
             dust: 0.9,
             debris: 1.2,
             derelicts: (2, 4),
@@ -100,7 +100,6 @@
             (encounter: "the_warden", goal: true),
         ],
         scenery: (
-            rocks: [(rock: "ice_rock", layout: Scatter, count: (1, 1), rocks: (8, 12))],
             dust: 0.8,
             debris: 1.0,
             derelicts: (1, 3),

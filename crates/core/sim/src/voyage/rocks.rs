@@ -13,7 +13,8 @@
 //!   `VoyageTuning::spawn_radius` of its reach, as the sites spawn (E0: records cost nothing until then, and an
 //!   anchored body costs the solver nothing).
 //! * **What rocks do**: they block ships (a ship that hits one takes ramming damage like any ram, GDR-0047: the
-//!   impulse carries its mass and speed), shots (`SimEvent::RockHit`, the hook for mining later; GDR-0031) and plumes,
+//!   impulse carries its mass and speed; an anchored rock gives nothing, so the kind's `ram` scales what the ship
+//!   takes, as a ram prow's factors do), shots (`SimEvent::RockHit`, the hook for mining later; GDR-0031) and plumes,
 //!   so they give cover. Behaviors and maneuvers bend their velocity goal round the rocks ahead ([`steer`]), and the
 //!   pilot assist `avoid_collisions` sidesteps them like any piece.
 //!
@@ -43,16 +44,22 @@ const BELT_SPACING: f32 = 28.0;
 const BELT_RADIUS: (f32, f32) = (0.4, 0.85);
 /// Scattered rocks lie within this share of the cluster's radius.
 const SCATTER_REACH: f32 = 0.95;
-/// Behaviors look this many seconds ahead at their speed for rocks in the way ([`steer`]) ...
+/// Behaviors look at least this many seconds ahead at their speed for rocks in the way ([`steer`]) ...
 const STEER_AHEAD: f32 = 3.0;
 /// ... and keep this gap (m) from them, besides their own and the rock's radius.
 const STEER_CLEAR: f32 = 8.0;
+/// [`steer`] bends round at most this many rocks one after the other.
+const STEER_PASSES: u32 = 3;
+/// Below this speed (m/s) a ship's own motion is no threat ([`Mover::heading_into`]).
+const MOMENTUM_SPEED: f32 = 2.0;
 
 /// One rock: its kind (content id), where it lies, how it is turned, its convex outline (counter-clockwise, about its
-/// position) and the radius of the circle round it.
+/// position), the radius of the circle round it and the share of a ram's damage a ship takes against it (its kind's
+/// `ram`).
 #[derive(Clone, Debug, PartialEq)]
 pub struct Rock {
     pub kind: String,
+    pub ram: f32,
     pub pos: Vec2,
     pub angle: f32,
     pub points: Vec<Vec2>,
@@ -70,6 +77,7 @@ pub struct FieldPlan {
 impl StateHash for Rock {
     fn hash_state(&self, h: &mut StateHasher) {
         h.str(&self.kind);
+        h.f32(self.ram);
         h.vec2(self.pos);
         h.f32(self.angle);
         h.f32(self.radius);
@@ -149,7 +157,7 @@ pub fn roll(content: &Content, scenery: &Scenery, radius: f32, sites: &[Vec2], e
                     let p = spot(rng);
                     if clear(p, r, radius, sites, entry, placed) {
                         let angle = rng.range_f32(-core::f32::consts::PI, core::f32::consts::PI);
-                        placed.push(Rock { kind: kind.id.clone(), pos: p, angle, points: std::mem::take(&mut shape), radius: r });
+                        placed.push(Rock { kind: kind.id.clone(), ram: kind.ram, pos: p, angle, points: std::mem::take(&mut shape), radius: r });
                         return;
                     }
                 }
@@ -235,50 +243,116 @@ fn field(centre: Vec2, rocks: &[Rock]) -> FieldPlan {
     FieldPlan { centre, reach, rocks: rocks.to_vec() }
 }
 
-/// Bends the velocity goal `v` of a ship at `pos` (its circle `radius` metres) round the nearest rock it would meet
-/// within [`STEER_AHEAD`] seconds: along the tangent past the rock's near side, at the same speed. A ship already
-/// closer than the gap is pushed out first. Only `+ − × ÷` and `sqrt` (deterministic).
-pub fn steer(pos: Vec2, radius: f32, v: Vec2, rocks: &[Rock]) -> Vec2 {
-    let speed = v.length();
-    if rocks.is_empty() || speed < 0.5 {
-        return v;
+/// A ship as [`steer`] sees it: its piece's frame origin and the radius of its circle about it, its velocity now and
+/// the deceleration it can plan on (`Kin::stop_accel`).
+#[derive(Clone, Copy, Debug)]
+pub struct Mover {
+    pub pos: Vec2,
+    pub radius: f32,
+    pub vel: Vec2,
+    pub accel: f32,
+}
+
+impl Mover {
+    /// Is the ship's own motion carrying it into a rock's gap before it could stop (its stopping distance, half a
+    /// second more and [`STEER_CLEAR`])? Then [`steer`] bends that motion first, and a pilot that can only push along
+    /// its nose under a lock lets go of it (the scripted pilot, `runner.rs`).
+    pub fn heading_into(&self, rocks: &[Rock]) -> Option<Vec2> {
+        let speed = self.vel.length();
+        if rocks.is_empty() || speed < MOMENTUM_SPEED || self.accel <= 0.0 {
+            return None;
+        }
+        let reach = speed * speed / (2.0 * self.accel) + speed * 0.5 + STEER_CLEAR;
+        let dir = self.vel * (1.0 / speed);
+        match first_gap(self, dir, reach, rocks)? {
+            (Some(_), d, gap) => Some(tangent(dir, d, gap) * speed),
+            // Inside the gap and closing on the rock: across it.
+            (None, d, _) if d.dot(dir) > 0.0 => Some(tangent(dir, d, sqrt(d.length_squared())) * speed),
+            (None, _, _) => None,
+        }
     }
-    let dir = v * (1.0 / speed);
-    let ahead = speed * STEER_AHEAD;
+}
+
+/// The tangent (unit) past a rock's gap of radius `gap` whose centre lies `d` away, on the side of the way `dir` the
+/// rock is not.
+fn tangent(dir: Vec2, d: Vec2, gap: f32) -> Vec2 {
+    let dist = sqrt(d.length_squared());
+    let sin_t = (gap / dist).min(1.0);
+    let cos_t = sqrt((1.0 - sin_t * sin_t).max(0.0));
+    let u = d * (1.0 / dist);
+    if dir.cross(d) < 0.0 {
+        // The rock lies to the right: pass it on the left.
+        Vec2::new(u.x * cos_t - u.y * sin_t, u.x * sin_t + u.y * cos_t)
+    } else {
+        Vec2::new(u.x * cos_t + u.y * sin_t, -u.x * sin_t + u.y * cos_t)
+    }
+}
+
+/// The rock gap the straight way from `m` along `dir` enters first within `ahead` metres: how far (`None` inside
+/// one), the way to the rock's centre and the gap's radius (the rock's, the ship's and [`STEER_CLEAR`]).
+fn first_gap(m: &Mover, dir: Vec2, ahead: f32, rocks: &[Rock]) -> Option<(Option<f32>, Vec2, f32)> {
     let mut first: Option<(f32, Vec2, f32)> = None;
     for r in rocks {
-        let reach = r.radius + radius + STEER_CLEAR;
-        let d = r.pos - pos;
+        let reach = r.radius + m.radius + STEER_CLEAR;
+        let d = r.pos - m.pos;
         let along = d.dot(dir);
         if along < -reach || along > ahead + reach {
             continue;
         }
         let side = dir.cross(d);
-        if side * side >= reach * reach || along <= 0.0 && d.length_squared() >= reach * reach {
+        let half = reach * reach - side * side;
+        if half <= 0.0 {
             continue;
         }
-        if first.is_none_or(|f| along < f.0) {
-            first = Some((along, d, reach));
+        let inside = d.length_squared() <= reach * reach;
+        let enter = if inside { f32::NEG_INFINITY } else { along - sqrt(half) };
+        if (inside || (enter > 0.0 && enter <= ahead)) && first.is_none_or(|f| enter < f.0) {
+            first = Some((enter, d, reach));
         }
     }
-    let Some((_, d, reach)) = first else { return v };
-    let dist2 = d.length_squared();
-    let dist = sqrt(dist2);
-    if dist <= reach {
-        // Inside the gap: away from the rock, keeping what of the goal does not point at it.
-        let out = d * (-1.0 / dist.max(1e-3));
-        let into = v.dot(out * -1.0).max(0.0);
-        return v + out * (into + speed * 0.5);
+    first.map(|(e, d, r)| ((e > f32::NEG_INFINITY).then_some(e), d, r))
+}
+
+/// Bends the velocity goal `v` of the ship `m` round the rocks it would meet within its look-ahead (at least
+/// [`STEER_AHEAD`] seconds at the faster of its speed and the goal's, and a second more than it takes to stop): for
+/// the rock whose gap the straight way enters first, along the tangent past its near side at the same speed; then
+/// again for the way that gives, at most [`STEER_PASSES`] times. When the way is still blocked after that (a gap too
+/// narrow between two rocks), it slows to what it can stop from before the gap, so it never rams at speed. A ship
+/// already inside a rock's gap is pushed out first, and one whose own motion carries it into a gap before it could
+/// stop bends that motion ([`Mover::heading_into`]) whatever its goal. Only `+ − × ÷` and `sqrt` (deterministic).
+pub fn steer(m: &Mover, v: Vec2, rocks: &[Rock]) -> Vec2 {
+    if let Some(w) = m.heading_into(rocks) {
+        return w;
     }
-    // The tangent on the side the rock is not: the rock's direction turned by the angle its gap circle spans.
-    let sin_t = reach / dist;
-    let cos_t = sqrt((1.0 - sin_t * sin_t).max(0.0));
-    let u = d * (1.0 / dist);
-    let left = dir.cross(d) < 0.0; // the rock lies to the right: pass it on the left
-    let t = if left {
-        Vec2::new(u.x * cos_t - u.y * sin_t, u.x * sin_t + u.y * cos_t)
-    } else {
-        Vec2::new(u.x * cos_t + u.y * sin_t, -u.x * sin_t + u.y * cos_t)
-    };
-    t * speed
+    let speed = v.length();
+    if rocks.is_empty() || speed < 0.5 {
+        return v;
+    }
+    let fast = speed.max(m.vel.length());
+    let secs = if m.accel > 0.0 { STEER_AHEAD.max(1.0 + fast / m.accel) } else { STEER_AHEAD };
+    let ahead = fast * secs;
+    let mut out = v;
+    for _ in 0..STEER_PASSES {
+        let dir = out * (1.0 / speed);
+        let Some((enter, d, reach)) = first_gap(m, dir, ahead, rocks) else { return out };
+        let dist = sqrt(d.length_squared());
+        if enter.is_none() {
+            // Inside the gap: away from the rock, keeping what of the goal does not point at it.
+            let away = d * (-1.0 / dist.max(1e-3));
+            let into = v.dot(away * -1.0).max(0.0);
+            return v + away * (into + speed * 0.5);
+        }
+        // The tangent on the side the rock is not: the rock's direction turned by the angle its gap circle spans.
+        out = tangent(dir, d, reach) * speed;
+    }
+    // Still blocked: no faster than it can stop from before the gap.
+    if let Some((Some(enter), _, _)) = first_gap(m, out * (1.0 / speed), ahead, rocks)
+        && m.accel > 0.0
+    {
+        let stop = sqrt(2.0 * m.accel * enter.max(0.0));
+        if stop < speed {
+            out = out * (stop / speed);
+        }
+    }
+    out
 }

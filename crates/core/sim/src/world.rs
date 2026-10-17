@@ -862,7 +862,8 @@ impl Sim {
         impacts.clear();
         for rc in &self.physics.contacts {
             // A piece against an asteroid rock (GDR-0104; rocks order last, so the rock is `b`): an anchored body,
-            // so the closing speed is the piece's own, and the piece takes the ram (the rock nothing).
+            // so the closing speed is the piece's own, and the piece takes the ram scaled by the rock's `ram` (the
+            // rock nothing).
             if rc.b.as_rock().is_some() {
                 let (Some((ka, pa)), Some(ba)) = (self.piece_of(rc.a), self.physics.body(rc.a)) else {
                     continue;
@@ -879,7 +880,10 @@ impl Sim {
                     relative_speed: closing,
                     part_a: contact_part(&self.ships[ka], pa, [rc.local_a, rc.strongest_a], out_a, rc.sub_a),
                     part_b: None,
-                    damage: if rc.impulse > t.ram_threshold { (rc.impulse - t.ram_threshold) * t.ram_damage } else { 0.0 },
+                    damage: match self.voyage.as_deref().and_then(|v| v.rocks().get(rc.b.piece.0 as usize)) {
+                        Some(rock) if rc.impulse > t.ram_threshold => (rc.impulse - t.ram_threshold) * t.ram_damage * rock.ram,
+                        _ => 0.0,
+                    },
                 });
                 continue;
             }

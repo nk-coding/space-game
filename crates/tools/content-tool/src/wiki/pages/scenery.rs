@@ -78,6 +78,7 @@ impl Wiki<'_> {
             ("Corners".into(), count_range(r.corners)),
             ("Roughness".into(), format!("up to {} % in from its radius", format_number(100.0 * r.roughness, 0))),
             ("Stretch".into(), format!("{}–{} ×", format_number(r.stretch.0, 2), format_number(r.stretch.1, 2))),
+            ("Ram damage taken".into(), format!("{} × a ram's", format_number(r.ram, 2))),
             (
                 "Tone".into(),
                 format!(

@@ -31,6 +31,9 @@ pub struct RockKind {
     pub roughness: f32,
     /// Stretch along its long axis `(min, max)` (1: round), rolled per rock.
     pub stretch: (f32, f32),
+    /// The share of a ram's damage (GDR-0047) a ship takes against it: an anchored rock gives nothing, so a ram on
+    /// it would hurt as much as one on a ship of infinite mass; like a ram prow's factors (GDR-0102).
+    pub ram: f32,
     /// Its colour: a key into `art/tokens.json` `world.rock` ([`crate::content::art_keys::ROCK_TONES`]).
     pub tone: String,
     #[serde(skip_deserializing)]

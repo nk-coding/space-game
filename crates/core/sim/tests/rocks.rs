@@ -5,7 +5,7 @@
 mod common;
 
 use common::*;
-use sim::voyage::rocks::{FieldPlan, Rock, outline, steer};
+use sim::voyage::rocks::{FieldPlan, Mover, Rock, outline, steer};
 use sim::{Body, Maneuver, Owner, ShipCommand, Sim, SimEvent, TickInputs, Vec2, VoyagePlan};
 
 /// A voyage with no sites and one rock of `radius` at `at` (spawned when a player vessel comes near).
@@ -16,7 +16,7 @@ fn rock_plan(at: Vec2, radius: f32) -> VoyagePlan {
             Vec2::new(libm::cosf(a), libm::sinf(a)) * radius
         })
         .collect();
-    let rock = Rock { kind: "iron_rock".into(), pos: at, angle: 0.0, points, radius };
+    let rock = Rock { kind: "iron_rock".into(), ram: 0.5, pos: at, angle: 0.0, points, radius };
     VoyagePlan {
         voyage: "rocks".into(),
         seed: 1,
@@ -168,11 +168,29 @@ fn maneuvers_steer_round_a_rock_in_the_way() {
 
 #[test]
 fn steer_leaves_a_clear_way_alone_and_turns_aside_for_a_rock() {
-    let rock = Rock { kind: "iron_rock".into(), pos: Vec2::new(0.0, 50.0), angle: 0.0, points: Vec::new(), radius: 10.0 };
+    let rock = Rock { kind: "iron_rock".into(), ram: 0.5, pos: Vec2::new(0.0, 50.0), angle: 0.0, points: Vec::new(), radius: 10.0 };
     let v = Vec2::new(0.0, 20.0);
-    assert_eq!(steer(Vec2::ZERO, 5.0, v, &[]), v);
-    assert_eq!(steer(Vec2::new(100.0, 0.0), 5.0, v, std::slice::from_ref(&rock)), v, "the rock is off to the side");
-    let bent = steer(Vec2::new(1.0, 0.0), 5.0, v, std::slice::from_ref(&rock));
+    let at = |x: f32| Mover { pos: Vec2::new(x, 0.0), radius: 5.0, vel: Vec2::ZERO, accel: 10.0 };
+    assert_eq!(steer(&at(0.0), v, &[]), v);
+    assert_eq!(steer(&at(100.0), v, std::slice::from_ref(&rock)), v, "the rock is off to the side");
+    let bent = steer(&at(1.0), v, std::slice::from_ref(&rock));
     assert!((bent.length() - 20.0).abs() < 1e-3, "same speed");
     assert!(bent.x > 0.0, "it passes on the side it was already on: {bent:?}");
+}
+
+#[test]
+fn steer_slows_for_a_gap_too_narrow_and_bends_a_ship_carried_into_a_rock() {
+    let rock = |x: f32| Rock { kind: "iron_rock".into(), ram: 0.5, pos: Vec2::new(x, 60.0), angle: 0.0, points: Vec::new(), radius: 10.0 };
+    // Two rocks 4 m apart edge to edge: no way through for a 5 m ship.
+    let pair = [rock(-12.0), rock(12.0)];
+    let m = Mover { pos: Vec2::ZERO, radius: 5.0, vel: Vec2::ZERO, accel: 10.0 };
+    // At 40 m/s it could not stop before the gaps (2·10·d < 40²): it slows to what it can stop from.
+    let out = steer(&m, Vec2::new(0.0, 40.0), &pair);
+    assert!(out.length() < 40.0, "it slows: {out:?}");
+    // Coasting at 20 m/s straight at a rock with the goal to stop: the motion is bent aside first.
+    let m = Mover { vel: Vec2::new(0.0, 20.0), ..m };
+    let one = [rock(0.0)];
+    assert!(m.heading_into(&one).is_some());
+    let out = steer(&m, Vec2::ZERO, &one);
+    assert!(out.x.abs() > 1.0, "across the rock's way: {out:?}");
 }

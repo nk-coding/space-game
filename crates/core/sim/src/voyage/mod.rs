@@ -808,6 +808,14 @@ impl Sim {
         }));
     }
 
+    /// Does an asteroid rock (GDR-0104) lie on the straight line from `a` to `b`? The scripted pilot holds fire
+    /// through one.
+    pub fn rock_between(&self, a: Vec2, b: Vec2) -> bool {
+        let d = b - a;
+        let len = d.length();
+        len > 0.0 && self.physics.raycast_skipping(a, d * (1.0 / len), len, |k| k.as_rock().is_none()).is_some()
+    }
+
     /// The voyage underway, if any.
     pub fn voyage(&self) -> Option<&Voyage> {
         self.voyage.as_deref()

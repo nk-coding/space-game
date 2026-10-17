@@ -41,7 +41,7 @@ use crate::flight::maneuver::Maneuver;
 use crate::math::{Rot, Vec2, atan2, cos, sqrt};
 use crate::flight::physics::wrap_angle;
 use crate::ship::{PartState, Piece, Ship, Wrench, gun_works, producing};
-use crate::voyage::rocks::{Rock, steer};
+use crate::voyage::rocks::{Mover, Rock, steer};
 
 pub use aim::{intercept_time, lead_point, resolve_target, smart_aim};
 pub use controllers::turn_rate;
@@ -500,7 +500,7 @@ pub(crate) fn plan(ship: &Ship, ships: &[Ship], rocks: &[Rock], cfg: &SimConfig)
     let kin = Kin::of(piece, &ship.parts);
     if let Some(b) = &ship.behavior {
         let (mut goal, fire) = crate::behavior::fly(b, &kin, ships, tuning);
-        goal.velocity = goal.velocity.map(|v| steer(piece.body.pos, piece.radius, v, rocks));
+        goal.velocity = goal.velocity.map(|v| steer(&mover(piece, &kin), v, rocks));
         // A vessel without a working engine fights on as a turret (GDR-0064): whatever its rule flies, it turns
         // its strongest working guns onto its target with what it has (gyros, cores, RCS); RCS pods still follow
         // the velocity goal. Before, `HeadingGoal::Auto` with nothing to push kept the heading: it never aimed.
@@ -530,7 +530,7 @@ pub(crate) fn plan(ship: &Ship, ships: &[Ship], rocks: &[Rock], cfg: &SimConfig)
         HelmMode::Maneuver { maneuver, fire } => Plan {
             goal: Some({
                 let mut goal = maneuver.goal(&kin, ships, tuning);
-                goal.velocity = goal.velocity.map(|v| steer(piece.body.pos, piece.radius, v, rocks));
+                goal.velocity = goal.velocity.map(|v| steer(&mover(piece, &kin), v, rocks));
                 goal
             }),
             fire: Fire::all_if(*fire),
@@ -549,6 +549,11 @@ pub(crate) fn plan(ship: &Ship, ships: &[Ship], rocks: &[Rock], cfg: &SimConfig)
             }
         }
     }
+}
+
+/// The piece flying `kin` as [`steer`] sees it.
+fn mover(piece: &Piece, kin: &Kin) -> Mover {
+    Mover { pos: piece.body.pos, radius: piece.radius, vel: kin.vel, accel: kin.stop_accel() }
 }
 
 /// Does the piece have an engine (not an RCS nozzle) that can push now ([`producing`])?

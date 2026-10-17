@@ -22,7 +22,7 @@
 //!   quarter of its top speed, so the pack wakes in front of a slow ship.
 //!
 //! Every move it makes bends round the asteroid rocks ahead (GDR-0104): its maneuvers as every maneuver does, its
-//! stick through `rocks::steer`.
+//! stick through `rocks::steer`; with a rock in its line of fire it holds fire and slides aside.
 //!
 //! It goes home as soon as the sim allows (`Sim::can_recall`, running from the nearest enemy until then) once the
 //! goal is cleared and every site is done with nothing left in reach to strip (or the hold is full), or when it is
@@ -524,7 +524,12 @@ impl VoyageRunner {
                     // target).
                     let way = foe_at - here;
                     let gap = way.length() - self.flagship.reach * CLOSE_TO;
-                    let stick = if gap > 0.0 {
+                    // An asteroid rock in the line of fire (GDR-0104): hold fire and slide aside for a clear shot,
+                    // as a player would.
+                    let blocked = sim.rock_between(here, foe_at);
+                    let stick = if blocked {
+                        way.perp() * (CLOSE_STICK / way.length())
+                    } else if gap > 0.0 {
                         way * ((gap / EASE).min(CLOSE_STICK) / way.length())
                     } else {
                         Vec2::ZERO
@@ -533,7 +538,7 @@ impl VoyageRunner {
                         stick,
                         lock: Some(Target::Ship(foe)),
                         drift: false,
-                        fire: FIRE_ALL,
+                        fire: if blocked { 0 } else { FIRE_ALL },
                         aim: AimMode::Auto,
                         ..Default::default()
                     };
@@ -672,11 +677,19 @@ fn fly(sim: &mut Sim, ship: ShipId, maneuver: Maneuver, pilot: &mut Pilot) {
 /// Flies pilot input (leaving the fight behavior if it flew one), its stick bent round the asteroid rocks ahead as a
 /// player would steer (GDR-0104, `rocks::steer` at the ship's top speed).
 fn pilot_input(sim: &mut Sim, ship: ShipId, mut input: PilotInput, pilot: &mut Pilot) {
-    if let Some(p) = sim.ship(ship).and_then(|s| s.piece(s.control_piece()?)) {
+    if let Some(s) = sim.ship(ship)
+        && let Some(p) = s.control_piece().and_then(|c| s.piece(c))
+    {
         let top = p.authority.speed.iter().fold(0.0f32, |a, &b| a.max(b));
         let rocks = sim.voyage().map_or(&[][..], |v| v.rocks());
         if top > 0.0 && !rocks.is_empty() {
-            input.stick = crate::voyage::rocks::steer(p.body.pos, p.radius, input.stick * top, rocks) * (1.0 / top);
+            let kin = crate::flight::Kin::of(p, s.parts());
+            let m = crate::voyage::rocks::Mover { pos: p.body.pos, radius: p.radius, vel: kin.vel, accel: kin.stop_accel() };
+            // Carried into a rock: let go of the lock (under one it pushes only along its nose) and turn aside.
+            if m.heading_into(rocks).is_some() {
+                input.lock = None;
+            }
+            input.stick = crate::voyage::rocks::steer(&m, input.stick * top, rocks) * (1.0 / top);
         }
     }
     if pilot.flying_behavior {

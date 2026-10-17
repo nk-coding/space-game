@@ -37,6 +37,9 @@ impl<'a> Validator<'a> {
         if !(lo.is_finite() && hi.is_finite() && lo >= 1.0 && lo <= hi && hi <= 4.0) {
             self.err(r, "stretch", format!("`(min, max)` with 1 ≤ min ≤ max ≤ 4, got ({lo}, {hi})"));
         }
+        if !(r.ram.is_finite() && (0.0..=4.0).contains(&r.ram)) {
+            self.err(r, "ram", format!("a factor from 0 to 4, got {}", r.ram));
+        }
         self.key_in(r, "tone", &r.tone, ROCK_TONES, "rock tone");
     }
 
