@@ -1,0 +1,10 @@
+(
+    id: "grown",
+    name: "The Grown",
+    summary: "A wary race of living ships in the outer reach, whose hulls grow back.",
+    description: "They love ramming with living prows and cover the approach with thorn guns. A Grown grove does not wake when a ship comes near, only when it is provoked: shot at, rammed, scanned close by, or its wrecks stripped. Their ships come with the outer reach.",
+    tags: ["enemy"],
+    glow: "enemy",
+    // Calm unless provoked (GDR-0099 A3).
+    wary: true,
+)

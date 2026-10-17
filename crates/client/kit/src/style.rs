@@ -66,7 +66,7 @@ impl Style {
                 core_width: atlas.token_f32("ship.plume.cruise.core_width"),
                 core_length: atlas.token_f32("ship.plume.cruise.core_length"),
             },
-            armor: group("ship.armor", &["steel", "composite", "reactive", "enemy"]),
+            armor: group("ship.armor", &["steel", "composite", "reactive", "enemy", "tissue"]),
             system: group(
                 "ship.system_colors",
                 &["power", "weapons", "shields", "heat", "propulsion", "logic", "cargo", "enemy"],

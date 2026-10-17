@@ -153,6 +153,12 @@ fn interiors_follow_their_cluster_types_and_hold_the_trail_places() {
         assert_eq!(i, interior(&c, &s, k).unwrap(), "an interior is a function of its seed");
         let t = c.cluster_types.get(&cluster.kind).unwrap();
         assert!(i.radius >= t.radius.0 && i.radius <= t.radius.1 && i.radius.fract() == 0.0);
+        // A hot cluster's star lies its type's distance out, whole metres (GDR-0102); others have none.
+        assert_eq!(i.star.is_some(), t.star.is_some());
+        if let (Some(star), Some(spec)) = (&i.star, &t.star) {
+            let d = (star.x as f64).hypot(star.y as f64);
+            assert!((d - (i.radius * spec.distance) as f64).abs() < 1.0 && star.x.fract() == 0.0 && star.heat == spec.heat);
+        }
         let ordinary = i.sites.iter().filter(|x| x.place.is_none()).count() as u32;
         let (lo, hi) = t.sites.iter().fold((0, 0), |(a, b), x| (a + x.count.0, b + x.count.1));
         assert!((lo..=hi).contains(&ordinary));
@@ -171,5 +177,5 @@ fn interiors_follow_their_cluster_types_and_hold_the_trail_places() {
 #[test]
 fn the_generation_hash_is_pinned() {
     let c = data::base_content();
-    assert_eq!(format!("{:016x}", generate(&c, "galaxy", 1).unwrap().hash()), "8a509f91bd8fd0b8");
+    assert_eq!(format!("{:016x}", generate(&c, "galaxy", 1).unwrap().hash()), "6c2845db355809ce");
 }

@@ -16,6 +16,10 @@ pub struct ArmorSpec {
     /// Share of an explosion's damage a hull part of this armour takes (GDR-0084; default 1: no protection).
     #[serde(default = "one")]
     pub blast_factor: f32,
+    /// Living armour (GDR-0099 A4, GDR-0102): hit points a hull part of this armour regains per second per cell
+    /// while it is on a vessel's controlling piece, up to its full hit points. Default 0: it never heals.
+    #[serde(default)]
+    pub heal: f32,
 }
 
 /// `materials/*.ron`: materials. For now only armour materials (with an `armor` block); fabrication
@@ -287,6 +291,29 @@ pub struct ExplosionSpec {
     pub radius: f32,
 }
 
+/// A heart (GDR-0099 A1, GDR-0102): while it works (alive, not overheated, not idle) on a vessel's controlling
+/// piece, the ship's lost parts slowly re-form from their living neighbours, one every `interval` seconds, nearest
+/// to the heart first. Hearts themselves never re-form: killing the heart stops it.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct HeartSpec {
+    /// Seconds between two re-formed parts.
+    pub interval: f32,
+    /// Share of its full hit points a re-formed part starts with (above 0, at most 1).
+    pub hp: f32,
+}
+
+/// A prow built for ramming (GDR-0099 A2, GDR-0102): when the part is the touching part of a ram (GDR-0047), the
+/// other side takes `dealt` times the ram damage and its own side `taken` times it.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RamSpec {
+    #[serde(default = "one")]
+    pub dealt: f32,
+    #[serde(default = "one")]
+    pub taken: f32,
+}
+
 /// Pure reaction torque about the centre of mass, in either direction, without thrust: a gyro, or the small
 /// built-in turning help of a logic core.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -481,6 +508,16 @@ pub struct Part {
     /// Destroyed, it explodes into its neighbours (GDR-0019, GDR-0084).
     #[serde(default)]
     pub explosion: Option<ExplosionSpec>,
+    /// Re-forms the ship's lost parts while it works (GDR-0099 A1).
+    #[serde(default)]
+    pub heart: Option<HeartSpec>,
+    /// Living tissue (non-hull parts; hull parts take it from their armour's `heal`): hit points regained per
+    /// second while the part is on a vessel's controlling piece, up to its full hit points (GDR-0099 A4).
+    #[serde(default)]
+    pub heal: Option<f32>,
+    /// Built for ramming (GDR-0099 A2).
+    #[serde(default)]
+    pub ram: Option<RamSpec>,
     #[serde(default)]
     pub bonuses: Vec<Bonus>,
     /// What the part gives when salvaged (non-hull parts; hull parts take it from their material per cell).
@@ -530,6 +567,15 @@ impl Part {
             armor.map(|a| a.hp_per_cell * self.area())
         } else {
             self.hp
+        }
+    }
+    /// Hit points regained per second when placed in `armor` (GDR-0099 A4): hull parts `heal × area` of a healing
+    /// armour, other parts their `heal`; `None` for a part that never heals.
+    pub fn heal_in(&self, armor: Option<&ArmorSpec>) -> Option<f32> {
+        if self.hull {
+            armor.filter(|a| a.heal > 0.0).map(|a| a.heal * self.area())
+        } else {
+            self.heal
         }
     }
     /// Does the part draw power (the parts that take a power tier, weight and placement override)?

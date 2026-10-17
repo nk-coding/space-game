@@ -175,6 +175,25 @@ impl<'a> Validator<'a> {
                 );
             }
         }
+        if let Some(x) = &p.heart {
+            self.number(p, "heart.interval", x.interval, 0.0, true);
+            if !(x.hp > 0.0 && x.hp <= 1.0) {
+                self.err(p, "heart.hp", format!("a share of the full hit points, above 0 and at most 1, got {}", x.hp));
+            }
+            if p.hull {
+                self.err(p, "heart", "hull parts cannot be hearts");
+            }
+        }
+        if let Some(x) = p.heal {
+            self.number(p, "heal", x, 0.0, true);
+            if p.hull {
+                self.err(p, "heal", "hull parts heal by their armour's `heal`; remove `heal`");
+            }
+        }
+        if let Some(x) = &p.ram {
+            self.number(p, "ram.dealt", x.dealt, 0.0, false);
+            self.number(p, "ram.taken", x.taken, 0.0, false);
+        }
         if let Some(x) = &p.gyro {
             self.number(p, "gyro.torque", x.torque, 0.0, true);
         }

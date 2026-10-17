@@ -37,6 +37,11 @@ pub const BUILTIN_STATS: &[&str] = &[
     "torque",
     "blast_damage",
     "blast_radius",
+    "regrow_interval",
+    "regrow_hp",
+    "heal",
+    "ram_dealt",
+    "ram_taken",
     "shield_radius",
     "shield_capacity",
     "shield_regen",
@@ -52,6 +57,7 @@ pub const BUILTIN_STATS: &[&str] = &[
     "hp_per_cell",
     "build_point_factor",
     "blast_factor",
+    "heal_per_cell",
 ];
 
 /// Stat ids an adjacency bonus may change: the ones the sim applies to a part (`sim::ship::design::Stat`). `fire_rate`
@@ -293,6 +299,17 @@ impl Content {
             v.push(("blast_damage", x.damage));
             v.push(("blast_radius", x.radius));
         }
+        if let Some(x) = &part.heart {
+            v.push(("regrow_interval", x.interval));
+            v.push(("regrow_hp", x.hp * 100.0));
+        }
+        if let Some(x) = part.heal_in(armor) {
+            v.push(("heal", x));
+        }
+        if let Some(x) = &part.ram {
+            v.push(("ram_dealt", x.dealt));
+            v.push(("ram_taken", x.taken));
+        }
         let mut lines = self.sorted(
             v.into_iter()
                 .filter_map(|(s, x)| self.stat_line(s, x))
@@ -383,9 +400,11 @@ impl Content {
             ("hp_per_cell", a.hp_per_cell),
             ("build_point_factor", a.build_point_factor),
             ("blast_factor", a.blast_factor),
+            ("heal_per_cell", a.heal),
         ];
         self.sorted(
             v.into_iter()
+                .filter(|&(s, x)| s != "heal_per_cell" || x > 0.0)
                 .filter_map(|(s, x)| self.stat_line(s, x))
                 .collect(),
         )

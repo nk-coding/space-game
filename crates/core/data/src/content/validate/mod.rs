@@ -168,6 +168,8 @@ pub const MAX_VOYAGE_MINUTES: u32 = 600;
 /// Largest cluster radius, in metres: one `f32` simulation space centred on the origin holds about 4 km (ADR-0022,
 /// galaxy track E0, `docs/results/2026-10-16-bigger-clusters.md`).
 pub const MAX_CLUSTER_RADIUS: f32 = 4000.0;
+/// Farthest a cluster's hot star lies from its centre, in cluster radii (a sanity bound, placeholder).
+pub const MAX_STAR_DISTANCE: f32 = 10.0;
 /// Largest galaxy radius and galaxy-map distance, in S (a sanity bound on the generator's work, placeholder).
 pub const MAX_GALAXY_RADIUS: f32 = 100.0;
 /// Most gates of one band, home's required neighbours and trails of one entry of a band (sanity bounds, placeholder).
@@ -492,6 +494,7 @@ impl<'a> Validator<'a> {
             self.number(m, "armor.mass_per_cell", a.mass_per_cell, 0.0, true);
             self.number(m, "armor.hp_per_cell", a.hp_per_cell, 0.0, true);
             self.number(m, "armor.blast_factor", a.blast_factor, 0.0, false);
+            self.number(m, "armor.heal", a.heal, 0.0, false);
             self.number(
                 m,
                 "armor.build_point_factor",

@@ -42,4 +42,16 @@
         armor: (tone: "enemy", mass_per_cell: 2.2, hp_per_cell: 1.2, build_point_factor: 1.2, blast_factor: 0.5),
         salvage: (family: "hull", data: 1),
     ),
+    (
+        id: "grown_tissue",
+        name: "Grown tissue",
+        summary: "Living armour of the Grown that heals while it is on a vessel.",
+        description: "A hull part in it regains hit points every second while it is on a vessel's controlling piece, up to its full hit points. Light, a little tougher than steel, weaker against blasts.",
+        tags: ["grown"],
+        locked: true, // until the Grown research family (phase 2 of the outer reach); `?unlock=all` offers it
+        icon: "armor-tissue",
+        // PLACEHOLDER, lead default (17 Oct 2026, GDR-0102): a full cell regains its 1.1 hit points in about 27 s.
+        armor: (tone: "tissue", mass_per_cell: 1.6, hp_per_cell: 1.1, build_point_factor: 1.3, blast_factor: 0.6, heal: 0.04),
+        salvage: (family: "hull", data: 1.2),
+    ),
 ]

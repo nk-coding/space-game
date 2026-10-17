@@ -1,0 +1,21 @@
+// A stub of the outer reach's hot clusters (GDR-0099 A5, GDR-0102): a hot star lies beside the cluster, and every part
+// open to space takes its heat, more near the star. The rim's automatons stand in until the Grown's groves exist
+// (phase 2 of the outer reach). PLACEHOLDER NUMBERS (lead, 17 Oct 2026, GDR-0102): the star lies 1.8 radii out, so a
+// part takes 0.3 heat a second per open side at the centre, about 1.5 at the cluster's edge nearest the star and 0.12
+// at the far edge; a shield emitter open on two sides runs at two thirds of its limit at the centre and overheats
+// on the star's side unless a radiator beside it vents the heat (`sim/tests/living.rs`).
+(
+    id: "scorched_deep",
+    name: "Scorched deep",
+    summary: "Space beside a hot star: every part open to space soaks up its heat, the more the nearer you fly to it.",
+    tags: ["stub", "hot"],
+    radius: (2000, 2800),
+    spacing: (600, 1400),
+    words: ["Glare", "Furnace"],
+    sites: [
+        (encounter: "raider_pack", count: (1, 2)),
+        (encounter: "hunter_pack", count: (0, 1)),
+        (encounter: "precursor_wrecks", count: (0, 2)),
+    ],
+    star: (heat: 0.3, distance: 1.8),
+)

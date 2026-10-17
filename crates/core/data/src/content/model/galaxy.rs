@@ -165,10 +165,29 @@ pub struct ClusterType {
     pub words: Vec<String>,
     /// Its ordinary sites: each encounter placed a rolled number of times.
     pub sites: Vec<ClusterSite>,
+    /// A hot star near the cluster (GDR-0099 A5, GDR-0102): parts open to space take its heat.
+    #[serde(default)]
+    pub star: Option<StarSpec>,
     #[serde(skip_deserializing)]
     pub source: Source,
 }
 entry!(ClusterType, Kind::ClusterType);
+
+/// A hot star beside a cluster (GDR-0102): it lies `distance` times the cluster's radius from the centre, in a
+/// direction rolled per cluster, and every part takes `heat` per second for each of its sides open to space at
+/// the cluster's centre, more nearer the star (the square of the distance, at most [`STAR_HEAT_CAP`] times).
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct StarSpec {
+    /// Heat per second per open side at the cluster's centre (the units of `heat.output`).
+    pub heat: f32,
+    /// How far from the centre it lies, in cluster radii (above 1: outside the cluster).
+    pub distance: f32,
+}
+
+/// Near a hot star the heat grows with the inverse square of the distance, but never past this many times its heat
+/// at the cluster's centre.
+pub const STAR_HEAT_CAP: f32 = 4.0;
 
 /// Ordinary sites of a cluster type.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

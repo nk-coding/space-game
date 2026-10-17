@@ -16,6 +16,19 @@ pub struct Interior {
     pub spacing: (f32, f32),
     /// The ordinary sites in the type's order, then the trail places in trail order.
     pub sites: Vec<InteriorSite>,
+    /// The hot star beside it, if its type has one (GDR-0102). Left out of the RON when none, so interiors without
+    /// one hash as before.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub star: Option<InteriorStar>,
+}
+
+/// A cluster's hot star (the type's `star`): where it lies, whole metres from the cluster's centre, in a direction
+/// rolled after the sites, and its heat per open side at the centre.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct InteriorStar {
+    pub x: f32,
+    pub y: f32,
+    pub heat: f32,
 }
 
 /// One site of an interior.
@@ -46,5 +59,10 @@ pub fn interior(c: &Content, s: &Skeleton, cluster: u32) -> Result<Interior, Gen
             }
         }
     }
-    Ok(Interior { radius, spacing: t.spacing, sites })
+    let star = t.star.as_ref().map(|st| {
+        let a = core::f64::consts::TAU * unit(&mut rng);
+        let d = radius as f64 * st.distance as f64;
+        InteriorStar { x: libm::round(d * libm::cos(a)) as f32, y: libm::round(d * libm::sin(a)) as f32, heat: st.heat }
+    });
+    Ok(Interior { radius, spacing: t.spacing, sites, star })
 }

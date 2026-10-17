@@ -945,7 +945,7 @@ mod tests {
         assert_eq!(logic["text_keys"]["name"], json!("family.logic.name"));
         assert_eq!(
             logic["salvaged_from_parts"],
-            json!(["automaton_core", "logic_core", "scanner"])
+            json!(["automaton_core", "grown_heart", "logic_core", "scanner"])
         );
         assert_eq!(
             logic["research"],
@@ -953,7 +953,7 @@ mod tests {
         );
         assert_eq!(
             find("families", "hull")["salvaged_from_materials"],
-            json!(["steel", "composite", "reactive", "automaton_plate"])
+            json!(["steel", "composite", "reactive", "automaton_plate", "grown_tissue"])
         );
         let node = find("research", "mind_expansion_1");
         assert_eq!(node["kind"], json!("Refinement"));

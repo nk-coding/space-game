@@ -642,6 +642,9 @@ fn base_locks_follow_the_early_game_kit() {
         [
             "automaton_core",
             "automaton_cannon",
+            "grown_heart",
+            "ram_prow",
+            "thorn_gun",
             "fusion_reactor",
             "torch_drive",
             "beam_laser"
@@ -655,7 +658,7 @@ fn base_locks_follow_the_early_game_kit() {
         .collect();
     assert_eq!(
         locked_materials,
-        ["composite", "reactive", "automaton_plate"]
+        ["composite", "reactive", "automaton_plate", "grown_tissue"]
     );
     let open_frames: Vec<&str> = c
         .frames

@@ -401,6 +401,36 @@ fn part_errors() {
     assert_error(&e, "Bad-Id", "name", "empty");
 }
 
+/// The Grown's blocks (GDR-0102): a heart's interval and share, healing (non-hull parts; hull parts heal by their
+/// armour), ram factors, an armour's healing and a cluster's hot star.
+#[test]
+fn living_part_and_hot_star_errors() {
+    let e = errors_with(
+        "parts/p.ron",
+        &format!("({PART_HEAD}, category: \"defense\", mass: 1, hp: 1, heart: (interval: 0, hp: 1.5), heal: -1, ram: (dealt: -2))"),
+    );
+    assert_error(&e, "p", "heart.interval", "> 0");
+    assert_error(&e, "p", "heart.hp", "at most 1");
+    assert_error(&e, "p", "heal", "> 0");
+    assert_error(&e, "p", "ram.dealt", ">= 0");
+    let e = errors_with(
+        "parts/p.ron",
+        r#"(id: "p", name: "P", summary: "S.", category: "hull", size: (1, 1), build_points: 1, hull: true, heal: 0.1)"#,
+    );
+    assert_error(&e, "p", "heal", "armour's `heal`");
+    let e = errors_with(
+        "materials/m.ron",
+        r#"(id: "m", name: "M", summary: "S.", armor: (tone: "tissue", mass_per_cell: 1, hp_per_cell: 1, build_point_factor: 1, heal: -0.5))"#,
+    );
+    assert_error(&e, "m", "armor.heal", ">= 0");
+    let e = errors_with(
+        "cluster_types/t.ron",
+        r#"(id: "t", name: "T", summary: "S.", radius: (2000, 2500), spacing: (500, 900), words: ["Glow"], sites: [], star: (heat: 0, distance: 0.5))"#,
+    );
+    assert_error(&e, "t", "star.heat", "> 0");
+    assert_error(&e, "t", "star.distance", "above 1");
+}
+
 const SHIP_HEAD: &str = r#"id: "s", name: "S", summary: "S.", faction: "ship_mind", size: (3, 3)"#;
 
 #[test]

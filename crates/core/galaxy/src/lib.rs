@@ -42,7 +42,7 @@ use data::rng::Pcg32;
 use data::{Band, Content, Galaxy};
 
 pub use data::skeleton::{Area, Cluster, Place, Point, Signal, Skeleton, TrailPlan, UNITS_PER_S};
-pub use interior::{Interior, InteriorSite, interior};
+pub use interior::{Interior, InteriorSite, InteriorStar, interior};
 
 /// The generator's version: saves store it next to the skeleton (ADR-0024). Raise it when the same seed and content
 /// would generate a different skeleton or interior. 2: the set pieces (galaxy plan E7).
