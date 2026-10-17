@@ -103,8 +103,8 @@ the game requires these ids: `build_points mass hp power_output power_draw power
 damage range shot_rate shot_speed penetration recoil thrust rated_speed gimbal plume_length plume_damage plume_heat
 rcs_thrust rcs_rated_speed torque
 shield_radius shield_capacity shield_regen cargo_capacity rule_slots control_cost control_capacity mass_per_cell
-hp_per_cell build_point_factor blast_damage blast_radius blast_factor` (the last three since 14 Oct 2026,
-GDR-0084). `fire_rate` is a bonus-only stat. Units (`t`, `kN`, `kN·m`, `MW`, `°`) are
+hp_per_cell build_point_factor blast_damage blast_radius blast_factor regrow_interval regrow_hp heal ram_dealt
+ram_taken heal_per_cell` (`blast_*` since 14 Oct 2026, GDR-0084; the last six since 17 Oct 2026, GDR-0102). `fire_rate` is a bonus-only stat. Units (`t`, `kN`, `kN·m`, `MW`, `°`) are
 placeholders except that the sim reads mass in t, thrust in kN, torque in kN·m (so kN / t = m/s²) and rated
 speeds in m/s; 1 cell = 1 m.
 
@@ -137,7 +137,10 @@ colour key for the icons of the category's parts (see Art keys).
 ### Factions (`factions/*.ron`)
 
 `glow`: hull glow key, `"player"` (teal) or `"enemy"` (coral). Ships name their faction. `behavior` (optional):
-the default behavior of the faction's ships (`automatons` → `raider_basic`, `ship_mind` → `skirmisher`).
+the default behavior of the faction's ships (`automatons` → `raider_basic`, `ship_mind` → `skirmisher`). `wary`
+(optional, default false; 17 Oct 2026, GDR-0099 A3, GDR-0102): calm unless provoked; a voyage site whose every ship
+is of a wary faction does not wake when a player vessel comes near, only when hit, rammed, scanned close by or
+stripped. The Grown (`factions/grown.ron`) are wary; their ships come with phase 2 of the outer reach.
 
 ### Materials (`materials/*.ron`)
 
@@ -152,7 +155,10 @@ A hull part placed in a material gets `mass = mass_per_cell × area`, `hp = hp_p
 `build_points × build_point_factor`; slopes have half the area of their footprint. `blast_factor` (optional, default
 1, at least 0; added 14 Oct 2026, GDR-0084) is the share of a chain reaction's damage the hull part takes, and since
 GDR-0085 also the share it lets through to the parts behind it (base: 0.5, reactive 0.25); stat line `blast_factor`
-("Blast damage taken", ×). Fabrication resources
+("Blast damage taken", ×). `heal` (optional, default 0, HP per second per cell; 17 Oct 2026, GDR-0102): living armour;
+a hull part in it regains `heal × area` hit points a second while it is on a vessel's controlling piece, up to its full
+hit points (stat lines `heal_per_cell` on the material, `heal` on the part). `grown_tissue` (locked, tone `tissue`)
+heals 0.04. Fabrication resources
 (He-3, chitin, ...) will be materials without an `armor` block, which is why the kind is not called "armor".
 The first one is **programmable matter** (`materials/precursor.ron`, added 13 Oct 2026): research costs it, and
 cores give it when salvaged (see [Salvage](#salvage-added-13-oct-2026)). A material without `armor` never shows in
@@ -222,6 +228,9 @@ Optional component blocks (a part has any combination):
 | `logic` | `rule_slots`, `control_capacity` | hosts a mind, runs behavior rules and up to `control_capacity` of control cost (GDR-0038 "N") |
 | `sensor` | `range` (m, at most 4000, `MAX_SENSOR_RANGE`) | how far the vessel sees while the part works (GDR-0095, added 16 Oct 2026): its behaviors pick targets within it, a voyage's sites show within it. On the logic and automaton cores (800). Stat line `sensor_range` |
 | `scanner` | `range` (m, at most 4000), `charge` (s at full power), `cooldown` (s), `wake` (m, at most 4000) | a scanner (GDR-0080, GDR-0093, added 16 Oct 2026): a scan charges, drawing the part's `power.draw` only then (it must draw power), sweeps (sites within `range` show, signals' sites beyond get bearings, sleeping sites within `wake` wake) and cools down. Stat lines `scan_range`, `scan_charge`, `scan_cooldown`, `scan_wake`. The base `scanner` (logic category): 1×1, 3 BP, 3 power, 1200 m, 2 s, 8 s, 300 m; the starter skiff carries one |
+| `heart` | `interval` (s, above 0), `hp` (share, above 0, at most 1); not on hull parts | a heart (GDR-0099 A1, GDR-0102, added 17 Oct 2026): while it is alive, not overheated and not idle on a vessel's controlling piece, the ship re-grows one lost part of its design every `interval` seconds, nearest the heart first, from a living neighbour of the heart's piece, with `hp` of its hit points (`docs/sim.md` "Living parts"). Hearts never grow back. Stat lines `regrow_interval` (s) and `regrow_hp` (%). Base: `grown_heart` 2.5 s, 35 % |
+| `heal` | HP per second, above 0; not on hull parts (they take it from their armour's `heal`) | living tissue (GDR-0102, added 17 Oct 2026): regains that many hit points a second while on a vessel's controlling piece, up to its full hit points. Stat line `heal`. Base: `ram_prow` 0.1 |
+| `ram` | `dealt`, `taken` (factors, default 1, at least 0) | built for ramming (GDR-0099 A2, GDR-0102, added 17 Oct 2026): as the touching part of a ram (GDR-0047) the other side takes `dealt` times the ram damage and its own side `taken` times it. Stat lines `ram_dealt`, `ram_taken` (×). Base: `ram_prow` 2 and 0.5 |
 | `explosion` | `damage`, `radius` (m, at most 4, `data::content::validate::MAX_BLAST_RADIUS`) | a chain reaction (GDR-0019, GDR-0084, GDR-0085, added 14 Oct 2026): when damage destroys the part, every other part with a cell within `radius` m of its centre, on any piece of any ship, takes `damage` once (hull parts times their armour's `blast_factor`; intact armour on the line from the centre lets only its `blast_factor` through); parts it destroys explode in turn, in the same tick. Other ships' shields absorb it, the ship's own do not. Stat lines `blast_damage` (HP) and `blast_radius` (m). Base values (placeholders, lead, 14 Oct 2026, GDR-0085): fission reactor and automaton core 1.5 / 1.5, fusion reactor 2.5 / 2, torch drive 1.2 / 2, shield emitter 1 / 0.6, capacitor, thruster and RCS pod 0.5 / 0.6; the sim's rule is in `docs/sim.md` "Damage and breakage" |
 | `bonuses` | list, see below | adjacency bonuses this part grants |
 
@@ -756,7 +765,7 @@ is in the rules' fingerprint: a game keeps its generated galaxy (ADR-0035).
 |---|---|
 | `galaxy` (`galaxy.ron`) | `bands` (ids, rim first, each inside the one before), `spacing` (S, no two clusters closer), `jump_range` (S at the start; at least twice the spacing), `home_neighbours` (home's band clusters without a set piece within the jump range), `warp` (`(seconds, seconds per S)`), `signal_area: (across: (min, max) S, offset: share of the radius the place may lie off-centre, below 1, narrow: share of the radius a scan from another cluster keeps, above 0 and below 1)`, `trail_step` (`(min, max)` S between a trail's places), `names: (starts, ends)` (syllables of a cluster name's first word), `set_pieces` (`[(voyage, distance: (min, max) S from home, gate)]`: hand-made voyages placed on clusters of their band that take their names; a `gate` piece keeps its band's first gate, its voyages the gate's trail, at most one a band, its goal with ships for sure; E7, GDR-0098) |
 | `band` (`bands.ron`) | `edge` (S from the centre to its outer edge; the next band's edge is its inner one), `clusters` (`[(id: cluster type, weight)]`), `gates` (optional `(count, trail)`: gates near its inner edge, each at the end of a `Gate` trail; every band but the innermost has them), `trails` (`[(trail, count)]`, `Cache` or `Salvage` trails) |
-| `cluster_type` (`cluster_types/*.ron`) | `radius` (`(min, max)` m, at most 4000: one `f32` space, ADR-0022), `spacing` (`(min, max)` m between sites, as a voyage's), `words` (the second word of its clusters' names), `sites` (`[(encounter, count: (min, max))]`, at most 64 sites) |
+| `cluster_type` (`cluster_types/*.ron`) | `radius` (`(min, max)` m, at most 4000: one `f32` space, ADR-0022), `spacing` (`(min, max)` m between sites, as a voyage's), `words` (the second word of its clusters' names), `sites` (`[(encounter, count: (min, max))]`, at most 64 sites), `star` (optional `(heat, distance)`: a hot star beside the cluster, `distance` cluster radii from the centre (above 1, at most 10) in a direction rolled after its sites; every part takes `heat` per second per open side at the centre, by the inverse square of the distance nearer it, at most `data::STAR_HEAT_CAP` = 4 times; 17 Oct 2026, GDR-0102; the outer reach's stub `scorched_deep`: 0.3 at 1.8) |
 | `trail` (`trails.ron`) | `reward` (`Gate`, `Cache`, `Lore`, `Salvage`), `length` (`(min, max)` signals, 1 to 4), `target` (the encounter at its end; a gate's must have ships for sure), `sources` (signal source ids, equally likely), `hint` (text: the signal's first line, "SIGNAL · A GATE"), `gives` (optional `(data: {family: amount}, materials: {material: count})`: what its end puts into store, a cache's; E8) |
 | `signal_source` (`signal_sources.ron`) | `form` (`Log`: a data core in a wreck, decoded at home; `Beacon`: scanned in the cluster), `line` (text: the signal's second line, "a log from a hauler's wreck"), `site` (the encounter at its place: required for a log and must hold wrecks; a beacon's keeper, none for the beacon alone) |
 | `lore` (`lore/*.ron`) | `band`, `trail` (a `Lore` trail: one is placed per fragment), `text` (the fragment, for the memory log) |
@@ -989,7 +998,7 @@ placements carry their `power` override. `pages` holds free articles; `texts` th
 Content never holds colours. It names keys that `art/tokens.json` resolves:
 
 - system colours (`ship.system_colors`): `power weapons shields heat propulsion logic cargo enemy`
-- armor tones (`ship.armor`): `steel composite reactive enemy`
+- armor tones (`ship.armor`): `steel composite reactive enemy tissue`
 - hull glow: `player` (`ship.hull_glow.color`), `enemy` (`ship.hull_glow.enemy_color`)
 - icons: keys of `icons/<key>.svg` in the content packs (not `tokens.json`)
 

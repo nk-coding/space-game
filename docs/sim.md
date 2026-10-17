@@ -37,6 +37,11 @@ and wrecks spawned as wrecks. See [Salvage](#salvage).
 seed and spawns, wakes and clears them around the player's vessels; the recall check; a `voyage` determinism scenario
 and the headless voyage runner. See [Voyages](#voyages).
 
+**The Grown's mechanics on 17 Oct 2026** (GDR-0099, lead defaults in GDR-0102): hearts re-grow lost parts, living
+parts heal, ram prows scale the ram damage, wary sites wake only when provoked (and every site when its wreck is
+stripped), a hot star heats every part open to space; a `grown` determinism scenario. See
+[Living parts](#living-parts-gdr-0099-gdr-0102), [Hot stars](#hot-stars-gdr-0102) and [Running it](#running-it).
+
 No Bevy, no graphics, no threads, no filesystem, no wall-clock. Builds for `wasm32-unknown-unknown` and
 `wasm32-wasip1`. Dependencies: `data` (content), `libm` (pinned `=0.2.16`, `arch` feature off), `rhai`
 (pinned `=1.26.1`, sandboxed; see [Rhai conditions](#rhai-conditions)) and `rapier2d` (pinned `=0.36.1`,
@@ -69,6 +74,7 @@ the runner, the scenarios); at the root what everything uses.
 | `combat::weapons` | beams, pulses, projectiles (`Projectile`, `ProjectileId`), shields (`Bubble`, `absorbs_from`: which bubbles take damage from a source), no friendly fire, `BeamTrace`, `ShotKind`, `GoneReason`, weapon `tuning` |
 | `flight::physics` | `Physics` (Rapier2D: one body per piece, compound colliders, ghost filter, ray casts, contacts), `BodyKey`, `RayHit`, `Contact`, `wrap_angle` |
 | `combat::plume` | engine exhaust plumes (crate-private): lanes, the own-hull path, ray casts against other bodies, shields, `SimEvent::PlumeHit` |
+| `ship::living` | living parts (GDR-0099, GDR-0102): `Ship::heal`, the hearts' timers (`Ship::regrowth`), the regrowth candidates and `Ship::regrow` (the reverse of `remove_part`), `Sim::living` (the pass, asking the physics for overlaps) |
 | `ship::breakage` | `Ship::apply_damage`, `Ship::remove_part` (the destroy path without the destruction), `Ship::resolve_breakage`, `DamageTarget`, `DamageOutcome` |
 | `combat::chain` | chain reactions (GDR-0084, GDR-0085): the world's blast queue, the reach scan of other pieces and ships, armour cover (`cover`, `in_reach`, shared with the design's compiled lists), shields (`BLAST_FAMILY`) |
 | `combat::salvage` | `Item`, `Cargo`, `Stack`, `Loose`, `LooseId`, `Salvaged`; the collect pass, fragments, `Sim::spawn_wreck`, `Sim::loose` (see [Salvage](#salvage)) |
@@ -77,7 +83,7 @@ the runner, the scenarios); at the root what everything uses.
 | `events` | `SimEvent`, `SplitEvent`, `PieceSnapshot` |
 | `ship::vessel` | `Owner`, `friendly`, `VesselState`, `VesselInfo`; the vessel split, focus and mind pass (`Sim::focus`, `vessels`, `mind_load`) |
 | `world` | `Sim` (tick, config, RNG, ships, physics, events, impacts and ramming, state hash), `TickInputs`, `ShipCommand`, `DamageCommand`, `PartHit`, `StepPhase` |
-| `voyage::scenario` | (`salvage.rs`, `voyage.rs`: those two scenarios; `fixtures.rs`: the behaviors and ships they add) the deterministic `core`, `flight`, `load`, `behavior`, `salvage` and `voyage` scenarios |
+| `voyage::scenario` | (`salvage.rs`, `voyage.rs`, `grown.rs`: those three scenarios; `fixtures.rs`: the behaviors and ships they add) the deterministic `core`, `flight`, `load`, `behavior`, `salvage` and `voyage` scenarios |
 
 Examples: `determinism` (prints per-tick hashes; used by `scripts/determinism-check.sh`), `sim_perf` (load
 numbers, Rapier vs the rest; `--report` times the design report, `--calibrate` measures its device-load model),
@@ -126,8 +132,10 @@ the origin, spawn hitches: [Bigger clusters](#bigger-clusters)).
    `FlightGoal` and what the guns do), then the flight computer allocates the actuators of each controlling
    piece and fire at will picks the guns that fire (per gun facing).
 6. **Systems** per ship: per piece the control pass (which parts idle), power, shield regeneration, the wrench
-   (engines, RCS, gimbals, gyros, cores) and gun output; then heat (ship-wide); then each piece's authority (what
-   can push and turn, for the next plan).
+   (engines, RCS, gimbals, gyros, cores) and gun output; then heat (ship-wide; a hot star's heat through the open
+   sides, [Hot stars](#hot-stars-gdr-0102)); then each piece's authority (what can push and turn, for the next plan).
+   Then the **living pass** (`Sim::living`): tissue heals, hearts that are due re-grow a part, and a ship that grew
+   is resolved at once (rebuilt pieces and bodies before the weapons fire; [Living parts](#living-parts-gdr-0099-gdr-0102)).
 7. **Weapons**: shield bubbles are collected, live projectiles fly (ray-cast segment), then every gun fires
    **at once** (beams and pulses are traced against the state at the start of the fire pass and their hits
    applied after the last gun, so fire is mutual: no ship shoots an enemy's gun off before it fires in the same
@@ -191,7 +199,7 @@ How it is checked:
 - `cargo test -p sim` (`tests/determinism.rs`): same seed → identical hash sequence (core 600 ticks, flight 900
   ticks); different seeds → different hashes and different runs; a cloned world continues identically; a 1e-6
   change in one part's hp changes the hash; incrementally maintained caches equal a full recompute.
-- `scripts/determinism-check.sh [--seed N] [--ticks N] [--scenario core|flight|assists|load|behavior|salvage|voyage]` builds the `determinism`
+- `scripts/determinism-check.sh [--seed N] [--ticks N] [--scenario core|flight|assists|load|behavior|salvage|voyage|grown]` builds the `determinism`
   example natively and for `wasm32-wasip1`, runs the wasm under Node's built-in WASI (`scripts/wasi-run.mjs`)
   and compares the per-tick hashes, printing the first divergent tick (exit 1). `--compare A.txt B.txt` compares
   any two hash streams (`<tick> <hash>` lines, `#` comments), e.g. a browser console dump.
@@ -422,6 +430,20 @@ probes `close_quarters` `4851c82acb8c04fd` and `warden` `afff2bb6cac0a09b`. `run
 codes replay under today's rules with the note, runs restore stale and read-only, to be re-scored (`docs/arena.md`
 "Determinism").
 
+**The Grown's mechanics** ([GDR-0102](gdr/0102-grown-mechanics-and-parts-defaults.md), 17 Oct 2026, release builds,
+900 ticks): core, flight, assists, behavior, salvage and voyage (seed 42) run byte-identical to the build before
+(`3cf0f35`, compared with `--compare`): nothing they fly has a heart, tissue, a prow or a star, a zero star heat adds
+exactly nothing, and a wreck stripped at a sleeping site never happens in them. Last ticks: core `31b368b328356716`,
+flight `370a1a72031d7d4b`, assists `dfbab88fdb5f6035`, behavior `be47fae608752449`, salvage `58ad85ac07925283`, voyage
+`f53bdfa38cba1588` (core, flight and voyage native = wasm32-wasip1 re-checked). The new **grown** scenario
+(`--scenario grown`, below) native x86_64 vs wasm32-wasip1 **identical**: seed 42 last tick `6bda03722e7ee707` (14
+parts re-grown, 5 rams, the grove woken once, 1927 overheated part-ticks), seed 7 `a6caf3d6b5b3afc4` (22 re-grown).
+The rules probes, native = wasm: `close_quarters` (seed 1, 300 ticks) `d5e0fe975b176235`, `warden` (seed 2)
+`341daf33b8fe8add` (both changed with the 17 Oct content before this, the gunner and shield capacity 2); the content's
+fingerprint changed with the new parts, so earlier fight codes and lab runs are fought under other rules. The galaxy
+(`--galaxy 20`, seeds 1–20) native = wasm, last line `997ed53d1b648abf44a63da6ac8e8194`; seed 1's skeleton
+`6c2845db355809ce` (the outer band's clusters changed).
+
 Scenarios (`sim::voyage::scenario`); `core` and `flight` spawn two copies of every blueprint in the content:
 
 - `core`: raw throttles and fire flags (every second ship flat out), random hits, a blast every 75 ticks, a ram
@@ -457,6 +479,12 @@ Scenarios (`sim::voyage::scenario`); `core` and `flight` spawn two copies of eve
   [Vessels](#determinism-and-scenarios).
 - `salvage`: wrecks spawned as wrecks, collectors, core fragments, a shrinking hold and a lost ship's cargo; see
   [Salvage](#determinism-and-scenarios-1).
+- `grown` (17 Oct 2026, GDR-0102, `scenario/grown.rs`): a voyage built in code, 600 m, a wary grove 450 m in from the
+  entry (two thornbacks, fixtures with a heart, a ram prow, two thorn guns and tissue armour, flying `raider_basic`, and
+  a thornback wreck) beside a hot star (heat 0.4 at the centre); the player's ship-mind ships with a hold and a mender
+  (a fixture with a heart in tissue) fly the voyage scenario's script without its kills (they pass within the wake
+  radius, strip the wreck, scan, fight), random hits (5 %) and a blast every 300 ticks, a ram run every 300 ticks (the
+  first thornback's prow into the first player vessel). Counts `regrown` (`PartRegrown`).
 
 For the browser: the game build (`wasm32-unknown-unknown`) can call `sim::voyage::scenario::run_kind(kind, seed, ticks)`
 and log the same `<tick> <hash>` lines to the console; capture them with `tools/headless/shot.mjs` and run
@@ -605,7 +633,9 @@ T'   = E / (C + loss × DT)                                (loss to space, impli
 loss = 0.02 × area + open_sides × (radiator ? vent : 0.3)
 ```
 
-Reactors make `heat × (1/3 + 2/3 × load)` (none when nothing draws). The steady state equals the drydock
+In a cluster beside a hot star (GDR-0102) the generation also takes `star × open_sides × DT`, `star` the star's heat
+per side at the ship's controlling piece ([Hot stars](#hot-stars-gdr-0102); 0 adds exactly nothing, so worlds without
+a star keep their hashes). Reactors make `heat × (1/3 + 2/3 × load)` (none when nothing draws). The steady state equals the drydock
 model's (`loss·T = gen − Σ K (T − T_n)`, K = 1). A part above its `heat.limit` shuts down (no work, no draw,
 no output) from the next tick until it cools below **75%** of the limit (hysteresis). Constants in
 `ship::tuning`, all placeholders. With the current Halvex Runner layout nothing overheats under combat load;
@@ -1820,7 +1850,9 @@ apart (penetration recovery) is no impact and deals no damage.
 damage = max(0, impulse − ram_threshold) × ram_damage        to each side (GDR-0047: 100 kN·s, 0.02 hp/kN·s)
 ```
 
-Each side's damage goes through that side's shield bubbles first (GDR-0045), then hits the touching part
+A **ram prow** (content `ram: (dealt, taken)`, GDR-0102) as the touching part scales what each side takes: the other
+side `damage × dealt` (2), its own `damage × taken` (0.5); `Contact::damage` stays the unscaled value. Each side's
+damage goes through that side's shield bubbles first (GDR-0045), then hits the touching part
 (`part_a`, `part_b`); what exceeds a part's hit points **crushes inward** to the next part along the contact
 normal, and so on until it is used up or the walk leaves the hull (GDR-0047, `Sim::ram_crush`; the grid walk of
 penetrating shots, without their block limit). A touching part that an earlier contact of the same tick destroyed
@@ -1867,9 +1899,47 @@ centre of all points is used because two flat faces touch at the ends of their o
 neighbouring slope's corner.
 
 Limits: one contact point per side, per pair and tick (a long scrape spreads over ticks, not over parts); the
-crush runs in a straight line from that point; no content stat for rams yet (a `ram` bonus on prow parts could
-scale the damage later). A reinforced prow (high-hp armour at the nose) is the ramming build (GDR-0019,
+crush runs in a straight line from that point. A ram prow (above) or a reinforced prow (high-hp armour at the nose) is the ramming build (GDR-0019,
 GDR-0047).
+
+## Living parts (GDR-0099, GDR-0102)
+
+Code: `src/ship/living.rs`; numbers in content (`grown_heart`, `ram_prow`, the `grown_tissue` material), lead defaults.
+
+- **Healing**: a part with `PartSpec::heal` > 0 (a hull part in an armour with `heal`: `heal × area`; another part its
+  own `heal`) regains `heal × DT` hit points a tick while it is alive on the ship's controlling piece, up to its
+  `PartSpec::hp`. Salvage pieces and wrecks do not heal. One pass over `ShipDesign::healing`.
+- **Regrowth**: each heart (`ShipDesign::hearts`, content `heart: (interval, hp)`) has a timer (`Ship::regrowth`, in
+  the state hash only for ships with hearts). It runs while the heart is alive, not overheated and not idle on the
+  controlling piece; at `interval` it starts over and the heart re-grows the best candidate: a part of the design
+  that is not alive with 0 hit points (destroyed or stripped; a part that left with a split-off vessel keeps its hit
+  points and lives on there), not a heart, whose cells are free in the ship's grid (`ShipGrid::is_free`), linked to an
+  alive part of the heart's piece and to no alive part of another piece (linked alive parts always share a piece),
+  nearest the heart's centroid first (then the lower index). `Physics::overlaps_other` refuses a candidate whose
+  polygon (shrunk a tenth towards its centroid) overlaps any body but the heart's own piece; the next one is tried.
+- **Re-growing** (`Ship::regrow`, the reverse of `remove_part`): alive, `heart.hp` of its hit points, cold, not
+  overheated, its bubble down (an emitter recharges from 0), back in the grid; its own and its neighbours' exposure,
+  and their and their neighbours' bonuses, refreshed; added to the piece's parts (ascending) and the piece marked.
+  `SimEvent::PartRegrown { ship, piece, part }`; the sim then resolves the ship at once (`resolve_ship`): the piece
+  is rebuilt (mass, colliders, gun lines, power and heat lists, thrusters; the centre-of-mass velocity follows as on a
+  lost part), `PieceChanged`, the Rapier body gets the new shape and mass. A logic core back runs the mind pass.
+- Cost: healing one pass over the healing parts a tick; a heart one comparison a tick and, once an interval, one pass
+  over the design's parts and their neighbours (plus a sort and a shape query per tried candidate).
+- Tests (`tests/living.rs`): one part an interval nearest first at 35 %, the body's mass; only from a living
+  neighbour; a dead heart and a salvage heart re-grow nothing; a broken-off chunk is never grown back on (its link waits
+  until it is gone); never inside another body; tissue heals on a vessel, not on salvage; a prow deals 2 × and takes
+  0.5 ×; the `grown` scenario deterministic, its caches right.
+
+## Hot stars (GDR-0102)
+
+A cluster type's `star: (heat, distance)` lies `distance` cluster radii from the centre, in a direction the galaxy's
+interior rolls after its sites (`galaxy::InteriorStar`, whole metres; none drawn for a type without one, so other
+interiors roll and hash as before). `VoyagePlan::roll_interior` makes it a `sim::Star { pos, heat, reach }` (`reach`:
+its distance from the centre); `Voyage::star` holds it (in the voyage's hash only when there is one). Per ship and
+tick, `Star::heat_at(p) = heat × min((reach / |p − pos|)², data::STAR_HEAT_CAP)` at the controlling (else first)
+piece's centre of mass goes into `Ship::update_systems(star)`, and every part gains `star × open_sides × DT` heat
+([Heat](#heat-dynamic-lumped-per-part)): overheating, the restart, conduction and radiators as before. One
+multiplication and addition per part a tick. Only `+ − × ÷` and `min`.
 
 ## Damage and breakage
 
@@ -2184,8 +2254,11 @@ behavior library (`set_behaviors`) and spawns the fleet at `plan.entry`. From th
    with ships is **asleep**; a site that rolled none (a derelict field without its raider) is **quiet**.
 2. Reads the events since its last pass: a vessel that splits off one of a site's ships (`VesselFormed { from }`)
    joins that site (inserted in id order); a `Hit`, `PlumeHit` or `ShieldHit` (a shot its bubble took whole) on a
-   site's ship, or an `Impact` with ram damage on either side, marks its site.
-3. **Wakes** a sleeping site when a player vessel is within the encounter's `wake_radius` of the site, one of its
+   site's ship, or an `Impact` with ram damage on either side, marks its site; so does a `Collected` from one of its
+   wrecks (a part or its cargo stripped, GDR-0102).
+3. **Wakes** a sleeping site when a player vessel is within the encounter's `wake_radius` of the site (not a **wary**
+   site, `SitePlan::wary`: every ship of its encounter is of a faction with `wary: true`, the Grown's, GDR-0099 A3;
+   it wakes only when provoked), one of its
    ships was marked, or one of them is no running vessel any more (*lead default*, the last two: a sniped, shot at or
    rammed sleeper wakes its pack): every ship of the site gets its behavior (`BehaviorLibrary::default_for`: its own or its
    faction's); `SimEvent::SiteWoke { site }`.

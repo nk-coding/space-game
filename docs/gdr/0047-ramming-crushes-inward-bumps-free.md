@@ -1,6 +1,7 @@
 # GDR-0047: Ramming crushes inward; bumps below 100 kN·s are free
 
 - Status: Accepted
+  2026-10-17: a ram prow as the touching part scales the damage each side takes (2 × dealt, 0.5 × taken, [GDR-0102](0102-grown-mechanics-and-parts-defaults.md)); the rule above is unchanged.
 - Date: 2026-10-12
 - Decided by: Niklas (options and numbers by the lead session)
 - Related: [GDR-0019](0019-damage-model.md) (ramming), [GDR-0045](0045-shields-absorb-rams-no-friendly-ram-damage.md) (shields, same team), [GDR-0041](0041-engine-rated-speed.md) and [GDR-0042](0042-agility-target.md) (the new speeds), `docs/sim.md` design question 11

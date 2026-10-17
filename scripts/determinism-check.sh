@@ -12,7 +12,8 @@
 # Scenarios of sim's `determinism` example (sim::voyage::scenario): core (default), flight, assists (flight with pilot
 # assists), load (--ships N in the example), behavior, salvage (wrecks spawned as wrecks, collecting, fragments, a lost
 # ship's cargo), voyage (a voyage directed by sim::voyage: sites spawning, sleeping, waking and clearing, salvage, the
-# recall check).
+# recall check), grown (the Grown's mechanics: hearts re-growing parts, tissue, ram prows, thorn guns, a hot star, a wary
+# grove).
 # `--fight NAME` runs arena's `fight_hashes` example instead: the fight spec crates/core/arena/fights/NAME.ron
 # (runner_vs_raiders, skiff_mirror; or the rules probes crates/core/arena/probes/close_quarters|warden.ron, whose
 # fingerprint seeds are 1 and 2) with the seed replaced, until the fight ends or --ticks have run (default 2700:

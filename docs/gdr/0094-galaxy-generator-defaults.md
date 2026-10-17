@@ -8,6 +8,9 @@
   first gate, whose trail is the slice); home needs 4 rim clusters without a set piece within range (was 3
   neighbours); fresh signal areas 3–4 S; the caches', lore's, graveyards' and gates' own encounters (track E8).
   2026-10-17: Accepted (Niklas, 17 Oct 2026): the galaxy's shape and pace are kept (with [GDR-0098](0098-slice-in-the-galaxy-and-rim-rewards.md)).
+  2026-10-17: the outer reach's first own cluster type, `scorched_deep` beside a hot star (a stub with the rim's
+  automatons standing in; weight 1 of 3), and a cluster type's optional `star` rolled into the interior after its sites
+  ([GDR-0102](0102-grown-mechanics-and-parts-defaults.md)).
 - Date: 2026-10-16
 - Decided by: lead session (defaults for Niklas to review, galaxy tracks E1 and E2)
 - Supersedes: the plan's placeholder cluster counts per band (12, 18, 22, 24, 4; `docs/plans/galaxy-voyages.md` 4.8; not a record)

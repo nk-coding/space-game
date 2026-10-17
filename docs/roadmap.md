@@ -514,6 +514,14 @@ Next session:
   alone at the Warden).
 - **Lead defaults accepted**: twenty records' defaults, and GDR-0089's except the speed governor (judge in play);
   `gdr/README.md` lists them.
+- **The outer reach, phase 1 of 2: the Grown's mechanics and parts** (lead, same day;
+  [GDR-0102](gdr/0102-grown-mechanics-and-parts-defaults.md), lead defaults): hearts re-grow lost parts (one every
+  2.5 s at 35 %, from living neighbours, nearest first; killing the heart stops it), grown tissue armour and the ram
+  prow heal on a vessel, the ram prow deals 2 × and takes 0.5 × the ram damage, the thorn gun (kinetic, 1.6/s at 40 m),
+  wary sites (the Grown faction) wake only when provoked and every site wakes when its wreck is stripped, hot stars
+  heat every open side by the inverse square (`scorched_deep`, a stub in the outer reach); a `grown` determinism
+  scenario (identical native vs wasm), the parts locked behind `?unlock=all`, `?scene=voyage&cluster=hot`, wiki pages.
+  Next, phase 2: the Grown's ships, behaviors, groves, cluster types, research family, gate guardians and bosses.
 
 ## Phase 4: measurement
 

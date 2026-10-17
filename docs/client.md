@@ -686,13 +686,21 @@ off, the flash and its ring where it left), `voyage-warp-emergency.png` (the eme
   nearest 12, a signal's site labelled `· SIGNAL`, a beacon alone `BEACON`. A sweep makes a banner:
   `SCAN · 3 SITES FOUND` / `2 BEARINGS TOWARDS A SIGNAL · SCAN AGAIN ELSEWHERE TO CROSS IT` (gold with bearings,
   else teal with `SWEPT 1.2 KM AROUND`).
-- **A generated cluster** (for testing E3, E4): `?scene=voyage&cluster=<id>|signal[&galaxy=<seed>]` takes the cluster
-  (`signal`: the first that holds a trail's place) of the career's galaxy and flies its interior
+- **A generated cluster** (for testing E3, E4): `?scene=voyage&cluster=<id>|signal|hot[&galaxy=<seed>]` takes the cluster
+  (`signal`: the first that holds a trail's place; `hot`: the first beside a hot star, GDR-0102) of the career's galaxy and flies its interior
   (`VoyagePlan::roll_interior`) as a practice run, named after the cluster, never saved: rolled from the seed the
   career's next launch there would get, carrying what the career knows (`Career::leads`: signals' sites only of heard
   signals, data cores at the logs it has not got). With `galaxy=<seed>` the base galaxy generated from that seed
   instead, rolled from the cluster's own seed, every trail place a signal's site and every log's core in place
   (`voyage::every_lead`).
+- **Hot stars and living parts** (17 Oct 2026, [GDR-0102](gdr/0102-grown-mechanics-and-parts-defaults.md)): in a
+  cluster beside a hot star (`Voyage::star`) a soft glow in the heat colour rises at the edge of the view towards the
+  star (`backdrop.rs`, a camera child over the gradient, under the dust; a disc as wide as the view centred just past
+  the edge, its strength `0.4 + 0.6 × √(heat here / peak)`), and the voyage's subtitle adds `STAR HEAT x A SIDE` (the
+  star's heat a second per open side at the flown ship); the parts it pushes towards their limit show in the HUD's
+  heat warnings as before. A heart's re-grown part (`SimEvent::PartRegrown`) swells softly in its hull's glow before
+  the piece's view is rebuilt (`sim_bridge.rs`). Screenshots: `?scene=voyage&cluster=hot&galaxy=1&unlock=all` at
+  1280 × 720, 1600 × 900 and 2560 × 1440 (the glow above the ship, the subtitle legible over it).
 - **Finds** (a recorded cluster voyage, galaxy plan E6, [GDR-0097](gdr/0097-galaxy-map-and-voyage-flow.md); `voyage::note_finds`): the run keeps a copy of the
   career (`VoyageRun::knows`) and the finds (`Find`): a player's scan narrows every heard signal whose area holds the
   cluster (`Career::scanned`, once per signal per voyage) and hears the beacon of every trail place its sweep reaches
