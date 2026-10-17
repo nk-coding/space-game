@@ -70,7 +70,7 @@ pub struct Site {
 }
 
 /// The kinds in navigation order, with the titles of their list pages. Every [`Kind`] is here (a test checks).
-pub const KINDS: [(Kind, &str); 25] = [
+pub const KINDS: [(Kind, &str); 26] = [
     (Kind::Part, "Parts"),
     (Kind::Material, "Materials"),
     (Kind::Category, "Categories"),
@@ -88,6 +88,7 @@ pub const KINDS: [(Kind, &str); 25] = [
     (Kind::ClusterType, "Cluster types"),
     (Kind::Rock, "Rocks"),
     (Kind::Landmark, "Landmarks"),
+    (Kind::Planet, "Planets and moons"),
     (Kind::Trail, "Trails"),
     (Kind::SignalSource, "Signal sources"),
     (Kind::Lore, "Lore"),
@@ -291,6 +292,9 @@ pub fn generate(c: &Content, hand: &[hand::HandFile]) -> Site {
     }
     for e in &c.landmarks {
         entry(Kind::Landmark, &e.id, &e.name, &e.summary, w.landmark_page(e));
+    }
+    for e in &c.planets {
+        entry(Kind::Planet, &e.id, &e.name, &e.summary, w.planet_page(e));
     }
     for e in &c.trails {
         entry(Kind::Trail, &e.id, &e.name, &e.summary, w.trail_page(e));
@@ -1193,6 +1197,7 @@ impl<'a> Wiki<'a> {
                 }
                 Kind::Rock => flat(kind, c.rocks.iter().map(|e| (e.id.as_str(), e.name.as_str())).collect()),
                 Kind::Landmark => flat(kind, c.landmarks.iter().map(|e| (e.id.as_str(), e.name.as_str())).collect()),
+                Kind::Planet => flat(kind, c.planets.iter().map(|e| (e.id.as_str(), e.name.as_str())).collect()),
                 Kind::Trail => flat(kind, c.trails.iter().map(|e| (e.id.as_str(), e.name.as_str())).collect()),
                 Kind::SignalSource => {
                     flat(kind, c.signal_sources.iter().map(|e| (e.id.as_str(), e.name.as_str())).collect())

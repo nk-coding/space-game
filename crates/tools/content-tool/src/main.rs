@@ -180,7 +180,7 @@ fn load_content(dirs: &[PathBuf]) -> Result<(Content, usize), String> {
 fn validate(args: &[String]) -> Result<(), String> {
     let (content, warnings) = load_content(&pack_dirs(args))?;
     let counts = format!(
-        "{} stats, {} categories, {} factions, {} materials, {} parts, {} frames, {} ships, {} behavior nodes, {} behaviors, {} families, {} research nodes, {} starts, {} voyages, {} encounters, {} galaxies, {} bands, {} cluster types, {} rock kinds, {} landmarks, {} trails, {} signal sources, {} lore fragments, {} controls, {} icons, {} wiki pages",
+        "{} stats, {} categories, {} factions, {} materials, {} parts, {} frames, {} ships, {} behavior nodes, {} behaviors, {} families, {} research nodes, {} starts, {} voyages, {} encounters, {} galaxies, {} bands, {} cluster types, {} rock kinds, {} landmarks, {} planet kinds, {} trails, {} signal sources, {} lore fragments, {} controls, {} icons, {} wiki pages",
         content.stats.len(),
         content.categories.len(),
         content.factions.len(),
@@ -200,6 +200,7 @@ fn validate(args: &[String]) -> Result<(), String> {
         content.cluster_types.len(),
         content.rocks.len(),
         content.landmarks.len(),
+        content.planets.len(),
         content.trails.len(),
         content.signal_sources.len(),
         content.lore.len(),
@@ -254,6 +255,7 @@ fn list(args: &[String]) -> Result<(), String> {
         Kind::ClusterType => rows(c.cluster_types.as_slice()),
         Kind::Rock => rows(c.rocks.as_slice()),
         Kind::Landmark => rows(c.landmarks.as_slice()),
+        Kind::Planet => rows(c.planets.as_slice()),
         Kind::Trail => rows(c.trails.as_slice()),
         Kind::SignalSource => rows(c.signal_sources.as_slice()),
         Kind::Lore => rows(c.lore.as_slice()),
@@ -755,6 +757,7 @@ fn export(c: &Content) -> Value {
         "cluster_types": c.cluster_types.iter().map(|e| entry_json(c, e)).collect::<Vec<_>>(),
         "rocks": c.rocks.iter().map(|e| entry_json(c, e)).collect::<Vec<_>>(),
         "landmarks": c.landmarks.iter().map(|e| entry_json(c, e)).collect::<Vec<_>>(),
+        "planets": c.planets.iter().map(|e| entry_json(c, e)).collect::<Vec<_>>(),
         "trails": c.trails.iter().map(|e| entry_json(c, e)).collect::<Vec<_>>(),
         "signal_sources": c.signal_sources.iter().map(|e| entry_json(c, e)).collect::<Vec<_>>(),
         "lore": c.lore.iter().map(|e| entry_json(c, e)).collect::<Vec<_>>(),

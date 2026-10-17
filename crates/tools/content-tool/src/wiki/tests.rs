@@ -252,6 +252,7 @@ fn every_content_item_has_a_page() {
     want.extend(c.cluster_types.iter().map(|e| (Kind::ClusterType, e.id.clone())));
     want.extend(c.rocks.iter().map(|e| (Kind::Rock, e.id.clone())));
     want.extend(c.landmarks.iter().map(|e| (Kind::Landmark, e.id.clone())));
+    want.extend(c.planets.iter().map(|e| (Kind::Planet, e.id.clone())));
     want.extend(c.trails.iter().map(|e| (Kind::Trail, e.id.clone())));
     want.extend(c.signal_sources.iter().map(|e| (Kind::SignalSource, e.id.clone())));
     want.extend(c.lore.iter().map(|e| (Kind::Lore, e.id.clone())));

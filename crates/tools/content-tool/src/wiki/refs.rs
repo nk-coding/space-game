@@ -99,6 +99,9 @@ impl Refs {
         for e in &c.landmarks {
             add(Kind::Landmark, &e.id, &e.name);
         }
+        for e in &c.planets {
+            add(Kind::Planet, &e.id, &e.name);
+        }
         for e in &c.trails {
             add(Kind::Trail, &e.id, &e.name);
         }

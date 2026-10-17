@@ -6,7 +6,7 @@
 //! The kinds are split by subject: parts and materials (`parts.rs`), ships (`ships.rs`), behaviors
 //! (`behaviors.rs`), progression and the station's facilities (`progression.rs`), voyages and encounters
 //! (`voyages.rs`), the galaxy: its generator numbers, bands, cluster types, trails, signal sources and lore
-//! (`galaxy.rs`), rock kinds, landmarks and a cluster's scenery (`scenery.rs`), the evolution lab's goals, trials, genes, pilots, sizes and measures (`lab.rs`, one `lab.ron` per
+//! (`galaxy.rs`), rock kinds, landmarks and a cluster's scenery (`scenery.rs`), planet kinds and a cluster's sky (`sky.rs`), the evolution lab's goals, trials, genes, pilots, sizes and measures (`lab.rs`, one `lab.ron` per
 //! pack, not an entry kind: its texts are keyed `lab.<list>.<id>.<field>`); the shared header, packs,
 //! stats, categories and factions here. Every type is reached as `content::model::*` (and `data::*`).
 
@@ -23,6 +23,7 @@ pub use behaviors::{Behavior, BehaviorNode, ChoiceOption, NodeParam, NodeRole, P
 pub use parts::{ArmorSpec, BarrelArt, Bonus, CargoSpec, Condition, Delivery, Effect, EngineSpec, ExplosionSpec, GyroSpec, HeartSpec, HeatSpec, HullSalvageSpec, LogicSpec, MAX_CONTROL_COST, MAX_POWER_WEIGHT, Material, Part, PlumeSpec, PowerOverride, PowerSpec, PowerTier, RadiatorSpec, RamSpec, RcsSpec, SalvageSpec, ScannerSpec, Selector, SensorSpec, Shape, ShieldSpec, WeaponFamily, WeaponSpec};
 pub use progression::{Facility, Family, ResearchCost, ResearchKind, ResearchNode, Start, Unlock};
 pub use scenery::{Landmark, LandmarkForm, LandmarkPlace, RockGroup, RockKind, RockLayout, Scenery};
+pub use sky::{Atmosphere, BodyClass, Palette, PlanetForm, PlanetKind, Rings, Sky, SkyWeight, hex_rgb};
 pub use ships::{AssistList, Blueprint, Frame, Icon, MAX_ASSIST_TOGGLES, MAX_WEAPON_GROUP, Origin, Placement};
 pub use voyages::{Encounter, EncounterShips, EncounterWrecks, Voyage, VoyageSite};
 
@@ -90,6 +91,7 @@ mod parts;
 mod progression;
 mod scenery;
 mod ships;
+mod sky;
 mod voyages;
 
 /// `pack.ron`: the manifest of a content pack. The base game is the pack `base`; mods are packs too.

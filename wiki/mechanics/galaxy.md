@@ -160,6 +160,10 @@ The rest is only seen, never in the way: dust and glints, bits of hull drifting 
 dead hulls drifting along the way, a landmark far off such as a [[landmark:derelict_station]], beside a hot star its
 [[landmark:star_corona]] at the edge of your view, and now and then a fight flashing in the distance.
 
+Far behind it all every cluster has its own **sky**: a planet, a few moons, a nebula and a distant galaxy. The kind
+of cluster decides which planets come up: rock and ice giants at the rim, gardens like the [[planet:garden]] in the
+outer reach, worlds like the [[planet:lava]] beside a hot star. A cluster keeps its sky every time you come back.
+
 ## Lore
 
 Lore trails end at a fragment of the story, kept in the memory log, which the **LOG** at home shows under MEMORY: in

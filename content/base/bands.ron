@@ -14,6 +14,19 @@
         clusters: [(id: "wreck_drift", weight: 3), (id: "hunting_reach", weight: 2), (id: "quiet_field", weight: 2)],
         gates: (count: 3, trail: "rim_gate"),
         trails: [(trail: "precursor_cache", count: 2), (trail: "graveyard", count: 2)],
+        // The sky of its voyages and cluster types (GDR-0105).
+        sky: (
+            planets: [
+                (kind: "rock", weight: 3), (kind: "ice_world", weight: 3), (kind: "ice_giant", weight: 3), (kind: "ringed", weight: 2),
+                (kind: "desert", weight: 2), (kind: "eyeball", weight: 2), (kind: "jovian", weight: 1), (kind: "living", weight: 1),
+                (kind: "ocean", weight: 1),
+            ],
+            moons: [(kind: "grey_moon", weight: 3), (kind: "icy_moon", weight: 3), (kind: "geyser_moon", weight: 2), (kind: "rubble_moon", weight: 2), (kind: "crystal_moon", weight: 1)],
+            nebula: ("#1f7f8c", "#2c55a8"),
+            nebula_core: "#6fd8c8",
+            nebula_strength: 1.0,
+            galaxy: 0.85,
+        ),
     ),
     (
         id: "outer",
@@ -28,6 +41,17 @@
         ],
         gates: (count: 3, trail: "outer_gate"),
         trails: [(trail: "elder_grove", count: 2)],
+        sky: (
+            planets: [
+                (kind: "garden", weight: 5), (kind: "living", weight: 2), (kind: "ocean", weight: 2), (kind: "eyeball", weight: 2),
+                (kind: "ringed", weight: 1), (kind: "jovian", weight: 1), (kind: "ice_giant", weight: 1),
+            ],
+            moons: [(kind: "grey_moon", weight: 2), (kind: "icy_moon", weight: 2), (kind: "crystal_moon", weight: 2), (kind: "geyser_moon", weight: 1), (kind: "rubble_moon", weight: 1)],
+            nebula: ("#6a3fb8", "#24946e"),
+            nebula_core: "#c4a6ff",
+            nebula_strength: 1.0,
+            galaxy: 0.8,
+        ),
     ),
     (
         id: "middle",

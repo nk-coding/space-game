@@ -416,6 +416,12 @@ impl Wiki<'_> {
                     &self.rows(c.landmarks.as_slice(), |_| String::new(), |l| super::scenery::form_word(l.form).into()),
                 )
             }
+            Kind::Planet => {
+                s += &wide_block(
+                    "sg-list",
+                    &self.rows(c.planets.as_slice(), |_| String::new(), |p| super::sky::planet_form_word(p.form).into()),
+                )
+            }
             Kind::Trail => {
                 s += &wide_block(
                     "sg-list",
@@ -549,6 +555,7 @@ impl Wiki<'_> {
             Kind::ClusterType => c.cluster_types.len(),
             Kind::Rock => c.rocks.len(),
             Kind::Landmark => c.landmarks.len(),
+            Kind::Planet => c.planets.len(),
             Kind::Trail => c.trails.len(),
             Kind::SignalSource => c.signal_sources.len(),
             Kind::Lore => c.lore.len(),

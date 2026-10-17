@@ -2,7 +2,7 @@
 //! drydock designs). Every problem names pack, file, kind, id and field where possible.
 //!
 //! The checks are split by what they check: parts (`parts.rs`), research and starts (`progression.rs`), encounters
-//! and voyages (`voyages.rs`), the galaxy's kinds (`galaxy.rs`), rock kinds, landmarks and scenery (`scenery.rs`), behaviors (`behaviors.rs`), ships (`ships.rs`), the lab (`lab.rs`); packs, headers,
+//! and voyages (`voyages.rs`), the galaxy's kinds (`galaxy.rs`), rock kinds, landmarks and scenery (`scenery.rs`), planet kinds and skies (`sky.rs`), behaviors (`behaviors.rs`), ships (`ships.rs`), the lab (`lab.rs`); packs, headers,
 //! links, icons and numbers here.
 
 mod behaviors;
@@ -13,6 +13,7 @@ mod parts;
 mod progression;
 mod scenery;
 mod ships;
+mod sky;
 mod voyages;
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -91,6 +92,7 @@ pub fn validate(c: &Content) -> Vec<Problem> {
     v.entries(c.cluster_types.as_slice(), |v, e| v.cluster_type(e));
     v.entries(c.rocks.as_slice(), |v, e| v.rock_kind(e));
     v.entries(c.landmarks.as_slice(), |v, e| v.landmark(e));
+    v.entries(c.planets.as_slice(), |v, e| v.planet_kind(e));
     v.entries(c.trails.as_slice(), |v, e| v.trail(e));
     v.entries(c.signal_sources.as_slice(), |v, e| v.signal_source(e));
     v.entries(c.lore.as_slice(), |v, e| v.lore_fragment(e));

@@ -148,6 +148,9 @@ impl<'a> Validator<'a> {
                 self.number(b, &format!("clusters[{k}].border"), d, 0.0, true);
             }
         }
+        if let Some(sky) = &b.sky {
+            self.sky(b, sky);
+        }
         if !b.clusters.is_empty() && b.clusters.iter().all(|w| w.border.is_some()) {
             self.err(b, "clusters", "at least one cluster type without a `border`, for the band's inner clusters");
         }
@@ -196,6 +199,9 @@ impl<'a> Validator<'a> {
             }
         }
         self.scenery(t, &t.scenery, t.radius.0, t.star.is_some());
+        if let Some(sky) = &t.sky {
+            self.sky(t, sky);
+        }
         if !c.bands.iter().any(|b| b.clusters.iter().any(|w| w.id == t.id)) {
             self.warn(t, "id", "no band has clusters of this type");
         }

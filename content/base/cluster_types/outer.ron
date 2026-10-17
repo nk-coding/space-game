@@ -52,5 +52,16 @@
             landmarks: [(landmark: "derelict_station", chance: 0.3), (landmark: "silent_beacon", chance: 0.3)],
             fights: 0.6,
         ),
+        sky: (
+            planets: [
+                (kind: "rock", weight: 2), (kind: "ice_giant", weight: 2), (kind: "garden", weight: 2), (kind: "ringed", weight: 2),
+                (kind: "eyeball", weight: 1), (kind: "living", weight: 1), (kind: "desert", weight: 1),
+            ],
+            moons: [(kind: "grey_moon", weight: 3), (kind: "icy_moon", weight: 2), (kind: "rubble_moon", weight: 2), (kind: "crystal_moon", weight: 1)],
+            nebula: ("#2f6f9c", "#4a3fa8"),
+            nebula_core: "#9ac8e8",
+            nebula_strength: 0.9,
+            galaxy: 0.85,
+        ),
     ),
 ]

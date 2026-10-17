@@ -223,7 +223,7 @@ impl Wiki<'_> {
             b,
             EntryParts {
                 facts,
-                sections: vec![("Cluster types".to_string(), types), ("Trails".into(), trails)],
+                sections: [("Cluster types".to_string(), types), ("Trails".into(), trails)].into_iter().chain(b.sky.as_ref().map(|s| self.sky_section(root, s))).collect(),
                 ..Default::default()
             },
         )
@@ -275,6 +275,7 @@ impl Wiki<'_> {
             .collect();
         let mut sections = vec![("Sites".to_string(), sites)];
         sections.extend(self.scenery_section(root, &t.scenery));
+        sections.extend(t.sky.as_ref().map(|s| self.sky_section(root, s)));
         sections.push(("In bands".into(), list_or_none(&bands)));
         self.entry(
             t,

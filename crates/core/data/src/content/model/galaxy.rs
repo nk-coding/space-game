@@ -112,6 +112,9 @@ pub struct Band {
     /// Further trails through the band: caches and graveyards (lore trails come from its [`LoreFragment`]s).
     #[serde(default)]
     pub trails: Vec<TrailCount>,
+    /// The sky behind its content voyages and behind clusters whose type has none (GDR-0105).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sky: Option<Sky>,
     #[serde(skip_deserializing)]
     pub source: Source,
 }
@@ -175,6 +178,9 @@ pub struct ClusterType {
     /// What fills its space between the sites: rocks, dust, debris, derelicts, landmarks, distant fights (GDR-0104).
     #[serde(default)]
     pub scenery: Scenery,
+    /// The sky behind it: planets, moons, the nebula and the far galaxy (GDR-0105); none: its band's.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sky: Option<Sky>,
     #[serde(skip_deserializing)]
     pub source: Source,
 }

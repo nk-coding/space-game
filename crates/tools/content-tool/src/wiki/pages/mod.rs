@@ -2,7 +2,7 @@
 //!
 //! Parts, materials, categories, factions, frames, ships, stats and articles here; behaviors (`behaviors.rs`), the
 //! career's research, facilities and starts (`career.rs`), voyages and encounters (`voyages.rs`), the galaxy's kinds
-//! (`galaxy.rs`), rock kinds, landmarks and the scenery of clusters (`scenery.rs`), the evolution lab's
+//! (`galaxy.rs`), rock kinds, landmarks and the scenery of clusters (`scenery.rs`), planet kinds and the sky (`sky.rs`), the evolution lab's
 //! page (`lab.rs`), the lists and the index (`lists.rs`).
 
 mod behaviors;
@@ -11,6 +11,7 @@ mod galaxy;
 mod lab;
 mod lists;
 mod scenery;
+mod sky;
 mod voyages;
 
 use super::*;

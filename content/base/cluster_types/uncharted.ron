@@ -21,4 +21,13 @@
         landmarks: [(landmark: "silent_beacon", chance: 0.4)],
         fights: 1.0,
     ),
+    sky: (
+        // No planet weights: any planet kind alike, standing against its light.
+        moons: [(kind: "crystal_moon", weight: 2), (kind: "geyser_moon", weight: 2), (kind: "rubble_moon", weight: 2), (kind: "icy_moon", weight: 1), (kind: "grey_moon", weight: 1)],
+        nebula: ("#3a44b0", "#86388a"),
+        nebula_core: "#a8bcff",
+        nebula_strength: 0.7,
+        galaxy: 1.0,
+        backlit: true,
+    ),
 )
