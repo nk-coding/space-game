@@ -34,6 +34,10 @@ pub struct Voyage {
     pub cleared: Option<String>,
     /// The sites, in order. Exactly one is the goal: clearing it clears the voyage.
     pub sites: Vec<VoyageSite>,
+    /// What fills its space between the sites, as a cluster type's (GDR-0104). Left out of the serde form when
+    /// empty, so voyages without it keep the content's fingerprint.
+    #[serde(default, skip_serializing_if = "Scenery::is_empty")]
+    pub scenery: Scenery,
     #[serde(skip_deserializing)]
     pub source: Source,
 }

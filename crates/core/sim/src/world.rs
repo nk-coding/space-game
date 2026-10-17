@@ -671,8 +671,8 @@ impl Sim {
         }
     }
 
-    /// First alive part hit by a ray (unit `dir`), ignoring ship `exclude` (e.g. the shooter); the hit rule of
-    /// shots (`Sim::cast_part`: parts destroyed since the last breakage resolution are passed through).
+    /// First alive part hit by a ray (unit `dir`), ignoring ship `exclude` (e.g. the shooter; `None` when an asteroid
+    /// rock is in the way, GDR-0104); the hit rule of shots (`Sim::cast_part`: parts destroyed since the last breakage resolution are passed through).
     pub fn raycast(
         &self,
         origin: Vec2,
@@ -682,7 +682,8 @@ impl Sim {
     ) -> Option<PartHit> {
         let h = self.cast_part(origin, dir, max_distance, |key| {
             exclude.is_some_and(|s| key.ship == s)
-        })?;
+        })?
+        .part()?;
         Some(PartHit {
             ship: h.hit.key.ship,
             piece: h.hit.key.piece,
@@ -725,8 +726,10 @@ impl Sim {
             false,
         );
         // The pilots' assists note the controls in use and decide on the same ticks.
+        let rocks = self.voyage.as_deref().map_or(&[][..], |v| v.rocks());
         behavior::assist_all(
             &mut self.ships,
+            rocks,
             &self.behaviors,
             &mut self.behavior_scratch,
             self.tick,
@@ -739,7 +742,7 @@ impl Sim {
         plans.extend(
             self.ships
                 .iter()
-                .map(|s| flight::plan(s, &self.ships, &self.config)),
+                .map(|s| flight::plan(s, &self.ships, rocks, &self.config)),
         );
         for (s, plan) in self.ships.iter_mut().zip(&plans) {
             flight::execute(s, plan, &self.config);
@@ -858,6 +861,28 @@ impl Sim {
         let mut impacts = std::mem::take(&mut self.impacts);
         impacts.clear();
         for rc in &self.physics.contacts {
+            // A piece against an asteroid rock (GDR-0104; rocks order last, so the rock is `b`): an anchored body,
+            // so the closing speed is the piece's own, and the piece takes the ram (the rock nothing).
+            if rc.b.as_rock().is_some() {
+                let (Some((ka, pa)), Some(ba)) = (self.piece_of(rc.a), self.physics.body(rc.a)) else {
+                    continue;
+                };
+                let r = rc.point - ba.to_world(pa.mass.com);
+                let closing = (pa.body.linvel + Vec2::cross_scalar(pa.body.angvel, r)).dot(rc.normal);
+                let out_a = Rot::from_angle(ba.angle).apply_inverse(rc.normal);
+                impacts.push(Contact {
+                    a: rc.a,
+                    b: rc.b,
+                    point: rc.point,
+                    normal: rc.normal,
+                    impulse: rc.impulse,
+                    relative_speed: closing,
+                    part_a: contact_part(&self.ships[ka], pa, [rc.local_a, rc.strongest_a], out_a, rc.sub_a),
+                    part_b: None,
+                    damage: if rc.impulse > t.ram_threshold { (rc.impulse - t.ram_threshold) * t.ram_damage } else { 0.0 },
+                });
+                continue;
+            }
             let (Some((ka, pa)), Some((kb, pb))) = (self.piece_of(rc.a), self.piece_of(rc.b))
             else {
                 continue;

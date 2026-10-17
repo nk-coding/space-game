@@ -93,6 +93,12 @@ impl Refs {
         for e in &c.cluster_types {
             add(Kind::ClusterType, &e.id, &e.name);
         }
+        for e in &c.rocks {
+            add(Kind::Rock, &e.id, &e.name);
+        }
+        for e in &c.landmarks {
+            add(Kind::Landmark, &e.id, &e.name);
+        }
         for e in &c.trails {
             add(Kind::Trail, &e.id, &e.name);
         }

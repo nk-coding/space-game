@@ -648,6 +648,7 @@ fn one_site(ships: Vec<sim::Spawn>, wake_radius: f32) -> VoyagePlan {
             wrecks: Vec::new(),
         }],
         star: None,
+        rocks: Vec::new(),
     }
 }
 
@@ -733,6 +734,7 @@ fn a_site_of_wary_ships_rolls_wary_and_a_hot_cluster_its_star() {
     e.ships[0].ship = "grown_test".into();
     c.encounters.upsert(e);
     let interior = galaxy::Interior {
+        kind: "scorched_deep".into(),
         radius: 2000.0,
         spacing: (600.0, 1200.0),
         sites: ["grove_test", "raider_pair"]

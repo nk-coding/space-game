@@ -59,6 +59,8 @@ use crate::ids::{PieceId, ShipId};
 use crate::math::{Vec2, sqrt};
 use crate::ship::vessel::friendly;
 use crate::ship::{Piece, Ship};
+use crate::flight::physics::BodyKey;
+use crate::voyage::rocks::Rock;
 
 /// A control channel an assist acts on.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -254,7 +256,8 @@ impl AssistState {
         self.station
     }
 
-    /// The ship and piece `avoid_collisions` steers clear of (at the last think).
+    /// The ship and piece `avoid_collisions` steers clear of (at the last think); an asteroid rock as
+    /// `(BodyKey::ROCKS, rock)` (GDR-0104).
     pub fn avoiding(&self) -> Option<(ShipId, PieceId)> {
         self.avoid
     }
@@ -352,7 +355,7 @@ fn lock_there(ships: &[Ship], t: &Target) -> bool {
 /// The assist pass, every tick after the behaviors' think: each piloted ship with assists notes which controls its
 /// pilot uses and whether the pilot dropped a lock (auto-lock's pause); on think ticks (or right after a switch) its
 /// rules decide the channels, all from one snapshot; then the stations are kept.
-pub(crate) fn assist_all(ships: &mut [Ship], lib: &BehaviorLibrary, scratch: &mut Scratch, tick: u64, flight: &FlightTuning) {
+pub(crate) fn assist_all(ships: &mut [Ship], rocks: &[Rock], lib: &BehaviorLibrary, scratch: &mut Scratch, tick: u64, flight: &FlightTuning) {
     let mut any_due = false;
     for k in 0..ships.len() {
         let Some(&input) = piloted(&ships[k]) else {
@@ -388,13 +391,13 @@ pub(crate) fn assist_all(ships: &mut [Ship], lib: &BehaviorLibrary, scratch: &mu
         any_due |= st.thought.is_none() || tick.is_multiple_of(tuning::THINK_PERIOD);
     }
     if any_due {
-        think_all(ships, lib, scratch, tick);
+        think_all(ships, rocks, lib, scratch, tick);
     }
     keep_stations(ships, flight);
 }
 
 /// The think part of [`assist_all`]: every due piloted ship's rules, from one snapshot.
-fn think_all(ships: &mut [Ship], lib: &BehaviorLibrary, scratch: &mut Scratch, tick: u64) {
+fn think_all(ships: &mut [Ship], rocks: &[Rock], lib: &BehaviorLibrary, scratch: &mut Scratch, tick: u64) {
     let n = ships.len();
     if scratch.assist_outs.len() < n {
         scratch.assist_outs.resize_with(n, AssistOut::default);
@@ -445,7 +448,7 @@ fn think_all(ships: &mut [Ship], lib: &BehaviorLibrary, scratch: &mut Scratch, t
             script_error: None,
             pilot: Some(pilot),
         };
-        think(&mut cx, st, input, out);
+        think(&mut cx, rocks, st, input, out);
     }
     for (s, out) in ships.iter_mut().zip(assist_outs.iter_mut()) {
         if !std::mem::take(&mut out.valid) {
@@ -530,8 +533,9 @@ fn course(me: (Vec2, f32, Vec2), other: (Vec2, f32, Vec2)) -> Option<(f32, Vec2,
     (t > 0.0 && t <= tuning::AVOID_AHEAD && miss.length_squared() < reach * reach).then_some((t, miss, reach))
 }
 
-/// The piece the ship would meet first (`avoid_collisions`): of every ship, its own other pieces included.
-fn threat(me: &Ship, world: &[Ship]) -> Option<(ShipId, PieceId)> {
+/// The piece the ship would meet first (`avoid_collisions`): of every ship, its own other pieces included, or an
+/// asteroid rock (GDR-0104; as the body key's pair `(BodyKey::ROCKS, rock)`).
+fn threat(me: &Ship, world: &[Ship], rocks: &[Rock]) -> Option<(ShipId, PieceId)> {
     let mine = me.control_piece()?;
     let from = circle(me.piece(mine)?);
     let mut first: Option<(f32, ShipId, PieceId)> = None;
@@ -547,25 +551,35 @@ fn threat(me: &Ship, world: &[Ship]) -> Option<(ShipId, PieceId)> {
             }
         }
     }
+    for (k, r) in (0u32..).zip(rocks) {
+        if let Some((t, _, _)) = course(from, (r.pos, r.radius, Vec2::ZERO))
+            && first.is_none_or(|f| t < f.0)
+        {
+            first = Some((t, BodyKey::ROCKS, PieceId(k)));
+        }
+    }
     first.map(|(_, s, p)| (s, p))
 }
 
 /// The velocity that steers `piece` clear of the piece `avoid`: its own plus the sidestep that makes the closest
 /// approach the clearance, along the miss (to the left of the relative motion when head-on). `None` once clear.
-fn evade(piece: &Piece, avoid: (ShipId, PieceId), ships: &[Ship]) -> Option<Vec2> {
-    let other = find_ship(ships, avoid.0)?.piece(avoid.1)?;
+fn evade(piece: &Piece, avoid: (ShipId, PieceId), ships: &[Ship], rocks: &[Rock]) -> Option<Vec2> {
+    let other = match (BodyKey { ship: avoid.0, piece: avoid.1 }).as_rock() {
+        Some(k) => rocks.get(k as usize).map(|r| (r.pos, r.radius, Vec2::ZERO))?,
+        None => circle(find_ship(ships, avoid.0)?.piece(avoid.1)?),
+    };
     let me = circle(piece);
-    let (t, miss, reach) = course(me, circle(other))?;
+    let (t, miss, reach) = course(me, other)?;
     let len = miss.length();
     // Head-on: to the left of the relative motion (never zero: `course` needs some).
-    let side = (me.2 - other.body.linvel).perp();
+    let side = (me.2 - other.2).perp();
     let away = if len > 1e-3 { miss * (1.0 / len) } else { side * (1.0 / side.length()) };
     Some(me.2 + away * ((reach - len) / t.max(DT)))
 }
 
 /// One ship's think: the target (the pilot's lock), then the rules in order, each deciding its channel if it is
 /// switched on, its conditions hold and no rule above decided that channel.
-fn think(cx: &mut Ctx, st: &AssistState, input: &PilotInput, out: &mut AssistOut) {
+fn think(cx: &mut Ctx, rocks: &[Rock], st: &AssistState, input: &PilotInput, out: &mut AssistOut) {
     let Some(kin) = cx.prepare() else {
         return;
     };
@@ -603,7 +617,7 @@ fn think(cx: &mut Ctx, st: &AssistState, input: &PilotInput, out: &mut AssistOut
             match rule.action {
                 AssistAction::AvoidCollisions => {
                     // Nothing on a collision course: the rules below keep the channel.
-                    let Some(t) = *threat_of.get_or_insert_with(|| threat(cx.me, cx.world)) else {
+                    let Some(t) = *threat_of.get_or_insert_with(|| threat(cx.me, cx.world, rocks)) else {
                         continue;
                     };
                     out.avoid = Some(t);
@@ -635,6 +649,7 @@ pub(crate) fn assist_plan(
     kin: &Kin,
     piece: &Piece,
     ships: &[Ship],
+    rocks: &[Rock],
     flight: &FlightTuning,
     goal: &mut FlightGoal,
     fire: &mut Fire,
@@ -651,7 +666,7 @@ pub(crate) fn assist_plan(
         _ if thrust => None,
         Some((_, AssistAction::Brake)) => Some(Vec2::ZERO),
         Some((_, AssistAction::HoldStation(_))) => st.station.and_then(|s| station_goal(&s, kin, ships, flight, turn_free)),
-        Some((_, AssistAction::AvoidCollisions)) => st.avoid.and_then(|a| evade(piece, a, ships)).map(|v| cap(v, kin.top_speed)),
+        Some((_, AssistAction::AvoidCollisions)) => st.avoid.and_then(|a| evade(piece, a, ships, rocks)).map(|v| cap(v, kin.top_speed)),
         _ => None,
     };
     if let Some(v) = pushed {

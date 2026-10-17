@@ -21,6 +21,9 @@
 //!   there), the goal last. A site whose ships sleep: it stops 40 m outside the wake radius, then creeps in at a
 //!   quarter of its top speed, so the pack wakes in front of a slow ship.
 //!
+//! Every move it makes bends round the asteroid rocks ahead (GDR-0104): its maneuvers as every maneuver does, its
+//! stick through `rocks::steer`.
+//!
 //! It goes home as soon as the sim allows (`Sim::can_recall`, running from the nearest enemy until then) once the
 //! goal is cleared and every site is done with nothing left in reach to strip (or the hold is full), or when it is
 //! disarmed (`Ship::is_armed`: no gun or no power source left; a gun that overheats or idles still counts), or after
@@ -666,8 +669,16 @@ fn fly(sim: &mut Sim, ship: ShipId, maneuver: Maneuver, pilot: &mut Pilot) {
     );
 }
 
-/// Flies pilot input (leaving the fight behavior if it flew one).
-fn pilot_input(sim: &mut Sim, ship: ShipId, input: PilotInput, pilot: &mut Pilot) {
+/// Flies pilot input (leaving the fight behavior if it flew one), its stick bent round the asteroid rocks ahead as a
+/// player would steer (GDR-0104, `rocks::steer` at the ship's top speed).
+fn pilot_input(sim: &mut Sim, ship: ShipId, mut input: PilotInput, pilot: &mut Pilot) {
+    if let Some(p) = sim.ship(ship).and_then(|s| s.piece(s.control_piece()?)) {
+        let top = p.authority.speed.iter().fold(0.0f32, |a, &b| a.max(b));
+        let rocks = sim.voyage().map_or(&[][..], |v| v.rocks());
+        if top > 0.0 && !rocks.is_empty() {
+            input.stick = crate::voyage::rocks::steer(p.body.pos, p.radius, input.stick * top, rocks) * (1.0 / top);
+        }
+    }
     if pilot.flying_behavior {
         sim.command(ship, ShipCommand::Behavior(None));
         pilot.flying_behavior = false;

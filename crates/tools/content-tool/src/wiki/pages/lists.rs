@@ -404,6 +404,18 @@ impl Wiki<'_> {
                     &self.rows(c.cluster_types.as_slice(), |_| String::new(), |t| format!("{}{}", super::galaxy::radius(t), super::galaxy::stub(&t.tags))),
                 )
             }
+            Kind::Rock => {
+                s += &wide_block(
+                    "sg-list",
+                    &self.rows(c.rocks.as_slice(), |_| String::new(), |r| self.a(UP, Kind::Material, &r.material)),
+                )
+            }
+            Kind::Landmark => {
+                s += &wide_block(
+                    "sg-list",
+                    &self.rows(c.landmarks.as_slice(), |_| String::new(), |l| super::scenery::form_word(l.form).into()),
+                )
+            }
             Kind::Trail => {
                 s += &wide_block(
                     "sg-list",
@@ -535,6 +547,8 @@ impl Wiki<'_> {
             Kind::Galaxy => c.galaxies.len(),
             Kind::Band => c.bands.len(),
             Kind::ClusterType => c.cluster_types.len(),
+            Kind::Rock => c.rocks.len(),
+            Kind::Landmark => c.landmarks.len(),
             Kind::Trail => c.trails.len(),
             Kind::SignalSource => c.signal_sources.len(),
             Kind::Lore => c.lore.len(),

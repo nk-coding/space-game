@@ -35,6 +35,10 @@ pub enum Kind {
     Band,
     /// What kind of place a cluster is: its radius and ordinary sites.
     ClusterType,
+    /// A kind of asteroid rock (GDR-0104): its material, size and outline.
+    Rock,
+    /// Something big seen far off in a cluster (GDR-0104): drawn only.
+    Landmark,
     /// A trail template: a chain of signals ending at a reward.
     Trail,
     /// Where a signal comes from: a log in a wreck or a beacon.
@@ -48,7 +52,7 @@ pub enum Kind {
 }
 
 impl Kind {
-    pub const ALL: [Kind; 23] = [
+    pub const ALL: [Kind; 25] = [
         Kind::Stat,
         Kind::Category,
         Kind::Faction,
@@ -67,6 +71,8 @@ impl Kind {
         Kind::Galaxy,
         Kind::Band,
         Kind::ClusterType,
+        Kind::Rock,
+        Kind::Landmark,
         Kind::Trail,
         Kind::SignalSource,
         Kind::Lore,
@@ -94,6 +100,8 @@ impl Kind {
             Kind::Galaxy => "galaxy",
             Kind::Band => "band",
             Kind::ClusterType => "cluster_type",
+            Kind::Rock => "rock",
+            Kind::Landmark => "landmark",
             Kind::Trail => "trail",
             Kind::SignalSource => "signal_source",
             Kind::Lore => "lore",
@@ -123,6 +131,8 @@ impl Kind {
             Kind::Galaxy => Some("galaxy"),
             Kind::Band => Some("bands"),
             Kind::ClusterType => Some("cluster_types"),
+            Kind::Rock => Some("rocks"),
+            Kind::Landmark => Some("landmarks"),
             Kind::Trail => Some("trails"),
             Kind::SignalSource => Some("signal_sources"),
             Kind::Lore => Some("lore"),

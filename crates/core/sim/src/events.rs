@@ -158,6 +158,15 @@ pub enum SimEvent {
         pos: Vec2,
         reason: GoneReason,
     },
+    /// A shot struck an asteroid rock (GDR-0104; `Voyage::rocks`) and stopped there: the rock takes nothing (mining
+    /// comes later, GDR-0031). `by`: the shooter.
+    RockHit {
+        by: ShipId,
+        rock: u32,
+        point: Vec2,
+        normal: Vec2,
+        family: WeaponFamily,
+    },
     /// A kinetic shot glanced off a slope face.
     Ricochet {
         id: ProjectileId,

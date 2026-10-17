@@ -18,6 +18,8 @@
 //!   voyage is the signal, galaxy plan E7).
 //! * **The edge**: beyond the radius plus `VoyageTuning::edge_margin` (at most [`MAX_EDGE`] from the centre, where
 //!   `f32` still holds, E0) every piece is pushed back ([`edge_force`]).
+//! * **Rocks** (GDR-0104, `rocks.rs`): the scenery's asteroid rock, rolled after the sites on a stream of its own
+//!   and spawned field by field as anchored bodies when a player vessel comes near, as the sites spawn.
 //! * **Lazy spawning**: [`Sim::start_voyage`] hands the plan to the sim; at the end of every step a site's ships
 //!   (holding where they spawned, `Maneuver::Hold`) and wrecks (`Sim::spawn_wreck`) spawn once a vessel of the
 //!   player owner comes within `VoyageTuning::spawn_radius` of it.
@@ -39,6 +41,7 @@
 //! per ship, and per scan one test per site); no allocation once warm, except the ships a site spawns and a step's
 //! scans.
 
+pub mod rocks;
 pub mod runner;
 pub mod scenario;
 pub mod waves;
@@ -54,6 +57,7 @@ use crate::events::SimEvent;
 use crate::hash::{StateHash, StateHasher};
 use crate::ids::ShipId;
 use crate::flight::maneuver::Maneuver;
+use crate::flight::physics::BodyKey;
 use crate::ship::mass::combine;
 use crate::math::{Vec2, cos, sin, sqrt};
 use crate::rng::{Pcg32, splitmix64};
@@ -176,6 +180,8 @@ pub struct VoyagePlan {
     pub sites: Vec<SitePlan>,
     /// A hot star beside the cluster (GDR-0102; a generated cluster whose type has one).
     pub star: Option<Star>,
+    /// Asteroid rock in spawn groups (GDR-0104, [`rocks::roll`]): the voyage's or the cluster type's scenery.
+    pub rocks: Vec<rocks::FieldPlan>,
 }
 
 /// A hot star beside a cluster (GDR-0102, content `ClusterType::star`): every part takes `heat` per second for each
@@ -221,7 +227,17 @@ impl VoyagePlan {
             })?;
             list.extend((0..s.count).map(|_| (Some(e), s.goal, false, None)));
         }
-        Self::roll_sites(content, &voyage.id, voyage.radius, voyage.spacing, &list, seed)
+        let mut plan = Self::roll_sites(content, &voyage.id, voyage.radius, voyage.spacing, &list, seed)?;
+        plan.roll_rocks(content, &voyage.scenery)?;
+        Ok(plan)
+    }
+
+    /// The rocks of `scenery` round the plan's sites and entry (after the sites: their draws stay as they were).
+    fn roll_rocks(&mut self, content: &Content, scenery: &data::Scenery) -> Result<(), String> {
+        let sites: Vec<Vec2> = self.sites.iter().map(|s| s.pos).collect();
+        self.rocks = rocks::roll(content, scenery, self.radius, &sites, self.entry.pos, self.seed)
+            .map_err(|e| format!("voyage `{}`: {e}", self.voyage))?;
+        Ok(())
     }
 
     /// Rolls a launch into a generated cluster's interior (`galaxy::interior`), named `id`: its ordinary sites and
@@ -252,6 +268,8 @@ impl VoyagePlan {
             let pos = Vec2::new(s.x, s.y);
             Star { pos, heat: s.heat, reach: pos.length() }
         });
+        let kind = content.cluster_types.get(&interior.kind).ok_or_else(|| format!("cluster `{id}`: unknown cluster type `{}`", interior.kind))?;
+        plan.roll_rocks(content, &kind.scenery)?;
         Ok(plan)
     }
 
@@ -344,6 +362,7 @@ impl VoyagePlan {
             entry: Body::at(entry, 0.0),
             sites,
             star: None,
+            rocks: Vec::new(),
         })
     }
 }
@@ -584,6 +603,10 @@ pub struct Voyage {
     enemy: Owner,
     sites: Vec<Site>,
     star: Option<Star>,
+    /// The rocks' spawn groups, each with whether it has spawned (GDR-0104).
+    fields: Vec<(rocks::FieldPlan, bool)>,
+    /// The rocks spawned so far, in spawn order: rock `k` is the body `BodyKey::rock(k)`.
+    rocks: Vec<rocks::Rock>,
     /// Every bearing a scan gave, oldest first.
     bearings: Vec<Bearing>,
     /// The site of every ship spawned for one and of the vessels split off them (derived from `sites`).
@@ -617,6 +640,11 @@ impl Voyage {
         &self.sites
     }
     /// The hot star beside the cluster, if any (GDR-0102).
+    /// The rocks spawned so far (GDR-0104): rock `k` is the body `BodyKey::rock(k)`; more come as the fleet nears
+    /// their fields.
+    pub fn rocks(&self) -> &[rocks::Rock] {
+        &self.rocks
+    }
     pub fn star(&self) -> Option<&Star> {
         self.star.as_ref()
     }
@@ -717,6 +745,20 @@ impl StateHash for Voyage {
         if let Some(star) = &self.star {
             star.hash_state(h);
         }
+        // Only with rocks, so voyages without any hash as before.
+        if !self.fields.is_empty() {
+            h.u32(self.fields.len() as u32);
+            for (f, spawned) in &self.fields {
+                h.vec2(f.centre);
+                h.f32(f.reach);
+                h.bool(*spawned);
+                h.u32(f.rocks.len() as u32);
+                for r in &f.rocks {
+                    r.hash_state(h);
+                }
+            }
+            h.u32(self.rocks.len() as u32);
+        }
         h.u32(self.bearings.len() as u32);
         for b in &self.bearings {
             h.u32(b.site);
@@ -732,6 +774,11 @@ impl Sim {
     /// clear around the vessels of `player`; their ships and wrecks belong to `enemy`. The caller spawns the fleet
     /// (at `plan.entry`) and sets the behavior library the woken ships fly by (`Sim::set_behaviors`).
     pub fn start_voyage(&mut self, plan: VoyagePlan, player: Owner, enemy: Owner) {
+        if let Some(old) = self.voyage.take() {
+            for k in 0..old.rocks.len() {
+                self.physics.remove_body(BodyKey::rock(k as u32));
+            }
+        }
         let sites = plan
             .sites
             .into_iter()
@@ -753,6 +800,8 @@ impl Sim {
             enemy,
             sites,
             star: plan.star,
+            fields: plan.rocks.into_iter().map(|f| (f, false)).collect(),
+            rocks: Vec::new(),
             bearings: Vec::new(),
             site_of: BTreeMap::new(),
             players: Vec::new(),
@@ -849,6 +898,16 @@ impl Sim {
             if v.sites[k].state == SiteState::Unspawned && v.near(v.sites[k].plan.pos, spawn_radius)
             {
                 self.spawn_site(&mut v, k);
+            }
+        }
+        for k in 0..v.fields.len() {
+            let (f, spawned) = &v.fields[k];
+            if !*spawned && v.near(f.centre, spawn_radius + f.reach) {
+                for r in &f.rocks {
+                    self.physics.create_rock(BodyKey::rock(v.rocks.len() as u32), r);
+                    v.rocks.push(r.clone());
+                }
+                v.fields[k].1 = true;
             }
         }
         let reveal = |v: &mut Voyage, events: &mut Vec<SimEvent>, k: usize| {

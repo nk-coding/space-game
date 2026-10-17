@@ -70,7 +70,7 @@ pub struct Site {
 }
 
 /// The kinds in navigation order, with the titles of their list pages. Every [`Kind`] is here (a test checks).
-pub const KINDS: [(Kind, &str); 23] = [
+pub const KINDS: [(Kind, &str); 25] = [
     (Kind::Part, "Parts"),
     (Kind::Material, "Materials"),
     (Kind::Category, "Categories"),
@@ -86,6 +86,8 @@ pub const KINDS: [(Kind, &str); 23] = [
     (Kind::Galaxy, "Galaxies"),
     (Kind::Band, "Bands"),
     (Kind::ClusterType, "Cluster types"),
+    (Kind::Rock, "Rocks"),
+    (Kind::Landmark, "Landmarks"),
     (Kind::Trail, "Trails"),
     (Kind::SignalSource, "Signal sources"),
     (Kind::Lore, "Lore"),
@@ -283,6 +285,12 @@ pub fn generate(c: &Content, hand: &[hand::HandFile]) -> Site {
     }
     for e in &c.cluster_types {
         entry(Kind::ClusterType, &e.id, &e.name, &e.summary, w.cluster_type_page(e));
+    }
+    for e in &c.rocks {
+        entry(Kind::Rock, &e.id, &e.name, &e.summary, w.rock_page(e));
+    }
+    for e in &c.landmarks {
+        entry(Kind::Landmark, &e.id, &e.name, &e.summary, w.landmark_page(e));
     }
     for e in &c.trails {
         entry(Kind::Trail, &e.id, &e.name, &e.summary, w.trail_page(e));
@@ -1183,6 +1191,8 @@ impl<'a> Wiki<'a> {
                 Kind::ClusterType => {
                     flat(kind, c.cluster_types.iter().map(|e| (e.id.as_str(), e.name.as_str())).collect())
                 }
+                Kind::Rock => flat(kind, c.rocks.iter().map(|e| (e.id.as_str(), e.name.as_str())).collect()),
+                Kind::Landmark => flat(kind, c.landmarks.iter().map(|e| (e.id.as_str(), e.name.as_str())).collect()),
                 Kind::Trail => flat(kind, c.trails.iter().map(|e| (e.id.as_str(), e.name.as_str())).collect()),
                 Kind::SignalSource => {
                     flat(kind, c.signal_sources.iter().map(|e| (e.id.as_str(), e.name.as_str())).collect())

@@ -138,6 +138,7 @@ impl Wiki<'_> {
         }
         t.push_str("</table>\n");
         let mut sections = vec![("Sites".to_string(), t)];
+        sections.extend(self.scenery_section(root, &v.scenery));
         if let Some(text) = &v.cleared {
             sections.push((
                 "When cleared".into(),

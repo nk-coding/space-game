@@ -50,6 +50,8 @@ pub struct Pack {
     pub galaxies: Vec<Galaxy>,
     pub bands: Vec<Band>,
     pub cluster_types: Vec<ClusterType>,
+    pub rocks: Vec<RockKind>,
+    pub landmarks: Vec<Landmark>,
     pub trails: Vec<Trail>,
     pub signal_sources: Vec<SignalSource>,
     pub lore: Vec<LoreFragment>,
@@ -70,7 +72,7 @@ impl Pack {
     /// * `pack.ron`: the manifest (required).
     /// * `<kind-dir>.ron` or `<kind-dir>/**/*.ron` with kind-dir one of `stats`, `categories`, `factions`,
     ///   `materials`, `parts`, `frames`, `ships`, `behavior_nodes`, `behaviors`, `families`, `research`,
-    ///   `facilities`, `starts`, `voyages`, `encounters`, `galaxy`, `bands`, `cluster_types`, `trails`,
+    ///   `facilities`, `starts`, `voyages`, `encounters`, `galaxy`, `bands`, `cluster_types`, `rocks`, `landmarks`, `trails`,
     ///   `signal_sources`, `lore`, `controls` ([`Kind::dir`]). A file holds one entry `( ... )` or a list `[ ( ... ), ... ]`.
     /// * `lab.ron`: the evolution lab's goals, trials, genes, pilots, sizes and measures, one `( ... )` ([`Lab`]).
     /// * `icons/<key>.svg`: part, material and category icons as SVG text (`key` kebab-case).
@@ -142,6 +144,8 @@ impl Pack {
             galaxies: Vec::new(),
             bands: Vec::new(),
             cluster_types: Vec::new(),
+            rocks: Vec::new(),
+            landmarks: Vec::new(),
             trails: Vec::new(),
             signal_sources: Vec::new(),
             lore: Vec::new(),
@@ -214,6 +218,8 @@ impl Pack {
                     Some(Kind::Galaxy) => parse_into(text, &src, &mut pack.galaxies, &mut problems),
                     Some(Kind::Band) => parse_into(text, &src, &mut pack.bands, &mut problems),
                     Some(Kind::ClusterType) => parse_into(text, &src, &mut pack.cluster_types, &mut problems),
+                    Some(Kind::Rock) => parse_into(text, &src, &mut pack.rocks, &mut problems),
+                    Some(Kind::Landmark) => parse_into(text, &src, &mut pack.landmarks, &mut problems),
                     Some(Kind::Trail) => parse_into(text, &src, &mut pack.trails, &mut problems),
                     Some(Kind::SignalSource) => parse_into(text, &src, &mut pack.signal_sources, &mut problems),
                     Some(Kind::Lore) => parse_into(text, &src, &mut pack.lore, &mut problems),
@@ -299,6 +305,8 @@ impl Pack {
         check_duplicates(&pack.galaxies, &mut problems);
         check_duplicates(&pack.bands, &mut problems);
         check_duplicates(&pack.cluster_types, &mut problems);
+        check_duplicates(&pack.rocks, &mut problems);
+        check_duplicates(&pack.landmarks, &mut problems);
         check_duplicates(&pack.trails, &mut problems);
         check_duplicates(&pack.signal_sources, &mut problems);
         check_duplicates(&pack.lore, &mut problems);
@@ -434,6 +442,10 @@ pub struct Content {
     /// The galaxy's bands; each galaxy lists its own from the rim inwards.
     pub bands: Table<Band>,
     pub cluster_types: Table<ClusterType>,
+    /// Kinds of asteroid rock (GDR-0104).
+    pub rocks: Table<RockKind>,
+    /// Landmarks seen far off (GDR-0104).
+    pub landmarks: Table<Landmark>,
     pub trails: Table<Trail>,
     pub signal_sources: Table<SignalSource>,
     /// Lore fragments in load order, which is also their order within a band.
@@ -516,6 +528,8 @@ impl Content {
             p.galaxies.iter().cloned().for_each(|e| drop(c.galaxies.upsert(e)));
             p.bands.iter().cloned().for_each(|e| drop(c.bands.upsert(e)));
             p.cluster_types.iter().cloned().for_each(|e| drop(c.cluster_types.upsert(e)));
+            p.rocks.iter().cloned().for_each(|e| drop(c.rocks.upsert(e)));
+            p.landmarks.iter().cloned().for_each(|e| drop(c.landmarks.upsert(e)));
             p.trails.iter().cloned().for_each(|e| drop(c.trails.upsert(e)));
             p.signal_sources.iter().cloned().for_each(|e| drop(c.signal_sources.upsert(e)));
             p.lore.iter().cloned().for_each(|e| drop(c.lore.upsert(e)));
@@ -549,8 +563,8 @@ impl Content {
     }
 
     /// A fingerprint of everything a fight or a voyage reads from the content (GDR-0092): FNV-1a 64 of the RON of
-    /// the stats, categories, factions, materials, parts, frames, ships, behavior nodes, behaviors, voyages and
-    /// encounters, in load order. Pack versions, research, facilities, starts, the galaxy's kinds (a game keeps its
+    /// the stats, categories, factions, materials, parts, frames, ships, behavior nodes, behaviors, voyages,
+    /// encounters and rock kinds (rocks are bodies, GDR-0104), in load order. Pack versions, research, facilities, starts, the galaxy's kinds (a game keeps its
     /// generated galaxy, ADR-0035), controls, the lab, icons and wiki prose are left out: they change no fight, and a replay whose fingerprint differs says the rules have changed. Equal
     /// content gives the same fingerprint on every platform (RON writes floats exactly and the same everywhere).
     pub fn fingerprint(&self) -> u64 {
@@ -562,7 +576,7 @@ impl Content {
             &self.parts,
             &self.frames,
             &self.ships,
-            (&self.behavior_nodes, &self.behaviors, &self.voyages, &self.encounters),
+            (&self.behavior_nodes, &self.behaviors, &self.voyages, &self.encounters, &self.rocks),
         );
         let text = ron::to_string(&ruled).expect("content always serialises");
         crate::hash::fnv1a64(text.as_bytes())
@@ -589,6 +603,8 @@ impl Content {
             Kind::Galaxy => self.galaxies.contains(id),
             Kind::Band => self.bands.contains(id),
             Kind::ClusterType => self.cluster_types.contains(id),
+            Kind::Rock => self.rocks.contains(id),
+            Kind::Landmark => self.landmarks.contains(id),
             Kind::Trail => self.trails.contains(id),
             Kind::SignalSource => self.signal_sources.contains(id),
             Kind::Lore => self.lore.contains(id),
@@ -618,6 +634,8 @@ impl Content {
             Kind::Galaxy => self.galaxies.get(id).map(|e| e.name.as_str()),
             Kind::Band => self.bands.get(id).map(|e| e.name.as_str()),
             Kind::ClusterType => self.cluster_types.get(id).map(|e| e.name.as_str()),
+            Kind::Rock => self.rocks.get(id).map(|e| e.name.as_str()),
+            Kind::Landmark => self.landmarks.get(id).map(|e| e.name.as_str()),
             Kind::Trail => self.trails.get(id).map(|e| e.name.as_str()),
             Kind::SignalSource => self.signal_sources.get(id).map(|e| e.name.as_str()),
             Kind::Lore => self.lore.get(id).map(|e| e.name.as_str()),

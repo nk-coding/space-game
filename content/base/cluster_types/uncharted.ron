@@ -13,4 +13,12 @@
         (encounter: "hunter_pack", count: (0, 2)),
         (encounter: "precursor_wrecks", count: (0, 2)),
     ],
+    scenery: (
+        rocks: [(rock: "iron_rock", layout: Scatter, count: (1, 1), rocks: (12, 20))],
+        dust: 0.7,
+        debris: 0.5,
+        derelicts: (1, 3),
+        landmarks: [(landmark: "silent_beacon", chance: 0.4)],
+        fights: 1.0,
+    ),
 )

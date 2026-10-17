@@ -101,6 +101,7 @@ impl<'a> Validator<'a> {
             );
         }
         self.distance(v, "radius", v.radius);
+        self.scenery(v, &v.scenery, v.radius, false);
         let (near, far) = v.spacing;
         self.distance(v, "spacing", near);
         self.distance(v, "spacing", far);

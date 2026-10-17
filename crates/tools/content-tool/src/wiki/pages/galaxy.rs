@@ -273,11 +273,14 @@ impl Wiki<'_> {
             .filter(|b| b.clusters.iter().any(|w| w.id == t.id))
             .map(|b| self.a(root, Kind::Band, &b.id))
             .collect();
+        let mut sections = vec![("Sites".to_string(), sites)];
+        sections.extend(self.scenery_section(root, &t.scenery));
+        sections.push(("In bands".into(), list_or_none(&bands)));
         self.entry(
             t,
             EntryParts {
                 facts,
-                sections: vec![("Sites".to_string(), sites), ("In bands".into(), list_or_none(&bands))],
+                sections,
                 ..Default::default()
             },
         )

@@ -130,6 +130,8 @@ impl Content {
         each(self.galaxies.as_slice(), &mut f);
         each(self.bands.as_slice(), &mut f);
         each(self.cluster_types.as_slice(), &mut f);
+        each(self.rocks.as_slice(), &mut f);
+        each(self.landmarks.as_slice(), &mut f);
         each(self.trails.as_slice(), &mut f);
         each(self.signal_sources.as_slice(), &mut f);
         each(self.lore.as_slice(), &mut f);

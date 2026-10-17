@@ -40,11 +40,27 @@ use crate::ship::mass::MassProps;
 use crate::math::{Rot, Vec2, atan2};
 use crate::ship::Body;
 
-/// One body = one piece of one ship. Orders by ship, then piece.
+/// One body = one piece of one ship. Orders by ship, then piece. A voyage's asteroid rocks (GDR-0104) are bodies too,
+/// under the ship id [`BodyKey::ROCKS`] that no ship ever gets, so they order after every ship's pieces.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct BodyKey {
     pub ship: ShipId,
     pub piece: PieceId,
+}
+
+impl BodyKey {
+    /// The ship id of the rocks' bodies: no ship's (ids count up from 0).
+    pub const ROCKS: ShipId = ShipId(u32::MAX);
+
+    /// Rock `k` of the voyage (`Voyage::rocks`).
+    pub fn rock(k: u32) -> BodyKey {
+        BodyKey { ship: Self::ROCKS, piece: PieceId(k) }
+    }
+
+    /// The rock this body is, if it is one.
+    pub fn as_rock(self) -> Option<u32> {
+        (self.ship == Self::ROCKS).then_some(self.piece.0)
+    }
 }
 
 /// First hit of a ray.
@@ -74,8 +90,8 @@ pub struct Contact {
     pub impulse: f32,
     /// Closing speed along the normal at the contact point before the step (m/s; > 0 = approaching).
     pub relative_speed: f32,
-    /// The part of `a` and of `b` under the contact point (`None` only if the point and the grid
-    /// disagree).
+    /// The part of `a` and of `b` under the contact point (`None` if the point and the grid disagree, and for
+    /// `b` when it is an asteroid rock, GDR-0104: a piece against a rock is always `a`, the rock takes nothing).
     pub part_a: Option<crate::ship::design::PartIdx>,
     pub part_b: Option<crate::ship::design::PartIdx>,
     /// Ramming damage to each side, before shields: shield bubbles covering the point take their kinetic
@@ -261,8 +277,10 @@ impl Physics {
         self.tuning = tuning;
         let w = &mut self.world;
         w.integration_parameters.num_solver_iterations = tuning.substeps.max(1) as usize;
-        for h in self.handles.values() {
-            configure_body(&mut w.bodies[h.body], &tuning);
+        for (key, h) in &self.handles {
+            if key.as_rock().is_none() {
+                configure_body(&mut w.bodies[h.body], &tuning);
+            }
             let co = &mut w.colliders[h.collider];
             co.set_friction(tuning.friction);
             co.set_restitution(tuning.restitution);
@@ -304,6 +322,26 @@ impl Physics {
 
     /// Replaces the colliders and mass properties of a body and sets its velocities from `desc.body` (its
     /// centre of mass moved). The pose stays.
+    /// Adds an anchored rock (GDR-0104): a fixed body with the rock's convex outline, hull friction and bounce.
+    pub(crate) fn create_rock(&mut self, key: BodyKey, rock: &crate::voyage::rocks::Rock) {
+        self.remove_body(key);
+        let t = self.tuning;
+        let w = &mut self.world;
+        let r = Rot::from_angle(rock.angle);
+        let pose = Pose::from_parts(vr(rock.pos), Rotation::from_cos_sin_unchecked(r.cos, r.sin));
+        let rb = RigidBodyBuilder::fixed().pose(pose).user_data(user_data(key)).build();
+        let body = w.bodies.insert(rb);
+        let shape = SharedShape::convex_polyline(rock.points.iter().map(|&p| vr(p)).collect())
+            .unwrap_or_else(|| SharedShape::ball(rock.radius));
+        let co = ColliderBuilder::new(shape)
+            .friction(t.friction)
+            .restitution(t.restitution)
+            .user_data(user_data(key));
+        let collider = w.colliders.insert_with_parent(co, body, &mut w.bodies);
+        self.handles.insert(key, Handles { body, collider });
+        self.refresh_bvh(collider);
+    }
+
     pub(crate) fn update_body(&mut self, key: BodyKey, desc: &BodyDesc) {
         let Some(&h) = self.handles.get(&key) else {
             return;

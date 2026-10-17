@@ -16,6 +16,17 @@
             (encounter: "guarded_grove", count: (0, 1)),
             (encounter: "grown_dead", count: (1, 1)),
         ],
+        scenery: (
+            rocks: [
+                (rock: "ice_rock", layout: Field(radius: 180), count: (1, 2), rocks: (10, 16)),
+                (rock: "ice_rock", layout: Scatter, count: (1, 1), rocks: (6, 12)),
+            ],
+            dust: 1.0,
+            debris: 0.4,
+            derelicts: (0, 2),
+            landmarks: [(landmark: "silent_beacon", chance: 0.3)],
+            fights: 0.3,
+        ),
     ),
     (
         id: "border_drift",
@@ -30,5 +41,16 @@
             (encounter: "grown_dead", count: (0, 1)),
             (encounter: "precursor_wrecks", count: (0, 1)),
         ],
+        scenery: (
+            rocks: [
+                (rock: "iron_rock", layout: Field(radius: 200), count: (1, 2), rocks: (12, 18)),
+                (rock: "ice_rock", layout: Scatter, count: (1, 1), rocks: (6, 10)),
+            ],
+            dust: 1.0,
+            debris: 1.2,
+            derelicts: (2, 4),
+            landmarks: [(landmark: "derelict_station", chance: 0.3), (landmark: "silent_beacon", chance: 0.3)],
+            fights: 0.6,
+        ),
     ),
 ]

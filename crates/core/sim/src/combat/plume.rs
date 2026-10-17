@@ -209,8 +209,11 @@ impl Sim {
                         damage,
                         heat,
                     };
-                    if let Some(h) = other {
-                        sc.burns.push(burn(h.k, h.part, h.hit.point, false));
+                    if let Some(c) = other {
+                        // An asteroid rock in the lane takes the plume (GDR-0104): nothing behind it burns.
+                        if let Some(h) = c.part() {
+                            sc.burns.push(burn(h.k, h.part, h.hit.point, false));
+                        }
                     } else if let Some((dist, part)) = own {
                         sc.burns.push(burn(k, part, from + exhaust * dist, true));
                     }

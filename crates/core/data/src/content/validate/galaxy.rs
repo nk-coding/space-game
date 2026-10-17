@@ -195,6 +195,7 @@ impl<'a> Validator<'a> {
                 self.err(t, "star.distance", format!("cluster radii from the centre, above 1 (outside the cluster) and at most {MAX_STAR_DISTANCE}, got {}", star.distance));
             }
         }
+        self.scenery(t, &t.scenery, t.radius.0, t.star.is_some());
         if !c.bands.iter().any(|b| b.clusters.iter().any(|w| w.id == t.id)) {
             self.warn(t, "id", "no band has clusters of this type");
         }

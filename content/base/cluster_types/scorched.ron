@@ -19,4 +19,15 @@
         (encounter: "precursor_wrecks", count: (0, 1)),
     ],
     star: (heat: 0.3, distance: 1.8),
+    scenery: (
+        rocks: [
+            (rock: "slag_rock", layout: Field(radius: 200), count: (1, 2), rocks: (12, 20)),
+            (rock: "slag_rock", layout: Scatter, count: (1, 1), rocks: (10, 16)),
+        ],
+        dust: 1.5,
+        debris: 0.6,
+        derelicts: (0, 2),
+        landmarks: [(landmark: "star_corona", chance: 1.0)],
+        fights: 0.2,
+    ),
 )

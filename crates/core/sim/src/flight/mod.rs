@@ -41,6 +41,7 @@ use crate::flight::maneuver::Maneuver;
 use crate::math::{Rot, Vec2, atan2, cos, sqrt};
 use crate::flight::physics::wrap_angle;
 use crate::ship::{PartState, Piece, Ship, Wrench, gun_works, producing};
+use crate::voyage::rocks::{Rock, steer};
 
 pub use aim::{intercept_time, lead_point, resolve_target, smart_aim};
 pub use controllers::turn_rate;
@@ -485,8 +486,10 @@ impl Plan {
     };
 }
 
-/// Pass 1: decide the goal of one ship from its helm (or behavior), reading the whole world.
-pub(crate) fn plan(ship: &Ship, ships: &[Ship], cfg: &SimConfig) -> Plan {
+/// Pass 1: decide the goal of one ship from its helm (or behavior), reading the whole world. A behavior's or a
+/// maneuver's velocity goal bends round the voyage's asteroid rocks ahead (`rocks`, GDR-0104,
+/// [`crate::voyage::rocks::steer`]); a pilot's does not (the assist `avoid_collisions` sidesteps them).
+pub(crate) fn plan(ship: &Ship, ships: &[Ship], rocks: &[Rock], cfg: &SimConfig) -> Plan {
     let Some(piece) = ship.control_piece().and_then(|c| ship.piece(c)) else {
         return Plan::DARK;
     };
@@ -497,6 +500,7 @@ pub(crate) fn plan(ship: &Ship, ships: &[Ship], cfg: &SimConfig) -> Plan {
     let kin = Kin::of(piece, &ship.parts);
     if let Some(b) = &ship.behavior {
         let (mut goal, fire) = crate::behavior::fly(b, &kin, ships, tuning);
+        goal.velocity = goal.velocity.map(|v| steer(piece.body.pos, piece.radius, v, rocks));
         // A vessel without a working engine fights on as a turret (GDR-0064): whatever its rule flies, it turns
         // its strongest working guns onto its target with what it has (gyros, cores, RCS); RCS pods still follow
         // the velocity goal. Before, `HeadingGoal::Auto` with nothing to push kept the heading: it never aimed.
@@ -524,7 +528,11 @@ pub(crate) fn plan(ship: &Ship, ships: &[Ship], cfg: &SimConfig) -> Plan {
             raw: false,
         },
         HelmMode::Maneuver { maneuver, fire } => Plan {
-            goal: Some(maneuver.goal(&kin, ships, tuning)),
+            goal: Some({
+                let mut goal = maneuver.goal(&kin, ships, tuning);
+                goal.velocity = goal.velocity.map(|v| steer(piece.body.pos, piece.radius, v, rocks));
+                goal
+            }),
             fire: Fire::all_if(*fire),
             raw: false,
         },
@@ -532,7 +540,7 @@ pub(crate) fn plan(ship: &Ship, ships: &[Ship], cfg: &SimConfig) -> Plan {
             let mut goal = pilot_goal(input, &kin, ship, piece, ships, tuning);
             let mut fire = Fire::groups(input.fire);
             if let Some(a) = &ship.assists {
-                crate::behavior::assist_plan(a, input, &kin, piece, ships, tuning, &mut goal, &mut fire);
+                crate::behavior::assist_plan(a, input, &kin, piece, ships, rocks, tuning, &mut goal, &mut fire);
             }
             Plan {
                 goal: Some(goal),

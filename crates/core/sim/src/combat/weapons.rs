@@ -307,9 +307,36 @@ pub(crate) struct PartRayHit {
     pub part: PartIdx,
 }
 
+/// What a ray met first ([`Sim::cast_part`]): an alive part, or an asteroid rock (GDR-0104), which stops it.
+#[derive(Clone, Copy, Debug)]
+pub(crate) enum Cast {
+    Part(PartRayHit),
+    Rock(RayHit),
+}
+
+impl Cast {
+    /// Distance from the ray's origin.
+    pub(crate) fn distance(&self) -> f32 {
+        match self {
+            Cast::Part(p) => p.hit.distance,
+            Cast::Rock(h) => h.distance,
+        }
+    }
+
+    /// The part hit, if it was one.
+    pub(crate) fn part(self) -> Option<PartRayHit> {
+        match self {
+            Cast::Part(p) => Some(p),
+            Cast::Rock(_) => None,
+        }
+    }
+}
+
 /// What a ray hit on a body lands on ([`Sim::land`]).
 enum Landing {
     Part(PartRayHit),
+    /// An asteroid rock: the ray stops on it.
+    Rock(RayHit),
     /// The ray passes through the piece (destroyed parts only) and leaves it at this distance.
     Through(f32),
 }
@@ -546,7 +573,7 @@ impl Sim {
         dir: Vec2,
         len: f32,
         skip: impl Fn(BodyKey) -> bool,
-    ) -> Option<PartRayHit> {
+    ) -> Option<Cast> {
         let mut start = 0.0f32;
         for _ in 0..=tuning::MAX_RECASTS {
             let h = self
@@ -555,7 +582,11 @@ impl Sim {
             match self.land(&h, dir)? {
                 Landing::Part(mut p) => {
                     p.hit.distance += start;
-                    return Some(p);
+                    return Some(Cast::Part(p));
+                }
+                Landing::Rock(mut h) => {
+                    h.distance += start;
+                    return Some(Cast::Rock(h));
                 }
                 // Cast again from just past where the ray left the piece.
                 Landing::Through(t) => start += t + 1e-2,
@@ -572,6 +603,9 @@ impl Sim {
     /// the same piece further along the ray (a grid walk through the destroyed cells), entered at its cell's
     /// boundary; or where the walk leaves the piece. `None` for a body the sim does not know.
     fn land(&self, h: &RayHit, dir: Vec2) -> Option<Landing> {
+        if h.key.as_rock().is_some() {
+            return Some(Landing::Rock(*h));
+        }
         let k = self
             .ships
             .binary_search_by_key(&h.key.ship, |s| s.id())
@@ -609,6 +643,13 @@ impl Sim {
             (cell, t) = walk.step();
         }
         Some(Landing::Through(h.distance + t))
+    }
+
+    /// A shot of `by` stopped on an asteroid rock (GDR-0104): reported, nothing damaged.
+    fn rock_hit(&mut self, by: ShipId, family: WeaponFamily, h: &RayHit) {
+        if let Some(rock) = h.key.as_rock() {
+            self.events.push(SimEvent::RockHit { by, rock, point: h.point, normal: h.normal, family });
+        }
     }
 
     /// Damages one part and reports it.
@@ -652,7 +693,7 @@ impl Sim {
         from: Vec2,
         dir: Vec2,
         len: f32,
-    ) -> Option<PartRayHit> {
+    ) -> Option<Cast> {
         self.cast_part(from, dir, len, |key| {
             key.ship == owner || friendly(team, self.body_team(key))
         })
@@ -672,7 +713,7 @@ impl Sim {
         damage: f32,
     ) -> ShotEnd {
         let hit = self.shot_cast(owner, team, from, dir, range);
-        let len = hit.map_or(range, |h| h.hit.distance);
+        let len = hit.map_or(range, |h| h.distance());
         let mut left = damage;
         if let Some(t) = self.shield_pass(owner, team, family, from, dir, len, &mut left, None) {
             return ShotEnd {
@@ -681,7 +722,11 @@ impl Sim {
             };
         }
         match hit {
-            Some(h) => {
+            Some(Cast::Rock(h)) => {
+                self.rock_hit(owner, family, &h);
+                ShotEnd { to: h.point, hit: true }
+            }
+            Some(Cast::Part(h)) => {
                 self.gun_hits.push(GunHit {
                     by: owner,
                     team,
@@ -848,7 +893,7 @@ impl Sim {
                     break;
                 }
                 let hit = self.shot_cast(p.owner, p.team, p.pos, dir, remaining);
-                let len = hit.map_or(remaining, |h| h.hit.distance);
+                let len = hit.map_or(remaining, |h| h.distance());
                 let before = p.damage;
                 if let Some(t) = self.shield_pass(
                     p.owner,
@@ -865,9 +910,18 @@ impl Sim {
                     break;
                 }
                 let absorbed = before - p.damage;
-                let Some(PartRayHit { hit: h, k, part }) = hit else {
-                    p.pos += dir * remaining;
-                    break;
+                let (h, k, part) = match hit {
+                    None => {
+                        p.pos += dir * remaining;
+                        break;
+                    }
+                    Some(Cast::Rock(h)) => {
+                        self.rock_hit(p.owner, p.family, &h);
+                        p.pos = h.point;
+                        gone = Some(GoneReason::Hit);
+                        break;
+                    }
+                    Some(Cast::Part(PartRayHit { hit: h, k, part })) => (h, k, part),
                 };
                 if p.family == WeaponFamily::Kinetic
                     && p.ricochets < tuning::MAX_RICOCHETS
@@ -934,7 +988,11 @@ impl Sim {
             let mut h = g.hit;
             if !self.ships[h.k].parts[h.part as usize].alive {
                 match self.shot_cast(g.by, g.team, g.from, g.dir, g.range) {
-                    Some(next) => h = next,
+                    Some(Cast::Part(next)) => h = next,
+                    Some(Cast::Rock(r)) => {
+                        self.rock_hit(g.by, g.family, &r);
+                        continue;
+                    }
                     None => continue,
                 }
             }

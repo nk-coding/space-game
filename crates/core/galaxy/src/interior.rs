@@ -10,6 +10,8 @@ use crate::{GenError, Skeleton, Stream, stream, unit};
 /// What a cluster holds when the fleet warps in.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Interior {
+    /// Its cluster type (id): the voyage roll places the type's scenery (its rocks, GDR-0104).
+    pub kind: String,
     /// Metres, whole.
     pub radius: f32,
     /// `(min, max)` metres between sites (the cluster type's).
@@ -64,5 +66,5 @@ pub fn interior(c: &Content, s: &Skeleton, cluster: u32) -> Result<Interior, Gen
         let d = radius as f64 * st.distance as f64;
         InteriorStar { x: libm::round(d * libm::cos(a)) as f32, y: libm::round(d * libm::sin(a)) as f32, heat: st.heat }
     });
-    Ok(Interior { radius, spacing: t.spacing, sites, star })
+    Ok(Interior { kind: t.id.clone(), radius, spacing: t.spacing, sites, star })
 }

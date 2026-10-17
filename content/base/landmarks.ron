@@ -1,0 +1,38 @@
+// Landmarks (GDR-0104): something big seen far off in a cluster, drawn behind the play on a layer of its own
+// (`parallax`: the share of the camera's motion it follows), never a body. A cluster type's or a voyage's
+// `scenery.landmarks` gives each a chance per cluster; the client draws its `form` in vector shapes, `size` metres of
+// its layer. A corona belongs beside a hot star only. PLACEHOLDER NUMBERS (lead defaults, 17 Oct 2026).
+[
+    (
+        id: "derelict_station",
+        name: "Derelict station",
+        summary: "A dead station far off: a hub, broken spokes and a torn ring, every window dark.",
+        form: Station,
+        size: (260, 420),
+        parallax: 0.25,
+    ),
+    (
+        id: "silent_beacon",
+        name: "Silent beacon",
+        summary: "An old navigation mast, its light still turning slowly with nobody to guide.",
+        form: Beacon,
+        size: (50, 80),
+        parallax: 0.4,
+    ),
+    (
+        id: "junk_ring",
+        name: "Junk ring",
+        summary: "A ring of wreckage circling a dead hub, the slow remains of an old fight.",
+        form: Ring,
+        size: (500, 800),
+        parallax: 0.15,
+    ),
+    (
+        id: "star_corona",
+        name: "Corona",
+        summary: "The hot star's corona: arcs of light at the edge of sight on the star's side.",
+        form: Corona,
+        size: (300, 500),
+        parallax: 0.0,
+    ),
+]

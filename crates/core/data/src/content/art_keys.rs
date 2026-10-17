@@ -16,6 +16,9 @@ pub const SYSTEM_COLORS: &[&str] = &[
 /// `ship.armor` in `art/tokens.json`: armour tile tones.
 pub const ARMOR_TONES: &[&str] = &["steel", "composite", "reactive", "enemy", "tissue"];
 
+/// `world.rock` in `art/tokens.json`: asteroid rock tones (GDR-0104).
+pub const ROCK_TONES: &[&str] = &["iron", "ice", "slag"];
+
 /// Hull glow colours: "player" = `ship.hull_glow.color` (teal), "enemy" = `ship.hull_glow.enemy_color` (coral).
 pub const GLOWS: &[&str] = &["player", "enemy"];
 

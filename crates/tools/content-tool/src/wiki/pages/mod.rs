@@ -2,7 +2,7 @@
 //!
 //! Parts, materials, categories, factions, frames, ships, stats and articles here; behaviors (`behaviors.rs`), the
 //! career's research, facilities and starts (`career.rs`), voyages and encounters (`voyages.rs`), the galaxy's kinds
-//! (`galaxy.rs`), the evolution lab's
+//! (`galaxy.rs`), rock kinds, landmarks and the scenery of clusters (`scenery.rs`), the evolution lab's
 //! page (`lab.rs`), the lists and the index (`lists.rs`).
 
 mod behaviors;
@@ -10,6 +10,7 @@ mod career;
 mod galaxy;
 mod lab;
 mod lists;
+mod scenery;
 mod voyages;
 
 use super::*;
@@ -270,6 +271,10 @@ impl Wiki<'_> {
             })
             .collect();
         sections.push(("Used by ships".to_string(), list_or_none(&ships)));
+        let rocks: Vec<String> = self.c.rocks.iter().filter(|r| r.material == m.id).map(|r| self.a(root, Kind::Rock, &r.id)).collect();
+        if !rocks.is_empty() {
+            sections.push(("In asteroid rock".to_string(), format!("<p class=\"note\">Mining it comes later.</p>\n{}", ul(&rocks))));
+        }
         sections.extend(self.unlocked_by(&Unlock::Material(m.id.clone()), m.locked));
         if m.armor.is_some() {
             sections.push(("Salvage".to_string(), self.material_salvage(root, m)));

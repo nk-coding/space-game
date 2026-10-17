@@ -172,6 +172,9 @@ pub struct ClusterType {
     /// A hot star near the cluster (GDR-0099 A5, GDR-0102): parts open to space take its heat.
     #[serde(default)]
     pub star: Option<StarSpec>,
+    /// What fills its space between the sites: rocks, dust, debris, derelicts, landmarks, distant fights (GDR-0104).
+    #[serde(default)]
+    pub scenery: Scenery,
     #[serde(skip_deserializing)]
     pub source: Source,
 }
