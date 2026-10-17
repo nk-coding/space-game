@@ -4,7 +4,8 @@
 // `set_pieces`, GDR-0098): each lies on a rim cluster that takes its name, and the Warden's gate is the rim's first
 // gate, its four voyages the gate's trail: clearing the Warden opens the outer reach.
 // PLACEHOLDER NUMBERS (track 7J draft of 13 Oct 2026; sites tuned with the headless
-// voyage runner the same day, GDR-0073 and docs/results/slice-balance-2026-10-13.md).
+// voyage runner the same day, GDR-0073 and docs/results/slice-balance-2026-10-13.md; re-measured 17 Oct 2026, Corran
+// Reach's hunter packs 1 -> 2, docs/results/slice-balance-2026-10-17.md).
 [
     (
         id: "yard_approach",
@@ -49,7 +50,7 @@
         minutes: (5, 8),
         cleared: "The hunters are scattered. Beyond the Reach, something old still keeps the gate.",
         sites: [
-            (encounter: "hunter_pack"),
+            (encounter: "hunter_pack", count: 2),
             (encounter: "precursor_wrecks"),
             (encounter: "hunter_den", goal: true),
         ],

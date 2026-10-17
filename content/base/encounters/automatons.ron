@@ -3,7 +3,8 @@
 // gone, rolled on the sim's encounter stream. Counts are `(min, max)`, both included, rolled per launch. The
 // variants by count (a pair, a pack, a den) are entries of their own. PLACEHOLDER NUMBERS (track 7J
 // draft of 13 Oct 2026; counts tuned with the headless voyage runner the same day, GDR-0073 and
-// docs/results/slice-balance-2026-10-13.md: no single ship of the slice wins against three raiders at once often).
+// docs/results/slice-balance-2026-10-13.md: no single ship of the slice wins against three raiders at once often;
+// re-measured 17 Oct 2026, the Warden's raiders 1-2 -> 2-3, docs/results/slice-balance-2026-10-17.md).
 [
     (
         id: "raider_pair",
@@ -141,7 +142,7 @@
         tags: ["boss"],
         ships: [
             (ship: "automaton_warden", count: (1, 1)),
-            (ship: "automaton_raider", count: (1, 2)),
+            (ship: "automaton_raider", count: (2, 3)),
         ],
         wake_radius: 300,
     ),

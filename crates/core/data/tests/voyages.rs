@@ -507,7 +507,7 @@ fn base_voyages_form_the_slice_chain() {
         .iter()
         .map(|id| c.voyages.get(id).unwrap().site_count())
         .collect();
-    assert_eq!(sites, [4, 4, 3, 3]);
+    assert_eq!(sites, [4, 4, 4, 3]);
     // Every encounter is used by a voyage or a trail's end (galaxy plan E8), and the Warden waits at the end.
     for e in c.encounters.iter() {
         assert!(

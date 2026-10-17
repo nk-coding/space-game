@@ -623,14 +623,14 @@ fn voyage_pages_link_both_ways() {
     // and the voyages that place it (how many sites, the goal marked).
     let warden = "encounters/the_warden.html";
     has(warden, "<dt>Wake radius</dt><dd>300 m</dd>");
-    has(warden, "<dt>Ships</dt><dd>2–3</dd>");
+    has(warden, "<dt>Ships</dt><dd>3–4</dd>");
     lacks(warden, "<dt>Wrecks</dt>");
     has(warden, "aria-label=\"Automaton warden\"");
     has(
         warden,
         "href=\"../ships/automaton_raider.html\">Automaton raider</a></td><td>",
     );
-    has(warden, "<td class=\"num\">×1–2</td>");
+    has(warden, "<td class=\"num\">×2–3</td>");
     has(warden, "within 300 m of the site");
     has(warden, "<h2>Wrecks</h2>\n<p class=\"none\">None.</p>");
     has(
