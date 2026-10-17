@@ -6,8 +6,9 @@
 //! Composed in a design frame of 1600 × 900 px (the study's) and drawn the same size on screen at any zoom: scaled
 //! to the view's height, each body kept at its distance from the view's left or right edge (so a planet cut by a
 //! corner stays cut by it), the nebula stretched to the view's width. The layers move against the camera by a share
-//! of its motion on screen (feel, not physics): the galaxy not at all, the nebula 0.005, the planet 0.05 and its moons
-//! 0.075 (the far stars 0.02, `backdrop.rs`). A voyage carries the camera kilometres, so the shift is kept within
+//! of its motion on screen (feel, not physics): the galaxy not at all, the nebula 0.005, the planet 0.09 and its moons
+//! 0.12, above the stars (0.01–0.06) and below the junk (0.3 and up, `backdrop.rs`, `filler.rs`; GDR-0107 of 18 Oct
+//! 2026). A voyage carries the camera kilometres, so the shift is kept within
 //! [`DRIFT_REACH`] of the view's height: moving further out it slows to nothing, moving back it is whole again.
 //! Everything is drawn at [`STRENGTH`] (veiled towards the sky's dark), so it stays quiet behind a fight.
 
@@ -34,8 +35,8 @@ const H: f32 = 900.0;
 const STRENGTH: f32 = 0.85;
 /// Each layer's share of the camera's motion on screen.
 const PARALLAX_NEBULA: f32 = 0.005;
-const PARALLAX_PLANET: f32 = 0.05;
-const PARALLAX_MOONS: f32 = 0.075;
+const PARALLAX_PLANET: f32 = 0.09;
+const PARALLAX_MOONS: f32 = 0.12;
 /// The planet layer's shift stays within this share of the view's height.
 const DRIFT_REACH: f32 = 0.3;
 /// Draw order: the galaxy over the gradient, the far stars (−893, `backdrop.rs`), the nebula, the rings' back
@@ -142,17 +143,19 @@ pub(super) fn spawn(cx: &mut Build, s: &SkySpec, content: &data::Content, drift:
     Some(counts)
 }
 
-/// The planet: a kind by weight; large (60 %) and cut by a corner, or small and whole away from the view's middle;
+/// The planet: a kind by weight; large (25 %: Niklas, 18 Oct 2026, planets read too near; 60 % before) and cut by a
+/// corner, or small and whole away from the view's middle, both smaller than before (0.22–0.34 and 0.07–0.13 of the
+/// view's height; 0.34–0.56 and 0.11–0.19);
 /// lit from the hot star, from behind (a backlit sky) or from the view's middle side.
 fn roll_planet(r: &mut Stream, s: &SkySpec, pool: &[(&PlanetKind, u32)], all: &[(&PlanetKind, u32)], hot: Option<Vec2>) -> (Body, String) {
     let weights: Vec<u32> = pool.iter().map(|p| p.1).collect();
     let rolled = pool[r.weighted(&weights)].0;
     let kind = s.planet.and_then(|id| all.iter().find(|k| k.0.id == id)).map_or(rolled, |k| k.0);
-    let big = r.chance(0.6);
+    let big = r.chance(0.25);
     let mut rad;
     let mut at = Vec2::ZERO;
     if big {
-        rad = r.range(0.34, 0.56) * H;
+        rad = r.range(0.22, 0.34) * H;
         let (left, top) = (r.chance(0.5), r.chance(0.5));
         for _ in 0..12 {
             at.x = if left { rad * r.range(-0.25, 0.35) } else { W - rad * r.range(-0.25, 0.35) };
@@ -163,7 +166,7 @@ fn roll_planet(r: &mut Stream, s: &SkySpec, pool: &[(&PlanetKind, u32)], all: &[
             rad *= 0.92;
         }
     } else {
-        rad = r.range(0.11, 0.19) * H;
+        rad = r.range(0.07, 0.13) * H;
         for _ in 0..40 {
             at = Vec2::new(r.range(0.12, 0.88) * W, r.range(0.17, 0.83) * H);
             if at.distance(Vec2::new(W, H) / 2.0) > rad * 2.4 + 230.0 {
@@ -213,7 +216,7 @@ fn roll_moons(r: &mut Stream, s: &SkySpec, content: &data::Content, p: &Body, ho
             break;
         }
         for _ in 0..50 {
-            let mr = (p.r * r.range(0.05, 0.14)).clamp(10.0, 60.0);
+            let mr = (p.r * r.range(0.05, 0.14)).clamp(7.0, 40.0);
             let a = r.range(0.0, TAU);
             let d = p.r * if p.look.ring.is_some() { r.range(2.2, 2.9) } else { r.range(1.35, 2.4) } + mr;
             let at = p.at + Vec2::from_angle(a) * d;

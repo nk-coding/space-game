@@ -483,7 +483,7 @@ PostUpdate            ship_view::sync_piece_views (render_pose(alpha) → Transf
 - **Smaller modules**: `params.rs` (launch parameters: the page URL's query, natively `GAME_PARAMS`;
   `Params::flag` / `f32` / `text`), `controls.rs` (keyboard, mouse and touch → `PlayerInput`: stick, A/D ramp and
   nudge, lock, fire, drift, V / Tab / Esc; the touch widgets), `backdrop.rs` (the radial gradient, two parallax dust
-  layers drifting slowly outside flight (0.16 m/s in the far layer), three layers of stars, each twinkling on its own (17 Oct 2026, GDR-0107: far 0.02, mid 0.07 and a sparse near 0.2, 70 / 30 / 12 stars a 60 m tile, all behind a cluster's planet; one layer of 0.12 until GDR-0105, then 0.02 alone, which felt static), every layer at its depth's scale (`camera::depth_scale`), dotted range rings around
+  layers drifting slowly outside flight (0.16 m/s in the far layer), three layers of stars, each twinkling on its own (18 Oct 2026, GDR-0107: far 0.01, mid 0.03 and a sparse near 0.06, 36 / 24 / 10 stars a 60 m tile, all behind a cluster's planet; 0.02 / 0.07 / 0.2 and 70 / 30 / 12 from 17 Oct; one layer of 0.12 until GDR-0105, then 0.02 alone, which felt static; the dust layers 0.3 (far junk, 2800 motes a 240 m tile) and 0.7 (near dust, 700), 0.35 and 3600 / 1200 before), every layer at its depth's scale (`camera::depth_scale`), dotted range rings around
   the followed ship whose dots keep at least 2.6 px across and 11 px apart at any zoom, rebuilt per zoom step), `meshbuf.rs` (`MeshBuf`, the CPU builder for
   atlas-textured, vertex-coloured 2D meshes; index order = draw order; their data lives only on the GPU, so a
   PostUpdate system that replaces one runs before `TransformSystems::Propagate`, where `atlas.rs` moves Bevy's mesh
@@ -724,7 +724,7 @@ off, the flash and its ring where it left), `voyage-warp-emergency.png` (the eme
   each looks as authored at the camera's starting zoom (18 px/m, `camera::REF_ZOOM`). The backdrop's dust and stars
   and the sky follow the same rule. **Draw order** by depth, far to near: galaxy −897, stars −893 / −892.7 / −892.4,
   nebula −890, the hot star's glow −889, its corona −888.8, landmarks −888.5, the planet's rings and the planet −887
-  to −885, moons −883, dust −800 / −799, range rings −700, glints −660, derelicts 1, debris 2, rocks 3; nothing
+  to −885, moons −883, dust −800, far debris −799.5, dust −799, range rings −700, glints −660, derelicts 1, site debris 2, rocks 3; nothing
   farther than the planet draws over it (the stars, points of light, stay behind the sky's bodies whatever their
   parallax).
   - **Rocks** (`rocks.rs`): the sim's rocks (`Voyage::rocks`) as they spawn, the rocks spawned together in one mesh
@@ -735,12 +735,13 @@ off, the flash and its ring where it left), `voyage-warp-emergency.png` (the eme
     shifted towards the light (upper left) leaving a shadowed rim, 1–5 craters (dark bowls, the inner wall lit in
     `world.rock_facet`), an edge line brighter on the sides facing the light.
   - **Filler** (`filler.rs`, drawn only): glints and motes on a near layer (`p` 0.85, a 260 m tile repeated 3 × 3 round
-    the view like the backdrop's dust, the glints twinkling as one), hull debris everywhere on a tiled layer just
-    under the play (`p` 0.97, a 400 m tile of 320 bits at `debris` 1, so a few are always in sight) and thicker round
-    each site in three drifting groups, derelict shells (16–36 m, broken in two or three, ribs and a hole) drifting
+    the view like the backdrop's dust, the glints twinkling as one; 130 motes and 12 glints at `dust` 1, 220 and 18
+    until 18 Oct 2026), hull debris everywhere on a far tiled layer with the backdrop's far dust (`p` 0.3, a 400 m tile
+    of 220 bits at `debris` 1, so a few are always in sight; `p` 0.97 and 320 bits until 18 Oct 2026, GDR-0107) and
+    thicker round each site in three drifting groups of 7–12 bits just under the play (`p` 0.97), derelict shells (16–36 m, broken in two or three, ribs and a hole) drifting
     and turning slowly 20–120 m off the way between the entry and the sites (`p` 0.9).
   - **Far things** (`far.rs`): each landmark the cluster rolls (its chance, from the voyage's seed) anchored within
-    0.7 of the radius on its own layer (parallax 0.03–0.04, behind the sky's planet; sizes in metres of the layer at
+    0.7 of the radius on its own layer (parallax 0.03–0.04, behind the sky's planet at 0.09; sizes in metres of the layer at
     18 px/m): a station (hub, spokes, a torn ring
     with modules, two faint lights), a beacon (a mast, crossbars, a light passing every 3.2 s), a junk ring at a slant
     round a dead hub; beside a hot star the **corona**: three arcs and six loops in the corona colour at the view's
@@ -759,9 +760,12 @@ off, the flash and its ring where it left), `voyage-warp-emergency.png` (the eme
     everything, from the cluster type's `sky` (else its band's; a content voyage its band's), rolled from the
     cluster's own seed (`ClusterLaunch::sky_seed`, the skeleton's; a content voyage's from its id) on named streams
     (`roll.rs`: `planet`, `moons`, `nebula`, `galaxy`, one per body's look): a planet of the sky's weighted kinds
-    (`planets.ron`), large and cut by a corner or small and whole, 0–3 moons each of a different kind, a nebula of
-    soft blobs along a curve (at most 3 over a point, 2 beside a hot star) with faint dust lanes, and a spiral
-    galaxy. Composed in a 1600 × 900 design frame scaled to the view's height, each body at its distance from the
+    (`planets.ron`), large and cut by a corner (a quarter of skies, 0.22–0.34 of the view's height) or small and
+    whole (0.07–0.13; 60 %, 0.34–0.56 and 0.11–0.19 until 18 Oct 2026: planets read too near, GDR-0107), 0–3 moons
+    each of a different kind (7–40 px, rings and moons scale with the planet), a nebula of soft blobs along a curve
+    (at most 3 over a point, 2 beside a hot star) with faint dust lanes, and a spiral galaxy: a smooth core, a soft
+    glow along each arm (36 wide faint sprites an arm) and fine faint dots over it (18 Oct 2026: it read as a dot
+    cloud). Composed in a 1600 × 900 design frame scaled to the view's height, each body at its distance from the
     view's left or right edge, the nebula stretched to its width; about the same size at any zoom. `paint.rs` builds a
     body: an even polar mesh (40–84 rings for a planet, 10–26 for a moon) whose every vertex is coloured on the CPU
     like a shader (the surface of its form, `kinds.rs`: bands and ripples, storms, land caps with rough coasts,
@@ -771,7 +775,8 @@ off, the flash and its ring where it left), `voyage-warp-emergency.png` (the eme
     geometry (rifts, vents, a garden's lights, plumes); the air's glow a strip outside the limb; rings two halves
     of feathered elliptical bands (the back under the body, darkened in its shadow). Colours are veiled 15 % towards
     the sky's dark (strength 85 %). Depth: the layer shifts against the camera's motion on screen (galaxy 0, nebula
-    0.005, planet 0.05, moons 0.075; `sky::place`), kept within 0.3 of the view's height. Z: galaxy −897, the
+    0.005, planet 0.09, moons 0.12, between the stars and the junk; 0.05 and 0.075 until 18 Oct 2026; `sky::place`),
+    kept within 0.3 of the view's height. Z: galaxy −897, the
     backdrop's stars −893 to −892.4, nebula −890, rings −887 / −885, planet −886, moons −883; the hot star's glow, its
     corona and the landmarks between the nebula and the planet (GDR-0107; until 17 Oct 2026 the glow lay over the
     planet). Each piece's size also goes with the zoom to the power of its parallax (GDR-0107: hardly).

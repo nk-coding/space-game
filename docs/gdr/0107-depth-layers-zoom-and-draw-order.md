@@ -1,6 +1,17 @@
 # GDR-0107: Depth layers: a layer of parallax p moves p of the camera's motion and scales with the zoom to the power p, draws by its depth (nothing farther than the planet over it), stars in three layers, no distant fights, finer rocks
 
 - Status: Accepted (provisional, lead), 17 Oct 2026, for Niklas to review
+  2026-10-18: Niklas's backdrop tuning (provisional numbers, lead): the depth order by parallax is now consistent,
+  galaxy 0 and nebula 0.005 < stars 0.01 / 0.03 / 0.06 (were 0.02 / 0.07 / 0.2: the near layer moved too fast) <
+  planet 0.09 and moons 0.12 (were 0.05 / 0.075; its drift cap stays 0.3 of the view's height) < far junk 0.3 (the
+  backdrop's far dust, was 0.35, and the debris everywhere, was 0.97, drawn at −799.5 between the dusts) < near dust 0.7
+  < glints 0.85 < site debris 0.97. Thinner: far stars 36 a tile (were 70; mid 24, near 10, were 30 / 12), far dust
+  2800 and near dust 700 a tile (were 3600 / 1200), motes 130 and glints 12 (were 220 / 18), debris 220 a tile (was
+  320), site groups 7–12 bits (were 10–18). Smaller planets: large and corner-cut a quarter of skies (was 60 %), 0.22–0.34
+  of the view's height (was 0.34–0.56), small 0.07–0.13 (was 0.11–0.19), moons 7–40 px (were 10–60), rings with the
+  planet. The galaxy a soft glowing spiral: 36 wide faint sprites along each arm under 2200 finer, fainter dots (were
+  1250), a core of five smooth rings. Landmarks stay at 0.03–0.04. Screenshots `docs/results/backdrop-before.png`,
+  `backdrop-after.png`.
 - Date: 2026-10-17
 - Decided by: lead session (defaults for Niklas's play-test of 17 Oct 2026 of GDR-0104's scenery and GDR-0105's sky)
 - Related: [GDR-0104](0104-scenery-rocks-filler-landmarks.md), [GDR-0105](0105-cluster-sky-planets-nebula-galaxy.md), [GDR-0106](0106-flight-minimap.md), `docs/client.md` "Scenery"

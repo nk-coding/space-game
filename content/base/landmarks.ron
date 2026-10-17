@@ -1,5 +1,5 @@
 // Landmarks (GDR-0104): something big seen far off in a cluster, drawn behind the play on a layer of its own
-// (`parallax`: the share of the camera's motion it follows; below the sky's planet, 0.05, so it hangs behind it and
+// (`parallax`: the share of the camera's motion it follows; below the sky's planet, 0.09, so it hangs behind it and
 // keeps about its size on screen at any zoom, GDR-0107), never a body. A cluster type's or a voyage's
 // `scenery.landmarks` gives each a chance per cluster; the client draws its `form` in vector shapes, `size` metres of
 // its layer (18 px each at the camera's starting zoom). A corona belongs beside a hot star only. PLACEHOLDER NUMBERS

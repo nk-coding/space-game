@@ -81,21 +81,24 @@ struct DustLayer {
     tile: f32,
 }
 
-/// Two layers of dust (the nearest of the backdrop, drawn over the sky), then three layers of stars: far, mid and a
+/// Two layers of dust (the far junk and the near dust, drawn over the sky), then three layers of stars: far, mid and a
 /// sparse near one, each twinkling on its own, for a sense of motion (GDR-0105's 0.02 alone felt static; 17 Oct 2026).
+/// Every layer by parallax behind or in front of the sky's bodies as it moves (Niklas, 18 Oct 2026: the stars
+/// 0.01 / 0.03 / 0.06 below the planet's 0.09, the junk 0.3 and 0.7 above it; 0.02 / 0.07 / 0.2 and 0.35 before).
 const LAYERS: [DustLayer; 5] = [
-    DustLayer { parallax: 0.35, tile: TILE },
+    DustLayer { parallax: 0.3, tile: TILE },
     DustLayer { parallax: 0.7, tile: TILE },
-    DustLayer { parallax: 0.02, tile: STAR_TILE },
-    DustLayer { parallax: 0.07, tile: STAR_TILE },
-    DustLayer { parallax: 0.2, tile: STAR_TILE },
+    DustLayer { parallax: 0.01, tile: STAR_TILE },
+    DustLayer { parallax: 0.03, tile: STAR_TILE },
+    DustLayer { parallax: 0.06, tile: STAR_TILE },
 ];
 const STAR_LAYER: usize = 2;
 /// Each star layer's stars a tile, their sizes and brightness (layer metres, alpha), far to near.
 const STARS: [Stars; 3] = [
-    Stars { count: 70, size: (0.08, 0.2), alpha: (0.4, 0.85) },
-    Stars { count: 30, size: (0.12, 0.24), alpha: (0.45, 0.9) },
-    Stars { count: 12, size: (0.16, 0.3), alpha: (0.55, 0.95) },
+    // Niklas, 18 Oct 2026: the far stars were too many (70, 30 and 12 before).
+    Stars { count: 36, size: (0.08, 0.2), alpha: (0.4, 0.85) },
+    Stars { count: 24, size: (0.12, 0.24), alpha: (0.45, 0.9) },
+    Stars { count: 10, size: (0.16, 0.3), alpha: (0.55, 0.95) },
 ];
 
 /// A star layer's tile: how many stars, their sizes (layer metres) and brightness.
@@ -108,8 +111,8 @@ struct Stars {
 /// its parallax over that; Niklas, 15 Oct 2026: 0.55 m/s moved too fast).
 const DRIFT: Vec2 = Vec2::new(-0.16, 0.035);
 const DRIFT_PARALLAX: f32 = 0.12;
-/// The drift wraps after this many metres: a whole number of tiles in every layer (it moves 1/6, 7/12 and 5/3 times as
-/// far in the star layers' space, 8, 28 and 80 star tiles, and 35/12 and 70/12 times in the dusts'), so nothing jumps.
+/// The drift wraps after this many metres: a whole number of tiles in every layer (it moves 1/12, 1/4 and 1/2 times as
+/// far in the star layers' space, 4, 12 and 24 star tiles, and 30/12 and 70/12 times in the dusts'), so nothing jumps.
 const DRIFT_WRAP: f32 = TILE * 12.0;
 /// The range rings: radius (m), and their dots' least size and spacing on screen (logical px).
 const RINGS: [f32; 2] = [30.0, 60.0];
@@ -193,7 +196,7 @@ fn spawn_backdrop(
     let mut rng = Rng::new(0x5eed_d057);
     for (li, _) in LAYERS.iter().enumerate().take(STAR_LAYER) {
         let mut m = MeshBuf::default();
-        let (count, size, alpha) = if li == 0 { (3600, (0.05, 0.11), (0.12, 0.35)) } else { (1200, (0.08, 0.16), (0.2, 0.5)) };
+        let (count, size, alpha) = if li == 0 { (2800, (0.05, 0.11), (0.12, 0.35)) } else { (700, (0.08, 0.16), (0.2, 0.5)) };
         for _ in 0..count {
             let at = Vec2::new(rng.range(0.0, TILE), rng.range(0.0, TILE));
             let s = rng.range(size.0, size.1);

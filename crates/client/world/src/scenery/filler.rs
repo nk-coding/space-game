@@ -3,9 +3,10 @@
 //! * **Glints and motes**: one tile of fine dust and a few twinkling glints on a near layer (parallax
 //!   [`GLINT_PARALLAX`], between the backdrop's dust and the play), repeated 3 × 3 round the view like the
 //!   backdrop's; as thick as the scenery's `dust`.
-//! * **Debris**: bits of hull everywhere on a tiled layer just under the play (parallax [`DEBRIS_PARALLAX`], so ships
-//!   pass over them; [`DEBRIS_BITS`] a tile at `debris` 1, so a few are always in sight), and thicker round each site
-//!   in [`SITE_GROUPS`] drifting groups.
+//! * **Debris**: bits of hull everywhere on a far tiled layer (parallax [`DEBRIS_FAR_PARALLAX`], with the backdrop's
+//!   far dust: the slow far junk, GDR-0107 of 18 Oct 2026; [`DEBRIS_BITS`] a tile at `debris` 1, so a few are always in
+//!   sight), and thicker round each site in [`SITE_GROUPS`] drifting groups just under the play (parallax
+//!   [`DEBRIS_PARALLAX`], so ships pass over them).
 //! * **Derelicts**: the scenery's `derelicts` dead hull shells, broken in two or three, turning slowly as they drift
 //!   along the way (between the entry and the sites), a little further below (parallax [`DERELICT_PARALLAX`]).
 
@@ -22,22 +23,25 @@ use crate::sim_bridge::SimWorld;
 const Z_GLINTS: f32 = -660.0;
 const Z_DERELICTS: f32 = 1.0;
 const Z_DEBRIS: f32 = 2.0;
+/// The far debris layer: between the backdrop's far dust (−800) and its near dust (−799).
+const Z_DEBRIS_FAR: f32 = -799.5;
 /// The glints' layer: its share of the camera's motion, its tile (m) and copies a side.
 const GLINT_PARALLAX: f32 = 0.85;
 const GLINT_TILE: f32 = 260.0;
 const COPIES: i32 = 3;
-/// Motes and glints in a tile at `dust` 1.
-const MOTES: f32 = 220.0;
-const GLINTS: f32 = 18.0;
+/// Motes and glints in a tile at `dust` 1 (Niklas, 18 Oct 2026: the near junk was too busy; 220 and 18 before).
+const MOTES: f32 = 130.0;
+const GLINTS: f32 = 12.0;
 const DEBRIS_PARALLAX: f32 = 0.97;
+const DEBRIS_FAR_PARALLAX: f32 = 0.3;
 const DERELICT_PARALLAX: f32 = 0.9;
 /// Debris groups round each site at `debris` 1, their bits, and how far round the site they lie (m).
 const SITE_GROUPS: f32 = 3.0;
-const SITE_BITS: (f32, f32) = (10.0, 18.0);
+const SITE_BITS: (f32, f32) = (7.0, 12.0);
 const SITE_SPREAD: (f32, f32) = (40.0, 160.0);
 /// The debris layer's tile (m) and its bits at `debris` 1.
 const DEBRIS_TILE: f32 = 400.0;
-const DEBRIS_BITS: f32 = 320.0;
+const DEBRIS_BITS: f32 = 220.0;
 
 /// A tile of a repeated layer (`slot` of the 3 × 3): the glints' or the debris'.
 #[derive(Component)]
@@ -108,10 +112,10 @@ pub(super) fn spawn(cx: &mut Build, spec: &Spec) -> Counts {
         for slot in 0..COPIES * COPIES {
             cx.commands.spawn((
                 SceneryPart,
-                Tile { slot, size: DEBRIS_TILE, parallax: DEBRIS_PARALLAX },
+                Tile { slot, size: DEBRIS_TILE, parallax: DEBRIS_FAR_PARALLAX },
                 Mesh2d(mesh.clone()),
                 MeshMaterial2d(cx.atlas.material.clone()),
-                Transform::from_xyz(0.0, 0.0, Z_DEBRIS),
+                Transform::from_xyz(0.0, 0.0, Z_DEBRIS_FAR),
             ));
         }
         counts.bits += n;
