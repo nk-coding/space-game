@@ -17,7 +17,7 @@ impl IconShapes for GameContent {
         match icon {
             UiIcon::Part { part, material } => part_tile(&self.0, style, atlas, part, material.as_deref(), glow),
             UiIcon::Ship(bp) => ship_icon(&self.0, style, atlas, bp, glow),
-            UiIcon::Glyph { .. } | UiIcon::Scrim { .. } => None,
+            UiIcon::Glyph { .. } | UiIcon::Scrim { .. } | UiIcon::Sketch(_) => None,
         }
     }
 }

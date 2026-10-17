@@ -200,16 +200,35 @@ fn hold_camera(window: Single<&Window, With<PrimaryWindow>>, yard: Res<Yard>, mu
     }
 }
 
-/// Esc and the ring button go home, the drydock's action (D) to the drydock (not while a text field has the
-/// keyboard, nor with Ctrl or Cmd held, as everywhere).
-fn keys(keys: Res<ButtonInput<KeyCode>>, act: world::settings::Act, pointer: Res<UiPointer>, mut out: MessageWriter<ResearchAction>) {
+/// Esc and the ring button go home, the drydock's action (D) to the drydock, the arrow keys select the next card
+/// that way (`Tree::step`) (not while a text field has the keyboard, nor with Ctrl or Cmd held, as everywhere).
+fn keys(
+    keys: Res<ButtonInput<KeyCode>>,
+    act: world::settings::Act,
+    pointer: Res<UiPointer>,
+    tree: Res<ResearchTree>,
+    view: Res<ResearchView>,
+    mut out: MessageWriter<ResearchAction>,
+) {
     if pointer.typing || act.ctrl() {
         return;
     }
+    let arrow = [(KeyCode::ArrowLeft, -1, 0), (KeyCode::ArrowRight, 1, 0), (KeyCode::ArrowUp, 0, -1), (KeyCode::ArrowDown, 0, 1)]
+        .into_iter()
+        .find(|a| keys.just_pressed(a.0));
     if keys.just_pressed(KeyCode::Escape) {
         out.write(ResearchAction::Home);
     } else if act.just_pressed(data::input::Action::OpenDrydock) {
         out.write(ResearchAction::Drydock);
+    } else if let Some((_, dx, dy)) = arrow {
+        let t = &tree.0;
+        let next = match view.selected.as_deref().and_then(|n| t.card_of(n)) {
+            Some(from) => t.step(from, dx, dy),
+            None => (!t.cards.is_empty()).then_some(0),
+        };
+        if let Some(k) = next {
+            out.write(ResearchAction::Select(t.cards[k].node.clone()));
+        }
     }
 }
 

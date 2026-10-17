@@ -10,7 +10,8 @@
 //! at any UI size because the atlas tier follows the icons too ([`UiAtlasNeed`]). A whole design (FLEET's ships)
 //! is the drydock's view of it, fitted into the node. A machine's tile shows its icon on the machine tile colour,
 //! where ships show its drawing on a hull-toned cell (GDR-0069). Glyphs Barlow lacks (arrows, the play triangle, the search
-//! lens, the menu dots, the bonus diamond, the lock) are small meshes of the same kind.
+//! lens, the menu dots, the bonus diamond, the lock) are small meshes of the same kind, and so are sketches: dotted
+//! rings and lines over a screen ([`UiIcon::Sketch`], FLEET's formation ring).
 //!
 //! An icon follows its node's laid-out place (a sliding screen part moves it) and, while its screen's transition
 //! runs, fades with its part ([`IconMaterials`]: the part's own atlas material).
@@ -36,7 +37,8 @@ use crate::style::{Style, vcol};
 use crate::ui_kit::{IconMaterials, ScrollClipSet};
 use crate::view::{ViewScale, ViewSet};
 
-/// Above every world layer (ships ≤ 100, effects ≤ 400), below the camera's far plane; scrims just under the icons.
+/// Above every world layer (ships ≤ 100, effects ≤ 400), below the camera's far plane; scrims and sketches just
+/// under the icons.
 const Z_UI_ICON: f32 = 600.0;
 const Z_UI_SCRIM: f32 = 599.0;
 
@@ -58,6 +60,18 @@ pub enum UiIcon {
     /// Insets that meet close the hole: `[f32::INFINITY; 4]` fills the node (a screen over the world whose own
     /// icons must show, which an opaque UI background would cover: BLUEPRINTS).
     Scrim { color: Color, hole: [f32; 4], out: f32, into: f32 },
+    /// Strokes in UI px from the node's top-left corner (y down), under the other icons: FLEET's dotted formation
+    /// ring and the lines from its escorts to the flagship.
+    Sketch(Vec<Stroke>),
+}
+
+/// One stroke of a [`UiIcon::Sketch`], in UI px from the node's top-left corner (y down).
+#[derive(Clone, Debug, PartialEq)]
+pub enum Stroke {
+    /// An ellipse of dots `dot` px across, about `step` px apart.
+    Dots { centre: Vec2, radii: Vec2, step: f32, dot: f32, color: Color },
+    /// A line through `points` (a curve given by enough of them), `width` px wide, solid or dashed `(dash, gap)` px.
+    Line { points: Vec<Vec2>, width: f32, dash: Option<(f32, f32)>, color: Color },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -228,6 +242,7 @@ fn draw_icons<S: IconShapes>(
                     let ui = 1.0 / (scale * node.inverse_scale_factor);
                     Some((scrim_mesh(*color, hole.map(|v| v * ui), out * ui, into * ui, size, &atlas), Vec2::ONE))
                 }
+                UiIcon::Sketch(strokes) => Some((sketch_mesh(strokes, 1.0 / (scale * node.inverse_scale_factor), size, &atlas), Vec2::ONE)),
             }
             .unwrap_or_else(|| (MeshBuf::placeholder(), Vec2::ONE));
             let _ = meshes.insert(&m.mesh, mesh);
@@ -243,9 +258,9 @@ fn draw_icons<S: IconShapes>(
                 px_per_cell = px_per_cell.max(k / density);
                 k
             }
-            UiIcon::Glyph { .. } | UiIcon::Scrim { .. } => 1.0,
+            UiIcon::Glyph { .. } | UiIcon::Scrim { .. } | UiIcon::Sketch(_) => 1.0,
         };
-        let z = if matches!(icon, UiIcon::Scrim { .. }) { Z_UI_SCRIM } else { Z_UI_ICON };
+        let z = if matches!(icon, UiIcon::Scrim { .. } | UiIcon::Sketch(_)) { Z_UI_SCRIM } else { Z_UI_ICON };
         // Written only when it moves: a written transform is propagated again.
         let (at, k) = (view.screen_to_world(tf.translation / scale).extend(z), Vec3::new(px / view.zoom, px / view.zoom, 1.0));
         match (placed_mesh, fresh_material) {
@@ -322,6 +337,75 @@ fn scrim_mesh(color: Color, hole: [f32; 4], out: f32, into: f32, size: Vec2, atl
         m.gradient_quad([outer[k], outer[n], inner[n], inner[k]], uv, [solid, solid, clear, clear]);
     }
     m.into_mesh()
+}
+
+/// A sketch's strokes in a node `size` px large, centred on the origin, in pixels (y up); `ui`: px per UI px.
+fn sketch_mesh(strokes: &[Stroke], ui: f32, size: Vec2, atlas: &Atlas) -> Mesh {
+    let white = atlas.region("fx/white");
+    let uv = white.uv_center();
+    let at = |p: Vec2| Vec2::new(p.x * ui - size.x / 2.0, size.y / 2.0 - p.y * ui);
+    let mut m = MeshBuf::default();
+    for s in strokes {
+        match s {
+            Stroke::Dots { centre, radii, step, dot, color } => {
+                // Ramanujan's perimeter, so the dots keep their spacing round the ellipse.
+                let (a, b) = (radii.x, radii.y);
+                let h = ((a - b) / (a + b)).powi(2);
+                let around = std::f32::consts::PI * (a + b) * (1.0 + 3.0 * h / (10.0 + (4.0 - 3.0 * h).sqrt()));
+                let n = (around / step).round().max(3.0) as usize;
+                for k in 0..n {
+                    let c = at(*centre + Vec2::from_angle(k as f32 / n as f32 * std::f32::consts::TAU) * *radii);
+                    let disc: Vec<Vec2> = (0..8).map(|j| c + Vec2::from_angle(j as f32 / 8.0 * std::f32::consts::TAU) * dot * ui / 2.0).collect();
+                    m.polygon(&disc, uv, vcol(*color, 1.0));
+                }
+            }
+            Stroke::Line { points, width, dash, color } => {
+                let pts: Vec<Vec2> = points.iter().map(|p| at(*p)).collect();
+                let half = width * ui / 2.0;
+                let Some((dash, gap)) = dash.map(|(d, g)| (d * ui, g * ui)) else {
+                    m.strip(&pts, false, half, &white, vcol(*color, 1.0));
+                    continue;
+                };
+                for run in dashes(&pts, dash, gap) {
+                    m.strip(&run, false, half, &white, vcol(*color, 1.0));
+                }
+            }
+        }
+    }
+    if m.is_empty() { MeshBuf::placeholder() } else { m.into_mesh() }
+}
+
+/// The dashes of a line through `pts`, `dash` long and `gap` apart from its start, each a run of points (a dash
+/// keeps the line's corners).
+fn dashes(pts: &[Vec2], dash: f32, gap: f32) -> Vec<Vec<Vec2>> {
+    let mut out = Vec::new();
+    let mut run: Vec<Vec2> = Vec::new();
+    let (mut left, mut on) = (dash, true);
+    for w in pts.windows(2) {
+        let (mut a, b) = (w[0], w[1]);
+        if on && run.is_empty() {
+            run.push(a);
+        }
+        let mut len = a.distance(b);
+        while len >= left {
+            a += (b - a) * (left / len.max(f32::MIN_POSITIVE));
+            len -= left;
+            run.push(a);
+            if on {
+                out.push(std::mem::take(&mut run));
+            }
+            on = !on;
+            left = if on { dash } else { gap };
+        }
+        left -= len;
+        if on && run.last() != Some(&b) {
+            run.push(b);
+        }
+    }
+    if on && run.len() > 1 {
+        out.push(run);
+    }
+    out
 }
 
 /// A glyph `side` px across, centred on the origin, in pixels (y up). Strokes are 1.6 px wide, thicker on glyphs
@@ -456,6 +540,15 @@ fn glyph_mesh(glyph: Glyph, color: Color, side: f32, atlas: &Atlas) -> Mesh {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Dashes run along a line and keep its corners; the last one ends with the line.
+    #[test]
+    fn dashes_follow_the_line_round_its_corners() {
+        let v = Vec2::new;
+        let pts = [v(0.0, 0.0), v(10.0, 0.0), v(10.0, 10.0)];
+        assert_eq!(dashes(&pts, 4.0, 2.0), [vec![v(0.0, 0.0), v(4.0, 0.0)], vec![v(6.0, 0.0), v(10.0, 0.0)], vec![v(10.0, 2.0), v(10.0, 6.0)], vec![v(10.0, 8.0), v(10.0, 10.0)]]);
+        assert_eq!(dashes(&pts, 5.0, 2.0)[1], [v(7.0, 0.0), v(10.0, 0.0), v(10.0, 2.0)]);
+    }
 
     /// Plus and minus are centred on the node: their bars' bounds are symmetric around the origin, at any size.
     #[test]

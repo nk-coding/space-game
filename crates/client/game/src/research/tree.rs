@@ -139,6 +139,28 @@ impl Tree {
         self.lanes.iter().map(|l| l.rows).sum()
     }
 
+    /// The card an arrow key goes to from card `from` (`dx`, `dy`: −1, 0 or 1, one of them 0): the nearest one that
+    /// way, on the tree's grid of columns and rows (all lanes' rows one under the other). Sideways it keeps the row
+    /// when it can, up and down the column; `None` at the edge.
+    pub fn step(&self, from: usize, dx: i32, dy: i32) -> Option<usize> {
+        let row = |c: &Card| (self.lanes[..c.lane].iter().map(|l| l.rows).sum::<usize>() + c.row) as i32;
+        let at = |c: &Card| (c.column as i32, row(c));
+        let (x, y) = at(self.cards.get(from)?);
+        self.cards
+            .iter()
+            .enumerate()
+            .filter(|&(k, c)| {
+                let (cx, cy) = at(c);
+                k != from && (cx - x) * dx + (cy - y) * dy > 0
+            })
+            .min_by_key(|&(k, c)| {
+                let (cx, cy) = at(c);
+                let (along, across) = if dx != 0 { ((cx - x).abs(), (cy - y).abs()) } else { ((cy - y).abs(), (cx - x).abs()) };
+                (across, along, k)
+            })
+            .map(|(k, _)| k)
+    }
+
     /// Where the cards, lanes and connectors go with these sizes. A card sits at the top of its row.
     pub fn place(&self, m: &Metrics) -> Placed {
         let mut lanes = Vec::with_capacity(self.lanes.len());
@@ -361,6 +383,27 @@ mod tests {
         let mut c = Career::from_ron(&format!("(start: \"rim_awakening\", seed: 1, generator: {}{extra})", data::career::GENERATOR)).unwrap();
         c.reconcile(&content);
         (content, c)
+    }
+
+    /// The arrow keys move on the grid of columns and rows across lanes: sideways in the row, up and down in the
+    /// column, the nearest that way when the row or column has none; nothing past the edge.
+    #[test]
+    fn arrows_step_to_the_nearest_card_that_way() {
+        let card = |node: &str, lane, row, column| Card { node: node.into(), lane, row, column };
+        let tree = Tree {
+            lanes: vec![Lane { family: "a".into(), rows: 2 }, Lane { family: "b".into(), rows: 1 }],
+            cards: vec![card("a0", 0, 0, 0), card("a1", 0, 0, 1), card("a2", 0, 1, 1), card("b0", 1, 0, 0), card("b2", 1, 0, 2)],
+            links: Vec::new(),
+            columns: 3,
+        };
+        let step = |from: usize, dx, dy| tree.step(from, dx, dy).map(|k| tree.cards[k].node.as_str());
+        assert_eq!(step(0, 1, 0), Some("a1"));
+        assert_eq!(step(1, 0, 1), Some("a2"));
+        assert_eq!(step(2, 0, 1), Some("b0"), "a tie goes to the earlier card");
+        assert_eq!(step(3, 1, 0), Some("b2"));
+        assert_eq!(step(4, 0, -1), Some("a2"));
+        assert_eq!(step(0, -1, 0), None);
+        assert_eq!(step(0, 0, -1), None);
     }
 
     fn at(tree: &Tree, node: &str) -> (String, usize, usize) {

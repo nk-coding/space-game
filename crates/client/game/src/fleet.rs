@@ -6,27 +6,29 @@
 //!
 //! ```text
 //! (o) SHIPYARD › FLEET  [EVOLVING 12 / 50]                           CORES 2 / 3 ●●○   [CLOSE ESC]
-//!     Fleet
-//!  [ escort 1 ]            [      flagship      ]            [ escort 2 ]
+//!     Fleet                 . · ˙ ˙ ˙ ˙ ˙ ˙ ˙ ˙ ˙ ˙ · .
+//!  [ escort 1 ]────────────[      flagship      ]- - - - - -[ escort 2 ]
 //!  ESCORT 1                 FLAGSHIP · THE DRYDOCK'S DESIGN   ESCORT 2 · 1 CORE FREE
-//!  Drone wing  [REMOVE]     Rim skiff copy                    Empty
-//!  [ escort 3 ]            2 CORES · CARGO 8                [ escort 4 ]
+//!  Drone wing  [REMOVE]     Rim skiff copy                    Picket
+//!  1 CORE · FLIES ESCORT    2 CORES · CARGO 8                 PREVIEW · ENTER ADDS IT
 //! YOUR DESIGNS · PICK ONE FOR ESCORT 2
 //! [ card ][ card ][ card ][ card ]
-//! VOYAGE-READY · CORES 3 / 3
+//! ENTER ADDS PICKET AS ESCORT 2
 //! ```
 //!
-//! Home's moorings (F, once the camera has flown there) open it; the ring button top left, CLOSE and Esc close it.
-//! A click on a slot picks the slot, a click on a design puts it there (the empty slot adds one), REMOVE empties a
-//! slot. Shown slots: the escorts and one more while there is room ([`MAX_ESCORTS`]). UI words are chrome in code,
-//! like home's.
+//! Home's moorings (F, once the camera has flown there) open it; the ring button top left, CLOSE and Esc close it
+//! (Esc first drops a preview). A click on a slot picks the slot; a click on a design (or ←/→ through the designs)
+//! previews it in the picked slot, and Enter (or a second click on it) puts it there (the empty slot adds one);
+//! REMOVE empties a slot. Shown slots: the escorts and one more while there is room ([`MAX_ESCORTS`]). A dotted
+//! formation ring runs round the flagship, inside the slots, and a line from each escort to the flagship (dashed
+//! from a preview). UI words are chrome in code, like home's.
 
 use bevy::prelude::*;
 use bevy::ui::ComputedNode;
 use data::career::voyage_ready;
 use data::{Blueprint, Content};
 use kit::style::{Style, ui_color};
-use kit::ui_icons::{Glyph, UiIcon};
+use kit::ui_icons::{Glyph, Stroke, UiIcon};
 use kit::ui_kit::{
     HudFonts, Edge, Hot, Pill, ScreenFx, ScreenPart, ScrollRows, Scrollbar, Tip, Tone, UiClick, UiInputSet, show_screen, UiStyleSet, label, number, prose, ring_node, set_color, set_text,
     spawn_brackets, spawn_pill, tracked,
@@ -34,6 +36,7 @@ use kit::ui_kit::{
 use world::career::{EscortDesigns, Granted, PlayerCareer, readiness_words, voyage_line};
 use world::mode::AppMode;
 use world::player::PlayerDesign;
+use world::player::behaviors::PlayerBehaviors;
 use world::player::design::flight_ready;
 use world::player::library::{DesignDoc, parts_size};
 use world::sim_bridge::GameContent;
@@ -57,6 +60,9 @@ const STAGE: Vec2 = Vec2::new(1280.0, 720.0);
 const FLAGSHIP: (Vec2, Vec2) = (Vec2::new(640.0, 250.0), Vec2::new(320.0, 190.0));
 const SLOTS: [Vec2; MAX_ESCORTS] = [Vec2::new(250.0, 215.0), Vec2::new(1030.0, 215.0), Vec2::new(250.0, 395.0), Vec2::new(1030.0, 395.0)];
 const SLOT_BOX: Vec2 = Vec2::new(150.0, 96.0);
+/// The dotted formation ring round the flagship and its words, inside the slots, clear of every slot's words
+/// (centre and radii, stage px).
+const RING: (Vec2, Vec2) = (Vec2::new(640.0, 300.0), Vec2::new(280.0, 205.0));
 /// The capacity dots top right.
 const DOTS: usize = 8;
 
@@ -124,6 +130,35 @@ fn plural(n: u32, one: &str) -> String {
     if n == 1 { format!("1 {one}") } else { format!("{n} {one}S") }
 }
 
+/// The name of the behavior an escort of design `bp` flies: the one it names when that flies (a content behavior,
+/// or one of the player's without errors), else its faction's, as a voyage flies it (`behaviors::fallback`).
+pub fn flies<'a>(content: &'a Content, behaviors: &'a PlayerBehaviors, bp: &Blueprint) -> Option<&'a str> {
+    let named = bp.behavior.as_deref().and_then(|id| match behaviors.get(id) {
+        Some(p) => p.runs().then_some(&p.behavior),
+        None => content.behaviors.get(id),
+    });
+    let faction = || content.factions.get(&bp.faction).and_then(|f| content.behaviors.get(f.behavior.as_deref()?));
+    named.or_else(faction).map(|b| b.name.as_str())
+}
+
+/// The formation's line from the escort slot `k` to the flagship (stage px): a curve leaving the slot's box and
+/// the flagship's box sideways.
+fn formation_line(k: usize) -> Vec<Vec2> {
+    let (ship, size) = FLAGSHIP;
+    let at = SLOTS[k];
+    let side = if at.x < ship.x { 1.0 } else { -1.0 };
+    let a = at + Vec2::new(side * SLOT_BOX.x / 2.0, 0.0);
+    let b = Vec2::new(ship.x - side * size.x / 2.0, ship.y + (at.y - RING.0.y) * 0.4);
+    let pull = Vec2::new((b.x - a.x) * 0.5, 0.0);
+    (0..=24)
+        .map(|i| {
+            let t = i as f32 / 24.0;
+            let u = 1.0 - t;
+            a * (u * u * u) + (a + pull) * (3.0 * u * u * t) + (b - pull) * (3.0 * u * t * t) + b * (t * t * t)
+        })
+        .collect()
+}
+
 /// A refusal in words (uppercase).
 pub fn refused_words(name: &str, r: &Refused) -> String {
     let name = name.to_uppercase();
@@ -147,6 +182,8 @@ pub struct Fleet {
     seen_to: usize,
     /// Show the cards from the first again (FLEET opened).
     top: bool,
+    /// The design previewed in the picked slot (index into the designs): Enter puts it there.
+    preview: Option<usize>,
     say: Option<(String, Tone)>,
 }
 
@@ -197,6 +234,14 @@ enum FleetIcon {
 #[derive(Component)]
 struct CardRow;
 
+/// The formation ring and lines, a sketch over the whole stage.
+#[derive(Component)]
+struct Formation;
+
+/// The veil that dims a slot's ship while it shows a preview (UI draws over the icons).
+#[derive(Component)]
+struct PreviewVeil(usize);
+
 pub struct FleetPlugin;
 
 impl Plugin for FleetPlugin {
@@ -246,10 +291,19 @@ fn open(
     fleet.designs = designs.into_iter().map(|d| d.1).collect();
     fleet.slot = escorts.0.len().min(MAX_ESCORTS - 1);
     fleet.top = true;
+    fleet.preview = None;
     fleet.open = true;
 }
 
-/// Clicks, Esc, and the cards the row shows (from its scroll: the kit's wheel and scrollbar move it).
+/// What a click or a key asks of FLEET.
+enum Op {
+    Button(FleetButton),
+    /// Put the design (index into the designs) into the picked slot.
+    Add(usize),
+}
+
+/// Clicks, keys (Esc, ←/→, Enter), and the cards the row shows (from its scroll: the kit's wheel and scrollbar move
+/// it, and a preview stepped out of view).
 #[allow(clippy::too_many_arguments)]
 fn input(
     mut clicks: MessageReader<UiClick>,
@@ -268,7 +322,10 @@ fn input(
         return;
     }
     if keys.just_pressed(KeyCode::Escape) {
-        fleet.open = false;
+        match fleet.preview {
+            Some(_) => fleet.preview = None,
+            None => fleet.open = false,
+        }
         return;
     }
     let (node, mut rows) = row.into_inner();
@@ -276,37 +333,73 @@ fn input(
         fleet.top = false;
         rows.scroll = 0.0;
     }
-    let w = ScrollRows::lay(&mut rows, &vec![CARD_W; fleet.designs.len()], CARD_GAP, node.size.x * node.inverse_scale_factor, CARD_POOL);
+    let view = node.size.x * node.inverse_scale_factor;
+    let step = keys.just_pressed(KeyCode::ArrowRight) as i32 - keys.just_pressed(KeyCode::ArrowLeft) as i32;
+    if step != 0 && !fleet.designs.is_empty() {
+        // From the preview, else from the first card in view; the row scrolls to show it.
+        let pitch = CARD_W + CARD_GAP;
+        let last = fleet.designs.len() - 1;
+        let next = match fleet.preview {
+            Some(p) => (p as i32 + step).clamp(0, last as i32) as usize,
+            None => ((rows.scroll / pitch).ceil() as usize).min(last),
+        };
+        fleet.preview = Some(next);
+        fleet.say = None;
+        let x = next as f32 * pitch;
+        rows.scroll = rows.scroll.min(x).max(x + CARD_W - view);
+    }
+    let w = ScrollRows::lay(&mut rows, &vec![CARD_W; fleet.designs.len()], CARD_GAP, view, CARD_POOL);
     if (fleet.offset, fleet.seen_to) != (w.first, w.seen.1) {
         (fleet.offset, fleet.seen_to) = (w.first, w.seen.1);
     }
     let content = &content.0;
-    for c in clicks.read() {
-        let Ok((b, pill)) = buttons.get(c.0) else { continue };
-        if pill.is_some_and(|p| p.disabled) {
-            continue;
-        }
+    let mut ops: Vec<Op> = clicks
+        .read()
+        .filter_map(|c| buttons.get(c.0).ok())
+        .filter(|(_, pill)| !pill.is_some_and(|p| p.disabled))
+        .map(|(b, _)| match *b {
+            // A second click on the previewed design puts it there, like Enter.
+            FleetButton::Card(k) if fleet.preview == Some(fleet.offset + k) => Op::Add(fleet.offset + k),
+            b => Op::Button(b),
+        })
+        .collect();
+    if keys.any_just_pressed([KeyCode::Enter, KeyCode::NumpadEnter])
+        && let Some(p) = fleet.preview
+    {
+        ops.push(Op::Add(p));
+    }
+    for op in ops {
         let ids = career.career().escorts().to_vec();
-        let changed = match *b {
-            FleetButton::Close => {
-                fleet.open = false;
-                return;
-            }
-            FleetButton::Slot(k) => {
-                fleet.slot = k.min(ids.len());
-                None
-            }
-            FleetButton::Remove(k) if k < ids.len() => {
-                let mut next = ids.clone();
-                let gone = escorts.0.get(k).map_or(next[k].clone(), |b| b.name.clone());
-                next.remove(k);
-                fleet.say = Some((format!("{} LEFT THE FLEET", gone.to_uppercase()), Tone::Teal));
-                fleet.slot = next.len().min(MAX_ESCORTS - 1);
-                Some(next)
-            }
-            FleetButton::Remove(_) => None,
-            FleetButton::Card(k) => {
-                let Some(d) = fleet.designs.get(fleet.offset + k).cloned() else { continue };
+        let changed = match op {
+            Op::Button(b) => match b {
+                FleetButton::Close => {
+                    fleet.open = false;
+                    return;
+                }
+                FleetButton::Slot(k) => {
+                    fleet.slot = k.min(ids.len());
+                    None
+                }
+                FleetButton::Remove(k) if k < ids.len() => {
+                    let mut next = ids.clone();
+                    let gone = escorts.0.get(k).map_or(next[k].clone(), |b| b.name.clone());
+                    next.remove(k);
+                    fleet.say = Some((format!("{} LEFT THE FLEET", gone.to_uppercase()), Tone::Teal));
+                    fleet.slot = next.len().min(MAX_ESCORTS - 1);
+                    Some(next)
+                }
+                FleetButton::Remove(_) => None,
+                // A click on another design previews it in the picked slot.
+                FleetButton::Card(k) => {
+                    if fleet.designs.get(fleet.offset + k).is_some() {
+                        fleet.preview = Some(fleet.offset + k);
+                        fleet.say = None;
+                    }
+                    None
+                }
+            },
+            Op::Add(i) => {
+                let Some(d) = fleet.designs.get(i).cloned() else { continue };
                 let with_cores: Vec<(String, u32)> =
                     ids.iter().zip(&escorts.0).map(|(id, b)| (id.clone(), content.ship_totals(b).logic_cores)).collect();
                 let flagship = content.ship_totals(design.blueprint()).logic_cores;
@@ -314,6 +407,7 @@ fn input(
                 let slot = fleet.slot.min(ids.len()).min(MAX_ESCORTS - 1);
                 match pick(&with_cores, flagship, granted.mind_capacity, slot, &d) {
                     Ok(next) => {
+                        fleet.preview = None;
                         fleet.say = Some((format!("{} FLIES AS ESCORT {}", d.blueprint.name.to_uppercase(), slot + 1), Tone::Teal));
                         fleet.slot = (slot + 1).min(next.len()).min(MAX_ESCORTS - 1);
                         Some(next)
@@ -368,7 +462,7 @@ fn show(mode: Res<State<AppMode>>, fleet: Res<Fleet>, mut root: Single<&mut Scre
     show_screen(&mut root, *mode.get() == AppMode::Home && fleet.open);
 }
 
-fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>) {
+fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>, clear: Res<ClearColor>) {
     let ui = style.ui;
     let c = |tone: Tone, a: f32| ui_color(tone.color(&ui), a);
     let fonts = &*fonts;
@@ -402,6 +496,8 @@ fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>) {
             })
             .with_children(|centre| {
                 centre.spawn(Node { width: px(STAGE.x), height: px(STAGE.y), flex_shrink: 0.0, ..default() }).with_children(|stage| {
+                    // The formation ring and lines, under everything else.
+                    stage.spawn((Formation, ScreenPart::new(Edge::Fade, 1), UiIcon::Sketch(Vec::new()), abs(Vec2::ZERO, Some(STAGE))));
                     // Top left: the way back, where we are, the words.
                     stage
                         .spawn((ScreenPart::new(Edge::Top, 0), Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(14), ..abs(Vec2::new(22.0, 14.0), None) }))
@@ -469,7 +565,8 @@ fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>) {
                     // The escort slots.
                     for (k, at) in SLOTS.iter().enumerate() {
                         let side = if at.x < STAGE.x / 2.0 { Edge::Left } else { Edge::Right };
-                        stage.spawn((FleetNode::Slot(k), ScreenPart::new(side, 2), column(6.0, abs(Vec2::new(at.x - 120.0, at.y - SLOT_BOX.y / 2.0), Some(Vec2::new(240.0, 170.0))))))
+                        // Gaps of 4 px: with 6 an upper slot's REMOVE ran into the box of the slot below it.
+                        stage.spawn((FleetNode::Slot(k), ScreenPart::new(side, 2), column(4.0, abs(Vec2::new(at.x - 120.0, at.y - SLOT_BOX.y / 2.0), Some(Vec2::new(240.0, 170.0))))))
                             .with_children(|s| {
                                 s.spawn((
                                     FleetButton::Slot(k),
@@ -481,7 +578,7 @@ fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>) {
                                         flex_shrink: 0.0,
                                         border: UiRect::all(px(1.2)),
                                         border_radius: BorderRadius::all(px(12)),
-                                        margin: UiRect::bottom(px(4)),
+                                        margin: UiRect::bottom(px(2)),
                                         ..default()
                                     },
                                     BorderColor::all(Color::NONE),
@@ -494,11 +591,16 @@ fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>) {
                                         placeholder(0.6),
                                         Node { position_type: PositionType::Absolute, left: px(16), top: px(12), width: px(SLOT_BOX.x - 32.0), height: px(SLOT_BOX.y - 24.0), ..default() },
                                     ));
+                                    b.spawn((
+                                        PreviewVeil(k),
+                                        Node { position_type: PositionType::Absolute, width: percent(100), height: percent(100), border_radius: BorderRadius::all(px(12)), display: Display::None, ..default() },
+                                        BackgroundColor(clear.0.with_alpha(0.5)),
+                                    ));
                                 });
                                 s.spawn((FleetText::SlotHead(k), label(fonts, "", 8.5, c(Tone::Dim, 1.0))));
                                 s.spawn((FleetText::SlotName(k), prose(fonts, "", 15.0, c(Tone::Number, 1.0))));
                                 s.spawn((FleetText::SlotSub(k), label(fonts, "", 8.0, c(Tone::Dim, 1.0))));
-                                s.spawn((FleetNode::Remove(k), Node { margin: UiRect::top(px(2)), ..default() })).with_children(|r| {
+                                s.spawn((FleetNode::Remove(k), Node::default())).with_children(|r| {
                                     spawn_pill(r, fonts, "REMOVE", 8.0, 22.0, None, Pill::new(Tone::Coral), FleetButton::Remove(k));
                                 });
                             });
@@ -565,7 +667,7 @@ fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>) {
         });
 }
 
-/// The layer follows the fleet: texts, icons, which slots and cards show, the dots.
+/// The layer follows the fleet: texts, icons, which slots and cards show, the dots, the preview, the formation.
 #[allow(clippy::too_many_arguments, clippy::type_complexity)]
 fn sync(
     fleet: Res<Fleet>,
@@ -573,14 +675,19 @@ fn sync(
     granted: Res<Granted>,
     escorts: Res<EscortDesigns>,
     design: Res<PlayerDesign>,
+    behaviors: Res<PlayerBehaviors>,
     content: Res<GameContent>,
     style: Res<Style>,
     mut texts: Query<(&FleetText, &mut Text, &mut TextColor)>,
-    mut icons: Query<(&FleetIcon, &mut UiIcon)>,
+    mut icons: Query<(&FleetIcon, &mut UiIcon), Without<Formation>>,
+    mut formation: Single<&mut UiIcon, With<Formation>>,
     mut nodes: Query<(&FleetNode, &mut Node, Option<&mut BackgroundColor>)>,
+    mut veils: Query<(&PreviewVeil, &mut Node), Without<FleetNode>>,
     mut pills: Query<(&FleetButton, &mut Pill)>,
 ) {
-    if !fleet.open || !(fleet.is_changed() || career.is_changed() || granted.is_changed() || escorts.is_changed() || design.is_changed()) {
+    if !fleet.open
+        || !(fleet.is_changed() || career.is_changed() || granted.is_changed() || escorts.is_changed() || design.is_changed() || behaviors.is_changed())
+    {
         return;
     }
     let content = &content.0;
@@ -600,6 +707,11 @@ fn sync(
     };
     let card = |k: usize| fleet.designs.get(fleet.offset + k);
     let cargo = |c: f32| data::design::stats::format_number(c, 0);
+    // The design previewed in the picked slot, and what putting it there would do.
+    let previewed = fleet.preview.and_then(|p| fleet.designs.get(p));
+    let with_cores: Vec<(String, u32)> = ids.iter().cloned().zip(escort_cores.iter().copied()).collect();
+    let preview_pick = previewed.map(|d| pick(&with_cores, ship.logic_cores, capacity, picked, d));
+    let previewing = |k: usize| k == picked && previewed.is_some();
 
     for (t, mut text, mut color) in &mut texts {
         let (s, tone) = match *t {
@@ -612,16 +724,21 @@ fn sync(
                 0 => (format!("ESCORT {}  ·  NO CORE FREE", k + 1), Tone::Coral),
                 n => (format!("ESCORT {}  ·  {} FREE", k + 1, plural(n, "CORE")), Tone::Teal),
             },
-            FleetText::SlotName(k) => match escorts.0.get(k) {
-                Some(b) => (b.name.clone(), Tone::Number),
-                None => ("Empty".into(), Tone::Dim),
+            FleetText::SlotName(k) => match (previewed.filter(|_| previewing(k)), escorts.0.get(k)) {
+                (Some(d), _) => (d.blueprint.name.clone(), Tone::Number),
+                (None, Some(b)) => (b.name.clone(), Tone::Number),
+                (None, None) => ("Empty".into(), Tone::Dim),
             },
-            FleetText::SlotSub(k) => match escorts.0.get(k) {
-                Some(b) => {
-                    let t = content.ship_totals(b);
-                    (format!("{}  ·  CARGO {}", plural(t.logic_cores, "CORE"), cargo(t.cargo_capacity)), Tone::Dim)
+            FleetText::SlotSub(k) => match (previewed.filter(|_| previewing(k)), escorts.0.get(k)) {
+                (Some(d), _) => match card_state(content, &granted, d, ids.contains(&d.id), free(picked)) {
+                    (why, Tone::Coral) => (why, Tone::Coral),
+                    (_, tone) => ("PREVIEW  ·  ENTER ADDS IT".into(), if tone == Tone::Gold { Tone::Gold } else { Tone::Teal }),
+                },
+                (None, Some(b)) => {
+                    let behavior = flies(content, &behaviors, b).unwrap_or("no behavior").to_uppercase();
+                    (format!("{}  ·  FLIES {behavior}", plural(cores_of(b), "CORE")), Tone::Dim)
                 }
-                None => ("PICK A DESIGN BELOW".into(), Tone::Dim),
+                (None, None) => ("PICK A DESIGN BELOW".into(), Tone::Dim),
             },
             FleetText::ListHead if fleet.designs.is_empty() => ("YOUR DESIGNS  ·  NONE SAVED YET  ·  SAVE ONE IN THE DRYDOCK".into(), Tone::Dim),
             FleetText::ListHead => {
@@ -643,9 +760,11 @@ fn sync(
                 Some(d) => card_state(content, &granted, d, ids.contains(&d.id), free(picked)),
                 None => (String::new(), Tone::Dim),
             },
-            FleetText::Status => match &fleet.say {
-                Some((s, tone)) => (s.clone(), *tone),
-                None => (format!("CLICK A DESIGN TO FLY IT AS ESCORT {}", picked + 1), Tone::Label),
+            FleetText::Status => match (&fleet.say, previewed.zip(preview_pick.as_ref())) {
+                (Some((s, tone)), _) => (s.clone(), *tone),
+                (None, Some((d, Ok(_)))) => (format!("ENTER ADDS {} AS ESCORT {}", d.blueprint.name.to_uppercase(), picked + 1), Tone::Teal),
+                (None, Some((d, Err(r)))) => (refused_words(&d.blueprint.name, r), Tone::Coral),
+                (None, None) => (format!("CLICK A DESIGN TO PREVIEW IT AS ESCORT {}  ·  THE ARROW KEYS STEP THROUGH THEM", picked + 1), Tone::Label),
             },
         };
         set_text(&mut text, &s);
@@ -654,7 +773,7 @@ fn sync(
     for (i, mut icon) in &mut icons {
         let want = match *i {
             FleetIcon::Flagship => Some(flagship),
-            FleetIcon::Slot(k) => escorts.0.get(k),
+            FleetIcon::Slot(k) => previewed.filter(|_| previewing(k)).map(|d| &d.blueprint).or(escorts.0.get(k)),
             FleetIcon::Card(k) => card(k).map(|d| &d.blueprint),
         };
         let want = match want {
@@ -683,13 +802,37 @@ fn sync(
             }
         }
     }
-    for (b, mut pill) in &mut pills {
-        if let FleetButton::Slot(k) = *b {
-            let active = k == picked;
-            if pill.active != active {
-                pill.active = active;
-            }
+    for (v, mut node) in &mut veils {
+        let d = if previewing(v.0) { Display::Flex } else { Display::None };
+        if node.display != d {
+            node.display = d;
         }
+    }
+    for (b, mut pill) in &mut pills {
+        let active = match *b {
+            FleetButton::Slot(k) => k == picked,
+            FleetButton::Card(k) => fleet.preview == Some(fleet.offset + k),
+            _ => continue,
+        };
+        if pill.active != active {
+            pill.active = active;
+        }
+    }
+    // The formation: the dotted ring, a line from each escort to the flagship, dashed from the preview (coral when
+    // it would be refused).
+    let mut strokes = vec![Stroke::Dots { centre: RING.0, radii: RING.1, step: 7.0, dot: 1.6, color: ui.label.with_alpha(0.4) }];
+    for k in 0..escorts.0.len().min(MAX_ESCORTS) {
+        if !previewing(k) {
+            strokes.push(Stroke::Line { points: formation_line(k), width: 1.2, dash: None, color: ui.teal.with_alpha(0.45) });
+        }
+    }
+    if let Some(p) = &preview_pick {
+        let color = if p.is_ok() { ui.teal.with_alpha(0.6) } else { ui.coral.with_alpha(0.5) };
+        strokes.push(Stroke::Line { points: formation_line(picked), width: 1.2, dash: Some((5.0, 4.0)), color });
+    }
+    let sketch = UiIcon::Sketch(strokes);
+    if **formation != sketch {
+        **formation = sketch;
     }
 }
 
@@ -728,6 +871,40 @@ mod tests {
         assert_eq!(pick(&[], 2, 9, 0, &hulk), Err(Refused::NoCore));
         let grounded = FleetDesign { grounded: Some("no thrust".into()), ..skiff.clone() };
         assert_eq!(pick(&[], 2, 9, 0, &grounded), Err(Refused::CantFly("no thrust".into())));
+    }
+
+    /// An escort flies the behavior its design names when that flies (a content one here), else its faction's.
+    #[test]
+    fn escorts_fly_their_designs_behavior() {
+        let content = data::base_content();
+        let none = PlayerBehaviors::default();
+        let mut skiff = content.ships.get("rim_skiff").unwrap().clone();
+        skiff.behavior = None;
+        let faction = content.factions.get(&skiff.faction).and_then(|f| f.behavior.clone()).unwrap();
+        assert_eq!(flies(&content, &none, &skiff), Some(content.behaviors.get(&faction).unwrap().name.as_str()));
+        let other = content.behaviors.iter().find(|b| b.id != faction).unwrap();
+        skiff.behavior = Some(other.id.clone());
+        assert_eq!(flies(&content, &none, &skiff), Some(other.name.as_str()));
+        skiff.behavior = Some("gone".into());
+        assert_eq!(flies(&content, &none, &skiff), Some(content.behaviors.get(&faction).unwrap().name.as_str()));
+    }
+
+    /// The formation's lines leave each slot's box on the flagship's side and end on the flagship's box; the ring
+    /// holds the flagship's box and leaves every slot's box outside.
+    #[test]
+    fn formation_lines_join_the_boxes() {
+        let (ship, size) = FLAGSHIP;
+        let inside = |p: Vec2| ((p - RING.0) / RING.1).length_squared() < 1.0;
+        let corners = |c: Vec2, s: Vec2| [c - s / 2.0, c + s / 2.0, c + Vec2::new(s.x, -s.y) / 2.0, c - Vec2::new(s.x, -s.y) / 2.0];
+        assert!(corners(ship, size).into_iter().all(inside));
+        assert!(SLOTS.iter().all(|&at| corners(at, SLOT_BOX).into_iter().all(|p| !inside(p))));
+        for (k, at) in SLOTS.iter().enumerate() {
+            let line = formation_line(k);
+            let (a, b) = (line[0], line[line.len() - 1]);
+            assert!((a.x - at.x).abs() == SLOT_BOX.x / 2.0 && a.y == at.y, "{k} {a}");
+            assert_eq!((b.x - ship.x).abs(), size.x / 2.0, "{k}");
+            assert!((b.y - ship.y).abs() < size.y / 2.0 && (a.x - ship.x).abs() > (b.x - ship.x).abs(), "{k} {b}");
+        }
     }
 
     /// A card says why a pick would be refused, warns about locked parts, and says when it fits.
