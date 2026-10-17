@@ -1,7 +1,7 @@
 [workspace]
 resolver = "3"
 # Every crate under crates/<group>/ is a member (ADR-0038): core/ (data, sim, arena: engine-free), client/ (art, kit,
-# world, game), tools/ (arena-cli, content-tool; ADR-0040). Experiments and benchmarks live in separate local repos (ADR-0025), e.g.
+# world, game, and lab-worker: the evolution lab's web worker, ADR-0043), tools/ (arena-cli, content-tool; ADR-0040). Experiments and benchmarks live in separate local repos (ADR-0025), e.g.
 # ../space-game-physics-bench.
 members = ["crates/*/*"]
 
@@ -43,6 +43,8 @@ web-sys = { version = "=0.3.106", features = [
   "Document", "HtmlDocument", "Element", "HtmlElement", "HtmlAnchorElement", "HtmlInputElement", "CssStyleDeclaration",
   "Navigator", "Clipboard", "Event", "EventTarget", "AddEventListenerOptions", "KeyboardEvent", "ClipboardEvent",
   "DataTransfer", "Blob", "BlobPropertyBag", "Url", "File", "FileList", "FileReader",
+  # world/evolution/workers.rs and lab-worker: the evolution lab's web workers (ADR-0043)
+  "Worker", "MessageEvent", "ErrorEvent", "DedicatedWorkerGlobalScope",
 ] }
 js-sys = "=0.3.106"
 wasm-bindgen = "=0.2.129"

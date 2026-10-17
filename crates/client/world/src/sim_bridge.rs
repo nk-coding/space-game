@@ -129,6 +129,9 @@ pub struct SimWorld {
     pub looks: BTreeMap<Owner, Look>,
     /// The sim is not stepped (a replayed fight that has ended): no ticks, no events.
     pub hold: bool,
+    /// The scene steps the sim itself (a replayed voyage: its runner flies the flagship, `replay.rs`); the bridge
+    /// doesn't, but applies the events as usual.
+    pub driven: bool,
     /// Every piece view is drawn afresh at the next frame (the world jumped: a replay seeked).
     pub rebuild_views: bool,
     /// Inputs for the next tick (filled by the scene, cleared after each step).
@@ -150,6 +153,7 @@ impl SimWorld {
             visuals: BTreeMap::new(),
             looks: BTreeMap::new(),
             hold: false,
+            driven: false,
             rebuild_views: false,
             inputs: sim::TickInputs::default(),
             views: BTreeMap::new(),
@@ -266,7 +270,7 @@ impl Plugin for SimBridgePlugin {
 
 fn step_sim(mut world: ResMut<SimWorld>) {
     let world = &mut *world;
-    if world.hold {
+    if world.hold || world.driven {
         return;
     }
     let t0 = Instant::now();

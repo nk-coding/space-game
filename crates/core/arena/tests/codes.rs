@@ -135,3 +135,41 @@ fn the_setup_and_referee_give_the_fights_result() {
     };
     assert_eq!(end, result);
 }
+
+/// GDR-0092 step 9: a voyage job's code round-trips, [`arena::Code`] reads either kind by its tag, and the voyage
+/// rolled again from it ends with the recorded length and hash.
+#[test]
+fn a_voyage_code_round_trips_and_flies_as_recorded() {
+    let content = data::base_content();
+    let spec = arena::VoyageSpec { voyage: "yard_approach".into(), seed: 3, design: DesignRef::Ship("rim_skiff".into()), behavior: None, minutes: 5.0, escorts: Vec::new() };
+    let mut runner = arena::start_voyage(&content, &spec).unwrap();
+    let ticks = runner.step(u64::MAX).unwrap().ticks;
+    let code = arena::VoyageCode::new(&content, rules_fingerprint(&content), spec.clone(), ticks, runner.sim().state_hash());
+    let text = code.encode();
+    assert!(text.starts_with("SGV1:"));
+    assert_eq!(arena::Code::decode(&text), Ok(arena::Code::Voyage(code.clone())));
+    assert!(matches!(arena::Code::decode(&FightCode::new(&content, 1, self::spec(&content), run_fight(&content, &self::spec(&content)).unwrap()).encode()), Ok(arena::Code::Fight(_))));
+    assert_eq!(arena::Code::decode("SGX1:abc"), Err(CodeError::NotACode));
+    let mut again = arena::VoyageSetup::build(&content, &code.spec).unwrap();
+    assert_eq!(again.designs.len(), 1);
+    assert_eq!(again.runner.step(u64::MAX).unwrap().ticks, code.ticks);
+    assert_eq!(again.runner.sim().state_hash(), code.state_hash);
+}
+
+/// THE LADDER (GDR-0092 step 9): `lab.ron`'s ladder, rung by rung on its seeds; the rating is the rungs' WIN means
+/// added up.
+#[test]
+fn the_ladder_rates_a_design_rung_by_rung() {
+    let content = data::base_content();
+    let ladder = arena::evolve::ladder::Ladder::of(&content).unwrap();
+    let rungs = ladder.rungs().len();
+    assert!(rungs >= 3);
+    let mut b = ladder.batch(&content, &Entry::ship("halvex_runner")).unwrap();
+    assert_eq!(b.jobs().len(), rungs * ladder.trial.seeds as usize);
+    while !b.step(100_000) {}
+    let records: Vec<_> = b.results().iter().map(|r| arena::evolve::JobRecord::of(r, false)).collect();
+    let rating = ladder.rating(&records);
+    assert_eq!(rating.of(), rungs);
+    assert!((0.0..=rungs as f32).contains(&rating.total()));
+    assert_eq!(ladder.fingerprint(), arena::evolve::ladder::Ladder::of(&content).unwrap().fingerprint());
+}

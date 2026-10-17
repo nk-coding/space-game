@@ -66,7 +66,8 @@ pub(in crate::drydock) struct OriginText(pub(super) usize);
 #[derive(Component)]
 pub(in crate::drydock) struct PreviewShip;
 
-/// The preview's values: the size class, mass, top speed, weapons.
+/// The preview's values: the size class, mass, top speed, weapons, and a saved design's rating on THE LADDER
+/// (GDR-0092 step 9; `—` unrated, `· OLD` when rated before its last change).
 #[derive(Component)]
 pub(in crate::drydock) struct PreviewStat(pub(super) usize);
 
@@ -303,7 +304,7 @@ pub(in crate::drydock) fn spawn_shelf(mut commands: Commands, fonts: Res<HudFont
 
 /// The preview's column and its card (hidden until a row is hovered).
 fn spawn_preview(lists: &mut ChildSpawnerCommands, fonts: &HudFonts, c: &impl Fn(Tone, f32) -> Color, content: &Content) {
-    let names = ["CLASS".to_string(), stats::stat_label(content, "mass"), stats::stat_label(content, "top_speed"), "WEAPONS".to_string()];
+    let names = ["CLASS".to_string(), stats::stat_label(content, "mass"), stats::stat_label(content, "top_speed"), "WEAPONS".to_string(), "LADDER".to_string()];
     lists.spawn((PreviewColumn, Node { width: px(PREVIEW_W), flex_shrink: 0.0, ..default() })).with_children(|col| {
         col.spawn((
             PreviewCard::default(),

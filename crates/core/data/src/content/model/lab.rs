@@ -21,7 +21,7 @@ pub const GOALS: [&str; 4] = ["win", "unhurt", "quick", "cheap"];
 /// in this order).
 pub const GENES: [&str; 8] = ["layout", "parts", "armour", "power", "numbers", "rules", "assist_numbers", "assist_rules"];
 /// The trial kinds the arena fights (`arena::evolve::Trial`), by id ([`TrialPresetKind::id`]).
-pub const TRIAL_KINDS: [&str; 10] = ["encounters", "enemy_ships", "waves", "gauntlet", "beat_your_start", "fleet", "hall_of_fame", "champions", "voyages", "co_evolution"];
+pub const TRIAL_KINDS: [&str; 11] = ["encounters", "enemy_ships", "waves", "gauntlet", "beat_your_start", "fleet", "hall_of_fame", "champions", "voyages", "ladder", "co_evolution"];
 /// What the archive measures a genome by (`arena::evolve::Measure`), by id.
 pub const MEASURES: [&str; 10] = ["top_speed", "acceleration", "weapon_reach", "build_points", "mass", "firepower", "hit_points", "parts", "rules", "engage_distance"];
 /// The archive's spreads (SPREAD BY): over what a design is, for runs whose design may change, else over how it fights.
@@ -160,6 +160,9 @@ pub enum TrialPresetKind {
     Champions { count: u32 },
     /// VOYAGES: the open voyages flown headless.
     Voyages,
+    /// THE LADDER: fixed rungs of opponents, the weakest first, each a fight per seed; also a design's rating (the sum
+    /// of its rungs' wins), shown on YOUR DESIGNS (GDR-0092 step 9).
+    Ladder { rungs: Vec<Vec<LabShips>> },
     /// CO-EVOLUTION, the ARMS RACE: an enemy population evolves against yours in the run. `size` is its children per
     /// generation as a share of yours; your children fight its best `elites` and `hall` of its past champions, its
     /// children your best `elites`, `hall` of yours and (`anchor`) your starts; every `check_every` generations (0:
@@ -257,6 +260,7 @@ impl TrialPresetKind {
             TrialPresetKind::HallOfFame { .. } => "hall_of_fame",
             TrialPresetKind::Champions { .. } => "champions",
             TrialPresetKind::Voyages => "voyages",
+            TrialPresetKind::Ladder { .. } => "ladder",
             TrialPresetKind::CoEvolution { .. } => "co_evolution",
         }
     }

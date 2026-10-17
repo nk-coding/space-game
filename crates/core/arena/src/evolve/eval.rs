@@ -6,7 +6,8 @@ use serde::{Deserialize, Serialize};
 use sim::voyage::runner::VoyageRunner;
 use sim::{Owner, Sim, VesselState};
 
-use crate::fight::{Fight, FightResult, OWNERS, Outcome, SideResult};
+use crate::code::{Code, FightCode, VoyageCode};
+use crate::fight::{Fight, FightResult, FightSetup, OWNERS, Outcome, SideResult};
 use crate::score::arena_score;
 use crate::spec::FightSpec;
 use crate::voyage::{VoyageSpec, start_voyage, voyage_score};
@@ -146,6 +147,19 @@ impl JobRecord {
             state_hash: hash,
             waves,
         })
+    }
+}
+
+/// A job and its record as a code to re-watch, under the rules `rules` it was fought under (their fingerprint): a
+/// fight code, or a voyage code. `None` for a job that failed to build.
+pub fn job_code(content: &Content, rules: u64, job: Job, record: &JobRecord) -> Option<Code> {
+    match (job, record.end) {
+        (Job::Fight { spec, .. }, JobEnd::Fight { .. }) => {
+            let build_points = FightSetup::build(content, &spec).ok()?.referee.build_points();
+            Some(Code::Fight(FightCode::new(content, rules, spec, record.fight_result(build_points)?)))
+        }
+        (Job::Voyage { spec, .. }, JobEnd::Voyage { hash }) => Some(Code::Voyage(VoyageCode::new(content, rules, spec, record.ticks, hash))),
+        _ => None,
     }
 }
 
@@ -327,4 +341,71 @@ fn engage_distance(sim: &Sim, side: usize) -> Option<f32> {
     running(sim, OWNERS[1 - side])
         .map(|p| (p - me).length())
         .fold(None, |b: Option<f32>, d| Some(b.map_or(d, |b| b.min(d))))
+}
+
+/// Jobs as steppable work outside a generation (VALIDATE, a design's rating on THE LADDER): stepped in slices on one
+/// thread ([`JobBatch::step`]), or handed out ([`JobBatch::jobs`]) and taken back in job order ([`JobBatch::submit`]); either
+/// way the same results.
+pub struct JobBatch {
+    content: Content,
+    jobs: Vec<Job>,
+    results: Vec<Option<JobResult>>,
+    next: usize,
+    active: Option<(usize, Active)>,
+}
+
+impl JobBatch {
+    pub fn new(content: &Content, jobs: Vec<Job>) -> JobBatch {
+        let results = vec![None; jobs.len()];
+        JobBatch { content: content.clone(), jobs, results, next: 0, active: None }
+    }
+
+    /// Does up to `budget` ticks of its jobs, one after the other; `true` once every job is done.
+    pub fn step(&mut self, budget: u64) -> bool {
+        let mut left = budget;
+        while left > 0 {
+            if self.active.is_none() {
+                if self.next >= self.jobs.len() {
+                    break;
+                }
+                self.active = Some((self.next, self.jobs[self.next].start(&self.content)));
+                self.next += 1;
+            }
+            let (k, active) = self.active.as_mut().expect("a job is running");
+            let (used, done) = active.advance(left);
+            left -= used.min(left);
+            if let Some(r) = done {
+                self.results[*k] = Some(r);
+                self.active = None;
+            }
+        }
+        self.finished()
+    }
+
+    /// Its jobs, to run elsewhere ([`Job::run`]) and hand back with [`JobBatch::submit`] in the same order.
+    pub fn jobs(&self) -> &[Job] {
+        &self.jobs
+    }
+
+    /// Takes every job's result, in job order. Panics if the count differs.
+    pub fn submit(&mut self, results: Vec<JobResult>) {
+        assert_eq!(results.len(), self.jobs.len(), "one result per job");
+        self.results = results.into_iter().map(Some).collect();
+        self.active = None;
+        self.next = self.jobs.len();
+    }
+
+    pub fn finished(&self) -> bool {
+        self.results.iter().all(Option::is_some)
+    }
+
+    /// How far it is, 0..1.
+    pub fn done(&self) -> f32 {
+        self.results.iter().filter(|r| r.is_some()).count() as f32 / self.results.len().max(1) as f32
+    }
+
+    /// Every job's result, in job order. Panics unless it is finished.
+    pub fn results(&self) -> Vec<JobResult> {
+        self.results.iter().map(|r| r.expect("a finished batch")).collect()
+    }
 }

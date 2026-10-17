@@ -12,7 +12,9 @@
 // the run: `size` its children as a share of yours, `elites` and `hall` how many of the other side's best and past
 // champions each side fights, `anchor` that the enemy also fights your starts, every `check_every` generations the PAST
 // CHAMPIONS check against the champions of every `champions_every`th generation, `mirror` symmetric enemies; its starts
-// are an enemy faction's ships, and `palettes` add parts a faction may build with besides its ships'. PLACEHOLDER
+// are an enemy faction's ships, and `palettes` add parts a faction may build with besides its ships'. THE LADDER
+// (`Ladder`, GDR-0092 step 9) is fixed `rungs` of enemies, the weakest first: in a run a trial like the others, and the
+// first ladder preset is also the rating the lab gives YOUR DESIGNS (the sum of the rungs' wins). PLACEHOLDER
 // NUMBERS (lead defaults of 15 and 16 Oct 2026; the measured cost of each kind is in docs/arena.md). `kinds` are the
 // words of the trial kinds the arena fights (a trial without a preset shows its kind's). `sizes` are SIZE's presets:
 // children per generation and generations (`default: true` a new run's). `measures` are what the archive spreads
@@ -118,6 +120,22 @@
             time_limit: 10,
         ),
         (
+            id: "the_ladder",
+            name: "The ladder",
+            summary: "Fixed rungs of enemies, from a lone raider up to the warden, each fought on three seeds: your rating is the rungs you win, and it is the same ladder for every design, so ratings compare. The lab rates YOUR DESIGNS on it too.",
+            kind: Ladder(rungs: [
+                [(ship: "automaton_raider")],
+                [(ship: "automaton_raider", count: 2)],
+                [(ship: "automaton_hunter")],
+                [(ship: "automaton_hunter"), (ship: "automaton_raider")],
+                [(ship: "automaton_gunner"), (ship: "automaton_raider", count: 2)],
+                [(ship: "automaton_hunter", count: 2)],
+                [(ship: "automaton_warden")],
+            ]),
+            seeds: 3,
+            time_limit: 90,
+        ),
+        (
             id: "arms_race",
             name: "Arms race",
             summary: "An enemy population evolves against yours in the run: your designs fight its best and its past champions, it fights your best, your past champions and your starts, so both keep getting better. It can drift from the enemies you meet, and it costs about twice a run.",
@@ -177,6 +195,7 @@
         (id: "hall_of_fame", name: "Hall of fame", summary: "The run's own best designs so far, a bar that rises as the run goes on."),
         (id: "champions", name: "Champions", summary: "The best designs of the lab's earlier runs."),
         (id: "voyages", name: "Voyages", summary: "The voyages open to the career, flown headless from launch to home; the voyage's score is the trial's WIN."),
+        (id: "ladder", name: "The ladder", summary: "Fixed rungs of opponents, the weakest first, each a fight per seed: a rating that compares designs, the rungs' wins added up."),
         (id: "co_evolution", name: "Arms race", summary: "An enemy population that evolves against yours in the same run, from an enemy faction's ships."),
     ],
     sizes: [

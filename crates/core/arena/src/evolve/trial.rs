@@ -130,6 +130,9 @@ pub enum Trial {
         #[serde(default)]
         pilot: VoyagePilot,
     },
+    /// THE LADDER (GDR-0092 step 9, GDR-0083's benchmark): fixed rungs of opponents, from the weakest up, each a fight
+    /// per seed; a design's rating is the sum of its rungs' WIN means ([`crate::evolve::ladder`]).
+    Ladder { rungs: Vec<Vec<Entry>> },
     /// CO-EVOLUTION (the ARMS RACE): the run's enemy population (`RunConfig::enemy`), its best and past champions as
     /// the generation froze them, each in a pack sized to the contestant ([`pack`]). Its settings are the enemy's
     /// fights too, seen from side 1.
@@ -149,6 +152,7 @@ impl Trial {
             Trial::HallOfFame { .. } => "hall_of_fame",
             Trial::Champions { .. } => "champions",
             Trial::Voyages { .. } => "voyages",
+            Trial::Ladder { .. } => "ladder",
             Trial::CoEvolution => "co_evolution",
         }
     }
@@ -308,8 +312,8 @@ impl Fights {
     }
 }
 
-/// Fixed opponents, each a fight (ENEMY SHIPS with its hall of fame, THE ENEMIES YOU MEET, YOUR FLEET, CHAMPIONS, a
-/// gauntlet's first wave with the rest after it).
+/// Fixed opponents, each a fight (ENEMY SHIPS with its hall of fame, THE ENEMIES YOU MEET, YOUR FLEET, CHAMPIONS, THE
+/// LADDER's rungs, a gauntlet's first wave with the rest after it).
 struct Opponents {
     fights: Fights,
     sides: Vec<(Vec<Entry>, Vec<Side>)>,
@@ -504,6 +508,7 @@ impl TrialSpec {
             Trial::EnemyShips { opponents, .. } if opponents.is_empty() => empty("the opponents' list"),
             Trial::Encounters { voyages } if voyages.is_empty() => empty("the voyages' list"),
             Trial::Gauntlet { waves } if waves.is_empty() || waves.iter().any(Vec::is_empty) => empty("a wave"),
+            Trial::Ladder { rungs } if rungs.is_empty() || rungs.iter().any(Vec::is_empty) => empty("a rung"),
             Trial::Fleet { designs } | Trial::Champions { designs } if designs.is_empty() => empty("the designs' list"),
             Trial::Voyages { ids, .. } if ids.is_empty() => empty("the voyages' list"),
             Trial::Waves { target: 0 } => Err("`target` must be at least 1".into()),
@@ -535,6 +540,9 @@ impl TrialSpec {
             Trial::Encounters { voyages } => {
                 let sides = encounters(content, voyages).map_err(bad)?;
                 Box::new(Opponents { fights, sides: sides.into_iter().map(|(_, s)| (s, Vec::new())).collect(), hall_of_fame: 0 })
+            }
+            Trial::Ladder { rungs } => {
+                Box::new(Opponents { fights, sides: rungs.iter().map(|r| (r.clone(), Vec::new())).collect(), hall_of_fame: 0 })
             }
             Trial::Gauntlet { waves } => {
                 let rest = waves[1..].iter().map(|w| Side { entries: w.clone() }).collect();
@@ -591,6 +599,7 @@ impl TrialSpec {
             K::EnemyShips { ships: list } => Trial::EnemyShips { opponents: ships(list), hall_of_fame: 0 },
             K::Waves { target } => Trial::Waves { target: *target },
             K::Gauntlet { waves } => Trial::Gauntlet { waves: waves.iter().map(|w| ships(w)).collect() },
+            K::Ladder { rungs } => Trial::Ladder { rungs: rungs.iter().map(|r| ships(r)).collect() },
             K::BeatYourStart => Trial::BeatYourStart,
             K::Fleet if src.fleet.is_empty() => return none("no saved design to fight"),
             K::Fleet => Trial::Fleet { designs: src.fleet.clone() },

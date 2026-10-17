@@ -18,6 +18,10 @@
 //! * **Checked**: when the code's rules fingerprint differs from today's (`arena::rules_fingerprint`) the banner says
 //!   so at once; the fight still plays under today's rules. At the end the result is compared with the record:
 //!   `AS RECORDED`, or `THE RULES HAVE CHANGED SINCE THIS FIGHT` with how it ends now and how it ended then.
+//! * **Voyages** (GDR-0092 step 9): a voyage code (`arena::VoyageCode`, `SGV1:`, a voyage job of the lab) plays the same
+//!   way: the voyage is rolled again from its spec and the headless runner flies the flagship as it did in the job
+//!   (`arena::VoyageSetup`; the viewer swaps its world into the runner to step it, [`SimWorld::driven`]); the camera
+//!   follows the flagship, and the end is checked against the run's length and final state hash.
 //! * **The HUD**: the title names both sides and the seed, the subtitle the time, the speed, each side's build
 //!   points left and who flew side 0's first ship when a stand-in pilot did (`FLOWN BY STAND-IN · CASUAL`, GDR-0092
 //!   step 6: the referee flies it, so the replay is the fight); a timeline under the view shows how far the fight is, how far it has been simulated, and a mark
@@ -26,7 +30,7 @@
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
 
-use arena::{FightCode, FightResult, FightSetup, OWNERS, Outcome, Referee};
+use arena::{Code, FightCode, FightResult, FightSetup, OWNERS, Outcome, Referee, VoyageCode, VoyageSetup};
 use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
 use bevy_egui::input::egui_wants_any_pointer_input;
@@ -34,7 +38,8 @@ use data::input::Action;
 use kit::params::{Params, RenderToggles};
 use kit::style::{Style, ui_color};
 use kit::ui_kit::Tone;
-use sim::{Sim, SimEvent, Target, TickInputs};
+use sim::{Owner, ShipId, Sim, SimEvent, Target, TickInputs, VoyageRunner};
+use sim::voyage::runner::{Outcome as VoyageOutcome, VoyageRun};
 
 use crate::camera::{CamMode, CameraRig, LOCK_MIN_SHARE, MIN_PX_PER_M, frame_fit};
 use crate::controls::pick;
@@ -46,7 +51,7 @@ use crate::settings::Act;
 use crate::shield::ShieldBubbles;
 use crate::ship_model::Look;
 use crate::sim_bridge::{SimSet, SimWorld};
-use crate::voyage::clock;
+use crate::voyage::{clock, sites_done};
 
 /// The playback speeds (× real time); the replay starts at 1×.
 pub const SPEEDS: [f32; 6] = [0.25, 0.5, 1.0, 2.0, 4.0, 8.0];
@@ -67,7 +72,7 @@ const OUT_TO: f32 = FOLLOW_ZOOM * LOCK_MIN_SHARE;
 /// A click moves the pointer less than this (logical px); more is a drag that pans.
 const CLICK_SLOP: f32 = 6.0;
 
-/// The fight being watched: the code from the URL, and once read the fight or why it doesn't play.
+/// The fight (or voyage) being watched: the code from the URL, and once read the fight or why it doesn't play.
 #[derive(Resource, Default)]
 pub struct Replay {
     /// `?fight=<code>`.
@@ -75,18 +80,37 @@ pub struct Replay {
     pub watch: Option<Result<Watched, String>>,
 }
 
-/// A fight that plays.
+/// Who says how far a replay is and when it ends.
+#[derive(Clone)]
+enum Judge {
+    /// A fight's referee, asked after every tick.
+    Fight(Box<Referee>),
+    /// A voyage's runner, which flies the flagship (its world swapped in to step) and ends the run; the final state
+    /// hash once it has.
+    Voyage { runner: Box<VoyageRunner>, hash: Option<u64> },
+}
+
+/// What a replay plays: a fight's code or a voyage's.
+#[derive(Clone, Debug, PartialEq)]
+pub enum Played {
+    Fight(FightCode),
+    Voyage(VoyageCode),
+}
+
+/// A fight (or a voyage) that plays.
 pub struct Watched {
-    pub code: FightCode,
+    pub code: Played,
     /// The code's rules fingerprint differs from today's.
     pub stale: bool,
     /// Each side as the banner names it (`3 × AUTOMATON RAIDER`).
     pub names: [String; 2],
     /// The stand-in pilot that flies side 0's first ship, by its `lab.ron` name.
     pub pilot: Option<String>,
-    referee: Referee,
-    /// A copy of the world and the referee every [`KEYFRAME_TICKS`] seen so far, by tick (tick 0: the start).
-    keyframes: BTreeMap<u64, (Sim, Referee)>,
+    judge: Judge,
+    /// The time limit in ticks.
+    limit: u64,
+    /// A copy of the world and the judge every [`KEYFRAME_TICKS`] seen so far, by tick (tick 0: the start).
+    keyframes: BTreeMap<u64, (Sim, Judge)>,
     /// The furthest tick simulated.
     pub seen: u64,
     /// Vessels lost so far (the tick and the side), for the timeline.
@@ -96,34 +120,72 @@ pub struct Watched {
 }
 
 impl Watched {
-    /// The result now: `Some` once the fight has ended.
+    /// A fight's result now: `Some` once the fight has ended (a voyage has none).
     pub fn result(&self) -> Option<FightResult> {
-        self.referee.result()
+        match &self.judge {
+            Judge::Fight(r) => r.result(),
+            Judge::Voyage { .. } => None,
+        }
     }
 
-    /// The fight's time limit in ticks.
+    /// A voyage's run once it has ended, and its final state hash.
+    pub fn voyage_end(&self) -> Option<(&VoyageRun, u64)> {
+        match &self.judge {
+            Judge::Voyage { runner, hash: Some(h) } => Some((runner.result()?, *h)),
+            _ => None,
+        }
+    }
+
+    /// The fight or the voyage has ended.
+    pub fn ended(&self) -> bool {
+        self.result().is_some() || self.voyage_end().is_some()
+    }
+
+    /// The time limit in ticks.
     pub fn limit(&self) -> u64 {
-        self.referee.limit()
+        self.limit
     }
 
-    /// The HUD's title: `REPLAY · HALVEX RUNNER VS 3 × AUTOMATON RAIDER · SEED 3` (a gauntlet's: `… · 3 WAVES · …`).
+    /// The ship the camera follows unless one is clicked: a voyage's flagship.
+    pub fn follows(&self) -> Option<ShipId> {
+        match &self.judge {
+            Judge::Voyage { runner, .. } => Some(runner.flagship()),
+            Judge::Fight(_) => None,
+        }
+    }
+
+    /// The HUD's title: `REPLAY · HALVEX RUNNER VS 3 × AUTOMATON RAIDER · SEED 3` (a gauntlet's: `… · 3 WAVES · …`; a
+    /// voyage's: `REPLAY · RIM SKIFF · THE FIRST SALVAGE · SEED 2`).
     pub fn title(&self) -> String {
-        let waves = match self.code.spec.waves.len() {
-            0 => String::new(),
-            n => format!("  ·  {} WAVES", n + 1),
-        };
-        format!("REPLAY  ·  {}  VS  {}{waves}  ·  SEED {}", self.names[0], self.names[1], self.code.spec.seed)
+        match &self.code {
+            Played::Fight(c) => {
+                let waves = match c.spec.waves.len() {
+                    0 => String::new(),
+                    n => format!("  ·  {} WAVES", n + 1),
+                };
+                format!("REPLAY  ·  {}  VS  {}{waves}  ·  SEED {}", self.names[0], self.names[1], c.spec.seed)
+            }
+            Played::Voyage(c) => format!("REPLAY  ·  {}  ·  {}  ·  SEED {}", self.names[0], self.names[1], c.spec.seed),
+        }
     }
 
-    /// The HUD's subtitle: the time, the speed and each side's build points left of its start.
+    /// The HUD's subtitle: the time, the speed and each side's build points left of its start (a voyage's sites
+    /// cleared).
     pub fn subtitle(&self, sim: &Sim, out: &mut String) {
-        let bp = self.referee.build_points();
-        let left = [0, 1].map(|side| arena::standing(sim, side).0);
         let speed = SPEEDS[self.speed];
         let _ = write!(out, "{} / {}  ·  {speed}×", clock(sim.tick()), clock(self.limit()));
+        let (Judge::Fight(referee), Played::Fight(code)) = (&self.judge, &self.code) else {
+            if let Some(v) = sim.voyage() {
+                let (cleared, of) = sites_done(v);
+                let _ = write!(out, "  ·  SITES CLEARED {cleared} / {of}  ·  FLOWN HEADLESS FROM ENTRY TO HOME");
+            }
+            return;
+        };
+        let bp = referee.build_points();
+        let left = [0, 1].map(|side| arena::standing(sim, side).0);
         let _ = write!(out, "  ·  BUILD POINTS {:.0} / {:.0}  VS  {:.0} / {:.0}", left[0], bp[0], left[1], bp[1]);
-        if !self.code.spec.waves.is_empty() {
-            let (wave, of) = self.referee.wave();
+        if !code.spec.waves.is_empty() {
+            let (wave, of) = referee.wave();
             let _ = write!(out, "  ·  WAVE {} / {of}", wave.min(of));
         }
         if let Some(p) = &self.pilot {
@@ -133,37 +195,65 @@ impl Watched {
 
     /// The banner the viewer shows at `tick`, if any: the end check from the end on, the changed rules at the start.
     pub fn notice(&self, tick: u64) -> Option<(String, String, Tone)> {
-        if let Some(now) = self.result() {
-            let then = self.code.record;
+        let what = match self.code {
+            Played::Fight(_) => "FIGHT",
+            Played::Voyage(_) => "VOYAGE",
+        };
+        let changed = format!("THE RULES HAVE CHANGED SINCE THIS {what}");
+        if let (Some(now), Played::Fight(code)) = (self.result(), &self.code) {
+            let then = code.record;
             return Some(if now == then {
                 ("AS RECORDED".into(), format!("{}  ·  HASH {:016x}", ending(&now), now.state_hash), Tone::Teal)
             } else {
-                (
-                    "THE RULES HAVE CHANGED SINCE THIS FIGHT".into(),
-                    format!("NOW {}  (RECORDED: {})", ending(&now), ending(&then)),
-                    Tone::Coral,
-                )
+                (changed, format!("NOW {}  (RECORDED: {})", ending(&now), ending(&then)), Tone::Coral)
+            });
+        }
+        if let (Some((run, hash)), Played::Voyage(code)) = (self.voyage_end(), &self.code) {
+            return Some(if (run.ticks, hash) == (code.ticks, code.state_hash) {
+                ("AS RECORDED".into(), format!("{}  ·  HASH {hash:016x}", voyage_ending(run)), Tone::Teal)
+            } else {
+                (changed, format!("NOW {}  (RECORDED: ENDED AT {})", voyage_ending(run), clock(code.ticks)), Tone::Coral)
             });
         }
         (self.stale && tick < NOTICE_TICKS).then(|| {
             let sub = "IT PLAYS UNDER TODAY'S RULES  ·  THE END SAYS WHETHER IT STILL ENDS AS RECORDED";
-            ("THE RULES HAVE CHANGED SINCE THIS FIGHT".into(), sub.into(), Tone::Coral)
+            (changed, sub.into(), Tone::Coral)
         })
     }
 
-    /// After a tick of the world: the referee's look, a keyframe every [`KEYFRAME_TICKS`] and the vessels lost the
-    /// first time the tick is seen. `true` once the fight has ended.
+    /// One tick of the world: a fight's with no inputs, a voyage's through its runner (the world swapped in).
+    fn tick(&mut self, sim: &mut Sim) {
+        match &mut self.judge {
+            Judge::Fight(_) => sim.step(&TickInputs::default()),
+            Judge::Voyage { runner, .. } => {
+                runner.swap_world(sim);
+                runner.step(1);
+                runner.swap_world(sim);
+            }
+        }
+    }
+
+    /// After a tick of the world: the referee's look (a voyage's end and its hash), a keyframe every
+    /// [`KEYFRAME_TICKS`] and the vessels lost the first time the tick is seen. `true` once it has ended.
     fn after_tick(&mut self, sim: &mut Sim) -> bool {
-        let ended = self.referee.observe(sim).is_some();
+        let ended = match &mut self.judge {
+            Judge::Fight(r) => r.observe(sim).is_some(),
+            Judge::Voyage { runner, hash } => {
+                if runner.result().is_some() && hash.is_none() {
+                    *hash = Some(sim.state_hash());
+                }
+                hash.is_some()
+            }
+        };
         let tick = sim.tick();
         if tick > self.seen {
             self.seen = tick;
             if tick.is_multiple_of(KEYFRAME_TICKS) {
-                self.keyframes.insert(tick, (sim.clone(), self.referee.clone()));
+                self.keyframes.insert(tick, (sim.clone(), self.judge.clone()));
             }
             for e in sim.events() {
                 if let SimEvent::VesselLost { owner, .. } = e
-                    && let Some(side) = OWNERS.iter().position(|o| o == owner)
+                    && let Some(side) = self.side_of(*owner)
                     && self.marks.len() < MARKS
                 {
                     self.marks.push((tick, side));
@@ -173,24 +263,43 @@ impl Watched {
         ended
     }
 
-    /// Puts the world at `target` (at most the fight's end): from the keyframe before it when that is behind the
-    /// world, else on from where it is. `true` once the fight has ended.
+    /// The side a lost vessel's owner is on, for the timeline: a fight's two sides; a voyage's player and the rest.
+    fn side_of(&self, owner: Owner) -> Option<usize> {
+        match self.judge {
+            Judge::Fight(_) => OWNERS.iter().position(|o| *o == owner),
+            Judge::Voyage { .. } => Some(usize::from(owner != Owner::PLAYER)),
+        }
+    }
+
+    /// Puts the world at `target` (at most the end): from the keyframe before it when that is behind the world, else
+    /// on from where it is. `true` once it has ended.
     fn seek(&mut self, world: &mut SimWorld, target: u64) -> bool {
         if target < world.sim.tick()
-            && let Some((_, (sim, referee))) = self.keyframes.range(..=target).next_back()
+            && let Some((_, (sim, judge))) = self.keyframes.range(..=target).next_back()
         {
             world.sim = sim.clone();
-            self.referee = referee.clone();
+            self.judge = judge.clone();
         }
-        let idle = TickInputs::default();
-        let mut ended = self.result().is_some();
+        let mut ended = self.ended();
         while world.sim.tick() < target && !ended {
-            world.sim.step(&idle);
+            self.tick(&mut world.sim);
             ended = self.after_tick(&mut world.sim);
         }
         world.hold = ended;
         world.rebuild_views = true;
         ended
+    }
+}
+
+/// How a voyage ended: `CLEARED AND HOME AT 2:41`, `HOME AT 3:10 · GOAL NOT CLEARED`, `LOST AT 1:12`, `OUT OF TIME AT
+/// 10:00`.
+fn voyage_ending(r: &VoyageRun) -> String {
+    let at = clock(r.ticks);
+    match r.outcome {
+        VoyageOutcome::Recalled if r.goal => format!("CLEARED AND HOME AT {at}"),
+        VoyageOutcome::Recalled => format!("HOME AT {at}  ·  GOAL NOT CLEARED"),
+        VoyageOutcome::Lost => format!("LOST AT {at}"),
+        VoyageOutcome::OutOfTime => format!("OUT OF TIME AT {at}"),
     }
 }
 
@@ -227,7 +336,8 @@ impl Replay {
     }
 
     /// The fight's world (the scene builds it, `scene::build_world`): read the code the first time, then build the
-    /// fight afresh. The camera frames it. A code that doesn't read or build leaves an empty world and says why.
+    /// fight (or the voyage) afresh. The camera frames a fight and follows a voyage's flagship ([`Watched::follows`]).
+    /// A code that doesn't read or build leaves an empty world and says why.
     pub fn start(&mut self, content: &data::Content, rig: &mut CameraRig) -> SimWorld {
         rig.mode = CamMode::Frame;
         rig.auto_mode = CamMode::Frame;
@@ -238,15 +348,44 @@ impl Replay {
             Some(Ok(w)) => Ok(w.code.clone()),
             Some(Err(why)) => Err(why.clone()),
             None => match &self.code {
-                Some(text) => FightCode::decode(text).map_err(|e| e.to_string()),
+                Some(text) => Code::decode(text).map(|c| match c {
+                    Code::Fight(c) => Played::Fight(c),
+                    Code::Voyage(c) => Played::Voyage(c),
+                }).map_err(|e| e.to_string()),
                 None => Err("no fight code: open ?scene=fight&fight=<code>".into()),
             },
         };
-        let built = code.and_then(|code| {
-            let setup = FightSetup::build(content, &code.spec).map_err(|e| format!("the fight doesn't build here: {e}"))?;
-            Ok((code, setup))
+        let built = code.and_then(|code| match &code {
+            Played::Fight(c) => {
+                let setup = FightSetup::build(content, &c.spec).map_err(|e| format!("the fight doesn't build here: {e}"))?;
+                let names = [0, 1].map(|side| side_name(&setup.designs[side], &c.spec.sides[side]));
+                let pilot = c.spec.sides[0].entries.iter().find_map(|e| e.pilot.as_ref()).map(|p| content.lab.pilot(&p.profile).map_or_else(|| p.profile.clone(), |l| l.name.clone()));
+                let limit = setup.referee.limit();
+                let mut world = SimWorld::new(setup.sim, content.clone());
+                world.looks.insert(OWNERS[0], Look::Player);
+                world.looks.insert(OWNERS[1], Look::Enemy);
+                for (bp, design) in setup.designs.into_iter().flatten() {
+                    world.adopt(&design, bp);
+                }
+                Ok((code.clone(), world, Judge::Fight(Box::new(setup.referee)), names, pilot, limit))
+            }
+            Played::Voyage(c) => {
+                let mut setup = VoyageSetup::build(content, &c.spec).map_err(|e| format!("the voyage doesn't build here: {e}"))?;
+                let mut sim = Sim::new(0);
+                setup.runner.swap_world(&mut sim);
+                let mut world = SimWorld::new(sim, content.clone());
+                world.driven = true;
+                world.looks.insert(Owner::PLAYER, Look::Player);
+                let flagship = setup.designs.first().map_or_else(String::new, |(bp, _)| bp.name.to_uppercase());
+                for (bp, design) in setup.designs {
+                    world.adopt(&design, bp);
+                }
+                let voyage = crate::voyage::title(content, &c.spec.voyage);
+                let judge = Judge::Voyage { runner: Box::new(setup.runner), hash: None };
+                Ok((code.clone(), world, judge, [flagship, voyage], None, c.spec.limit_ticks()))
+            }
         });
-        let (code, setup) = match built {
+        let (code, world, judge, names, pilot, limit) = match built {
             Ok(b) => b,
             Err(why) => {
                 warn!("fight viewer: {why}");
@@ -254,26 +393,28 @@ impl Replay {
                 return empty();
             }
         };
+        let rules = match &code {
+            Played::Fight(c) => c.rules,
+            Played::Voyage(c) => c.rules,
+        };
         // Today's rules are computed once per viewer (about 5 ms natively).
         let stale = match &self.watch {
             Some(Ok(w)) => w.stale,
-            _ => code.rules != arena::rules_fingerprint(content),
+            _ => rules != arena::rules_fingerprint(content),
         };
-        let names = [0, 1].map(|side| side_name(&setup.designs[side], &code.spec.sides[side]));
-        let mut world = SimWorld::new(setup.sim, content.clone());
-        world.looks.insert(OWNERS[0], Look::Player);
-        world.looks.insert(OWNERS[1], Look::Enemy);
-        for (bp, design) in setup.designs.into_iter().flatten() {
-            world.adopt(&design, bp);
-        }
-        let keyframes = BTreeMap::from([(0, (world.sim.clone(), setup.referee.clone()))]);
-        info!("fight viewer: seed {}, {} vs {}, rules {}", code.spec.seed, names[0], names[1], if stale { "changed" } else { "as recorded" });
+        let keyframes = BTreeMap::from([(0, (world.sim.clone(), judge.clone()))]);
+        info!("fight viewer: {} vs {}, rules {}", names[0], names[1], if stale { "changed" } else { "as recorded" });
         let speed = match &self.watch {
             Some(Ok(w)) => w.speed,
             _ => NORMAL_SPEED,
         };
-        let pilot = code.spec.sides[0].entries.iter().find_map(|e| e.pilot.as_ref()).map(|p| content.lab.pilot(&p.profile).map_or_else(|| p.profile.clone(), |l| l.name.clone()));
-        self.watch = Some(Ok(Watched { code, stale, names, pilot, referee: setup.referee, keyframes, seen: 0, marks: Vec::new(), speed }));
+        let w = Watched { code, stale, names, pilot, judge, limit, keyframes, seen: 0, marks: Vec::new(), speed };
+        if w.follows().is_some() {
+            rig.mode = CamMode::Follow;
+            rig.auto_mode = CamMode::Follow;
+            rig.zoom_target = rig.zoom_target.max(FOLLOW_ZOOM);
+        }
+        self.watch = Some(Ok(w));
         world
     }
 
@@ -308,7 +449,7 @@ impl Plugin for ReplayPlugin {
         let code = (params.text("scene") == Some("fight")).then(|| params.text("fight").unwrap_or_default().to_string());
         app.insert_resource(Replay { code, watch: None })
             .add_systems(Startup, spawn_timeline)
-            .add_systems(FixedUpdate, (drop_inputs.in_set(SimSet::Inputs), observe.in_set(SimSet::Events)))
+            .add_systems(FixedUpdate, (drop_inputs.in_set(SimSet::Inputs), fly.in_set(SimSet::Step), observe.in_set(SimSet::Events)))
             .add_systems(
                 Update,
                 (playback, follow_click.run_if(not(egui_wants_any_pointer_input)), zoom_floor, update_timeline)
@@ -332,6 +473,15 @@ fn drop_inputs(scene: Res<Scene>, mut world: ResMut<SimWorld>) {
     if fight_scene(&scene) {
         world.inputs = TickInputs::default();
     }
+}
+
+/// A replayed voyage's tick: its runner flies the flagship (the sim bridge doesn't step a driven world).
+fn fly(scene: Res<Scene>, mut replay: ResMut<Replay>, mut world: ResMut<SimWorld>) {
+    if !fight_scene(&scene) || world.hold || !world.driven {
+        return;
+    }
+    let Some(Ok(w)) = replay.watch.as_mut() else { return };
+    w.tick(&mut world.sim);
 }
 
 /// After every tick: the referee looks, keyframes and marks are kept; at the end the world holds.
@@ -372,7 +522,7 @@ fn playback(
         time.set_relative_speed(SPEEDS[w.speed]);
     }
     let now = world.sim.tick();
-    let seek = if act.just_pressed(Action::ReplayRestart) || (act.just_pressed(Action::ReplayPause) && w.result().is_some()) {
+    let seek = if act.just_pressed(Action::ReplayRestart) || (act.just_pressed(Action::ReplayPause) && w.ended()) {
         time.unpause();
         Some(0)
     } else if act.just_pressed(Action::ReplayBack) {
@@ -397,8 +547,10 @@ fn playback(
 }
 
 /// A click (not a drag, which pans) on a ship follows it; on empty space frames the fight again.
+#[allow(clippy::too_many_arguments)]
 fn follow_click(
     mut scene: ResMut<Scene>,
+    replay: Res<Replay>,
     world: Res<SimWorld>,
     mut rig: ResMut<CameraRig>,
     buttons: Res<ButtonInput<MouseButton>>,
@@ -425,9 +577,10 @@ fn follow_click(
                 // Close enough to see the ship (framing a whole fight zooms far out).
                 rig.zoom_target = rig.zoom_target.max(FOLLOW_ZOOM);
             }
+            // A voyage's flagship again; a fight framed whole again.
             _ => {
-                scene.spectate = None;
-                rig.mode = CamMode::Frame;
+                scene.spectate = replay.watched().and_then(Watched::follows);
+                rig.mode = if scene.spectate.is_some() { CamMode::Follow } else { CamMode::Frame };
                 rig.user_zoom = false;
             }
         }
@@ -581,6 +734,33 @@ mod tests {
         let again = r.start(&content, &mut CameraRig::default());
         assert_eq!(again.sim.tick(), 0);
         assert_eq!(r.watched().unwrap().speed, 4);
+    }
+
+    /// GDR-0092 step 9: a voyage job's code plays as the job flew it: the runner flies the flagship in the viewer's
+    /// world, seeking back through a keyframe lands on the same world, and it ends as recorded; the camera follows the
+    /// flagship.
+    #[test]
+    fn a_voyage_replay_ends_as_recorded() {
+        let content = data::base_content();
+        let spec = arena::VoyageSpec { voyage: "yard_approach".into(), seed: 2, design: arena::DesignRef::Ship("rim_skiff".into()), behavior: None, minutes: 5.0, escorts: Vec::new() };
+        let mut runner = arena::start_voyage(&content, &spec).unwrap();
+        let ticks = runner.step(u64::MAX).unwrap().ticks;
+        let code = VoyageCode::new(&content, rules_fingerprint(&content), spec, ticks, runner.sim().state_hash());
+        let mut r = replay(Code::Voyage(code.clone()).encode());
+        let mut world = r.start(&content, &mut CameraRig::default());
+        assert!(world.driven);
+        let w = r.watch.as_mut().unwrap().as_mut().unwrap();
+        assert_eq!(w.follows(), Some(runner.flagship()));
+        assert_eq!(w.names[0], "RIM SKIFF");
+        w.seek(&mut world, KEYFRAME_TICKS + 40);
+        let at = world.sim.state_hash();
+        w.seek(&mut world, KEYFRAME_TICKS - 5);
+        w.seek(&mut world, KEYFRAME_TICKS + 40);
+        assert_eq!(world.sim.state_hash(), at, "back through a keyframe and on again: the same world");
+        assert!(w.seek(&mut world, u64::MAX));
+        assert_eq!(world.sim.tick(), ticks);
+        let (title, sub, tone) = w.notice(world.sim.tick()).unwrap();
+        assert_eq!((title.as_str(), tone), ("AS RECORDED", Tone::Teal), "{sub}");
     }
 
     /// A code fought under other rules says so at once; a record today's rules don't reproduce says so at the end;

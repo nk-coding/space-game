@@ -329,7 +329,12 @@ fn build_world(scene: &mut Scene, focus: &mut PilotFocus, inputs: &mut SceneInpu
     *scene = scene.restart();
     focus.0 = None;
     match scene.kind.clone() {
-        SceneKind::Fight => inputs.replay.start(base, rig),
+        SceneKind::Fight => {
+            let world = inputs.replay.start(base, rig);
+            // A voyage's flagship is followed until a click says otherwise.
+            scene.spectate = inputs.replay.watched().and_then(crate::replay::Watched::follows);
+            world
+        }
         SceneKind::Voyage(id) => build_voyage(scene, focus, inputs, rig, &id),
         SceneKind::Load(n) => {
             let sim = sim::voyage::scenario::load_test(n as usize, scene.seed);

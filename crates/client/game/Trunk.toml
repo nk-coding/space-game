@@ -13,5 +13,5 @@ open = false
 
 [watch]
 # Everything that goes into the wasm, not only this crate.
-watch = [".", "../kit", "../world", "../art", "../../core/sim", "../../core/data", "../../../content/base", "../../../art/tokens.json"]
+watch = [".", "../kit", "../world", "../art", "../lab-worker", "../../core/sim", "../../core/data", "../../core/arena", "../../core/galaxy", "../../../content/base", "../../../art/tokens.json"]
 ignore = ["dist", "../../../content/base/wiki"]

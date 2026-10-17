@@ -250,7 +250,8 @@ pub(super) fn sync_preview(
     storage: Res<Storage>,
     content: Res<GameContent>,
     report: Res<DrydockReport>,
-    lab: Res<Lab>,
+    mut lab: ResMut<Lab>,
+    (behaviors, working): (Res<PlayerBehaviors>, Res<PlayerDesign>),
     window: Single<&Window, With<PrimaryWindow>>,
     rows: Query<(Entity, &RowNode, &Hot, &ComputedNode, &UiGlobalTransform)>,
     column: Single<(&ComputedNode, &UiGlobalTransform), With<PreviewColumn>>,
@@ -291,8 +292,20 @@ pub(super) fn sync_preview(
         match shown {
             Some((bp, texts)) => {
                 commands.entity(*ship).insert(UiIcon::Ship(Box::new(bp)));
+                // A saved design's rating on THE LADDER (the lab rates it), `OLD` when it is older than a change.
+                let ladder = match &pick {
+                    Some(Pick::Design(id)) => {
+                        let rules = lab.bypass_change_detection().rules(&content.0);
+                        match Standing::of(&storage, &content.0, &behaviors, &working, rules, id) {
+                            Standing::Unrated => "—".to_string(),
+                            Standing::Rated(d) => crate::evolution::rating_words(&d),
+                            Standing::Changed(d) => format!("{}  ·  OLD", crate::evolution::rating_words(&d)),
+                        }
+                    }
+                    _ => "—".to_string(),
+                };
                 for (k, mut text) in &mut values {
-                    set_text(&mut text, &texts[k.0]);
+                    set_text(&mut text, texts.get(k.0).unwrap_or(&ladder));
                 }
             }
             None => {

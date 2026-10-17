@@ -40,6 +40,7 @@ use kit::ui_kit::{
     set_color, set_text, spawn_pill, sub_tone, tracked,
 };
 use world::career::{Granted, Note, PlayerCareer};
+use world::evolution::ladder::Standing;
 use world::evolution::{Lab, LabRequest};
 use world::mode::AppMode;
 use world::player::PlayerDesign;
@@ -83,9 +84,9 @@ const TEMPLATES_W: f32 = 344.0;
 const PREVIEW_W: f32 = 208.0;
 const LISTS_GAP: f32 = 24.0;
 /// The preview's ship drawing's height (it is fitted into the card's width and this) and the card's height (fixed,
-/// so the card is placed before its first layout: the ship, its four numbers and the padding).
+/// so the card is placed before its first layout: the ship, its five numbers and the padding).
 const PREVIEW_SHIP_H: f32 = 96.0;
-const PREVIEW_CARD_H: f32 = 240.0;
+const PREVIEW_CARD_H: f32 = 262.0;
 /// What an evolved design's ORIGIN adds to the card: its line and its run's link.
 const PREVIEW_ORIGIN_H: f32 = 50.0;
 
@@ -524,7 +525,7 @@ mod tests {
         world.spawn((PreviewColumn, Node::default()));
         let card = world.spawn((PreviewCard::default(), Node { display: Display::None, ..default() })).id();
         let ship = world.spawn(PreviewShip).id();
-        let stats: Vec<Entity> = (0..4).map(|k| world.spawn((PreviewStat(k), Text::new(""))).id()).collect();
+        let stats: Vec<Entity> = (0..5).map(|k| world.spawn((PreviewStat(k), Text::new(""))).id()).collect();
         let preview = world.register_system(sync_preview);
         world.run_system(preview).unwrap();
 
@@ -535,6 +536,7 @@ mod tests {
         assert_eq!(text(&world, 0), "Frigate");
         assert!(text(&world, 1).ends_with(" t") && text(&world, 2).ends_with("m/s"), "{} {}", text(&world, 1), text(&world, 2));
         assert_ne!(text(&world, 3), "0");
+        assert_eq!(text(&world, 4), "—", "a template has no rating on the ladder");
         assert_eq!(world.get::<PreviewCard>(card).unwrap().shown, Some(Pick::Template("halvex_runner".into())));
 
         // Built once: another frame on the same row leaves the icon untouched.

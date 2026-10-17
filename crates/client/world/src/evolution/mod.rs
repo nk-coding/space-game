@@ -14,10 +14,12 @@
 //! * **One run computes at a time** ([`Lab::running`]); starting or resuming another pauses it. It computes at home
 //!   and on every screen within a time budget per frame (`lab.ron`'s `budget`: more with the layer open, [`budget`])
 //!   and pauses in flight: the test range, test flights, replays and voyages ([`compute`]). The
-//!   budget is turned into ticks of work from the measured cost per tick ([`Rate`]). On the web `arena::Run::step`
-//!   breeds and fights within it on the main thread ([`Lab::compute`]), so frames keep their time whatever the fight;
-//!   natively the frame's budget breeds and the fights run on Bevy's compute threads ([`Lab::compute_threads`]). Both
-//!   make the same run.
+//!   budget is turned into ticks of work from the measured cost per tick ([`Rate`]). The frame's budget breeds, and
+//!   the jobs go out of the frame ([`Lab::compute_out`], [`out`]): natively to Bevy's compute threads, on the web to
+//!   the lab's web workers (`workers`, ADR-0043). Without a worker (none loads, `?lab_workers=0`) `arena::Run::step`
+//!   breeds and fights within the budget on the main thread ([`Lab::compute`]). All of them make the same run.
+//! * **THE LADDER** ([`ladder`], GDR-0092 step 9): RATE ON THE LADDER rates saved designs on `lab.ron`'s ladder in
+//!   the run's place, as VALIDATE does ([`Lab::rate`]); each rating is kept in `ladder/<design id>`.
 //! * **Storage** ([`store`]): each run in parts, `lab/<id>` its head (with its name, creation time and status),
 //!   `lab/<id>/config` and one part `lab/<id>/g<n>` per generation done; after every generation its part and the head
 //!   are written (its only checkpoint: a reload breeds the open generation again from the same random state, the
@@ -29,9 +31,13 @@
 //! * **Locked** until the career opens the facility [`FACILITY`] (the research node Simulation vault, or
 //!   `?unlock=all`): [`Lab::enabled`] follows [`Granted`], and a locked lab computes nothing.
 
+pub mod ladder;
+mod out;
 pub mod store;
+#[cfg(target_arch = "wasm32")]
+mod workers;
 
-use arena::evolve::{ArchiveShape, Axis, Bound, Camp, Evolve, FlownBy, Goals, Limits, Locks, MayChange, Measure, Population, RunHead, RunParts, RunStatus, Sources, Start, TrialSpec, VALIDATE_SEEDS, Validation};
+use arena::evolve::{ArchiveShape, Axis, Bound, Camp, Evolve, FlownBy, Goals, Job, Limits, Locks, MayChange, Measure, Population, RunHead, RunParts, RunStatus, Sources, Start, TrialSpec, VALIDATE_SEEDS, Validation};
 use arena::{BehaviorRef, DesignRef, Entry, Run, RunConfig};
 use bevy::platform::time::Instant;
 use bevy::prelude::*;
@@ -344,6 +350,7 @@ impl TrialPick {
             TrialPresetKind::Fleet => (src.fleet.len(), fight * FIGHT_SHARE),
             TrialPresetKind::HallOfFame { count } => (*count as usize, fight * FIGHT_SHARE),
             TrialPresetKind::Champions { count } => ((*count as usize).min(src.champions.len()), fight * FIGHT_SHARE),
+            TrialPresetKind::Ladder { rungs } => (rungs.len(), fight * FIGHT_SHARE),
             TrialPresetKind::Voyages => {
                 let minutes = p.time_limit.unwrap_or(arena::DEFAULT_VOYAGE_MINUTES);
                 (src.open_voyages.len(), minutes * 60.0 * sim::TICK_HZ as f32 * VOYAGE_SHARE)
@@ -606,11 +613,10 @@ pub struct Lab {
     pub last_generation: Option<(f32, f32)>,
     /// When the generation in progress got its first slice.
     started: Option<Instant>,
-    /// Natively: the open generation's fights on the threads, and the content they are fought with.
-    #[cfg(not(target_arch = "wasm32"))]
-    threads: Option<threads::Threads>,
-    #[cfg(not(target_arch = "wasm32"))]
-    content: Option<std::sync::Arc<Content>>,
+    /// The open generation's jobs (or a validation's, or a rating's) out on the threads or the web workers.
+    out: Option<out::Out>,
+    /// Batches handed out so far (each [`out::Out`]'s number).
+    batches: u64,
     /// The EVOLUTION layer is open: the run gets the larger budget ([`budget`]).
     pub layer_open: bool,
     /// What the drydock asks the layer to open on: EVOLVE THIS DESIGN's setup, or a saved design's origin.
@@ -623,6 +629,9 @@ pub struct Lab {
     pub trouble: Option<String>,
     /// VALIDATE underway: the run it validates and the work (it computes in the run's place until done).
     validating: Option<(String, Validation)>,
+    /// RATE ON THE LADDER underway (in the run's place too, after a validation), and the designs waiting for it.
+    rating: Option<ladder::Rating>,
+    rate_queue: std::collections::VecDeque<ladder::Rating>,
 }
 
 impl Lab {
@@ -856,7 +865,7 @@ impl Lab {
             return Err("its rules have changed since: RE-SCORE it first".into());
         }
         let v = l.run.validation(genomes, VALIDATE_SEEDS).ok_or("that design was never scored")?;
-        let n = v.jobs().len();
+        let n = v.batch.jobs().len();
         self.validating = Some((id.to_string(), v));
         self.started = None;
         Ok(n)
@@ -864,7 +873,7 @@ impl Lab {
 
     /// The validation underway: its run, how far it is (0..1), the genomes it validates.
     pub fn validating(&self) -> Option<(&str, f32, Vec<u32>)> {
-        self.validating.as_ref().map(|(id, v)| (id.as_str(), v.done(), v.genomes()))
+        self.validating.as_ref().map(|(id, v)| (id.as_str(), v.batch.done(), v.genomes()))
     }
 
     /// A validation is done: its results into its run, written. `true` (the page follows).
@@ -971,9 +980,9 @@ impl Lab {
             return true;
         }
         let ticks = self.rate.ticks_for(budget_ms);
-        // A validation computes in the run's place.
-        if let Some((_, v)) = self.validating.as_mut() {
-            return v.step(ticks) && self.validated(storage);
+        // A validation or a rating computes in the run's place.
+        if let Some((_, b)) = aside(&mut self.validating, &mut self.rating) {
+            return b.step(ticks) && self.aside_done(storage);
         }
         let Some(id) = self.running.clone() else { return false };
         let Some(l) = self.loaded.iter_mut().find(|l| l.id == id) else { return false };
@@ -1056,46 +1065,68 @@ impl Lab {
         }
     }
 
-    /// How far the open generation of a run is, 0..1: its jobs done (natively, on the threads), else
+    /// How far the open generation of a run is, 0..1: its jobs done (out on the threads or the workers), else
     /// `arena::Run::generation_done`.
     pub fn generation_done(&self, l: &Loaded) -> f32 {
-        #[cfg(not(target_arch = "wasm32"))]
-        if let Some(t) = self.threads.as_ref().filter(|t| t.id == l.id && t.generation == l.run.generation() && self.validating.is_none()) {
-            return t.done() as f32 / t.total().max(1) as f32;
+        if let Some(o) = self.out.as_ref().filter(|o| o.id == l.id && o.generation == l.run.generation() && self.validating.is_none() && self.rating.is_none()) {
+            return o.done() as f32 / o.total().max(1) as f32;
         }
         l.run.generation_done()
     }
 
-    /// One frame's work natively (GDR-0092 "The executor"): the open generation is bred on this thread within
-    /// `budget_ms`, then its fights go to Bevy's compute threads a few at a time ([`threads`]); the results are taken
-    /// as they come and handed to the run in job order once all are in, which closes the generation as the slices
-    /// would (the same run). With no budget (in flight) no more fights start and the generation waits to close, so
-    /// the cores are flight's once the fights underway end (each under about 50 ms).
-    #[cfg(not(target_arch = "wasm32"))]
-    pub fn compute_threads(&mut self, storage: &mut Storage, content: &Content, budget_ms: f32, frame: f32) -> bool {
+    /// The jobs out are of another batch than `id`'s `generation`: they are let go (their results are dropped as
+    /// they come).
+    fn out_for(&mut self, id: &str, generation: u32) -> bool {
+        if self.out.as_ref().is_some_and(|o| o.id == id && o.generation == generation) {
+            return true;
+        }
+        self.out = None;
+        false
+    }
+
+    /// Hands `jobs` out as a new batch of `id`'s `generation`.
+    fn hand_out(&mut self, id: &str, generation: u32, jobs: Vec<Job>) {
+        self.batches += 1;
+        self.out = Some(out::Out::new(id, generation, self.batches, jobs));
+    }
+
+    /// Jobs are out (the web's executor goes on with them, or falls back to slices without them).
+    pub fn has_out(&self) -> bool {
+        self.out.is_some()
+    }
+
+    /// One frame's work with the jobs out of the frame (GDR-0092 "The executor", ADR-0043): the open generation is
+    /// bred on this thread within `budget_ms`, then its jobs go to `exec` a few at a time (the native compute threads,
+    /// the web's workers, [`out`]); the results are taken as they come and handed to the run in job order once all
+    /// are in, which closes the generation as the slices would (the same run). With no budget (in flight) no more
+    /// jobs go out and the generation waits to close, so the cores are flight's once the jobs underway end (each
+    /// under about 50 ms). A validation or a rating goes out in the run's place (as generation `u32::MAX` of its key).
+    pub fn compute_out(&mut self, storage: &mut Storage, exec: &mut dyn out::Executor, budget_ms: f32, frame: f32) -> bool {
         if self.checkpoint_lost(storage) {
             return true;
         }
-        // A validation's jobs go to the threads in the run's place (as generation `u32::MAX` of its run).
-        if let Some((id, v)) = self.validating.as_mut() {
-            if !self.threads.as_ref().is_some_and(|t| t.id == *id && t.generation == u32::MAX) {
-                if budget_ms <= 0.0 {
+        let hold = budget_ms <= 0.0;
+        if let Some((key, b)) = aside(&mut self.validating, &mut self.rating) {
+            let jobs = b.jobs().to_vec();
+            if !self.out_for(&key, u32::MAX) {
+                if hold {
                     return false;
                 }
-                let content = self.content.get_or_insert_with(|| std::sync::Arc::new(content.clone())).clone();
-                self.threads = Some(threads::Threads::new(id, u32::MAX, v.jobs().to_vec(), content));
+                self.hand_out(&key, u32::MAX, jobs);
             }
-            let t = self.threads.as_mut().expect("the validation's jobs are out");
-            t.pump(budget_ms <= 0.0);
-            if budget_ms <= 0.0 || !t.finished() {
+            let o = self.out.as_mut().expect("the jobs are out");
+            o.pump(exec, hold);
+            if hold || !o.finished() {
                 return false;
             }
-            let results = self.threads.take().expect("the validation's jobs are in").take();
-            v.submit(results);
-            return self.validated(storage);
+            let results = self.out.take().expect("the jobs are in").take();
+            if let Some((_, b)) = aside(&mut self.validating, &mut self.rating) {
+                b.submit(results);
+            }
+            return self.aside_done(storage);
         }
         let Some(id) = self.running.clone() else {
-            self.threads = None;
+            self.out = None;
             return false;
         };
         let ticks = self.rate.ticks_for(budget_ms);
@@ -1104,11 +1135,11 @@ impl Lab {
             return false;
         }
         let generation = l.run.generation();
-        if !self.threads.as_ref().is_some_and(|t| t.id == id && t.generation == generation) {
-            self.threads = None;
-            if budget_ms <= 0.0 {
+        if !self.out_for(&id, generation) {
+            if hold {
                 return false;
             }
+            let Some(l) = self.loaded.iter_mut().find(|l| l.id == id) else { return false };
             let (before, t0) = (l.run.worked(), Instant::now());
             self.started.get_or_insert(t0);
             let bred = l.run.breed(ticks);
@@ -1116,21 +1147,90 @@ impl Lab {
             if !bred {
                 return false;
             }
-            let content = self.content.get_or_insert_with(|| std::sync::Arc::new(content.clone())).clone();
-            self.threads = Some(threads::Threads::new(&id, generation, l.run.jobs().to_vec(), content));
+            let jobs = l.run.jobs().to_vec();
+            self.hand_out(&id, generation, jobs);
         }
-        let t = self.threads.as_mut().expect("the generation's fights are out");
-        let ticks_done = t.pump(budget_ms <= 0.0);
+        let o = self.out.as_mut().expect("the generation's jobs are out");
+        let ticks_done = o.pump(exec, hold);
         if frame > 0.0 && ticks_done > 0 {
             self.rate.ticks_per_second += (ticks_done as f32 / frame - self.rate.ticks_per_second) * RATE_FOLLOW;
         }
-        if budget_ms <= 0.0 || !t.finished() {
+        if hold || !o.finished() {
             return false;
         }
-        let results = self.threads.take().expect("the generation's fights are in").take();
+        let results = self.out.take().expect("the generation's jobs are in").take();
         let Some(l) = self.loaded.iter_mut().find(|l| l.id == id) else { return false };
         l.run.submit(results);
         self.closed(storage, &id)
+    }
+
+    /// The jobs out can't finish (the web's workers are gone): they are let go, and the run's slices do the
+    /// generation from its start (its jobs are what `arena::Run::step` runs, so the run stays the same).
+    pub fn take_back(&mut self) {
+        self.out = None;
+    }
+
+    /// The work in the run's place is done: a validation's results into its run, or a rating written and the next
+    /// one started. `true` (the pages follow).
+    fn aside_done(&mut self, storage: &mut Storage) -> bool {
+        if self.validating.is_some() {
+            return self.validated(storage);
+        }
+        if let Some(r) = self.rating.take() {
+            if let Err(e) = r.write(storage, now_unix()) {
+                self.trouble = Some(format!("the rating of {} isn't saved: {}", r.name, not_saved(&e)));
+            }
+            self.rating = self.rate_queue.pop_front();
+            self.started = None;
+        }
+        true
+    }
+
+    /// RATE ON THE LADDER (GDR-0092 step 9): `designs` (ids of YOUR DESIGNS) fight `lab.ron`'s ladder, one after the
+    /// other, in the run's place (the run waits, as for VALIDATE); each rating is written to `ladder/<id>` when it is
+    /// done. A design already waiting or being rated isn't queued again. How many were queued, or why none.
+    pub fn rate(&mut self, storage: &Storage, content: &Content, behaviors: &PlayerBehaviors, working: &PlayerDesign, designs: &[String]) -> Result<usize, String> {
+        let ladder = arena::evolve::ladder::Ladder::of(content).ok_or("the content has no ladder")?;
+        let rules = self.today(content);
+        let mut n = 0;
+        for id in designs {
+            if self.rating.iter().chain(&self.rate_queue).any(|r| r.design == *id) {
+                continue;
+            }
+            let r = ladder::Rating::new(storage, content, behaviors, working, &ladder, rules, id)?;
+            match self.rating {
+                None => self.rating = Some(r),
+                Some(_) => self.rate_queue.push_back(r),
+            }
+            n += 1;
+        }
+        self.started = None;
+        Ok(n)
+    }
+
+    /// Saved design `id` waits to be rated.
+    pub fn queued(&self, id: &str) -> bool {
+        self.rate_queue.iter().any(|r| r.design == id)
+    }
+
+    /// The rating underway: the design's id and name, how far it is (0..1) and how many designs wait after it.
+    pub fn rating(&self) -> Option<(&str, &str, f32, usize)> {
+        self.rating.as_ref().map(|r| (r.design.as_str(), r.name.as_str(), r.done(), self.rate_queue.len()))
+    }
+
+    /// Today's rules' fingerprint (computed once).
+    pub fn rules(&mut self, content: &Content) -> u64 {
+        self.today(content)
+    }
+}
+
+/// The work that computes in the run's place, if any: VALIDATE first, then a rating, with the key its jobs go out
+/// under.
+fn aside<'a>(validating: &'a mut Option<(String, Validation)>, rating: &'a mut Option<ladder::Rating>) -> Option<(String, &'a mut arena::evolve::JobBatch)> {
+    match (validating, rating) {
+        (Some((id, v)), _) => Some((id.clone(), &mut v.batch)),
+        (None, Some(r)) => Some((format!("ladder/{}", r.design), &mut r.batch)),
+        (None, None) => None,
     }
 }
 
@@ -1139,89 +1239,6 @@ fn not_saved(e: &StorageError) -> String {
     match e {
         StorageError::Full => format!("not saved: {e}: delete runs you don't need to make room"),
         e => format!("not saved: {e}"),
-    }
-}
-
-/// The native executor's work: a generation's fights on Bevy's compute threads (`AsyncComputeTaskPool`), a few to a
-/// task, as many tasks at once as the machine has cores less one (the frame's); the web has no threads and steps
-/// in slices ([`Lab::compute`]). Results are kept in job order, so the run gets them as `Run::jobs` gave the jobs.
-#[cfg(not(target_arch = "wasm32"))]
-mod threads {
-    use std::sync::Arc;
-
-    use arena::evolve::{Job, JobResult};
-    use bevy::tasks::{AsyncComputeTaskPool, Task, block_on, futures_lite::future};
-    use data::Content;
-
-    /// Fights a task runs one after the other (about 5–20 ms natively): small enough that flight gets the cores back
-    /// soon after it starts, large enough that the tasks' own cost doesn't count.
-    const CHUNK: usize = 4;
-
-    /// One generation's fights out on the threads.
-    pub struct Threads {
-        /// The run and generation they are of.
-        pub id: String,
-        pub generation: u32,
-        jobs: Arc<Vec<Job>>,
-        content: Arc<Content>,
-        results: Vec<Option<JobResult>>,
-        /// The first job not handed out yet.
-        next: usize,
-        running: Vec<(usize, Task<Vec<JobResult>>)>,
-        width: usize,
-    }
-
-    impl Threads {
-        pub fn new(id: &str, generation: u32, jobs: Vec<Job>, content: Arc<Content>) -> Self {
-            let width = std::thread::available_parallelism().map_or(1, |n| n.get().saturating_sub(1).max(1));
-            let n = jobs.len();
-            Threads { id: id.to_string(), generation, jobs: Arc::new(jobs), content, results: vec![None; n], next: 0, running: Vec::new(), width }
-        }
-
-        /// Takes the results of the tasks that finished and, unless `hold`, hands out more fights; returns the ticks
-        /// the finished fights ran.
-        pub fn pump(&mut self, hold: bool) -> u64 {
-            let mut ticks = 0;
-            let mut k = 0;
-            while k < self.running.len() {
-                match block_on(future::poll_once(&mut self.running[k].1)) {
-                    Some(rs) => {
-                        let (first, _) = self.running.swap_remove(k);
-                        for (j, r) in rs.into_iter().enumerate() {
-                            ticks += r.ticks;
-                            self.results[first + j] = Some(r);
-                        }
-                    }
-                    None => k += 1,
-                }
-            }
-            let pool = AsyncComputeTaskPool::get();
-            while !hold && self.running.len() < self.width && self.next < self.jobs.len() {
-                let (first, end) = (self.next, (self.next + CHUNK).min(self.jobs.len()));
-                let (jobs, content) = (self.jobs.clone(), self.content.clone());
-                self.running.push((first, pool.spawn(async move { jobs[first..end].iter().map(|j| j.run(&content)).collect() })));
-                self.next = end;
-            }
-            ticks
-        }
-
-        pub fn done(&self) -> usize {
-            self.results.iter().filter(|r| r.is_some()).count()
-        }
-
-        pub fn total(&self) -> usize {
-            self.results.len()
-        }
-
-        /// Every fight's result is in.
-        pub fn finished(&self) -> bool {
-            self.running.is_empty() && self.results.iter().all(Option::is_some)
-        }
-
-        /// The results in job order (all of them: [`Threads::finished`]).
-        pub fn take(self) -> Vec<JobResult> {
-            self.results.into_iter().map(|r| r.expect("every fight is in")).collect()
-        }
     }
 }
 
@@ -1365,26 +1382,68 @@ pub fn budget(content: &Content, mode: AppMode, layer_open: bool) -> f32 {
     }
 }
 
-/// Every frame at home and on the screens: the run that computes gets its budget (none in flight), its fights on the
-/// threads ([`Lab::compute_threads`]). Only a closed generation is news for the screens that show the lab (they read
-/// the progress inside one themselves while they show it). A locked lab computes nothing.
+/// The lab has work: a run that computes, a validation or a rating.
+fn busy(lab: &Lab) -> bool {
+    lab.enabled && (lab.running.is_some() || lab.validating.is_some() || lab.rating.is_some())
+}
+
+/// Every frame at home and on the screens: the run that computes gets its budget (none in flight), its jobs on the
+/// compute threads ([`Lab::compute_out`], [`out::Threads`]). Only a closed generation is news for the screens that show
+/// the lab (they read the progress inside one themselves while they show it). A locked lab computes nothing.
 #[cfg(not(target_arch = "wasm32"))]
-pub fn compute(mode: Res<State<AppMode>>, time: Res<Time<Real>>, mut lab: ResMut<Lab>, mut storage: ResMut<Storage>, content: Res<GameContent>) {
+pub fn compute(mode: Res<State<AppMode>>, time: Res<Time<Real>>, mut lab: ResMut<Lab>, mut storage: ResMut<Storage>, content: Res<GameContent>, mut threads: Local<Option<out::Threads>>) {
     let ms = budget(&content.0, *mode.get(), lab.layer_open);
-    if lab.enabled && (lab.running.is_some() || lab.validating.is_some()) && lab.bypass_change_detection().compute_threads(&mut storage, &content.0, ms, time.delta_secs()) {
+    if !busy(&lab) {
+        return;
+    }
+    let exec = threads.get_or_insert_with(|| out::Threads::new(&content.0));
+    if lab.bypass_change_detection().compute_out(&mut storage, exec, ms, time.delta_secs()) {
         lab.set_changed();
     }
 }
 
-/// Every frame at home and on the screens: the run that computes gets its budget in slices on this thread (the web
-/// has no threads, [`Lab::compute`]); none in flight, none while the lab is locked.
+/// Every frame at home and on the screens: the run that computes gets its budget, its jobs in the lab's web workers
+/// ([`workers`], started the first time there is work; ADR-0043) while any is there, else in slices on this thread
+/// ([`Lab::compute`]), as when `?lab_workers=0`. None in flight (the jobs underway finish beside it), none while the
+/// lab is locked.
 #[cfg(target_arch = "wasm32")]
-pub fn compute(mode: Res<State<AppMode>>, time: Res<Time<Real>>, mut lab: ResMut<Lab>, mut storage: ResMut<Storage>, content: Res<GameContent>) {
+#[allow(clippy::too_many_arguments)]
+pub fn compute(
+    mode: Res<State<AppMode>>,
+    time: Res<Time<Real>>,
+    mut lab: ResMut<Lab>,
+    mut storage: ResMut<Storage>,
+    content: Res<GameContent>,
+    params: Res<kit::params::Params>,
+    mut pool: NonSendMut<LabWorkers>,
+) {
     let ms = budget(&content.0, *mode.get(), lab.layer_open);
-    if lab.enabled && ms > 0.0 && (lab.running.is_some() || lab.validating.is_some()) && lab.bypass_change_detection().compute(&mut storage, ms, time.delta_secs()) {
+    if !busy(&lab) || (ms <= 0.0 && !lab.has_out()) {
+        return;
+    }
+    let frame = time.delta_secs();
+    let pool = match params.flag("lab_workers") {
+        Some(false) => None,
+        _ => Some(pool.0.get_or_insert_with(|| workers::Workers::start(arena::worker::content_key(&content.0)))),
+    };
+    let l = lab.bypass_change_detection();
+    let changed = match pool {
+        Some(p) if p.gone() => {
+            l.take_back();
+            ms > 0.0 && l.compute(&mut storage, ms, frame)
+        }
+        Some(p) if l.has_out() || out::Executor::width(p) > 0 => l.compute_out(&mut storage, p, ms, frame),
+        _ => ms > 0.0 && l.compute(&mut storage, ms, frame),
+    };
+    if changed {
         lab.set_changed();
     }
 }
+
+/// The web's workers, once started (a non-send resource: browser objects stay on the main thread).
+#[cfg(target_arch = "wasm32")]
+#[derive(Default)]
+pub struct LabWorkers(Option<workers::Workers>);
 
 /// The lab opens with its facility: whenever the career's unlocks change (a research, `?unlock=all`).
 fn unlock(granted: Res<Granted>, mut lab: ResMut<Lab>) {
@@ -1406,6 +1465,8 @@ impl Plugin for EvolutionPlugin {
             warn!("lab: {t}");
         }
         app.insert_resource(lab).add_systems(Update, (unlock, compute).chain());
+        #[cfg(target_arch = "wasm32")]
+        app.init_non_send::<LabWorkers>();
     }
 }
 
@@ -1536,11 +1597,44 @@ mod tests {
         assert_eq!(worked(&app), after.0, "locked: nothing");
     }
 
-    /// Natively a generation's fights run on the threads: the run they make is the one the slices make, file for file.
-    #[cfg(not(target_arch = "wasm32"))]
+    /// The web's executor in a test: each chunk goes through the worker's message form and its answer
+    /// (`arena::worker`) as a `lab-worker` gets and answers it, and answers come back a few frames later, in another
+    /// order than they went out.
+    struct Messages {
+        content: Content,
+        key: u64,
+        width: usize,
+        waiting: Vec<String>,
+    }
+
+    impl out::Executor for Messages {
+        fn width(&self) -> usize {
+            self.width
+        }
+
+        fn spawn(&mut self, batch: u64, first: usize, jobs: &[Job]) {
+            let task = arena::worker::Task { batch, first: first as u32, content: self.key, jobs: jobs.to_vec() };
+            let reply = arena::worker::answer(&self.content, self.key, &arena::worker::write(&task));
+            self.waiting.push(arena::worker::write(&reply));
+        }
+
+        fn finished(&mut self) -> Vec<(u64, usize, Vec<arena::evolve::JobResult>)> {
+            // The latest answer first, and only one a frame while more than two are out.
+            let n = if self.waiting.len() > 2 { 1 } else { self.waiting.len() };
+            (0..n)
+                .filter_map(|_| self.waiting.pop())
+                .map(|text| match arena::worker::read(&text).unwrap() {
+                    arena::worker::Reply::Done { batch, first, results } => (batch, first as usize, results),
+                    other => panic!("{other:?}"),
+                })
+                .collect()
+        }
+    }
+
+    /// A generation's jobs out of the frame make the run the slices make, file for file: on the native threads, and
+    /// through the web workers' messages (GDR-0092 step 9: a worker's results are the frame's).
     #[test]
-    fn the_threads_make_the_run_the_slices_make() {
-        bevy::tasks::AsyncComputeTaskPool::get_or_init(bevy::tasks::TaskPool::default);
+    fn jobs_out_of_the_frame_make_the_run_the_slices_make() {
         let content = data::base_content();
         let s = setup(&content);
         let mut sliced = mem();
@@ -1550,20 +1644,77 @@ mod tests {
         while lab.running().is_some() {
             lab.compute(&mut sliced, BUDGET_MS, 0.016);
         }
-        let mut threaded = mem();
-        let mut lab = Lab::load(&threaded, &content);
-        let cfg = config(&content, &s, &threaded);
-        let b = lab.create(&mut threaded, &content, cfg, "Small", 10).unwrap();
-        let mut frames = 0;
-        while lab.running().is_some() {
-            // Now and then a frame in flight: no fight starts, the generation waits.
-            let ms = if frames % 7 == 3 { 0.0 } else { BUDGET_MS };
-            lab.compute_threads(&mut threaded, &content, ms, 0.016);
-            frames += 1;
-            assert!(frames < 100_000, "the threads never finished");
-        }
         let doc = |st: &Storage, id: &str| file(st, &content, id).to_ron();
-        assert_eq!(doc(&threaded, &b), doc(&sliced, &a));
+        let messages = Messages { content: content.clone(), key: arena::worker::content_key(&content), width: 3, waiting: Vec::new() };
+        #[cfg(not(target_arch = "wasm32"))]
+        bevy::tasks::AsyncComputeTaskPool::get_or_init(bevy::tasks::TaskPool::default);
+        #[cfg(not(target_arch = "wasm32"))]
+        let execs: Vec<Box<dyn out::Executor>> = vec![Box::new(messages), Box::new(out::Threads::new(&content))];
+        #[cfg(target_arch = "wasm32")]
+        let execs: Vec<Box<dyn out::Executor>> = vec![Box::new(messages)];
+        for mut exec in execs {
+            let mut out = mem();
+            let mut lab = Lab::load(&out, &content);
+            let cfg = config(&content, &s, &out);
+            let b = lab.create(&mut out, &content, cfg, "Small", 10).unwrap();
+            let mut frames = 0;
+            while lab.running().is_some() {
+                // Now and then a frame in flight: no job goes out, the generation waits.
+                let ms = if frames % 7 == 3 { 0.0 } else { BUDGET_MS };
+                lab.compute_out(&mut out, &mut *exec, ms, 0.016);
+                frames += 1;
+                assert!(frames < 100_000, "the jobs never came back");
+            }
+            assert_eq!(doc(&out, &b), doc(&sliced, &a));
+        }
+    }
+
+    /// RATE ON THE LADDER (GDR-0092 step 9): a saved design's rating computes in the run's place, the same in slices
+    /// and out of the frame, and is kept in `ladder/<id>`; changing the design makes it a rating from before.
+    #[test]
+    fn a_design_is_rated_on_the_ladder() {
+        let content = data::base_content();
+        let (design, behaviors) = (PlayerDesign::starter(&content, "rim_skiff"), PlayerBehaviors::default());
+        let skiff = content.ships.get("rim_skiff").unwrap().clone();
+        let mut docs = Vec::new();
+        for out in [false, true] {
+            let mut storage = mem();
+            storage.write("my_skiff", &DesignDoc(Blueprint { id: "my_skiff".into(), name: "My skiff".into(), ..skiff.clone() }), 5).unwrap();
+            let mut lab = Lab::load(&storage, &content);
+            assert_eq!(lab.rate(&storage, &content, &behaviors, &design, &["my_skiff".into(), "my_skiff".into()]), Ok(1));
+            assert_eq!(lab.rating().map(|r| r.1), Some("My skiff"));
+            let mut exec = Messages { content: content.clone(), key: arena::worker::content_key(&content), width: 2, waiting: Vec::new() };
+            let mut frames = 0;
+            while lab.rating().is_some() {
+                if out {
+                    lab.compute_out(&mut storage, &mut exec, BUDGET_MS, 0.016);
+                } else {
+                    lab.compute(&mut storage, BUDGET_MS, 0.016);
+                }
+                frames += 1;
+                assert!(frames < 100_000, "the rating never finished");
+            }
+            let rules = lab.rules(&content);
+            let ladder::Standing::Rated(doc) = ladder::Standing::of(&storage, &content, &behaviors, &design, rules, "my_skiff") else { panic!("not rated") };
+            assert_eq!(doc.rating.of(), arena::evolve::ladder::Ladder::of(&content).unwrap().rungs().len());
+            assert!(doc.code(&content, 0).is_some(), "its fights play again");
+            docs.push(doc);
+            let mut changed = skiff.clone();
+            changed.parts.pop();
+            storage.write("my_skiff", &DesignDoc(Blueprint { id: "my_skiff".into(), name: "My skiff".into(), ..changed }), 6).unwrap();
+            assert!(matches!(ladder::Standing::of(&storage, &content, &behaviors, &design, rules, "my_skiff"), ladder::Standing::Changed(_)));
+        }
+        assert_eq!(docs[0], docs[1], "out of the frame, the same rating");
+    }
+
+    /// A worker refuses a task for other content, and a task that doesn't read.
+    #[test]
+    fn a_worker_fights_only_for_its_content() {
+        let content = data::base_content();
+        let key = arena::worker::content_key(&content);
+        let task = arena::worker::Task { batch: 1, first: 0, content: key ^ 1, jobs: Vec::new() };
+        assert!(matches!(arena::worker::answer(&content, key, &arena::worker::write(&task)), arena::worker::Reply::Refused(_)));
+        assert!(matches!(arena::worker::answer(&content, key, "(nonsense"), arena::worker::Reply::Refused(_)));
     }
 
     /// A run started, reloaded after a generation and part of another (a new lab from the same storage: a reload of

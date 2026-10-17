@@ -266,12 +266,12 @@ fn validate_on_new_seeds_and_the_records() {
     let mut v = run.validation(&best, 2).unwrap();
     assert_eq!(v.genomes(), best);
     // The new jobs fight seeds after each trial's own (1): 2 and 3.
-    let seeds: Vec<u64> = v.jobs().iter().filter_map(|j| match j { Job::Fight { spec, .. } => Some(spec.seed), _ => None }).collect();
+    let seeds: Vec<u64> = v.batch.jobs().iter().filter_map(|j| match j { Job::Fight { spec, .. } => Some(spec.seed), _ => None }).collect();
     assert!(seeds.contains(&2) && seeds.contains(&3));
-    while !v.step(4000) {}
+    while !v.batch.step(4000) {}
     let mut on_threads = run.validation(&best, 2).unwrap();
-    let results = on_threads.jobs().iter().map(|j| j.run(&c)).collect();
-    on_threads.submit(results);
+    let results = on_threads.batch.jobs().iter().map(|j| j.run(&c)).collect();
+    on_threads.batch.submit(results);
     let (mut a, mut b) = (run, stepped(&c, config(MIXED), u64::MAX));
     a.validated_by(v);
     b.validated_by(on_threads);

@@ -7,6 +7,7 @@
 //!  RUNS: name · starts · status · generation · start → best · made   [OPEN] [PAUSE] [DELETE]
 //!  SETUP (NEW RUN): START FROM · LOCKS · LIMITS · MAY CHANGE · TRIALS · SIZE · SEED · NAME      [START RUN]
 //!  THE RUN: SCORES BY GENERATION | THE ARCHIVE | the picked design: FIGHTS (WATCH) · LINEAGE · COMPARE · SAVE AS DESIGN
+//!  THE LADDER: YOUR DESIGNS with their ratings, RATE, RATE ALL | the picked design's rungs (WATCH)
 //! ```
 //!
 //! * The building above the mind (E, a click, or EVOLVE THIS DESIGN in the drydock's ⋯ menu, which opens the setup
@@ -22,6 +23,8 @@
 //!   the time left, start → best), PAUSE / RESUME, the scores by generation, the archive as ship cards, and the
 //!   picked design: its scores by trial and goal with VALIDATE, its fights with WATCH (the fight viewer; M brings the
 //!   lab back), its lineage, a comparison with its start, SAVE AS DESIGN; RENAME, and RE-SCORE for a stale run.
+//! * **THE LADDER** ([`ladder`], GDR-0092 step 9; THE LADDER on RUNS): YOUR DESIGNS rated on `lab.ron`'s ladder, a
+//!   rating each and every rung's wins, RATE and RATE ALL (rated in the run's place), WATCH a rung's worst fight.
 //! * The building's label says what the lab does ([`building_line`]); its look follows [`light`].
 //! * **The chip** ([`Chip`]): `EVOLVING  12 / 50` beside home's gear ring and after the title of every layer over
 //!   home (FLEET, the LOG, SETTINGS) while a run computes; a click opens the lab (`home::chip`).
@@ -29,6 +32,7 @@
 //! UI words are chrome in code, like FLEET's and the LOG's; names come from content and the player's designs, the
 //! lab's own words and numbers from `lab.ron` (goals, genes, trials and their kinds, pilots, sizes, measures).
 
+mod ladder;
 mod run;
 mod runs;
 mod setup;
@@ -55,6 +59,7 @@ use world::storage::{Storage, now_unix};
 use crate::home::HomeAction;
 use crate::shipyard::draw::Evo;
 
+pub use ladder::rating_words;
 pub use setup::SetupPage;
 
 /// The layout's size (logical px), like FLEET's.
@@ -67,6 +72,7 @@ pub enum Page {
     Runs,
     Setup,
     Run,
+    Ladder,
 }
 
 /// The EVOLUTION layer's state (a resource).
@@ -80,6 +86,8 @@ pub struct EvolutionLayer {
     pub setup: Option<SetupPage>,
     /// THE RUN: the picked design and what shows of it.
     run: run::RunPage,
+    /// THE LADDER: the design whose rungs show.
+    ladder: ladder::LadderPage,
     /// The last message, for the status line.
     say: Option<(String, Tone)>,
     /// What the page shows is to be built again (a click changed it).
@@ -207,6 +215,8 @@ enum TopPill {
     Resume,
     Rescore,
     Rename,
+    Ladder,
+    RateAll,
 }
 
 /// What a click on a widget of the layer does.
@@ -226,6 +236,9 @@ pub(crate) enum LabButton {
     KeepRun,
     Setup(setup::SetupButton),
     Run(run::RunButton),
+    /// THE LADDER on RUNS: its page.
+    OpenLadder,
+    Ladder(ladder::LadderButton),
 }
 
 /// What the pages' clicks change: the lab and its storage, and what a run is made from or leads to.
@@ -260,7 +273,7 @@ impl Plugin for EvolutionPlugin {
             .add_systems(Update, sync_chip)
             .add_systems(
                 Update,
-                (open, input, runs::imported, trouble, (runs::fill, setup::fill, run::fill), (sync, run::sync)).chain().after(UiInputSet).before(UiStyleSet).run_if(in_state(AppMode::Home)),
+                (open, input, runs::imported, trouble, (runs::fill, setup::fill, run::fill, ladder::fill), (sync, run::sync)).chain().after(UiInputSet).before(UiStyleSet).run_if(in_state(AppMode::Home)),
             );
     }
 }
@@ -336,7 +349,7 @@ fn input(
                     layer.open = false;
                     ctx.lab.layer_open = false;
                 }
-                Page::Setup | Page::Run => {
+                Page::Setup | Page::Run | Page::Ladder => {
                     let _ = ctx.lab.view(&ctx.storage, &ctx.content.0, None);
                     layer.go(Page::Runs);
                 }
@@ -385,6 +398,11 @@ fn input(
             }
             LabButton::Setup(s) => setup::press(&mut layer, &mut ctx, s),
             LabButton::Run(r) => run::press(&mut layer, &mut ctx, r),
+            LabButton::OpenLadder => {
+                layer.say = None;
+                layer.go(Page::Ladder);
+            }
+            LabButton::Ladder(l) => ladder::press(&mut layer, &mut ctx, l),
         }
     }
 }
@@ -430,6 +448,8 @@ fn sync(
             (LayerText::Crumb, Page::Runs) => ("SHIPYARD  ›  EVOLUTION".to_string(), Tone::Label),
             (LayerText::Crumb, Page::Setup) => ("SHIPYARD  ›  EVOLUTION  ›  NEW RUN".to_string(), Tone::Label),
             (LayerText::Crumb, Page::Run) => ("SHIPYARD  ›  EVOLUTION  ›  RUN".to_string(), Tone::Label),
+            (LayerText::Crumb, Page::Ladder) => ("SHIPYARD  ›  EVOLUTION  ›  THE LADDER".to_string(), Tone::Label),
+            (LayerText::Title, Page::Ladder) => ("The ladder".to_string(), Tone::Number),
             (LayerText::Title, Page::Runs) => ("Evolution".to_string(), Tone::Number),
             (LayerText::Title, Page::Setup) => ("New run".to_string(), Tone::Number),
             (LayerText::Title, Page::Run) => (viewed.map_or_else(|| "Run".to_string(), |l| l.name.clone()), Tone::Number),
@@ -446,7 +466,8 @@ fn sync(
     let can_resume = viewed.is_some_and(|l| l.status == RunStatus::Paused && !l.run.finished() && !l.run.stale());
     for (p, mut node) in &mut pills {
         let on = match p {
-            TopPill::NewRun | TopPill::Import => layer.page == Page::Runs,
+            TopPill::NewRun | TopPill::Import | TopPill::Ladder => layer.page == Page::Runs,
+            TopPill::RateAll => layer.page == Page::Ladder,
             TopPill::Pause => layer.page == Page::Run && computes,
             TopPill::Resume => layer.page == Page::Run && can_resume,
             TopPill::Rescore => layer.page == Page::Run && viewed.is_some_and(|l| l.run.stale()),
@@ -459,12 +480,22 @@ fn sync(
     }
 }
 
+/// WATCH: the fight viewer plays `code` (a fight's or a voyage's) and the lab waits; M brings the layer back as it
+/// was.
+pub(crate) fn watch(ctx: &mut Ctx, code: String) {
+    ctx.replay.queue(code);
+    ctx.scene.launch = Some(world::scene::Launch::Fight);
+    ctx.lab.watching = true;
+    ctx.next.set(AppMode::Flight);
+}
+
 /// What the status line says while nothing happened.
 fn default_status(page: Page) -> &'static str {
     match page {
         Page::Runs => "A RUN BREEDS YOUR DESIGNS AGAINST ENEMIES AND KEEPS THE BEST OF EACH KIND  ·  ONE COMPUTES AT A TIME, AT HOME AND ON EVERY SCREEN, NEVER IN FLIGHT",
         Page::Setup => "SAME SEED, SAME SETUP, SAME RULES: THE SAME RUN",
         Page::Run => "CLICK A DESIGN IN THE ARCHIVE  ·  EVERY FIGHT CAN BE WATCHED AGAIN",
+        Page::Ladder => "THE SAME RUNGS AND SEEDS FOR EVERY DESIGN: RATINGS COMPARE  ·  A RUN WAITS WHILE THE LAB RATES",
     }
 }
 
@@ -528,6 +559,10 @@ fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>) {
                     // Top right: the page's pill, CLOSE.
                     stage.spawn((ScreenPart::new(Edge::Top, 0), Node { position_type: PositionType::Absolute, right: px(20), top: px(19), ..row(10.0) })).with_children(|tr| {
                         let primary = Pill { primary: true, ..Pill::new(Tone::Teal) };
+                        let ladder = spawn_pill(tr, fonts, "THE LADDER", 9.5, 30.0, None, Pill::new(Tone::Gold), (LabButton::OpenLadder, Tip::new("YOUR DESIGNS RATED ON A FIXED LADDER OF ENEMIES")));
+                        tr.commands().entity(ladder).insert(TopPill::Ladder);
+                        let rate_all = spawn_pill(tr, fonts, "RATE ALL", 9.5, 30.0, None, primary, (LabButton::Ladder(ladder::LadderButton::RateAll), Tip::new("EVERY SAVED DESIGN ON THE LADDER")));
+                        tr.commands().entity(rate_all).insert(TopPill::RateAll);
                         let import = spawn_pill(tr, fonts, "IMPORT RUN", 9.5, 30.0, None, Pill::new(Tone::Teal), (LabButton::Import, Tip::new("A RUN FILE OF THE CLI: ARENA EVOLVE --SAVE")));
                         tr.commands().entity(import).insert(TopPill::Import);
                         let new_run = spawn_pill(tr, fonts, "NEW RUN", 9.5, 30.0, None, primary, (LabButton::NewRun, Tip::new("SET UP A NEW RUN")));
@@ -543,12 +578,13 @@ fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>) {
                         tr.spawn(Node { width: px(6), ..default() });
                         spawn_pill(tr, fonts, "CLOSE", 9.5, 30.0, None, Pill::new(Tone::Teal), (LabButton::Back, Tip::key("CLOSE", "ESC")));
                     });
-                    for page in [Page::Runs, Page::Setup, Page::Run] {
+                    for page in [Page::Runs, Page::Setup, Page::Run, Page::Ladder] {
                         let node = Node { position_type: PositionType::Absolute, width: percent(100), height: percent(100), ..default() };
                         stage.spawn((PageNode(page), ScreenPart::new(Edge::Fade, 1), node)).with_children(|p| match page {
                             Page::Runs => runs::spawn(p, fonts, &c),
                             Page::Setup => setup::spawn(p, fonts, &c, &ui),
                             Page::Run => run::spawn(p, fonts, &c),
+                            Page::Ladder => ladder::spawn(p, fonts, &c),
                         });
                     }
                     stage.spawn((LayerText::Status, ScreenPart::new(Edge::Bottom, 3), label(fonts, "", 9.0, c(Tone::Label, 1.0)), abs(Vec2::new(36.0, 690.0), Some(Vec2::new(1208.0, 20.0)))));

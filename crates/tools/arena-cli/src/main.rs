@@ -951,9 +951,9 @@ fn validate(o: &Opts) -> Result<(), String> {
     let seeds = if o.seeds_set { o.seeds as u32 } else { VALIDATE_SEEDS };
     let mut v = run.validation(&genomes, seeds).ok_or_else(|| format!("{path}: a genome of {genomes:?} was never scored"))?;
     let t0 = Instant::now();
-    let results = par_map(v.jobs(), o.threads, |j| j.run(&content));
+    let results = par_map(v.batch.jobs(), o.threads, |j| j.run(&content));
     let n = results.len();
-    v.submit(results);
+    v.batch.submit(results);
     run.validated_by(v);
     println!("# {path}: {} designs on {seeds} new seeds each and their recorded fights again: {n} jobs in {:.1} s", genomes.len(), t0.elapsed().as_secs_f64());
     println!("| genome | run score | validated | as recorded |");

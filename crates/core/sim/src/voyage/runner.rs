@@ -160,7 +160,7 @@ impl VoyageRun {
 
 /// The pilot's memory: the salvage piece it works on, since when, and the ones it gave up on; the sites it has
 /// been to; the last tick something happened (a kill, a site woken or cleared, salvage, a new site reached).
-#[derive(Default)]
+#[derive(Clone, Default)]
 struct Pilot {
     salvage: Option<(PieceKey, u64)>,
     given_up: BTreeSet<PieceKey>,
@@ -175,7 +175,9 @@ struct Pilot {
 }
 
 /// A voyage being flown. Build it with [`VoyageRunner::new`], then call [`VoyageRunner::step`] until it returns
-/// the run: all at once ([`VoyageRunner::run`]) or a slice at a time.
+/// the run: all at once ([`VoyageRunner::run`]) or a slice at a time. A copy goes on as the original does (a
+/// viewer's keyframes).
+#[derive(Clone)]
 pub struct VoyageRunner {
     sim: Sim,
     me: ShipId,
@@ -332,6 +334,22 @@ impl VoyageRunner {
     /// The world, for drawing or inspecting the run.
     pub fn sim(&self) -> &Sim {
         &self.sim
+    }
+
+    /// The flagship's ship id.
+    pub fn flagship(&self) -> ShipId {
+        self.me
+    }
+
+    /// How the run ended, once it has.
+    pub fn result(&self) -> Option<&VoyageRun> {
+        self.result.as_ref()
+    }
+
+    /// Swaps the run's world with `sim`: a viewer that keeps the world it draws (the lab's voyage replay, GDR-0092
+    /// step 9) swaps it in before [`VoyageRunner::step`] and out after, so no world is copied.
+    pub fn swap_world(&mut self, sim: &mut Sim) {
+        std::mem::swap(&mut self.sim, sim);
     }
 
     /// One tick: the end checks, the pilot's decision (every [`DECIDE`] ticks), the sim step and its events.

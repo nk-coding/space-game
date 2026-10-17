@@ -50,9 +50,7 @@ use kit::style::{Style, ui_color};
 use kit::ui_icons::UiIcon;
 use kit::ui_kit::{HudFonts, Hot, Pill, Scrollbar, TextField, Tone, ValueBar, field_text, label, number, prose, set_color, set_text, spawn_bar, spawn_brackets, spawn_pill, tracked};
 use world::evolution::{Lab, Loaded, SaveTo, replace_target, result_name, save_as_design};
-use world::mode::AppMode;
 use world::player::library::{self, DesignSlot, MAX_NAME};
-use world::scene::Launch;
 use world::storage::{Storage, now_unix};
 use world::voyage::clock;
 
@@ -296,24 +294,18 @@ pub(super) fn press(layer: &mut EvolutionLayer, ctx: &mut Ctx, b: RunButton) {
             layer.run.tab = Tab::Fights;
         }
         RunButton::Watch(generation, child, job) => {
-            let Some(code) = ctx.lab.viewed().and_then(|l| l.run.fight_code(generation, child, job)) else {
+            let Some(code) = ctx.lab.viewed().and_then(|l| l.run.replay_code(generation, child, job)) else {
                 layer.say("that fight doesn't play", Tone::Coral);
                 return;
             };
-            ctx.replay.queue(code.encode());
-            ctx.scene.launch = Some(Launch::Fight);
-            ctx.lab.watching = true;
-            ctx.next.set(AppMode::Flight);
+            super::watch(ctx, code.encode());
         }
         RunButton::WatchCheck(generation, job) => {
             let Some(code) = ctx.lab.viewed().and_then(|l| l.run.check_fight_code(generation, job)) else {
                 layer.say("that fight doesn't play", Tone::Coral);
                 return;
             };
-            ctx.replay.queue(code.encode());
-            ctx.scene.launch = Some(Launch::Fight);
-            ctx.lab.watching = true;
-            ctx.next.set(AppMode::Flight);
+            super::watch(ctx, code.encode());
         }
         RunButton::Camp(camp) => {
             layer.run.camp = camp;
@@ -333,7 +325,11 @@ pub(super) fn press(layer: &mut EvolutionLayer, ctx: &mut Ctx, b: RunButton) {
                 None => layer.say("only an evolved enemy exports to content", Tone::Coral),
             }
         }
-        RunButton::Code(generation, child, job) => match ctx.lab.viewed().and_then(|l| l.run.fight_code(generation, child, job)) {
+        RunButton::Code(generation, child, job) => match ctx.lab.viewed().and_then(|l| l.run.replay_code(generation, child, job)) {
+            Some(world::arena::Code::Voyage(code)) => {
+                ctx.clipboard.copy = Some(code.encode());
+                layer.say("the voyage's code is copied  ·  it plays at ?scene=fight&fight=<code>", Tone::Teal);
+            }
             Some(code) => {
                 ctx.clipboard.copy = Some(code.encode());
                 layer.say("the fight's code is copied  ·  it plays at ?scene=fight&fight=<code>, and in determinism-check.sh --fight", Tone::Teal);
@@ -1017,8 +1013,9 @@ fn fights(p: &mut ChildSpawnerCommands, fonts: &HudFonts, c: &impl Fn(Tone, f32)
                 r.spawn(Node { flex_grow: 1.0, flex_shrink: 1.0, min_width: px(0), overflow: Overflow::clip(), margin: UiRect::left(px(FIGHT_END_W + 8.0)), ..default() }).with_children(|t| {
                     t.spawn((tracked(fonts, &fight_detail(job, &jr.end), 6.5, c(Tone::Dim, 1.0), 0.12), TextLayout::no_wrap()));
                 });
-                if matches!(jr.end, JobEnd::Fight { .. }) {
-                    spawn_pill(r, fonts, "CODE", 7.0, 20.0, None, Pill::new(Tone::Label), (LabButton::Run(RunButton::Code(generation, child, k)), kit::ui_kit::Tip::new("COPY FIGHT CODE")));
+                if !matches!(jr.end, JobEnd::Failed) {
+                    let tip = if matches!(jr.end, JobEnd::Voyage { .. }) { "COPY VOYAGE CODE" } else { "COPY FIGHT CODE" };
+                    spawn_pill(r, fonts, "CODE", 7.0, 20.0, None, Pill::new(Tone::Label), (LabButton::Run(RunButton::Code(generation, child, k)), kit::ui_kit::Tip::new(tip)));
                     spawn_pill(r, fonts, "WATCH", 7.5, 20.0, None, Pill::new(Tone::Teal), LabButton::Run(RunButton::Watch(generation, child, k)));
                 }
             });

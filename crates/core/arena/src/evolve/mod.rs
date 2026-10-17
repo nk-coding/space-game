@@ -46,6 +46,7 @@ mod archive;
 mod config;
 mod eval;
 mod genome;
+pub mod ladder;
 mod lineage;
 mod store;
 mod trial;
@@ -59,8 +60,8 @@ use data::{AssistList, BehaviorEditor, Blueprint, Content, Placement};
 use serde::{Deserialize, Serialize};
 use sim::{Pcg32, SimConfig};
 
-use crate::code::FightCode;
-use crate::fight::{Fight, FightSetup, resolve_design};
+use crate::code::{Code, FightCode};
+use crate::fight::{Fight, resolve_design};
 use crate::rules::rules_fingerprint;
 use crate::spec::{BehaviorRef, DesignRef, Entry, FightSpec, Formation};
 use crate::voyage::start_voyage;
@@ -72,7 +73,7 @@ pub use config::{
     MAX_GENERATIONS, MAX_MUTATIONS, MAX_PAIRING, MAX_POPULATION, MAX_SEEDS, MAX_STARTS, Population, RunConfig, Stage,
     Start, VoyagePilot,
 };
-pub use eval::{Job, JobEnd, JobRecord, JobResult, SAMPLE_TICKS};
+pub use eval::{Job, JobBatch, JobEnd, JobRecord, JobResult, SAMPLE_TICKS, job_code};
 pub use genome::{Genome, unmatched};
 pub use lineage::Bred;
 pub use store::{MAX_SAVE_PACKED, MAX_SAVE_PAYLOAD, RunHead, RunPart, RunParts, RunSave, RunStatus, SAVE_FORMAT, SAVE_TAG};
@@ -315,16 +316,13 @@ pub struct Validated {
 /// generation ([`Validation::step`], or [`Validation::jobs`] and [`Validation::submit`] on threads); [`Run::validated_by`]
 /// takes the results into the run.
 pub struct Validation {
-    content: Content,
     seeds: u32,
     /// Per genome: its number, its trials' tags of the new jobs, and its recorded jobs (the job's index and record).
     genomes: Vec<(u32, Vec<u32>, Vec<JobRecord>, f32)>,
     /// Per job: the genome's index and whether it is a recorded one.
     owner: Vec<(usize, bool)>,
-    jobs: Vec<Job>,
-    results: Vec<Option<JobResult>>,
-    next: usize,
-    active: Option<(usize, Active)>,
+    /// Its jobs and their results.
+    pub batch: JobBatch,
 }
 
 /// One child of the current generation.
@@ -1268,10 +1266,22 @@ impl Run {
 
     /// A fight of generation `generation` as a code, under the rules it was fought under.
     fn code(&self, generation: u32, spec: FightSpec, record: JobRecord) -> Option<FightCode> {
-        let build_points = FightSetup::build(&self.content, &spec).ok()?.referee.build_points();
-        let result = record.fight_result(build_points)?;
-        let rules = self.records[generation as usize].rules.unwrap_or(self.rules);
-        Some(FightCode::new(&self.content, rules, spec, result))
+        match job_code(&self.content, self.rules_of(generation), Job::Fight { candidate: 0, side: 0, spec }, &record)? {
+            Code::Fight(code) => Some(code),
+            Code::Voyage(_) => None,
+        }
+    }
+
+    /// The rules generation `generation` was fought under.
+    fn rules_of(&self, generation: u32) -> u64 {
+        self.records[generation as usize].rules.unwrap_or(self.rules)
+    }
+
+    /// Job `job` of child `child` of generation `generation` as a code to re-watch, under the rules it was fought
+    /// under: a fight's code, or a voyage's (GDR-0092 step 9). `None` for a job that failed to build.
+    pub fn replay_code(&self, generation: u32, child: usize, job: usize) -> Option<Code> {
+        let (job, record) = self.job(generation, child, job)?;
+        job_code(&self.content, self.rules_of(generation), job, &record)
     }
 
     /// Generation `generation`'s best child of yours (the first of equal scores), its index among the generation's
@@ -1451,16 +1461,8 @@ impl Run {
             }
             _ => self.start_contestants(Camp::Enemy),
         };
-        let mut v = Validation {
-            content: self.content.clone(),
-            seeds,
-            genomes: Vec::new(),
-            owner: Vec::new(),
-            jobs: Vec::new(),
-            results: Vec::new(),
-            next: 0,
-            active: None,
-        };
+        let mut v = Validation { seeds, genomes: Vec::new(), owner: Vec::new(), batch: JobBatch::new(&self.content, Vec::new()) };
+        let mut jobs = Vec::new();
         for &id in genomes {
             if self.camp(id)? == Camp::Enemy {
                 return None;
@@ -1478,24 +1480,24 @@ impl Run {
                 for j in kind.jobs(&me, &ctx) {
                     tags.push(t as u32);
                     v.owner.push((k, false));
-                    v.jobs.push(j);
+                    jobs.push(j);
                 }
             }
             let recorded = self.records[generation as usize].children[child].jobs.clone();
             for j in self.child_jobs(generation, child)? {
                 v.owner.push((k, true));
-                v.jobs.push(j);
+                jobs.push(j);
             }
             v.genomes.push((id, tags, recorded, cheap));
         }
-        v.results = vec![None; v.jobs.len()];
+        v.batch = JobBatch::new(&self.content, jobs);
         Some(v)
     }
 
     /// Takes a finished validation's results into the run (kept in its file; a genome validated again replaces its
     /// earlier result). Panics if it isn't finished.
     pub fn validated_by(&mut self, v: Validation) {
-        let results: Vec<JobResult> = v.results.into_iter().map(|r| r.expect("a finished validation")).collect();
+        let results = v.batch.results();
         for (k, (id, tags, recorded, cheap)) in v.genomes.iter().enumerate() {
             let mine = || v.owner.iter().zip(&results).filter(move |((o, _), _)| *o == k);
             let goals: Vec<GoalScores> =
@@ -1940,49 +1942,6 @@ fn measures(shape: &ArchiveShape, s: &Stats, engage: f32) -> Vec<f32> {
 }
 
 impl Validation {
-    /// Does up to `budget` ticks of its jobs (like [`Run::step`]); `true` once every job is done.
-    pub fn step(&mut self, budget: u64) -> bool {
-        let mut left = budget;
-        while left > 0 {
-            if self.active.is_none() {
-                if self.next >= self.jobs.len() {
-                    break;
-                }
-                self.active = Some((self.next, self.jobs[self.next].start(&self.content)));
-                self.next += 1;
-            }
-            let (k, active) = self.active.as_mut().expect("a job is running");
-            let (used, done) = active.advance(left);
-            left -= used.min(left);
-            if let Some(r) = done {
-                self.results[*k] = Some(r);
-                self.active = None;
-            }
-        }
-        self.finished()
-    }
-
-    /// Its jobs, to run elsewhere ([`Job::run`]) and hand back with [`Validation::submit`] in the same order.
-    pub fn jobs(&self) -> &[Job] {
-        &self.jobs
-    }
-
-    pub fn submit(&mut self, results: Vec<JobResult>) {
-        assert_eq!(results.len(), self.jobs.len(), "one result per job");
-        self.results = results.into_iter().map(Some).collect();
-        self.active = None;
-        self.next = self.jobs.len();
-    }
-
-    pub fn finished(&self) -> bool {
-        self.results.iter().all(Option::is_some)
-    }
-
-    /// How far it is, 0..1.
-    pub fn done(&self) -> f32 {
-        self.results.iter().filter(|r| r.is_some()).count() as f32 / self.results.len().max(1) as f32
-    }
-
     /// The genomes it validates.
     pub fn genomes(&self) -> Vec<u32> {
         self.genomes.iter().map(|g| g.0).collect()

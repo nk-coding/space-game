@@ -3557,6 +3557,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "lab-worker"
+version = "0.1.0"
+dependencies = [
+ "arena",
+ "data",
+ "js-sys",
+ "wasm-bindgen",
+ "web-sys",
+]
+
+[[package]]
 name = "lalrpop-util"
 version = "0.23.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"

@@ -97,6 +97,14 @@ impl<'a> Validator<'a> {
                         ships(&mut out, &format!("{at}.kind.waves[{k}]"), w);
                     }
                 }
+                TrialPresetKind::Ladder { rungs } => {
+                    if rungs.is_empty() {
+                        out.push(Problem::error("the ladder needs at least one rung").at(&src).field(format!("{at}.kind.rungs")));
+                    }
+                    for (k, r) in rungs.iter().enumerate() {
+                        ships(&mut out, &format!("{at}.kind.rungs[{k}]"), r);
+                    }
+                }
                 TrialPresetKind::Waves { target } => count(&mut out, *target, MAX_PRESET_WAVES, "waves"),
                 TrialPresetKind::HallOfFame { count: n } | TrialPresetKind::Champions { count: n } => {
                     count(&mut out, *n, MAX_PRESET_BEST, "designs")

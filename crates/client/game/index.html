@@ -8,6 +8,9 @@
   <!-- Release builds run wasm-opt (tuned for speed: the web build is the development platform, size doesn't
        matter); the cargo profile comes from the command line (scripts/web-build.sh). -->
   <link data-trunk rel="rust" data-bin="game" data-wasm-opt="3" data-wasm-opt-params="--enable-bulk-memory --enable-nontrapping-float-to-int" />
+  <!-- The evolution lab's web worker (ADR-0043): a second wasm binary, loaded by world::evolution's workers through
+       the loader shim Trunk writes (lab-worker_loader.js). -->
+  <link data-trunk rel="rust" href="../lab-worker/Cargo.toml" data-bin="lab-worker" data-type="worker" data-loader-shim data-wasm-opt="3" data-wasm-opt-params="--enable-bulk-memory --enable-nontrapping-float-to-int" />
   <style>
     html, body { margin: 0; height: 100%; overflow: hidden; background: #010409; }
     body {

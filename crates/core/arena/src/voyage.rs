@@ -3,7 +3,9 @@
 
 use data::Content;
 use serde::{Deserialize, Serialize};
-use sim::{BehaviorLibrary, Flagship, SimConfig, VoyageRun, VoyageRunner};
+use std::sync::Arc;
+
+use sim::{BehaviorLibrary, Flagship, ShipDesign, SimConfig, VoyageRun, VoyageRunner};
 
 use crate::error::ArenaError;
 use crate::fight::{DesignProblem, resolve_design};
@@ -40,74 +42,84 @@ impl VoyageSpec {
     }
 }
 
+/// A voyage run built for a client that draws it (GDR-0092 step 9: a voyage job re-watched): the runner, and the
+/// blueprint of each design it compiled from the spec (the flagship's, then the escorts'), for drawing them.
+pub struct VoyageSetup {
+    pub runner: VoyageRunner,
+    pub designs: Vec<(data::Blueprint, Arc<ShipDesign>)>,
+}
+
+impl VoyageSetup {
+    /// Builds the run: checks the spec, compiles the design and the behavior, rolls the voyage.
+    pub fn build(content: &Content, spec: &VoyageSpec) -> Result<VoyageSetup, ArenaError> {
+        let m = spec.minutes;
+        if !(m.is_finite() && m > 0.0 && m <= MAX_VOYAGE_MINUTES) {
+            return Err(ArenaError::Number {
+                field: "minutes",
+                value: m,
+                max: MAX_VOYAGE_MINUTES,
+            });
+        }
+        let voyage = content
+            .voyages
+            .get(&spec.voyage)
+            .ok_or_else(|| ArenaError::UnknownVoyage(spec.voyage.clone()))?;
+        let unusable = |p| match p {
+            DesignProblem::UnknownShip(id) => ArenaError::Voyage(format!("no ship `{id}` in the content")),
+            DesignProblem::Blueprint(problems) => ArenaError::Voyage(format!(
+                "the blueprint is not usable: {}",
+                problems.join("; ")
+            )),
+        };
+        let (bp, design) = resolve_design(content, &spec.design, spec.behavior.as_ref()).map_err(unusable)?;
+        let escorts = spec
+            .escorts
+            .iter()
+            .map(|d| resolve_design(content, d, None).map(|(bp, d)| (bp, Arc::new(d))).map_err(unusable))
+            .collect::<Result<Vec<_>, _>>()?;
+        let report = sim::design_report(content, &bp, &SimConfig::default()).map_err(ArenaError::Voyage)?;
+        let mut lib = BehaviorLibrary::new(content).map_err(|p| {
+            ArenaError::Content(
+                p.iter()
+                    .map(|p| p.to_string())
+                    .collect::<Vec<_>>()
+                    .join("; "),
+            )
+        })?;
+        let behavior = match &spec.behavior {
+            None => None,
+            Some(BehaviorRef::Content(id)) => Some(
+                lib.id(id)
+                    .ok_or_else(|| ArenaError::Voyage(format!("no behavior `{id}` in the content")))?,
+            ),
+            Some(BehaviorRef::Text(text)) => Some(lib.add_text("arena_voyage", text).map_err(|errs| {
+                ArenaError::Voyage(format!(
+                    "the behavior text is not usable: {}",
+                    errs.iter()
+                        .map(|e| e.to_string())
+                        .collect::<Vec<_>>()
+                        .join("; ")
+                ))
+            })?),
+        };
+        let flagship = Flagship {
+            design: Arc::new(design),
+            reach: sim::closing_reach(&report),
+            behavior,
+        };
+        let wing: Vec<Arc<ShipDesign>> = escorts.iter().map(|(_, d)| Arc::clone(d)).collect();
+        let mut designs = vec![(bp, Arc::clone(&flagship.design))];
+        let runner = VoyageRunner::new(content, voyage, flagship, lib, &wing, spec.seed, spec.limit_ticks())
+            .map_err(ArenaError::Voyage)?;
+        designs.extend(escorts);
+        Ok(VoyageSetup { runner, designs })
+    }
+}
+
 /// Builds the run: checks the spec, compiles the design and the behavior, rolls the voyage. Step the runner
 /// (`VoyageRunner::step`) or run it to the end ([`run_voyage`]).
 pub fn start_voyage(content: &Content, spec: &VoyageSpec) -> Result<VoyageRunner, ArenaError> {
-    let m = spec.minutes;
-    if !(m.is_finite() && m > 0.0 && m <= MAX_VOYAGE_MINUTES) {
-        return Err(ArenaError::Number {
-            field: "minutes",
-            value: m,
-            max: MAX_VOYAGE_MINUTES,
-        });
-    }
-    let voyage = content
-        .voyages
-        .get(&spec.voyage)
-        .ok_or_else(|| ArenaError::UnknownVoyage(spec.voyage.clone()))?;
-    let unusable = |p| match p {
-        DesignProblem::UnknownShip(id) => ArenaError::Voyage(format!("no ship `{id}` in the content")),
-        DesignProblem::Blueprint(problems) => ArenaError::Voyage(format!(
-            "the blueprint is not usable: {}",
-            problems.join("; ")
-        )),
-    };
-    let (bp, design) = resolve_design(content, &spec.design, spec.behavior.as_ref()).map_err(unusable)?;
-    let escorts = spec
-        .escorts
-        .iter()
-        .map(|d| resolve_design(content, d, None).map(|(_, d)| std::sync::Arc::new(d)).map_err(unusable))
-        .collect::<Result<Vec<_>, _>>()?;
-    let report = sim::design_report(content, &bp, &SimConfig::default()).map_err(ArenaError::Voyage)?;
-    let mut lib = BehaviorLibrary::new(content).map_err(|p| {
-        ArenaError::Content(
-            p.iter()
-                .map(|p| p.to_string())
-                .collect::<Vec<_>>()
-                .join("; "),
-        )
-    })?;
-    let behavior = match &spec.behavior {
-        None => None,
-        Some(BehaviorRef::Content(id)) => Some(
-            lib.id(id)
-                .ok_or_else(|| ArenaError::Voyage(format!("no behavior `{id}` in the content")))?,
-        ),
-        Some(BehaviorRef::Text(text)) => Some(lib.add_text("arena_voyage", text).map_err(|errs| {
-            ArenaError::Voyage(format!(
-                "the behavior text is not usable: {}",
-                errs.iter()
-                    .map(|e| e.to_string())
-                    .collect::<Vec<_>>()
-                    .join("; ")
-            ))
-        })?),
-    };
-    let flagship = Flagship {
-        design: std::sync::Arc::new(design),
-        reach: sim::closing_reach(&report),
-        behavior,
-    };
-    VoyageRunner::new(
-        content,
-        voyage,
-        flagship,
-        lib,
-        &escorts,
-        spec.seed,
-        spec.limit_ticks(),
-    )
-    .map_err(ArenaError::Voyage)
+    Ok(VoyageSetup::build(content, spec)?.runner)
 }
 
 /// Builds the run and flies it to the end.

@@ -14,7 +14,10 @@
 //!
 //! A fight is re-watched by simulating its spec again (GDR-0092): a [`FightCode`] carries the spec, the record of how
 //! it ended and the [`rules_fingerprint`] it was fought under, as one line of text. A client that steps the world
-//! itself builds it with [`FightSetup::build`] and asks its [`Referee`] after every tick.
+//! itself builds it with [`FightSetup::build`] and asks its [`Referee`] after every tick. A voyage job is re-watched
+//! the same way from a [`VoyageCode`] ([`VoyageSetup::build`]); [`Code`] reads either.
+//!
+//! [`worker`] is the message form of jobs and results for the lab's web workers (ADR-0043).
 //!
 //! No Bevy, no I/O, no threads, no wall clock; builds for wasm32. The same spec gives the same result and hash
 //! on every platform (the sim's determinism rules apply here too: ordered containers, `sim::math` for any
@@ -42,8 +45,9 @@ mod rules;
 mod score;
 mod spec;
 mod voyage;
+pub mod worker;
 
-pub use code::{CODE_TAG, CODE_VERSION, CodeError, FightCode, MAX_PACKED, MAX_PAYLOAD};
+pub use code::{CODE_TAG, CODE_VERSION, Code, CodeError, FightCode, MAX_PACKED, MAX_PAYLOAD, VOYAGE_TAG, VoyageCode};
 pub use error::ArenaError;
 pub use fight::{
     FORMATION_GAP, Fight, FightResult, FightSetup, JITTER, OUT_AFTER, OWNERS, Outcome, Referee, WAVE_DELAY,
@@ -57,6 +61,6 @@ pub use spec::{
 };
 pub use evolve::{Genome, Run, RunConfig, RunError, RunSave};
 pub use voyage::{
-    DEFAULT_VOYAGE_MINUTES, MAX_VOYAGE_MINUTES, VoyageSpec, run_voyage, start_voyage,
+    DEFAULT_VOYAGE_MINUTES, MAX_VOYAGE_MINUTES, VoyageSetup, VoyageSpec, run_voyage, start_voyage,
     voyage_fitness, voyage_score,
 };
