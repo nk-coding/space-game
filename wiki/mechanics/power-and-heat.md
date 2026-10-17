@@ -183,6 +183,16 @@ little gold is often fine. In flight the HUD names the hottest parts near their 
 
 <StatTable stats="heat_output,heat_limit,heat_vent" />
 
+### Hot stars
+
+Some clusters of the outer reach, like the [[cluster_type:scorched_deep]], lie beside a hot star (its page says how
+far and how hot). Every part takes the star's heat through each of its sides open to space, so the outer skin warms
+first and passes the heat inward. The nearer you fly to the star, the hotter: by the square of the distance, up to a
+few times what it is at the cluster's centre. A shield emitter or gun on the hull can overheat on the star's side;
+a [[part:radiator]] beside it sheds the heat. The flight HUD's subtitle shows the star's heat a second for each open
+side where you are, a glow at the edge of the view shows where the star lies, and the HUD names the parts near their
+limit as always.
+
 ## Adjacency bonuses
 
 Some parts make their neighbours better. A bonus goes from the part that grants it to each **linked** neighbour of

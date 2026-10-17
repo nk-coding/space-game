@@ -99,7 +99,9 @@ brighter for the goal (`· GOAL`), dim once cleared (`· CLEARED`). Found sites 
    which parts the wrecks have already lost.
 2. **Its ships sleep.** They hold where they spawned and don't fire. A sleeping site doesn't stop your recall.
 3. **It wakes** when one of your vessels comes within its **wake radius**, when one of its ships is hit (a shot, a
-   shield hit, a plume, a ram that does damage), or when one of its ships stops working. Then all of its ships wake
+   shield hit, a plume, a ram that does damage), when a scan sweeps over it, when you strip one of its wrecks, or
+   when one of its ships stops working. A site of the [[faction:grown]] is wary: it doesn't wake when you come near,
+   only when you provoke it ([living parts](/mechanics/living-parts#calm-until-provoked)). Then all of its ships wake
    together and fly their behavior. A banner says `<ENCOUNTER> · AWAKE`, and under it THEY ARE COMING.
 4. **It is cleared** when none of its ships is still an armed vessel: each one is destroyed, has lost its logic
    cores, or has no working gun left. Clearing is final. A banner says `SITE CLEARED · … · THE WRECKS ARE YOURS`, or for the goal

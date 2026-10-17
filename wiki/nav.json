@@ -6,6 +6,7 @@
       "mechanics/flight",
       "mechanics/power-and-heat",
       "mechanics/damage",
+      "mechanics/living-parts",
       "mechanics/weapons",
       "mechanics/salvage-and-cargo",
       "mechanics/drydock",

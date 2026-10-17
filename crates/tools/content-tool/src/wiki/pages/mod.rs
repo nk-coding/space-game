@@ -396,6 +396,9 @@ impl Wiki<'_> {
         if let Some(b) = &f.behavior {
             facts.push(("Default behavior".into(), self.a(root, Kind::Behavior, b)));
         }
+        if f.wary {
+            facts.push(("Wakes".into(), "only when provoked: shot at, rammed, scanned close by or its wrecks stripped".into()));
+        }
         let ships: Vec<&Blueprint> = self.c.ships.iter().filter(|s| s.faction == f.id).collect();
         let sections = vec![("Ships".to_string(), self.ship_cards(root, &ships))];
         self.entry(

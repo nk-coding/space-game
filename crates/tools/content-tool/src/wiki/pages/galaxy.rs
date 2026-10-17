@@ -233,11 +233,22 @@ impl Wiki<'_> {
         let root = UP;
         let c = self.c;
         let words: Vec<String> = t.words.iter().map(|w| format!("… {}", esc(w))).collect();
-        let facts = vec![
+        let mut facts = vec![
             ("Radius".to_string(), radius(t)),
             ("Site spacing".into(), format!("{}–{}", format_number(t.spacing.0, 0), metres(t.spacing.1))),
             ("Names".into(), words.join(", ")),
         ];
+        if let Some(s) = &t.star {
+            facts.push((
+                "Hot star".into(),
+                format!(
+                    "{} cluster radii out; {} heat a second per open side at the centre, up to {} times that near it",
+                    format_number(s.distance, 1),
+                    format_number(s.heat, 2),
+                    format_number(data::STAR_HEAT_CAP, 0)
+                ),
+            ));
+        }
         let mut sites = String::from(
             "<p>Each cluster of this type rolls its radius and how many of each site it holds from its own seed, when the fleet first warps in; the places of trails the galaxy put there come on top.</p>\n<table class=\"list\">\n<tr><th>Encounter</th><th>Ships</th><th>Wrecks</th><th class=\"num\">Sites</th></tr>\n",
         );

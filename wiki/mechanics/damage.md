@@ -205,6 +205,8 @@ over the threshold. Armour and hit points decide who breaks.
   further in, and so on: a hard ram crushes its way into the hull.
 - Your own vessels bump each other without damage. Salvage is nobody's friend: ramming a wreck, or your own debris,
   hurts both. Right after a split, the pieces pass through each other for a moment.
+- A [[part:ram_prow]] that touches deals [[part:ram_prow.ram_dealt]] the damage and takes [[part:ram_prow.ram_taken]]
+  (see [living parts](/mechanics/living-parts#the-ram-prow)).
 
 ## Shields
 
