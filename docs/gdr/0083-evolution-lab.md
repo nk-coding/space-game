@@ -6,6 +6,8 @@
   and SAVE AS DESIGN stay.
   2026-10-16: GDR-0092 step 8 built: the lab is in the career (the research node Simulation vault opens it), the
   dev-only switch `?lab=1` is gone; the benchmark rating (THE LADDER) stays an optional later step of GDR-0092.
+  2026-10-17: the benchmark rating is built as THE LADDER (GDR-0092 step 9): fixed rungs of enemies in `lab.ron`, a
+  rating on YOUR DESIGNS in the lab (not the test range), each rung's wins and its worst fight to watch.
 - Date: 2026-10-14
 - Decided by: Niklas (eight questions, interactively)
 - Related: [GDR-0032](0032-balancing-arena-evolution.md), [GDR-0030](0030-no-economy.md), [GDR-0033](0033-multiplayer-coop-and-arena.md), [ADR-0036](../adr/0036-arena-crate.md), `docs/plans/coop-arena.md`, `docs/plans/evolution-lab.md`

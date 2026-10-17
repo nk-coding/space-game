@@ -378,10 +378,14 @@ Next session:
      `lab.ron` complete (trial kinds, sizes, measures, spreads, the frame budget; text keys); the wiki's generated lab
      page, `[[lab:…]]` references and the pages mechanics/evolution-lab and mechanics/evolution-trials, with a
      completeness check over every trial kind, trial, goal, gene, pilot, size and preset;
-  9. optional: web workers, voyage replays, THE LADDER.
+  9. **Built 17 Oct 2026** (Niklas approved): web workers (ADR-0043: the second wasm binary `lab-worker`, jobs and
+     results as RON messages, one executor path with the native threads; a QUICK generation in headless Chromium in
+     3.5 s with 40 ms of it in the frames, was 48 s and 1.8 s), voyage jobs re-watched (voyage codes `SGV1:` in the
+     fight viewer, the flagship followed, checked against the run's hash), THE LADDER (a trial kind and a rating on
+     YOUR DESIGNS in the lab, kept in `ladder/<id>`, each rung's worst fight to WATCH, the rating on BLUEPRINTS'
+     preview card).
 - **Next** (Niklas, 15 Oct 2026):
-  1. The evolution lab is complete through GDR-0092 step 8; step 9 (web workers, re-watching voyage jobs, THE
-     LADDER) is optional, when Niklas wants it.
+  1. The evolution lab is complete through GDR-0092 step 9.
 
 ### 16 Oct 2026: galaxy exploration, track E0 (`plans/galaxy-voyages.md`)
 

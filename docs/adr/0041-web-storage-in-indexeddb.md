@@ -7,6 +7,9 @@
   quarter; 32 DEEP runs were 164 M characters in IndexedDB, which one `getAll` read in 0.7–0.8 s in headless
   Chromium, and the game ran with them (JS heap 180 MB). The cap now bounds what the preload holds in memory, not the
   storage's room; RUNS scrolls and shows the bytes.
+  2026-10-17 (GDR-0092 step 9): the lab's ratings on THE LADDER are documents too, `ladder/<design id>`; with the lab's
+  jobs in web workers ([ADR-0043](0043-lab-web-workers.md)) only the main thread writes the storage, the workers
+  never open IndexedDB.
 - Date: 2026-10-16
 - Decided by: Niklas (IndexedDB instead of the local storage, after a lab run filled it: "for what does indexeddb
   exist"); the shape by the lead session and the storage agent, for Niklas to review

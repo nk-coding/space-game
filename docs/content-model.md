@@ -804,8 +804,8 @@ everything it was made with, so a change here changes no run.
 |---|---|
 | `goals` | the arena's four goals (`win`, `unhurt`, `quick`, `cheap`): name, summary, weight in a new run (0 to 3) |
 | `goal_presets` | the one-click goal weights (WIN, WIN UNHURT, ...) |
-| `kinds` | the trial kinds' words, one per kind the arena fights (`data::TRIAL_KINDS`: `encounters`, `enemy_ships`, `waves`, `gauntlet`, `beat_your_start`, `fleet`, `hall_of_fame`, `champions`, `voyages`, `co_evolution`); a trial without a preset shows its kind's name |
-| `trials` | the setup's trial presets: name, summary, `kind` with its data, weight, seeds, time limit, `default` (on in a new run) |
+| `kinds` | the trial kinds' words, one per kind the arena fights (`data::TRIAL_KINDS`: `encounters`, `enemy_ships`, `waves`, `gauntlet`, `beat_your_start`, `fleet`, `hall_of_fame`, `champions`, `voyages`, `ladder`, `co_evolution`); a trial without a preset shows its kind's name |
+| `trials` | the setup's trial presets: name, summary, `kind` with its data, weight, seeds, time limit, `default` (on in a new run). The first of kind `Ladder(rungs: [[ships...], ...])` (THE LADDER, GDR-0092 step 9: fixed rungs of enemies, the weakest first) is also the ladder the lab rates YOUR DESIGNS on |
 | `genes`, `gene_presets` | MAY CHANGE's genes (`data::GENES`) and the presets over them, the first a new run's |
 | `pilots` | the stand-in pilots (`flies`: lock, close to, stick and fire duty), the first the default |
 | `palettes` | parts an enemy faction may build with in an arms race besides its ships' |
@@ -815,7 +815,7 @@ everything it was made with, so a change here changes no run.
 | `budget` | the ms a frame gives the run that computes: `layer_open`, `elsewhere` |
 
 Validation: goals, genes, kinds, measures and spreads are the arena's; presets name goals and genes; trials' numbers,
-ships and factions are in range and exist, every trial's kind has its words; a measure has a stat or a name, not both;
+ships and factions are in range and exist (a ladder has at least one rung, each with ships), every trial's kind has its words; a measure has a stat or a name, not both;
 a lab with trials needs sizes (at most one default), both spreads and a budget. The mutation operators' weights stay
 the arena's (a run breeds by them and its file doesn't carry them). The wiki generates the lab's page from it
 (`reference/lab.md`) and hand-written pages reference it as `[[lab:trial.voyages]]` and

@@ -19,6 +19,11 @@ must keep compiling (`cargo check -p game` natively). Written 11–13 Oct 2026; 
 
 Port 8080 is Niklas's copy, served by the lead session from `/home/devbox/workspace/serve/game`; agents use 8081.
 
+Every web build makes two wasm binaries (ADR-0043): the game (`game-<hash>_bg.wasm`, `game-<hash>.js`) and the
+evolution lab's web worker (`crates/client/lab-worker`: `lab-worker_bg.wasm`, `lab-worker.js` and Trunk's loader
+`lab-worker_loader.js`, not hashed; `index.html`'s second `rel="rust"` link, `data-type="worker"`). A served copy
+needs all of them.
+
 ## Controls
 
 PC keyboard controls are ship-relative ([GDR-0040](gdr/0040-keyboard-flight-and-smart-lock-aim.md)); touch keeps
@@ -93,6 +98,7 @@ what fits the window, `kit::ui_kit::UiSize`, applied by every screen's UI scale)
 | `save=<slot>` | play the career save `saves/<slot>` instead of `saves/career` (a new game if it doesn't exist; [Career](#career)) |
 | `newgame=1` | start over: a new career replaces the save (no confirm: a development switch; every load with it starts over again), and the drydock docks the start's ship |
 | `unlock=all` | free mode: every part, material and frame in the drydock, nothing locked or NEW; no unlock is written into the save |
+| `lab_workers=0` | the evolution lab computes in the frame's slices, without its web workers (ADR-0043; to compare, or to find a worker's fault) |
 | `load=1\|5\|20` | browser load test: `sim::voyage::scenario::load_test(n, seed)`, camera frames the fight, stats overlay on |
 | `seed=N` | sim seed (default 42; a whole number, exact up to 2^64) |
 | `hashlog=1`, `hashticks=N` | log the per-tick state hash of the load scenario (20 ships unless `load=` is given) to the console, `N` ticks (default 600, at least 1) |
@@ -214,6 +220,19 @@ generation (its best child's hardest fight); paste one after `fight=`, e.g.
   the native fight tick for tick; speeds, back, forward, from the start and following a clicked ship at 1280×720,
   1600×900 and 2560×1440; a code with another fingerprint shows the changed-rules banner and plays on. Tests: `world::replay` (stepped and seeked through keyframes the world ends as recorded; changed rules
   and bad codes are told).
+- **Voyages** (GDR-0092 step 9, 17 Oct 2026): a voyage code (`SGV1:…`, `arena::VoyageCode`: a VOYAGES job of a run,
+  the lab's CODE or `arena replay`) plays at the same URL. The world is the voyage rolled again from the code's spec
+  (`arena::VoyageSetup`); the headless runner flies the flagship as it did in the job, a tick at a time: the scene
+  doesn't step the world itself (`SimWorld::driven`), `replay::fly` swaps it into the runner, steps and swaps it back,
+  so effects and events play as in any flight. The camera follows the flagship (`Watched::follows`; a click on
+  another ship follows that one, a click on empty space the flagship again). Title `REPLAY · RIM SKIFF ·
+  SHIPYARD APPROACH · RIM · SEED 1`, subtitle `0:28 / 1:00 · 1× · SITES CLEARED 0 / 4 · FLOWN HEADLESS FROM ENTRY TO
+  HOME`; the timeline marks the player's vessels lost in teal and the others' in coral. At the end the run's length
+  and final hash are compared with the code's: `AS RECORDED · OUT OF TIME AT 1:00 · HASH b68e7f0291cc813e`, or `THE
+  RULES HAVE CHANGED SINCE THIS VOYAGE` and how it ends now. Seeking works as for fights (keyframes of the world and
+  the runner). Checked in headless Chromium: job 6 of `mixed_trials`' first child (seed 1, the CLI's hash
+  `b68e7f0291cc813e`) ends `AS RECORDED`. Tests: `world::replay` (a voyage code ends as recorded, seeks back through
+  a keyframe to the same world, follows the flagship).
 
 ## Load test and determinism in the browser
 
@@ -242,7 +261,7 @@ generation (its best child's hardest fight); paste one after `fight=`, e.g.
 ## The web's storage
 
 The web build keeps the player's documents (designs, the working design, behaviors, the career, settings, the lab's
-runs) in the browser's IndexedDB (ADR-0041, 16 Oct 2026; `world::storage`, the `web` and `behind`
+runs and its ratings on THE LADDER, `ladder/<design id>`) in the browser's IndexedDB (ADR-0041, 16 Oct 2026; `world::storage`, the `web` and `behind`
 modules). Desktop keeps files, unchanged (`docs/drydock.md` "Storage and sharing").
 
 - **Start**: `main` awaits `world::storage::preload()` before it builds the app (`wasm_bindgen_futures::spawn_local`):
@@ -1133,7 +1152,8 @@ save slot, so a slot without the node has its runs but the lab locked). The lab'
   says `VALIDATING 8 DESIGNS · 40% · THE RUN WAITS`; slices on the web, the compute threads natively), then its results
   go into the run's file. A stale run is re-scored first.
 - **WATCH** queues the fight's code in the fight viewer (`replay::Replay::queue`, `scene::Launch::Fight`) and flies; the
-  run pauses meanwhile (flight). M, the HUD's ring or the flight menu's way out come home onto the lab with the
+  run pauses meanwhile (flight). A voyage job (VOYAGES) has its CODE and WATCH too (step 9): its voyage code plays in
+  the viewer ([Fight viewer](#fight-viewer), "Voyages"). M, the HUD's ring or the flight menu's way out come home onto the lab with the
   layer open on the same page and pick (`Lab::watching`, `home::enter`).
 - **SAVE AS DESIGN** (`world::evolution::save_as_design`): the genome in its start's frame (`Genome::placed`), as the
   drydock saves designs, into `designs/<id>` (format 2) with its name, the `evolved` tag, the summary "Evolved from …",
@@ -1148,26 +1168,50 @@ save slot, so a slot without the node has its runs but the lab locked). The lab'
   saved design under its id and name (`replace_target`: only a start that is one of YOUR DESIGNS still saved), so
   FLEET's escorts fly the new version; when the drydock has that design open without unsaved changes it opens the new
   version (else it keeps its unsaved changes and says so).
+- **THE LADDER** (GDR-0092 step 9, 17 Oct 2026; `game::evolution::ladder`, `world::evolution::ladder`): THE LADDER on
+  RUNS (top right) opens a page of YOUR DESIGNS rated on `lab.ron`'s ladder (its preset THE LADDER: seven rungs from
+  one raider to the warden, 3 seeds each, 90 s; placeholders; the same for every design, so ratings compare). Each
+  row: the name, the rating (`3.1 / 7`, the rungs' WIN means added up; gold, coral when made before a change), when
+  it was rated (`JUST NOW`, `RATING · 40 %`, `WAITING TO BE RATED`, `NOT RATED`, `BEFORE ITS LAST CHANGE`) and RATE;
+  RATE ALL (top right) queues every saved design. The lab rates one design after the other in the run's place, as
+  VALIDATE (the run waits; in the workers on the web), from the design and the behavior it flies inlined as a run's
+  starts are (`Lab::rate`), and writes each rating to `ladder/<design id>` (`RatingDoc`: the rating, every fight's
+  record, what was rated and the rules' and ladder's fingerprints). A click on a row shows its rungs on the right:
+  the ladder's summary, then per rung its opponents, a gold bar of its mean, `WON 2 OF 3` and WATCH, its worst fight
+  on that rung (what beat it; `RatingDoc::code`). `Standing` tells a rating made before the design, its behavior,
+  the ladder or the rules changed. BLUEPRINTS' preview card shows a saved design's LADDER (`3.1 / 7`, `· OLD` when it
+  is from before a change, `—` unrated; [Drydock](#drydock)). THE LADDER is also a trial of a run's SETUP (off by
+  default). Checked in headless Chromium at 1280×720: the starter saved and rated `3.1 / 7` (raider 3 of 3, two
+  raiders 2 of 3, hunter 3 of 3, the rest lost), its WATCH playing the fight.
 - **The EVOLVING chip** (`game::evolution::Chip`, step 8): while a run computes (and the lab is open to the career),
   a pill `EVOLVING  12 / 50` sits left of home's gear ring and after the title of FLEET, the LOG and SETTINGS (at home
   only; SETTINGS over flight has none). A click opens the lab (`home::chip`): from the yard or SETTINGS the camera
   flies to it, from FLEET or the LOG that layer closes and the camera flies from its place to the lab.
-- **Computing** (`world::evolution::compute`, every frame in every mode): the run that computes gets 10 ms of the
-  frame with the layer open and 4 ms anywhere else at home and on the screens (the drydock, BEHAVIOR, research, the
-  map, the LOG, SETTINGS; `lab.ron`'s `budget`, placeholders, `world::evolution::budget`), none in flight (the test range, test flights,
-  replays, voyages: it waits where it was). The budget becomes ticks of work from the measured cost per tick (a
-  running mean, `Rate`; 9 µs assumed before the first measure), and `arena::Run::step` breeds and fights within it,
-  so a frame keeps its time whatever the fight; every slicing gives the same run (the web's executor,
-  `Lab::compute`). Natively the frame's budget only breeds (`arena::Run::breed`) and the fights go to Bevy's compute
-  threads four at a time, as many tasks as cores less one (`Lab::compute_threads`); the results go back in job order
-  once all are in, which makes the same run file (tested); in flight no fight starts and the generation waits to
-  close. **Measured** (16 Oct 2026, web-dev build in headless Chromium, load low): a tick of work costs 4.7–7.9 µs in
-  wasm (natively 5–6 µs, `docs/arena.md`); a QUICK generation of the starter (16 children, 128 fights, about 125 000
-  ticks) took 15–25 s there, where SwiftShader's slow frames gave the run about 5 frames a second; at 60 frames a
-  second that is about 90 000 ticks a second with the layer open (10 ms a frame) and 36 000 at 4 ms, so a QUICK
-  generation in about 1.5 s and a STANDARD one (512 fights, about 0.5 M ticks) in about 5–6 s with the layer open,
-  13–15 s elsewhere. Writing the run after a generation took 2–11 ms for 3–32 kB (it grows with the run: a STANDARD run
-  of 50 generations is about 0.7 MB, so its last writes may take some tens of ms, GDR-0092's "cost of the snapshot").
+- **Computing** (`world::evolution::compute`, every frame in every mode; GDR-0092 step 9 and
+  [ADR-0043](adr/0043-lab-web-workers.md) since 17 Oct 2026): the run that computes gets 10 ms of the frame with the
+  layer open and 4 ms anywhere else at home and on the screens (the drydock, BEHAVIOR, research, the map, the LOG,
+  SETTINGS; `lab.ron`'s `budget`, placeholders, `world::evolution::budget`), none in flight (the test range, test
+  flights, replays, voyages: it waits where it was). The budget becomes ticks of work from the measured cost per tick
+  (a running mean, `Rate`; 9 µs assumed before the first measure). The frame's budget only breeds
+  (`arena::Run::breed`); the generation's jobs then go out of the frame, four to a chunk (`world::evolution::out`:
+  `Out` over an `Executor`), and come back in job order once all are in (`Run::submit`), which makes the same run
+  file (tested): natively to Bevy's compute threads (cores less one, `out::Threads`), on the web to the lab's **web
+  workers** (`world::evolution::workers`): `navigator.hardwareConcurrency` less one, each running the second wasm
+  binary `lab-worker` (`crates/client/lab-worker`), started the first time the lab has work, each holding at most two
+  chunks; jobs and results go as RON text (`arena::worker`, `docs/arena.md` "Jobs as messages"). A worker says it is
+  ready with its content's key and is let go if the key isn't the game's; one that fails hands its chunks back. Only
+  the main thread breeds, closes generations and writes the storage. Without a worker (none loads, or
+  `?lab_workers=0`) `arena::Run::step` breeds and fights within the budget on the main thread as before
+  (`Lab::compute`; every slicing gives the same run); if every worker goes mid-generation the slices do that
+  generation again from its start. In flight no job goes out and the generation waits to close. VALIDATE and RATE ON
+  THE LADDER compute the same way in the run's place. Each closed generation logs its time and how much of it the
+  frames paid (`lab: <id> generation 3 of 20 in 3.5 s (…; 40 ms of it in the frames)`). **Measured** (17 Oct 2026,
+  web-dev build in headless Chromium, SwiftShader at about 4 frames a second, 4 cores): a QUICK generation of the
+  starter in 3.3–3.9 s with 30–50 ms of it in the frames, against 48 s and 1.8 s in the frame's slices; an imported
+  CLI run (`two_starts_locked`) computed in the workers and with `?lab_workers=0` wrote identical generation parts.
+  (16 Oct 2026, slices only: a tick of work costs 4.7–7.9 µs in wasm, natively 5–6 µs, `docs/arena.md`.) Writing the
+  run after a generation took 2–11 ms for 3–32 kB (it grows with the run: a STANDARD run of 50 generations is about
+  0.7 MB, so its last writes may take some tens of ms, GDR-0092's "cost of the snapshot").
 - **Storage** (`world::evolution::store`, ADR-0041, 16 Oct 2026): each run in parts (the id a slug of its name):
   `lab/<id>` its head (`RunDoc`, format 2: `arena::RunHead` with `name`, `created` and `status`, a few hundred bytes),
   `lab/<id>/config` its `RunConfig` (written once) and `lab/<id>/g<n>` each generation done (`arena::RunPart`, written
@@ -1181,7 +1225,10 @@ save slot, so a slot without the node has its runs but the lab locked). The lab'
   DELETE RUNS YOU DON'T NEED TO MAKE ROOM; THE RUN IS PAUSED`). DELETE removes the parts and then the head. The CLI
   keeps one run file (`arena evolve --save/--resume`); IMPORT RUN splits one into parts. Old storage without `lab/`
   reads as no runs.
-- **Tests**: `world::evolution` (a frame's work stays within its budget's ticks; the run waits in flight and
+- **Tests**: `world::evolution` (jobs out of the frame, through the web worker's messages and on the native threads,
+  make the run the slices make, byte for byte; a worker refuses other content; a design's rating is the same in
+  slices and out of the frame, kept, and from before a change once the design changes; a frame's work stays within
+  its budget's ticks; the run waits in flight and
   computes on the screens; a run reloaded mid-way goes on to the same run file byte for byte as one that ran
   through; pause, resume, delete, old storage; a generation writes its part and the head and nothing else, the parts
   read back as the run, a lost part is named, DELETE removes every document; a run stored whole moves into parts and

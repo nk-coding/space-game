@@ -51,6 +51,7 @@ is the overview and links to both series. Format and status rules: `CLAUDE.md`, 
 | [0040](0040-arena-library-in-core.md) | The `arena` library moves to `crates/core/arena` (the client replays its fights); its CLI is the package `arena-cli` in `crates/tools/` | Accepted | 2026-10-15 |
 | [0041](0041-web-storage-in-indexeddb.md) | The web build keeps its documents in IndexedDB, read into memory at start and written behind; the local storage moves in once; lab runs are stored in parts | Accepted (provisional, lead) | 2026-10-16 |
 | [0042](0042-galaxy-generator-crate.md) | The galaxy generator is an engine-free `galaxy` crate in `core/`: integer positions in S/100, PCG32 streams per step, a generation hash checked native vs wasm | Accepted (provisional, lead) | 2026-10-16 |
+| [0043](0043-lab-web-workers.md) | The web build runs the evolution lab's jobs in web workers: a second wasm binary `lab-worker`, jobs and results as RON messages, only the main thread breeds and writes | Accepted (provisional, lead) | 2026-10-17 |
 <!-- index:end -->
 
 ## How to add, supersede and deprecate

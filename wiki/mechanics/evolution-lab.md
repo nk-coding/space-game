@@ -1,6 +1,6 @@
 ---
 title: "The evolution lab"
-description: "How the EVOLUTION building at home breeds your designs - opening it, how a run works, the setup with what may change and the locks, the run's page, watching and sharing fights, and saving a result with TIDY, REPLACE START and its ORIGIN."
+description: "How the EVOLUTION building at home breeds your designs - opening it, how a run works, the setup with what may change and the locks, the run's page, watching and sharing fights and voyages, THE LADDER's rating of your designs, and saving a result with TIDY, REPLACE START and its ORIGIN."
 ---
 
 # The evolution lab
@@ -165,6 +165,24 @@ when a stand-in pilot flew it.
 CODE copies the fight's **fight code** (`SGF1:` and a line of letters). It holds the whole fight, so anyone can
 watch it: open the game with `?scene=fight&fight=` and the code. A code carries a fingerprint of the rules it was
 fought under: when the game's rules have changed since, the viewer says so and plays it under today's.
+
+A run's **voyages** ([[lab:trial.voyages]]) are watched the same way: WATCH flies the voyage again, the camera on your
+ship, as the lab's pilot flew it, and its end is checked against the record; CODE copies its **voyage code**
+(`SGV1:`), which plays at the same address.
+
+## The ladder
+
+[[lab:trial.the_ladder]] is the same fixed set of fights for every design: [[lab:trial.the_ladder.rungs]] rungs of
+enemies, the weakest first ([[lab:trial.the_ladder.rung_ships]]), each fought on [[lab:trial.the_ladder.seeds]] seeds.
+A design's **rating** is the rungs it wins added up, from 0 to the number of rungs (a rung won on two of three seeds
+counts about two thirds), so ratings of different designs compare.
+
+THE LADDER at the top of RUNS lists YOUR DESIGNS with their ratings. RATE rates one, RATE ALL every saved design;
+the lab fights them one after the other in a run's place (the run waits, as for VALIDATE). A click on a design shows
+its rungs: how often it won on each, and WATCH plays its worst fight there, the one that beat it. A rating made
+before you changed the design or its behavior (or before the rules changed) says so, and RATE makes it again.
+BLUEPRINTS shows a saved design's rating on its preview card. In a run, [[lab:trial.the_ladder]] is a trial like the
+others, off in a new run.
 
 ## Saving a result
 

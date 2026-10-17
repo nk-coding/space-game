@@ -164,6 +164,32 @@ URL-safe, and replays as recorded; every refusal; the fingerprint is stable, inc
 part's mass, which also changes the fight's end; the setup stepped with the referee gives `run_fight`'s result, and a
 cloned world and referee go on to the same end.
 
+### Voyage codes
+
+A voyage job of a run (VOYAGES, GDR-0092 step 9) is re-watched the same way: `VoyageCode::new(&content, rules, spec,
+ticks, state_hash)` holds the packs, the rules' fingerprint, the `VoyageSpec` (voyage, seed, design and behavior,
+minutes, escorts) and how the run ended (its length and final state hash, `JobEnd::Voyage`); `encode()` gives
+`SGV1:` and the same packing as a fight code. `Code::decode(text)` reads either kind by its tag (`Code::Fight`,
+`Code::Voyage`). `VoyageSetup::build(&content, &spec)` builds the run for a client that draws it: the runner and the
+blueprint of each design it compiled (the flagship's, then the escorts'); `VoyageRunner::swap_world` lets a viewer
+keep the world it draws and swap it in to step, `VoyageRunner::flagship` names the ship to follow, and the runner is
+`Clone` (a viewer's keyframes). `Run::replay_code(generation, child, job)` gives any job's code, fight or voyage
+(`job_code(&content, rules, job, &record)` for jobs outside a run, such as a rating's); `arena replay` prints it. The
+game plays both at `?scene=fight&fight=<code>` (`docs/client.md` "Fight viewer"). `tests/codes.rs`: a voyage code
+round-trips, `Code` reads either, and the voyage rolled again from it ends with the recorded length and hash.
+
+### Jobs as messages
+
+`arena::worker` (GDR-0092 step 9, [ADR-0043](adr/0043-lab-web-workers.md)) is the message form of jobs for the lab's
+web workers: `Task { batch, first, content, jobs }` and `Reply::{Ready { content }, Done { batch, first, results },
+Refused(why)}`, written and read as RON (`write`, `read`; RON writes floats exactly, so a result through a message
+is the result). `answer(&content, key, text)` is a worker's whole job: the task's jobs run in order, or a refusal for a
+task that doesn't read or is for other content; `content_key(&content)` is what a fight reads of the content
+(`Content::fingerprint` and the lab's RON, for the stand-in pilots). The `lab-worker` binary
+(`crates/client/lab-worker`) is a thin wasm-bindgen shell around it. `JobBatch` is any list of jobs as work outside
+a generation (VALIDATE's `Validation::batch`, a rating): `step(budget)` in slices, or `jobs()` handed out and
+`submit(results)` in job order, the same results either way.
+
 ## The CLI
 
 The binary `arena` of the package `arena-cli` (`crates/tools/arena-cli/src/main.rs`), not an example: it is the arena's
@@ -349,6 +375,7 @@ the run is self-contained (player designs inlined as text, content by id).
 | `HallOfFame(count)` | the run's best `count` so far (frozen per generation; none in generation 0, so it leaves the sums there) |
 | `Champions(designs)` | CHAMPIONS: the best designs of earlier runs, inlined |
 | `Voyages(ids, minutes, pilot)` | VOYAGES: headless voyages (the old `fitness: Voyages` reads as this) |
+| `Ladder(rungs)` | THE LADDER (step 9): fixed rungs of opponents, the weakest first, each a fight per seed (`lab.ron`'s THE LADDER: seven rungs from one raider to the warden, 3 seeds, 90 s; placeholders) |
 | `CoEvolution` | CO-EVOLUTION, the ARMS RACE (step 7): the run's `enemy` population's frozen best and past champions, each in a pack sized to the contestant ([Co-evolution](#co-evolution-the-arms-race)); its settings are the enemy's fights too |
 
 **Goals** (per job, 0..1): WIN (the arena score; a gauntlet's waves cleared of all; the voyage score), UNHURT (one less
@@ -372,6 +399,13 @@ then `Run::validated_by`): the genomes fight the run's trials on `seeds` new see
 `VALIDATE_SEEDS` 20 and `VALIDATE_BEST` 8, placeholders) against the starts and today's hall of fame, and their
 recorded fights again under today's rules; each gets a `Validated` (its score on the new seeds, per trial, and how
 many recorded fights ended as recorded), kept in the run file.
+
+**THE LADDER as a rating** (`evolve::ladder`, GDR-0092 step 9; GDR-0083's benchmark rating): `Ladder::of(&content)`
+is `lab.ron`'s first trial preset of kind `Ladder` as a `TrialSpec`; `Ladder::jobs(&content, &design)` (or
+`batch`, a `JobBatch`) are a design's fights on every rung, rung by rung on its seeds; `Ladder::rating(&records)` is
+each rung's WIN mean (`Rating::rungs`) and their sum (`Rating::total`, 0 to the number of rungs); `fingerprint()`
+tells a rating made on another ladder. The game rates YOUR DESIGNS with it (`docs/client.md` "Evolution");
+`tests/codes.rs` rates the Runner.
 
 **RE-SCORE** (`Run::rescored(&content, &save)`): a stale run as a run under today's rules: its history and fights are
 kept (each generation fought before keeps the rules it was fought under, `GenerationRecord::rules`, so its fight codes
@@ -685,12 +719,13 @@ creation time and status):
 | `Run::best_child(generation)` | Its best child (the first of equal scores) |
 | `Run::child_jobs(generation, child)`, `Run::job(generation, child, job)` | A child's jobs rebuilt (the same jobs it ran), one with its `JobRecord` |
 | `Run::fight_code(generation, child, job)` | The job as a fight code under the rules the run was fought under: it replays to the recorded end while they hold (`None` for a voyage job) |
+| `Run::replay_code(generation, child, job)` | Any job as a code to re-watch: a fight's or a voyage's ([Voyage codes](#voyage-codes)) |
 | `Run::genome(id)`, `Run::table()`, `Run::lineage(id)`, `Run::scored(id)` | Genome `id` rebuilt from the genome table; how every genome was bred (`Bred`); a genome's line from its start (genome numbers); where it was scored (generation, child) |
 | `Run::starts()`, `Run::frame(root)` | The starts as opened in their frames; the frame genomes of a start are edited in (`Genome::placed`) |
 | `Run::snapshot()`, `Run::restore(&content, &save)`, `RunSave::to_ron` / `from_ron` | The run file and going on from it ([What a run keeps](#what-a-run-keeps)) |
 | `Run::rules()`, `Run::stale()` | The rules' fingerprint the run started under; whether today's differ |
 | `Run::trials()`, `Run::tagged_jobs(generation, child)`, `Run::breakdown(generation, child)` | The run's trials; a child's jobs with their trial; its score by trial and goal ([Trials and goals](#trials-and-goals)) |
-| `Run::validation(genomes, seeds)`, `Run::validated_by(v)`, `Run::validated(id)` | VALIDATE as work, its results into the run, a genome's result |
+| `Run::validation(genomes, seeds)`, `Run::validated_by(v)`, `Run::validated(id)` | VALIDATE as work (its jobs a `JobBatch`, `Validation::batch`), its results into the run, a genome's result |
 | `Run::rescored(&content, &save)` | RE-SCORE: a stale run as a new run under today's rules |
 | `Run::camp(id)`, `camp_of(root)`, `children_of(generation, camp)`, `best_of(generation, camp)`, `start(root)`, `start_config(root)`, `enemy_starts()`, `enemy_archive()`, `archive_of(camp)` | An ARMS RACE's two populations ([Co-evolution](#co-evolution-the-arms-race)): whose a genome is, a generation's children of a side, its champion, any start, THE ENEMY's starts and archive |
 | `Run::check(generation)`, `check_jobs(generation)`, `check_fight_code(generation, job)`, `beaten()`, `export_enemy(id, run, n)` | PAST CHAMPIONS: a generation's check, its fights rebuilt and as codes, the line of what each best beat; EXPORT TO CONTENT |

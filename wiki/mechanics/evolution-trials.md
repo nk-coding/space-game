@@ -27,6 +27,7 @@ at the trial's time limit.
 | [[lab:trial.your_fleet]] | [[lab:trial.your_fleet.kind]] | [[lab:trial.your_fleet.weight]] | [[lab:trial.your_fleet.seeds]] | [[lab:trial.your_fleet.time_limit]] | [[lab:trial.your_fleet.default]] |
 | [[lab:trial.champions]] | [[lab:trial.champions.kind]] | [[lab:trial.champions.weight]] | [[lab:trial.champions.seeds]] | [[lab:trial.champions.time_limit]] | [[lab:trial.champions.default]] |
 | [[lab:trial.voyages]] | [[lab:trial.voyages.kind]] | [[lab:trial.voyages.weight]] | [[lab:trial.voyages.seeds]] | [[lab:trial.voyages.time_limit]] | [[lab:trial.voyages.default]] |
+| [[lab:trial.the_ladder]] | [[lab:trial.the_ladder.kind]] | [[lab:trial.the_ladder.weight]] | [[lab:trial.the_ladder.seeds]] | [[lab:trial.the_ladder.time_limit]] | [[lab:trial.the_ladder.default]] |
 | [[lab:trial.arms_race]] | [[lab:trial.arms_race.kind]] | [[lab:trial.arms_race.weight]] | [[lab:trial.arms_race.seeds]] | [[lab:trial.arms_race.time_limit]] | [[lab:trial.arms_race.default]] |
 
 What each fights:
@@ -40,6 +41,7 @@ What each fights:
 - [[lab:trial.your_fleet]]: [[lab:trial.your_fleet.summary]]
 - [[lab:trial.champions]]: [[lab:trial.champions.summary]]
 - [[lab:trial.voyages]]: [[lab:trial.voyages.summary]]
+- [[lab:trial.the_ladder]]: [[lab:trial.the_ladder.summary]]
 - [[lab:trial.arms_race]]: [[lab:trial.arms_race.summary]]
 
 Some rows have a number of their own: [[lab:trial.test_range_waves]] counts [[lab:trial.test_range_waves.target]]
@@ -66,6 +68,7 @@ Every trial is one of these kinds with its own settings:
 - [[lab:kind.hall_of_fame]]: [[lab:kind.hall_of_fame.summary]]
 - [[lab:kind.champions]]: [[lab:kind.champions.summary]]
 - [[lab:kind.voyages]]: [[lab:kind.voyages.summary]]
+- [[lab:kind.ladder]]: [[lab:kind.ladder.summary]]
 - [[lab:kind.co_evolution]]: [[lab:kind.co_evolution.summary]]
 
 The new run's selection mixes what you will meet with bars that keep rising: the enemies of your open voyages count

@@ -101,6 +101,11 @@ impl Wiki<'_> {
                 let each: Vec<String> = waves.iter().map(|w| self.lab_ships(root, w)).collect();
                 v.push(("wave_ships", each.join("; ")));
             }
+            TrialPresetKind::Ladder { rungs } => {
+                v.push(("rungs", rungs.len().to_string()));
+                let each: Vec<String> = rungs.iter().map(|r| self.lab_ships(root, r)).collect();
+                v.push(("rung_ships", each.join("; ")));
+            }
             TrialPresetKind::Waves { target } => v.push(("target", target.to_string())),
             TrialPresetKind::HallOfFame { count } | TrialPresetKind::Champions { count } => v.push(("count", count.to_string())),
             TrialPresetKind::CoEvolution { size, elites, hall, anchor, check_every, champions_every, mirror } => {
@@ -246,7 +251,7 @@ impl Wiki<'_> {
                     value(e, "time_limit"),
                     if value(e, "default") == "on" { "<br><strong>on&nbsp;by&nbsp;default</strong>" } else { "" }
                 );
-                let fights: Vec<String> = ["ships", "wave_ships", "target", "count", "size", "elites", "hall", "check_every", "champions_every"]
+                let fights: Vec<String> = ["ships", "wave_ships", "rung_ships", "target", "count", "size", "elites", "hall", "check_every", "champions_every"]
                     .iter()
                     .filter_map(|f| {
                         let v = value(e, f);

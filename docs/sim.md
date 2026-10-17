@@ -472,6 +472,10 @@ the probes `close_quarters` (seed 1, 300 ticks) `d75310c995d5753e`, `warden` (se
 action joined the mutations' vocabulary). The galaxy (`--galaxy 20`, generator version 3) last line
 `5c71f969886ec4ec85f965ef31269bdf`; seed 1's skeleton `f898e1535374653d` (the outer reach's cluster types). The
 content's fingerprint changed, so earlier fight codes and lab runs are fought under other rules.
+17 Oct 2026 (GDR-0092 step 9: the lab's web workers, voyage codes, THE LADDER; no sim change but `VoyageRunner` being
+`Clone` and swapping its world): `--run mixed_trials` seed 1 still `12dc217c6b728149`, native = wasm; a voyage job's
+code (`mixed_trials`' first child, job 6, seed 1) replays in the browser's fight viewer to the CLI's final hash
+`b68e7f0291cc813e`; a run's generation parts are identical computed in the browser's workers and in its frames.
 
 Scenarios (`sim::voyage::scenario`); `core` and `flight` spawn two copies of every blueprint in the content (but
 those tagged `outer`, since 18 Oct 2026):

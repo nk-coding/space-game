@@ -183,6 +183,27 @@ running the fight again.
   viewer's wheel zooms out to 6.3 px per metre (flight's default 18 × lock framing's 35 %), further only while the
   whole fight needs it, never past the camera's 3: zoomed out to 3 the ships were specks (`docs/client.md` "Fight
   viewer"); this answers "how far framing zooms out" below for the hand zoom.
+  Step 9 built 2026-10-17 (`docs/client.md` "Evolution" and "Fight viewer", `docs/arena.md` "Jobs as messages",
+  "Voyage codes" and "THE LADDER", [ADR-0043](../adr/0043-lab-web-workers.md)): **web workers**: a second wasm binary
+  `lab-worker` (`crates/client/lab-worker`) in `navigator.hardwareConcurrency` − 1 workers, jobs and results as RON
+  messages (`arena::worker`), one executor path for the threads and the workers (`world::evolution::out`); only the
+  main thread breeds, closes generations and writes the storage (ADR-0041's parts; the workers never open
+  IndexedDB); without a worker (`?lab_workers=0`) the frame's slices as before. Measured in headless Chromium: a QUICK
+  generation in 3.3–3.9 s with 30–50 ms of it in the frames (was 48 s, 1.8 s in the frames); an imported CLI run's
+  generation parts identical in the workers and in the slices. **Voyage jobs re-watched**: voyage codes `SGV1:`
+  (`arena::VoyageCode`, `arena::Code` reads either; `Run::replay_code`, `arena replay`), played by the fight viewer at
+  `?scene=fight&fight=<code>` (the runner flies the flagship again, the camera follows it, the end checked against the
+  run's length and hash); FIGHTS' CODE and WATCH work for voyages. Where building found otherwise: they play in the
+  fight viewer, not "the voyage view" (a voyage scene would launch from the career and its fleet; the viewer replays
+  any code self-contained). **THE LADDER**: a trial kind `Ladder` and `lab.ron`'s preset THE LADDER (seven rungs from
+  one raider to the warden, 3 seeds, 90 s; placeholders), off by default; the rating on designs is the rungs' WIN
+  means added up (`4.5 / 7`, `arena::evolve::ladder`), each rung's wins and its worst fight to WATCH ("what killed
+  you"). Where building found otherwise: the rating lives in the lab, not the test range: THE LADDER on RUNS lists
+  YOUR DESIGNS with their ratings, RATE and RATE ALL rate them in the run's place (as VALIDATE), kept in
+  `ladder/<design id>`; a rating made before the design, its behavior, the ladder or the rules changed shows so
+  (`BEFORE ITS LAST CHANGE`), and BLUEPRINTS' preview card shows a design's LADDER. Every fight, run file and run
+  hash is unchanged (`mixed_trials` seed 1 still `12dc217c6b728149`; the lab and its ladder are outside the rules'
+  fingerprint).
 - Date: 2026-10-15
 - Decided by: Niklas (the requirements quoted below, and four answers on 15 Oct 2026: a research node unlocks the
   building and runs are free; runs compute at home and on every screen and pause in flight; as many trials as

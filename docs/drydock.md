@@ -613,7 +613,9 @@ closes it; Esc first leaves a rename, a delete question or a selected box):
   inside the lists' height as the pointer moves or the list scrolls: the design drawn with the flight tiles
   (`UiIcon::Ship`, the same drawing as FLEET's ships), and under it CLASS (the frame a saved design is in, the
   first frame a template fits, as OPEN would open it), MASS, TOP SPEED (labels and units from `stats.ron`, the
-  values as the stats grid shows them) and WEAPONS (its guns), from a design report made with the drydock's content
+  values as the stats grid shows them), WEAPONS (its guns) and LADDER (a saved design's rating on the evolution lab's
+  ladder, GDR-0092 step 9, 17 Oct 2026: `3.1 / 7`, `· OLD` when rated before the design, its behavior, the ladder or
+  the rules changed, `—` unrated or a template; `docs/client.md` "Evolution"; the card 22 px taller for it), from a design report made with the drydock's content
   and config (`DrydockReport::config`). It is built once per hovered entry (`blueprints::sync_preview`; a saved
   design is read from storage then) and goes when the pointer leaves the row; over the gap to the next row it
   stays, so moving down the list doesn't flash it, and over the card and the way to it. An evolved design's card
