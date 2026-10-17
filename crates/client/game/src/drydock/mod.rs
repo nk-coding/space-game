@@ -16,8 +16,9 @@
 //! What the player may build with is the career's (`career::Granted`): the palette, the armour swatches and the
 //! frames offer the unlocked parts, materials and frames and show the rest locked (everything in free mode,
 //! `?unlock=all`). A design that uses locked parts still opens, shows and test-flies; it is only not voyage-ready.
-//! How many of each part the player has (part availability, GDR-0082; every part unlimited for now) reaches the
-//! editing model (`player::design::sync_available`), which refuses a placement when none is left.
+//! A design is never limited by the workshop's stock (GDR-0108: designs plan ahead, the stock limits the launch):
+//! each palette row shows how many are in stock less those the design holds, coral when it is short, and the
+//! status line names what the fleet lacks.
 //! * [`overlays`]: the HEAT, MASS, BONUS, SHIELDS and ARCS overlays and the issue marks over the design.
 //! * [`tools`]: editing on the grid (paint, fill, erase, select), the selection, undo / redo, mirror, bevel.
 //! * [`ghost`]: the ghost of the edit under the cursor, the fill rectangle, the selection brackets.
@@ -55,7 +56,7 @@ use world::camera::CameraSet;
 use world::career::{Granted, PlayerCareer};
 use world::fx::FxFlush;
 use world::mode::AppMode;
-use world::player::{PlayerDesign, behaviors, design};
+use world::player::{PlayerDesign, behaviors};
 use world::sim_bridge::GameContent;
 
 /// The drydock's `Update` systems, in order, only in the drydock: input (clicks and keys become
@@ -128,8 +129,6 @@ impl Plugin for DrydockPlugin {
                     )
                         .chain()
                         .in_set(DockSet::Show),
-                    // The career's part counts reach the editing model before an edit of this frame.
-                    design::sync_available.after(blueprints::apply).before(tools::apply).in_set(DockSet::Apply),
                 ),
             )
             .add_systems(PostUpdate, view::draw_frame.run_if(view::shown).after(CameraSet).before(FxFlush))

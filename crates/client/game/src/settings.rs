@@ -124,13 +124,13 @@ fn open(
     ring: Query<(), With<SettingsRing>>,
     act: Act,
     pointer: Res<UiPointer>,
-    (fleet, log, evo): (Res<Fleet>, Res<VoyageLog>, Res<crate::evolution::EvolutionLayer>),
+    (fleet, log, evo, ws): (Res<Fleet>, Res<VoyageLog>, Res<crate::evolution::EvolutionLayer>, Res<crate::workshop::WorkshopLayer>),
     mut asked: MessageReader<OpenSettings>,
     mut layer: ResMut<SettingsLayer>,
     mut ui: ResMut<SettingsUi>,
 ) {
     let mode = *mode.get();
-    let home = mode == AppMode::Home && !fleet.open && !log.open && !evo.open && !layer.open;
+    let home = mode == AppMode::Home && !fleet.open && !log.open && !evo.open && !ws.open && !layer.open;
     let by_ring = clicks.read().any(|c| ring.contains(c.0));
     let by_key = home && !pointer.typing && act.just_pressed(Action::OpenSettings);
     let by_menu = asked.read().count() > 0 && mode == AppMode::Flight;

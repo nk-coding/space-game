@@ -1,0 +1,198 @@
+//! The workshop in the career (GDR-0108): the parts in stock that ships are fitted from, the haul's intact parts that
+//! wait to be kept or dismantled, fabricating parts from materials, and stocking an older save's designs.
+//!
+//! Fitting takes nothing: a fleet launches when the stock holds every part its ships carry ([`voyage_ready`]), the
+//! parts come back to stock when a ship comes home, and a lost ship's bonded parts re-form at home (GDR-0029). So the
+//! stock only grows: by keeping intact salvage and by fabricating.
+
+use super::*;
+
+/// The workshop's suggestion for one part of the intake ([`Career::suggested`]): how many to keep and how many to
+/// dismantle.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Sort {
+    pub keep: u32,
+    pub dismantle: u32,
+}
+
+/// The non-hull parts a fleet carries, summed over its ships, by part id.
+pub fn fleet_parts<'b>(content: &Content, ships: impl IntoIterator<Item = &'b Blueprint>) -> BTreeMap<String, u32> {
+    let mut out: BTreeMap<String, u32> = BTreeMap::new();
+    for ship in ships {
+        for (part, n) in content.ship_parts(ship) {
+            let x = out.entry(part).or_default();
+            *x = x.saturating_add(n);
+        }
+    }
+    out
+}
+
+/// What dismantling `n` of `part` gives (pure): its salvage block's research data, and the `share` of its recipe's
+/// materials, rounded down over the `n` parts together. A part without a block or recipe gives that much less.
+pub fn dismantle_yield(content: &Content, part: &str, n: u32, share: f32) -> HaulReport {
+    let mut r = HaulReport::default();
+    let Some(p) = content.parts.get(part) else {
+        return r;
+    };
+    if let Some(s) = &p.salvage {
+        add_data(&mut r.data, &s.family, s.data * n as f32);
+    }
+    if let Some(recipe) = &p.recipe {
+        for (m, &a) in &recipe.materials {
+            add_materials(&mut r.materials, m, (share * a as f32 * n as f32).round() as u32);
+        }
+    }
+    r
+}
+
+impl Career {
+    /// The content's workshop rules, or [`Refusal::NoWorkshop`].
+    fn rules(content: &Content) -> Result<&WorkshopRules, Refusal> {
+        content.workshop().map(|(_, r)| r).ok_or(Refusal::NoWorkshop)
+    }
+
+    /// Takes `n` of `part` out of the intake, or refuses with [`Refusal::NotInIntake`].
+    fn take_intake(&mut self, part: &str, n: u32) -> Result<(), Refusal> {
+        let have = self.intake.get(part).copied().unwrap_or(0);
+        if n == 0 || have < n {
+            return Err(Refusal::NotInIntake(part.to_string()));
+        }
+        if have == n {
+            self.intake.remove(part);
+        } else {
+            self.intake.insert(part.to_string(), have - n);
+        }
+        Ok(())
+    }
+
+    /// Keeps `n` of the intake's `part`: into stock.
+    pub fn keep(&mut self, part: &str, n: u32) -> Result<(), Refusal> {
+        self.take_intake(part, n)?;
+        add_materials(&mut self.stock, part, n);
+        Ok(())
+    }
+
+    /// Dismantles `n` of the intake's `part` into research data and the workshop's `dismantle` share of its
+    /// recipe ([`dismantle_yield`]), and returns what it gave.
+    pub fn dismantle(&mut self, content: &Content, part: &str, n: u32) -> Result<HaulReport, Refusal> {
+        let share = Self::rules(content)?.dismantle;
+        self.take_intake(part, n)?;
+        let got = dismantle_yield(content, part, n, share);
+        self.credit(&got);
+        Ok(got)
+    }
+
+    /// Adds a report's data and materials to the stores.
+    pub(super) fn credit(&mut self, r: &HaulReport) {
+        for (family, &x) in &r.data {
+            add_data(&mut self.data, family, x);
+        }
+        for (material, &x) in &r.materials {
+            add_materials(&mut self.materials, material, x);
+        }
+    }
+
+    /// The workshop's suggestion for every part of the intake, in id order: keep while the stock holds fewer than
+    /// the rules' `keep` or than `need` asks for (the fleet's parts), dismantle the rest.
+    pub fn suggested(&self, content: &Content, need: &BTreeMap<String, u32>) -> BTreeMap<String, Sort> {
+        let keep = content.workshop().map_or(0, |(_, r)| r.keep);
+        self.intake
+            .iter()
+            .map(|(part, &n)| {
+                let want = keep.max(need.get(part).copied().unwrap_or(0));
+                let k = want.saturating_sub(self.stock.get(part).copied().unwrap_or(0)).min(n);
+                (part.clone(), Sort { keep: k, dismantle: n - k })
+            })
+            .collect()
+    }
+
+    /// Sorts the whole intake as [`Career::suggested`] says; returns what the dismantled parts gave.
+    pub fn sort_suggested(&mut self, content: &Content, need: &BTreeMap<String, u32>) -> Result<HaulReport, Refusal> {
+        let share = Self::rules(content)?.dismantle;
+        let mut got = HaulReport::default();
+        for (part, sort) in self.suggested(content, need) {
+            if sort.keep > 0 {
+                self.keep(&part, sort.keep)?;
+            }
+            if sort.dismantle > 0 {
+                self.take_intake(&part, sort.dismantle)?;
+                let y = dismantle_yield(content, &part, sort.dismantle, share);
+                for (f, &x) in &y.data {
+                    add_data(&mut got.data, f, x);
+                }
+                for (m, &x) in &y.materials {
+                    add_materials(&mut got.materials, m, x);
+                }
+            }
+        }
+        self.credit(&got);
+        Ok(got)
+    }
+
+    /// Can the workshop fabricate `n` of `part` now? Refusals in order: an unknown part, one not unlocked, one
+    /// without a recipe, a workshop upgrade not open, then every material the store can't meet (in id order).
+    pub fn can_fabricate(&self, content: &Content, part: &str, n: u32) -> Result<(), Refusal> {
+        let Some(p) = content.parts.get(part) else {
+            return Err(Refusal::UnknownPart(part.to_string()));
+        };
+        let unlocks = self.unlocks(content);
+        if !unlocks.has_part(part) {
+            return Err(Refusal::LockedPart(part.to_string()));
+        }
+        let Some(recipe) = &p.recipe else {
+            return Err(Refusal::NoRecipe(part.to_string()));
+        };
+        if let Some(f) = recipe.needs.as_ref().filter(|f| !unlocks.has_facility(f)) {
+            return Err(Refusal::NeedsFacility(f.clone()));
+        }
+        let short: Vec<Shortfall> = recipe
+            .materials
+            .iter()
+            .filter_map(|(m, &a)| {
+                let (have, cost) = (self.materials.get(m).copied().unwrap_or(0), a.saturating_mul(n));
+                (have < cost).then(|| Shortfall::Material { material: m.clone(), have, cost })
+            })
+            .collect();
+        if short.is_empty() { Ok(()) } else { Err(Refusal::CannotPay(short)) }
+    }
+
+    /// Fabricates `n` of `part` (see [`Career::can_fabricate`]): its recipe's materials are taken, the parts go into
+    /// stock.
+    pub fn fabricate(&mut self, content: &Content, part: &str, n: u32) -> Result<(), Refusal> {
+        self.can_fabricate(content, part, n)?;
+        if let Some(recipe) = content.parts.get(part).and_then(|p| p.recipe.as_ref()) {
+            for (m, &a) in &recipe.materials {
+                let left = self.materials.get(m).copied().unwrap_or(0) - a.saturating_mul(n);
+                if left > 0 {
+                    self.materials.insert(m.clone(), left);
+                } else {
+                    self.materials.remove(m);
+                }
+            }
+        }
+        add_materials(&mut self.stock, part, n);
+        Ok(())
+    }
+
+    /// Stocks the parts an older save's designs carry (format 4 to 5, GDR-0108): every part the content knows is
+    /// raised to what the fleet carries in all and to what any one saved design carries, so nothing the player
+    /// flew stops launching. Returns what was added, by part id.
+    pub fn stock_designs(&mut self, content: &Content, fleet: &[Blueprint], saved: &[Blueprint]) -> BTreeMap<String, u32> {
+        let mut need = fleet_parts(content, fleet);
+        for d in saved {
+            for (part, n) in content.ship_parts(d) {
+                let x = need.entry(part).or_default();
+                *x = (*x).max(n);
+            }
+        }
+        let mut added = BTreeMap::new();
+        for (part, n) in need {
+            let have = self.stock.get(&part).copied().unwrap_or(0);
+            if content.parts.contains(&part) && n > have {
+                add_materials(&mut self.stock, &part, n - have);
+                added.insert(part, n - have);
+            }
+        }
+        added
+    }
+}

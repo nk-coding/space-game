@@ -120,9 +120,29 @@ impl<'a> Validator<'a> {
     /// A start's ship must be one a new game can take on a voyage: built from what is not locked, fitting a frame
     /// that is not locked, with a logic core and no more logic cores than the start's mind capacity; without a hold
     /// (a warning) nothing salvaged comes home, so the career can never research anything.
+    /// A facility: an upgrade sits `within` a facility that is no upgrade itself; workshop rules have shares in
+    /// 0..=1.
+    pub(super) fn facility(&mut self, f: &'a Facility) {
+        if let Some(w) = &f.within {
+            match self.c.facilities.get(w) {
+                None => self.err(f, "within", format!("unknown facility `{w}`")),
+                Some(x) if x.within.is_some() => self.err(f, "within", format!("`{w}` is an upgrade itself")),
+                Some(_) => {}
+            }
+        }
+        if let Some(r) = &f.workshop {
+            for (field, x) in [("workshop.dismantle", r.dismantle), ("workshop.broken", r.broken)] {
+                if !(x.is_finite() && (0.0..=1.0).contains(&x)) {
+                    self.err(f, field, format!("a share of 0 to 1, got {x}"));
+                }
+            }
+        }
+    }
+
     pub(super) fn start(&mut self, s: &'a Start) {
         let c = self.c;
         self.mind_capacity(s, "mind_capacity", s.mind_capacity);
+        self.material_amounts(s, "materials", &s.materials);
         for (k, v) in s.voyages.iter().enumerate() {
             let f = format!("voyages[{k}]");
             if !c.voyages.contains(v) {

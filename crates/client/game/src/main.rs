@@ -9,7 +9,8 @@
 //!   FLEET layer over home (escorts picked from saved designs, against the mind capacity); `research`: the research
 //!   screen over the lab (the tree of research nodes, UNLOCK); `voyage_log`: the LOG layer over home (the last
 //!   voyages, newest first); `evolution`: the EVOLUTION layer over home (the evolution lab's runs, their setup and
-//!   progress, re-watching their fights, saving results); `settings`: the SETTINGS layer over home and flight.
+//!   progress, re-watching their fights, saving results); `workshop`: the WORKSHOP layer over home (the haul's parts
+//!   kept or dismantled, fabricating, GDR-0108); `settings`: the SETTINGS layer over home and flight.
 //! - `map`: the voyage map (a star map of the voyages, their states from the career, SET COURSE).
 //! - `debrief`: the panel over home after a voyage.
 //! - `drydock`: the ship editor (the view of the player's design, the screen, editing, saving and sharing, the
@@ -28,6 +29,7 @@ mod research;
 mod settings;
 mod shipyard;
 mod voyage_log;
+mod workshop;
 
 use bevy::prelude::*;
 use bevy::window::WindowResolution;
@@ -84,6 +86,7 @@ fn run() {
                 home::HomePlugin,
                 fleet::FleetPlugin,
                 voyage_log::VoyageLogPlugin,
+                workshop::WorkshopPlugin,
                 evolution::EvolutionPlugin,
                 settings::SettingsPlugin,
                 map::MapPlugin,

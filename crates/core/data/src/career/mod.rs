@@ -2,7 +2,7 @@
 //! for the drydock. No Bevy, no I/O, wasm-safe. The rules are documented in `docs/career.md`.
 //!
 //! A [`Career`] holds the save's **facts** only: the start, the game seed, the researched nodes, the research data
-//! and materials in store, the escorts, a record per voyage, the voyage underway, a small log, the history of
+//! and materials in store, the workshop's parts (in stock and still to sort, GDR-0108), the escorts, a record per voyage, the voyage underway, a small log, the history of
 //! the last voyages ([`MAX_HISTORY`]) and what the player knows of the galaxy ([`Exploration`]: its skeleton, charted
 //! clusters, signals, logs, gates, memories). Everything else is derived from the content on demand ([`Career::unlocks`],
 //! [`Career::mind_capacity`], [`Career::jump_range`], [`Career::open_voyages`], [`Career::can_pay`]), so a rebalance
@@ -17,6 +17,7 @@
 //! let seed = career.voyage_launched(&content, "yard_approach").unwrap(); // the sim rolls the voyage from it
 //! let haul: Haul = [(HaulItem::Part { part: "automaton_cannon".into(), material: None }, 4)].into_iter().collect();
 //! career.voyage_ended(&content, "yard_approach", VoyageEnd::Recalled { haul, cleared: false, ticks: 9000 }).unwrap();
+//! career.dismantle(&content, "automaton_cannon", 4).unwrap(); // intact parts wait in the workshop until sorted
 //! career.research(&content, "automaton_cannon").unwrap();
 //! assert!(career.unlocks(&content).has_part("reverse_engineered_cannon"));
 //! ```
@@ -24,6 +25,7 @@
 mod galaxy;
 mod save;
 mod voyages;
+mod workshop;
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -33,11 +35,12 @@ use crate::hash::{fnv1a64, splitmix64};
 use crate::content::kind::Kind;
 use crate::content::limits::MAX_DOCUMENT_BYTES;
 use crate::content::load::{Content, parse_error, ron_options, strip_bom};
-use crate::content::model::{Blueprint, Frame, ResearchNode, Unlock};
+use crate::content::model::{Blueprint, Frame, ResearchNode, Unlock, WorkshopRules};
 use crate::content::problem::Problem;
 
 pub use galaxy::{Charted, Exploration, Lead, Leads, SignalRecord, SignalState, TrailSignal, signal_to};
 pub use voyages::{unload, voyage_ready};
+pub use workshop::{Sort, dismantle_yield, fleet_parts};
 
 /// The format version of the save's RON text ([`Career::to_ron`]). The game's storage writes it into the
 /// document header (ADR-0031). Raise it when a field is added or its meaning changes, and migrate older formats
@@ -55,7 +58,10 @@ pub use voyages::{unload, voyage_ready};
 ///   `galaxy.memories`. A format 3 save reads as it is: its skeleton (generator version 1) has no set pieces, so its
 ///   career keeps the pins E4 gave the slice, and at load the Warden's pinned cluster becomes a gate
 ///   (`Career::reconcile`), which its clearing opens.
-pub const FORMAT: u32 = 4;
+/// * 5 (18 Oct 2026, GDR-0108): the workshop's parts as `stock` and `intake`, broken parts in the history's reports.
+///   A format 4 save reads as it is with an empty stock; the game then stocks the parts of its fleet and saved
+///   designs ([`Career::stock_designs`]) and writes it at once.
+pub const FORMAT: u32 = 5;
 
 /// How many voyages the history keeps (home's LOG, GDR-0091): the oldest go first. A placeholder.
 pub const MAX_HISTORY: usize = 50;
@@ -78,7 +84,7 @@ pub const GENERATOR: u32 = 2;
 /// content may ask for ([`crate::content::validate::MAX_RESEARCH_DATA`]).
 pub const MAX_DATA: f32 = 1_000_000.0;
 
-/// Most of one material a store holds (a sanity bound, placeholder).
+/// Most of one material a store holds, and most of one part in stock (a sanity bound, placeholder).
 pub const MAX_MATERIALS: u32 = 1_000_000;
 
 /// Research data within this of a cost counts as enough: a sum of tenths may land a hair below the cost it was
@@ -107,6 +113,12 @@ pub struct Career {
     /// Materials in store; only amounts above 0.
     #[serde(default)]
     materials: BTreeMap<String, u32>,
+    /// Parts in the workshop's stock (GDR-0108), by part id: ships are fitted from it. Only counts above 0.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    stock: BTreeMap<String, u32>,
+    /// Intact parts the haul brought home that wait in the workshop to be kept or dismantled. Only counts above 0.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    intake: BTreeMap<String, u32>,
     /// Saved design ids (`designs/` in the game's storage) flown as escorts. The flagship is the drydock's working
     /// design.
     #[serde(default)]
@@ -208,6 +220,11 @@ pub enum HaulItem {
         part: String,
         material: Option<String>,
     },
+    /// A part that broke when it was stripped (GDR-0108): dismantled at once at home.
+    Broken {
+        part: String,
+        material: Option<String>,
+    },
     /// What a destroyed part left (content id of that part), such as a core's programmable-matter fragment.
     Fragment { part: String },
     /// A data core from a log's wreck (GDR-0093: one hold slot, lost with the haul): decoded at home into the
@@ -243,9 +260,13 @@ impl FromIterator<(HaulItem, u32)> for Haul {
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct HaulReport {
-    /// Whole parts by part id (every part that came home, worth something or not).
+    /// Whole parts by part id (every intact part that came home, worth something or not). The ones that are not
+    /// hull went to the workshop's intake (format 5; before, every part was dismantled at once).
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub parts: BTreeMap<String, u32>,
+    /// Broken parts by part id (GDR-0108), dismantled at once.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub broken: BTreeMap<String, u32>,
     /// Fragments by the id of the part that left them.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub fragments: BTreeMap<String, u32>,
@@ -265,10 +286,11 @@ fn is_zero(n: &u32) -> bool {
 }
 
 impl HaulReport {
-    /// Items that came home: whole parts, fragments and data cores (saturating).
+    /// Items that came home: whole and broken parts, fragments and data cores (saturating).
     pub fn items(&self) -> u32 {
         self.parts
             .values()
+            .chain(self.broken.values())
             .chain(self.fragments.values())
             .fold(self.logs, |n, &k| n.saturating_add(k))
     }
@@ -326,7 +348,8 @@ impl Unlocks {
     }
 }
 
-/// How many of a part the player has to build with ([`Career::available`], GDR-0082).
+/// How many of a part a design may hold in the drydock's editing model (GDR-0082). The career leaves designs
+/// unlimited (GDR-0108: the stock limits the launch, not the design); the lab's runs may set counts.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Availability {
     /// As many as the player likes.
@@ -356,6 +379,18 @@ pub enum Refusal {
     NotUnderway(String),
     /// The career has no galaxy (content without one).
     NoGalaxy,
+    /// The content has no part with this id.
+    UnknownPart(String),
+    /// The part is not unlocked: it cannot be fabricated.
+    LockedPart(String),
+    /// The part has no recipe: it comes only from intact salvage.
+    NoRecipe(String),
+    /// The part's recipe needs this workshop upgrade (facility id), not open yet.
+    NeedsFacility(String),
+    /// The workshop's intake holds fewer of this part than asked for.
+    NotInIntake(String),
+    /// The content has no workshop.
+    NoWorkshop,
     /// The galaxy has no cluster with this id.
     UnknownCluster(u32),
     /// The cluster lies beyond the jump range from home and every charted cluster.
@@ -402,6 +437,8 @@ pub enum Readiness {
     LockedPart { ship: FleetSlot, part: String },
     /// The ship uses an armour material the player has not unlocked (or one the content no longer has).
     LockedMaterial { ship: FleetSlot, material: String },
+    /// The stock holds fewer of a part than the fleet carries (GDR-0108): the workshop can fabricate the rest.
+    MissingParts { part: String, need: u32, have: u32 },
     /// The fleet has more logic cores than the ship-mind runs at once.
     TooManyCores { cores: u32, capacity: u32 },
     /// A warning only: no ship of the fleet has a hold (cargo on its main piece, `Content::ship_hold`), so nothing
@@ -558,12 +595,14 @@ impl Career {
         u
     }
 
-    /// How many of a part the player has to build with (GDR-0082). Derived like the unlocks, so the save holds no
-    /// counts: every part is [`Availability::Unlimited`] until fabrication, spares and bonding fill the counts in
-    /// (GDR-0029, GDR-0031, GDR-0063). The drydock shows it on each palette row,
-    /// and its editing model refuses a placement when none is left ([`crate::design::edit::Drydock::set_available`]).
-    pub fn available(&self, _part: &str) -> Availability {
-        Availability::Unlimited
+    /// Parts in the workshop's stock, by part id (GDR-0108).
+    pub fn stock(&self) -> &BTreeMap<String, u32> {
+        &self.stock
+    }
+
+    /// Intact hauled parts waiting in the workshop to be kept or dismantled, by part id.
+    pub fn intake(&self) -> &BTreeMap<String, u32> {
+        &self.intake
     }
 
     /// How many logic cores the ship-mind runs at once: the start's mind capacity plus every
@@ -757,6 +796,23 @@ fn clean_data(
             *x = MAX_DATA;
         }
         *x > 0.0
+    });
+}
+
+/// Drops parts the content doesn't know (or that are hull) and empty counts, and bounds the rest by
+/// [`MAX_MATERIALS`].
+fn clean_parts(store: &mut BTreeMap<String, u32>, content: &Content, field: &str, notes: &mut Vec<Problem>) {
+    store.retain(|part, x| {
+        let note = |msg: String| Problem::warning(msg).entry(Kind::Part, part).field(format!("{field}.{part}"));
+        if content.parts.get(part).is_none_or(|p| p.hull) {
+            notes.push(note(format!("the content has no part `{part}` to keep any more: dropped")));
+            return false;
+        }
+        if *x > MAX_MATERIALS {
+            notes.push(note(format!("{x} is above {MAX_MATERIALS}: lowered to it")));
+            *x = MAX_MATERIALS;
+        }
+        *x > 0
     });
 }
 

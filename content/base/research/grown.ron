@@ -24,7 +24,7 @@
         kind: Alien,
         cost: (data: {"grown": 14, "kinetic": 4}),
         requires: ["regrowing_tissue"],
-        unlocks: [Part("ram_prow"), Part("thorn_gun")],
+        unlocks: [Part("ram_prow"), Part("thorn_gun"), Facility("grown_vat")], // the vat grows the Grown's parts (GDR-0108)
     ),
     (
         id: "grown_heart",

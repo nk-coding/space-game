@@ -59,6 +59,12 @@ pub enum Item {
         part: String,
         material: Option<String>,
     },
+    /// A part that broke when it was stripped (GDR-0108: most do, `SalvageTuning::intact_chance`); content part id.
+    /// Hull parts never break: their plating is dismantled at home either way.
+    Broken {
+        part: String,
+        material: Option<String>,
+    },
     /// What a destroyed part whose salvage block names a `fragment` leaves (content part id of that part).
     Fragment { part: String },
     /// A data core: the log of signal `signal` of the galaxy's trail `trail` (skeleton indices), decoded at home.
@@ -73,7 +79,7 @@ impl Item {
     /// The content part id behind the item (none for a data core).
     pub fn part(&self) -> Option<&str> {
         match self {
-            Item::Part { part, .. } | Item::Fragment { part } => Some(part),
+            Item::Part { part, .. } | Item::Broken { part, .. } | Item::Fragment { part } => Some(part),
             Item::DataCore { .. } => None,
         }
     }
@@ -83,6 +89,7 @@ impl Item {
         use data::career::HaulItem;
         match self {
             Item::Part { part, material } => HaulItem::Part { part: part.clone(), material: material.clone() },
+            Item::Broken { part, material } => HaulItem::Broken { part: part.clone(), material: material.clone() },
             Item::Fragment { part } => HaulItem::Fragment { part: part.clone() },
             &Item::DataCore { trail, signal } => HaulItem::DataCore { trail, signal },
         }
@@ -92,8 +99,8 @@ impl Item {
 impl StateHash for Item {
     fn hash_state(&self, h: &mut StateHasher) {
         match self {
-            Item::Part { part, material } => {
-                h.u8(0);
+            Item::Part { part, material } | Item::Broken { part, material } => {
+                h.u8(if matches!(self, Item::Part { .. }) { 0 } else { 3 });
                 h.str(part);
                 match material {
                     Some(m) => {
@@ -327,18 +334,16 @@ impl Ship {
         self.burned_out
     }
 
-    /// Part `p` as a salvage item: the item, its cargo units and its value per unit.
-    fn part_item(&self, p: PartIdx) -> (Item, u32, f32) {
+    /// Part `p` as a salvage item, intact or `broken`: the item, its cargo units and its value per unit (a broken
+    /// part's is half, so a shrinking hold sheds it before an intact one).
+    fn part_item(&self, p: PartIdx, broken: bool) -> (Item, u32, f32) {
         let spec = &self.design.parts[p as usize];
-        let item = Item::Part {
-            part: spec.id.clone(),
-            material: spec.material.clone(),
-        };
-        (
-            item,
-            spec.cargo_units,
-            spec.build_points / spec.cargo_units as f32,
-        )
+        let (part, material) = (spec.id.clone(), spec.material.clone());
+        let value = spec.build_points / spec.cargo_units as f32;
+        match broken {
+            false => (Item::Part { part, material }, spec.cargo_units, value),
+            true => (Item::Broken { part, material }, spec.cargo_units, value * 0.5),
+        }
     }
 
     /// The best alive salvageable part of piece `q` that fits into `free` units: highest value per unit, ties the
@@ -824,8 +829,13 @@ impl Sim {
                 )
             }
             Pick::Part { j, q, part } => {
+                // Most parts break as they are torn loose (GDR-0108): one draw on the debris stream per part that
+                // is not hull, none at a chance of 1 (or 0).
+                let chance = self.config().salvage.intact_chance;
+                let breaks = !self.ships[j].design.parts[part as usize].hull
+                    && (chance <= 0.0 || (chance < 1.0 && self.rng(Stream::Debris).next_f32() >= chance));
                 let s = &mut self.ships[j];
-                let (item, units, value) = s.part_item(part);
+                let (item, units, value) = s.part_item(part, breaks);
                 let at = s.part_world(part).map_or(s.pieces[q].com_world(), |m| m.0);
                 let from = Salvaged::Part {
                     ship: s.id,

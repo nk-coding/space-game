@@ -1,8 +1,8 @@
 //! The shipyard: home's world scene (GDR-0071). A long U-shaped
 //! dock lies on its side, its inside the building area (the working design's drydock frame, the ship docked in it
-//! as the drydock draws it), the gate in front of its mouth, the buildings attached: research with its dishes, the
-//! dark fabricator and the LOG's records mast on the top wall, the test range's tower and lane and the dark salvage
-//! bay under the bottom wall, the mind behind the base with the EVOLUTION lab's compute stack above it, the escorts'
+//! as the drydock draws it), the gate in front of its mouth, the buildings attached: research with its dishes and
+//! the LOG's records mast on the top wall (the fabricator's old slot between them free, GDR-0108), the test range's
+//! tower and lane and the workshop under the bottom wall, the mind behind the base with the EVOLUTION lab's compute stack above it, the escorts'
 //! moorings on two truss bridges left of the mind.
 //!
 //! * [`layout`]: where everything sits, a pure function of the frame size (a bigger frame, a bigger U).
@@ -24,7 +24,7 @@
 //! awake from the start); the moorings hold the FLEET's escorts; the LOG's mast glows while a voyage's result waits
 //! there unread or a data core waits to be decoded (galaxy plan E6); the EVOLUTION lab ([`draw::Evo`], from `world::evolution::Lab`) is dark until its research node (the
 //! Simulation vault) is researched, dim without a run, busy while one computes, gold once one has finished until it
-//! is opened; the fabricator and the salvage bay stay dark until they have screens.
+//! is opened; the workshop's bays glow gold while hauled parts wait there to be sorted, teal otherwise.
 //!
 //! **In the drydock** the walls and the parked cranes stay around the frame (the drydock's veil dims them outside
 //! its grid viewport); the floor, the yard and the drones are home's alone. **On the research screen** the whole
@@ -81,6 +81,7 @@ pub fn lights(content: &Content, career: &Career, escorts: usize, evolution: Evo
         moored: escorts.min(MOORINGS),
         log: career.unread() > 0 || career.exploration().is_some_and(|g| !g.logs().is_empty()),
         evolution,
+        workshop: !career.intake().is_empty(),
     }
 }
 
@@ -546,7 +547,7 @@ mod tests {
     #[test]
     fn a_new_game_has_research_dark_and_the_gate_awake() {
         let (content, c) = career("");
-        assert_eq!(lights(&content, &c, 0, Evo::Dark), Lights { research: false, gate: true, moored: 0, log: false, evolution: Evo::Dark });
+        assert_eq!(lights(&content, &c, 0, Evo::Dark), Lights { research: false, gate: true, moored: 0, log: false, evolution: Evo::Dark, workshop: false });
     }
 
     /// The LOG's mast glows from a voyage's end until the LOG has been opened.

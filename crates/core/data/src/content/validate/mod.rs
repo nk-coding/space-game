@@ -63,7 +63,10 @@ pub fn validate(c: &Content) -> Vec<Problem> {
         }
     });
     v.entries(c.research.as_slice(), |v, e| v.research(e));
-    v.entries(c.facilities.as_slice(), |_, _| {});
+    v.entries(c.facilities.as_slice(), |v, e| v.facility(e));
+    if c.facilities.iter().filter(|f| f.workshop.is_some()).count() > 1 {
+        v.out.push(Problem::error("more than one facility has `workshop` rules: only the first is the workshop").field("facilities"));
+    }
     v.cycles(
         &c.research,
         |n| &n.requires,

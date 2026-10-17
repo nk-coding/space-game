@@ -11,8 +11,6 @@ use data::{Blueprint, Content};
 use sim::DesignReport;
 use sim::report::{Issue, Severity};
 
-use crate::career::Granted;
-use crate::sim_bridge::GameContent;
 
 /// The id the player's design flies under. Content ids are snake_case (validation), so a `:` never clashes.
 pub const PLAYER_DESIGN_ID: &str = "player:design";
@@ -130,14 +128,6 @@ impl PlayerDesign {
         self.dock.export()
     }
 
-    /// How many of each part the player has (`career::Granted::available`, GDR-0082) reaches the editing model,
-    /// which refuses a placement when none is left. Not an edit.
-    pub fn set_available(&mut self, content: &Content, granted: &Granted) {
-        for p in content.parts.iter() {
-            self.dock.set_available(&p.id, granted.available(&p.id));
-        }
-    }
-
     fn rebuild(&mut self) {
         self.seen = self.dock.revision();
         self.revision += 1;
@@ -168,14 +158,6 @@ pub fn flight_ready(report: &Result<DesignReport, String>) -> Result<&DesignRepo
         return Err(why.into());
     }
     Ok(r)
-}
-
-/// Brings the part counts of the editing model up to the career's when they change or another design opens.
-pub fn sync_available(content: Res<GameContent>, granted: Res<Granted>, mut design: ResMut<PlayerDesign>, mut seen: Local<Option<u64>>) {
-    if granted.is_changed() || *seen != Some(design.generation()) {
-        *seen = Some(design.generation());
-        design.set_available(&content.0, &granted);
-    }
 }
 
 #[cfg(test)]

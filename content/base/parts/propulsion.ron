@@ -14,6 +14,8 @@
 // Power tier: everything that moves the ship is `Normal` (the default), so thrust and turning brown out together.
 // `salvage`: what the part gives when salvaged and dismantled at home (research data about its build points;
 // PLACEHOLDER, lead defaults of 13 Oct 2026 after docs/plans/first-playable-loop.md 3.2).
+// `recipe`: what the workshop fabricates it from (GDR-0108; PLACEHOLDER amounts, about twice the build points);
+// `needs` names the workshop upgrade it takes. Dismantling gives a share back (facilities.ron).
 [
     (
         id: "thruster",
@@ -31,6 +33,7 @@
         engine: (thrust: 200, rated_speed: 20, gimbal: 5, plume: (length: 3, damage: 1, heat: 1.5)),
         explosion: (damage: 0.5, radius: 0.6), // PLACEHOLDER, lead default (14 Oct 2026, GDR-0084)
         salvage: (family: "propulsion", data: 3),
+        recipe: (materials: {"ceramic": 2, "copper": 1, "steel": 3}),
     ),
     (
         id: "torch_drive",
@@ -50,6 +53,7 @@
         engine: (thrust: 700, rated_speed: 22, gimbal: 3, plume: (length: 6, damage: 3, heat: 4)),
         explosion: (damage: 1.2, radius: 2), // PLACEHOLDER, lead default (14 Oct 2026, GDR-0084; radius 1.5 → 2, GDR-0085)
         salvage: (family: "propulsion", data: 9),
+        recipe: (materials: {"ceramic": 10, "copper": 3, "steel": 6}, needs: "fusion_workshop"),
     ),
     (
         id: "gyro",
@@ -67,6 +71,7 @@
         heat: (output: 1, limit: 4),
         gyro: (torque: 1250),
         salvage: (family: "propulsion", data: 4),
+        recipe: (materials: {"copper": 3, "steel": 4}),
     ),
     (
         id: "rcs_pod",
@@ -85,5 +90,6 @@
         rcs: (thrust: 200, rated_speed: 14),
         explosion: (damage: 0.5, radius: 0.6), // as a thruster (PLACEHOLDER, lead default, 14 Oct 2026, GDR-0085)
         salvage: (family: "propulsion", data: 2),
+        recipe: (materials: {"ceramic": 1, "copper": 1, "steel": 2}),
     ),
 ]

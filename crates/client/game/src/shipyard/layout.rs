@@ -59,14 +59,12 @@ pub enum Place {
     Log,
     /// The compute stack above the mind, on the base's outer face: the EVOLUTION lab (GDR-0092).
     Evolution,
-    /// Dark until it has a screen.
-    Fabricator,
-    /// Dark until it has a screen.
-    SalvageBay,
+    /// The workshop under the bottom wall by the moorings (GDR-0108): the haul's parts, the stock, fabricating.
+    Workshop,
 }
 
 impl Place {
-    pub const ALL: [Place; 10] = [
+    pub const ALL: [Place; 9] = [
         Place::Drydock,
         Place::Behavior,
         Place::Research,
@@ -75,8 +73,7 @@ impl Place {
         Place::Fleet,
         Place::Log,
         Place::Evolution,
-        Place::Fabricator,
-        Place::SalvageBay,
+        Place::Workshop,
     ];
 }
 
@@ -119,12 +116,12 @@ pub struct Layout {
     /// The base's outer face.
     pub base_x: f32,
     pub research: Building,
-    pub fabricator: Building,
     pub mind: Building,
     /// The test range's control tower and its target lane (start and end of its centre line, a strut apart).
     pub range: Building,
     pub lane: (Vec2, Vec2),
-    pub salvage: Building,
+    /// The workshop (GDR-0108), where the salvage bay stood; the fabricator's slot on the top wall is free.
+    pub workshop: Building,
     /// The LOG's records house on the top arm by its tip (GDR-0091), and the top of its mast: the beacon, where it
     /// glows while a voyage's result waits.
     pub log: Building,
@@ -172,23 +169,23 @@ impl Layout {
 
         let research_c = Vec2::new(0.25 * w, top + 3.9);
         let research = Building { centre: research_c, size: Vec2::new(9.5, 5.5), strut: (research_c - Vec2::Y * 2.75, Vec2::new(research_c.x, top)) };
-        // Right of research however small the frame.
-        let fab_c = Vec2::new((0.8 * w).max(research_c.x + 9.25), top + 3.2);
-        let fabricator = Building { centre: fab_c, size: Vec2::new(7.0, 4.3), strut: (fab_c - Vec2::Y * 2.15, Vec2::new(fab_c.x, top)) };
+        // The free slot right of research however small the frame (the fabricator's until GDR-0108): the LOG keeps
+        // clear of its right edge.
+        let free_right = (0.8 * w).max(research_c.x + 9.25) + 3.5;
         let mind_c = Vec2::new(back - 6.0, mid);
         let mind = Building { centre: mind_c, size: Vec2::new(7.5, 10.0), strut: (mind_c + Vec2::X * 3.75, Vec2::new(back, mid)) };
-        // Right of the salvage bay however small the frame.
+        // Right of the workshop however small the frame.
         let range_c = Vec2::new((0.5 * w).max(8.25), bottom - 3.9);
         let range = Building { centre: range_c, size: Vec2::new(4.5, 3.5), strut: (range_c + Vec2::Y * 1.75, Vec2::new(range_c.x, bottom)) };
         // The lane's round end a strut's length right of the tower.
         let lane_start = range_c.x + 2.25 + 1.0 + 1.1;
         let lane = (Vec2::new(lane_start, range_c.y), Vec2::new(lane_start + 11.0, range_c.y));
-        let salvage_c = Vec2::new(2.0, bottom - 3.0);
-        let salvage = Building { centre: salvage_c, size: Vec2::new(6.0, 3.5), strut: (salvage_c + Vec2::Y * 1.75, Vec2::new(salvage_c.x, bottom)) };
+        let workshop_c = Vec2::new(2.0, bottom - 3.0);
+        let workshop = Building { centre: workshop_c, size: Vec2::new(6.0, 3.5), strut: (workshop_c + Vec2::Y * 1.75, Vec2::new(workshop_c.x, bottom)) };
 
         // The LOG's house sits on the top arm just short of its tip, the end nearest the gate, its mast rising from
-        // it; right of the fabricator however small the frame (the strut then leans back onto the arm).
-        let log_c = Vec2::new((tip_x - 1.6).max(fabricator.rect().max.x + 3.0), top + 1.9);
+        // it; right of the free slot however small the frame (the strut then leans back onto the arm).
+        let log_c = Vec2::new((tip_x - 1.6).max(free_right + 3.0), top + 1.9);
         let log = Building { centre: log_c, size: Vec2::new(2.4, 1.8), strut: (log_c - Vec2::Y * 0.9, Vec2::new(log_c.x.min(tip_x), top)) };
         let log_beacon = log_c + Vec2::Y * 4.6;
 
@@ -234,11 +231,10 @@ impl Layout {
             tip_x,
             base_x,
             research,
-            fabricator,
             mind,
             range,
             lane,
-            salvage,
+            workshop,
             log,
             log_beacon,
             evolution,
@@ -269,7 +265,7 @@ impl Layout {
     }
 
     /// Where the shuttles fly around the station's left end, all clear of the hulls: berths they may stop at
-    /// (`true`: off the moorings' mouths, beside the mind, research and the salvage bay) and points in open space
+    /// (`true`: off the moorings' mouths, beside the mind, research and the workshop) and points in open space
     /// they pass through (between the bridges, past the gaps between the moorings, beside the mind).
     pub fn shuttle_stops(&self) -> [(Vec2, bool); SHUTTLE_STOPS] {
         let mid = self.area.center().y;
@@ -277,7 +273,7 @@ impl Layout {
         // Off the mouths, and past them over the gap between the near and the far moorings.
         let (mouth, past) = (MOORING_DEPTH / 2.0 + 1.0, MOORING_DEPTH / 2.0 + 2.5);
         let gap = (m[0].x + m[2].x) / 2.0;
-        let (r, s) = (self.research.rect(), self.salvage.rect());
+        let (r, s) = (self.research.rect(), self.workshop.rect());
         [
             (m[0] + Vec2::Y * mouth, true),
             (m[1] - Vec2::Y * mouth, true),
@@ -285,13 +281,13 @@ impl Layout {
             (m[3] - Vec2::Y * mouth, true),
             (Vec2::new(self.mind.rect().min.x - 1.8, mid), true),
             (Vec2::new(r.min.x - 1.6, self.research.centre.y), true),
-            (Vec2::new(s.min.x - 1.6, self.salvage.centre.y), true),
+            (Vec2::new(s.min.x - 1.6, self.workshop.centre.y), true),
             (Vec2::new(m[2].x, mid), false),
             (Vec2::new(m[0].x, mid), false),
             (Vec2::new(gap, m[0].y + past), false),
             (Vec2::new(gap, m[1].y - past), false),
             (Vec2::new(self.mind.centre.x, self.research.centre.y), false),
-            (Vec2::new(self.mind.centre.x, self.salvage.centre.y), false),
+            (Vec2::new(self.mind.centre.x, self.workshop.centre.y), false),
         ]
     }
 
@@ -306,8 +302,7 @@ impl Layout {
             Place::Fleet => self.fleet_rect(),
             Place::Log => self.log_rect(),
             Place::Evolution => self.evolution.rect(),
-            Place::Fabricator => self.fabricator.rect(),
-            Place::SalvageBay => self.salvage.rect(),
+            Place::Workshop => self.workshop.rect(),
         }
     }
 
@@ -329,8 +324,7 @@ impl Layout {
             Place::Fleet => focus_box(Vec2::new(self.moorings[0].x + 1.5, self.area.center().y), 50.0),
             Place::Log => focus_box(self.log_rect().center(), 20.0),
             Place::Evolution => focus_box(self.evolution.centre - Vec2::Y * 1.5, 22.0),
-            Place::Fabricator => focus_box(self.fabricator.centre, 24.0),
-            Place::SalvageBay => focus_box(self.salvage.centre, 23.0),
+            Place::Workshop => focus_box(self.workshop.centre, 23.0),
         }
     }
 
@@ -351,8 +345,7 @@ impl Layout {
                 let up = self.evolution.rect().max.y + 0.6 + EVOLUTION_LABEL_PX * self.metres_per_px();
                 (Vec2::new(self.base_x - BASE_STRIP - 0.4, up), Align::End)
             }
-            Place::Fabricator => (self.fabricator.centre + Vec2::Y * 3.8, Align::Middle),
-            Place::SalvageBay => (self.salvage.centre - Vec2::Y * 2.0, Align::Middle),
+            Place::Workshop => (self.workshop.centre - Vec2::Y * 2.0, Align::Middle),
         }
     }
 
@@ -484,8 +477,7 @@ mod tests {
     }
 
     /// The LOG's house and mast stand on the top arm by its tip, clear of every other place, of the buildings' bodies,
-    /// the gate and its pods, and of the antenna at the arm's tip; its label hangs right of the mast, above the gate and
-    /// clear of the fabricator's (whose label is centred over it, at most its width plus 4 m wide).
+    /// the gate and its pods, and of the antenna at the arm's tip; its label hangs right of the mast, above the gate.
     #[test]
     fn the_log_stands_apart_by_the_gate() {
         for frame in [(24, 24), (40, 40), (64, 64), (30, 18), (12, 12)] {
@@ -496,7 +488,7 @@ mod tests {
             for p in Place::ALL.into_iter().filter(|p| *p != Place::Log) {
                 assert!(log.inflate(0.5).intersect(l.hit(p)).is_empty(), "{frame:?}: the LOG touches {p:?}");
             }
-            for b in [l.research.rect(), l.fabricator.rect(), l.mind.rect(), l.range.rect(), l.salvage.rect()] {
+            for b in [l.research.rect(), l.mind.rect(), l.range.rect(), l.workshop.rect()] {
                 assert!(log.inflate(1.0).intersect(b).is_empty(), "{frame:?}: the LOG touches {b:?}");
             }
             let gate = Rect::from_center_half_size(l.gate, Vec2::splat(GATE_RADIUS + GATE_POD + 0.5));
@@ -508,8 +500,6 @@ mod tests {
             let (at, align) = l.label(Place::Log);
             assert_eq!(align, Align::Start);
             assert!(at.x > log.max.x && at.y > l.gate.y + GATE_RADIUS + GATE_POD, "{frame:?}");
-            let fab = l.label(Place::Fabricator).0;
-            assert!(at.x > fab.x + l.fabricator.size.x / 2.0 + 2.0, "{frame:?}: the LOG's label runs into the fabricator's");
         }
     }
 
@@ -578,7 +568,7 @@ mod tests {
     fn shuttle_stops_are_in_view_and_clear_of_the_hulls() {
         for frame in [(24, 24), (40, 40), (64, 64), (30, 18), (12, 12)] {
             let l = Layout::new(frame);
-            let mut hulls = vec![l.station(), l.research.rect(), l.fabricator.rect(), l.mind.rect(), l.range.rect(), l.salvage.rect(), l.log_rect(), l.evolution.rect()];
+            let mut hulls = vec![l.station(), l.research.rect(), l.mind.rect(), l.range.rect(), l.workshop.rect(), l.log_rect(), l.evolution.rect()];
             for (k, m) in l.moorings.iter().enumerate() {
                 // From the base behind the bridge side to the tips at the mouth.
                 let open = if k % 2 == 0 { 1.0 } else { -1.0 };

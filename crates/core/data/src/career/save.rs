@@ -4,11 +4,13 @@
 use super::*;
 
 impl Career {
-    /// A new game from the content's start `start`, with the game seed `seed`.
+    /// A new game from the content's start `start`, with the game seed `seed`: the start's materials in store and
+    /// the parts of its ship in stock (GDR-0108).
     pub fn new(content: &Content, start: &str, seed: u64) -> Result<Career, Refusal> {
-        if !content.starts.contains(start) {
+        let Some(s) = content.starts.get(start) else {
             return Err(Refusal::UnknownStart(start.to_string()));
-        }
+        };
+        let stock = content.ships.get(&s.ship).map(|b| content.ship_parts(b)).unwrap_or_default();
         Ok(Career {
             packs: packs_of(content),
             start: start.to_string(),
@@ -16,7 +18,9 @@ impl Career {
             generator: GENERATOR,
             researched: Vec::new(),
             data: BTreeMap::new(),
-            materials: BTreeMap::new(),
+            materials: s.materials.iter().filter(|(_, n)| **n > 0).map(|(m, &n)| (m.clone(), n)).collect(),
+            stock,
+            intake: BTreeMap::new(),
             escorts: Vec::new(),
             seen: BTreeSet::new(),
             voyages: BTreeMap::new(),
@@ -73,7 +77,7 @@ impl Career {
 
     /// Brings a loaded career in line with the current content (it may have changed since the save was
     /// written): ids the content no longer has are dropped (researched nodes, families and materials in store
-    /// and in the history, voyage records and the history's entries of such voyages), an unknown start is
+    /// and in the history, parts in stock and in the intake, voyage records and the history's entries of such voyages), an unknown start is
     /// replaced by the content's first start, numbers are made finite, non-negative and bounded ([`MAX_DATA`],
     /// [`MAX_MATERIALS`]), a history past [`MAX_HISTORY`] loses its oldest, a voyage still underway counts as
     /// lost (the game was closed mid-voyage, GDR-0062), the galaxy drops what neither the content nor its skeleton
@@ -139,6 +143,8 @@ impl Career {
 
         clean_data(&mut self.data, content, "data", &mut notes);
         clean_materials(&mut self.materials, content, "materials", &mut notes);
+        clean_parts(&mut self.stock, content, "stock", &mut notes);
+        clean_parts(&mut self.intake, content, "intake", &mut notes);
 
         self.voyages.retain(|id, _| {
             let known = content.voyages.contains(id);

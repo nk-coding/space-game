@@ -1,6 +1,8 @@
 // Heat. PLACEHOLDER NUMBERS (concept-board drydock values, for feel only).
 // `salvage`: what the part gives when salvaged and dismantled at home (research data about its build points;
 // PLACEHOLDER, lead defaults of 13 Oct 2026 after docs/plans/first-playable-loop.md 3.2).
+// `recipe`: what the workshop fabricates it from (GDR-0108; PLACEHOLDER amounts, about twice the build points);
+// `needs` names the workshop upgrade it takes. Dismantling gives a share back (facilities.ron).
 [
     (
         id: "radiator",
@@ -16,6 +18,7 @@
         hp: 1,
         radiator: (vent: 1.5),
         salvage: (family: "thermal", data: 2),
+        recipe: (materials: {"ceramic": 2, "copper": 2}),
         bonuses: [
             (target: Tag("reactor"), stat: "power_output", effect: Add(2), when: [SourceVenting]),
         ],

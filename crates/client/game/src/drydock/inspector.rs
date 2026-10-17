@@ -26,6 +26,7 @@ use sim::{DesignReport, Stat};
 use kit::style::{Style, ui_color};
 use kit::ui_icons::{Glyph, UiIcon};
 use kit::ui_kit::{HudFonts, Pill, Tip, Tone, label, number, ring_glyph, ring_node, set_text, spawn_pill};
+use world::career::Granted;
 use world::player::PlayerDesign;
 use world::sim_bridge::GameContent;
 
@@ -95,9 +96,10 @@ pub(super) fn update(
     sel: Res<Selection>,
     report: Res<DrydockReport>,
     content: Res<GameContent>,
+    granted: Res<Granted>,
     mut out: ResMut<Inspector>,
 ) {
-    if !(design.is_changed() || ui.is_changed() || sel.is_changed() || report.is_changed()) {
+    if !(design.is_changed() || ui.is_changed() || sel.is_changed() || report.is_changed() || granted.is_changed()) {
         return;
     }
     let content = &content.0;
@@ -105,15 +107,20 @@ pub(super) fn update(
     let report = report.get().filter(|_| report.revision == Some(design.revision()));
     let want = match sel.part(&design) {
         Some(i) => placed(content, &design, report, i),
-        None => picked(content, &ui),
+        None => {
+            let held = design.dock().parts().iter().filter(|p| ui.picked.as_ref() == Some(&p.part)).count() as u32;
+            picked(content, &ui, &granted, held)
+        }
     };
     if *out != want {
         *out = want;
     }
 }
 
-/// The part picked in the palette, from content.
-fn picked(content: &Content, ui: &DrydockUi) -> Inspector {
+/// The part picked in the palette, from content; a part that is not hull ends with the workshop's lines (GDR-0108):
+/// what it is fabricated from and how many are in stock against the `held` the design holds (unless every part is
+/// granted, `?unlock=all`).
+fn picked(content: &Content, ui: &DrydockUi, granted: &Granted, held: u32) -> Inspector {
     let Some(part) = ui.picked.as_deref().and_then(|p| content.parts.get(p)) else {
         return Inspector { name: "Nothing picked".into(), name_tone: Tone::Dim, sub: "PICK A PART IN THE LIST".into(), sub_tone: Tone::Dim, ..default() };
     };
@@ -124,11 +131,22 @@ fn picked(content: &Content, ui: &DrydockUi) -> Inspector {
         sub.push_str(&format!("  ·  {}", m.name.to_uppercase()));
     }
     let lines = content.part_stats(part, material);
-    let stats = lines
+    let mut stats: Vec<SelLine> = lines
         .iter()
         .filter(|l| l.bonus.is_none())
         .map(|l| SelLine { label: l.label.to_uppercase(), value: l.text.clone(), tone: Tone::Number })
         .collect();
+    if !part.hull {
+        let recipe = part.recipe.as_ref().map_or_else(
+            || "SALVAGE ONLY".to_string(),
+            |r| r.materials.iter().map(|(m, n)| format!("{n} {}", content.materials.get(m).map_or(m.as_str(), |x| x.name.as_str()).to_uppercase())).collect::<Vec<_>>().join(" · "),
+        );
+        stats.push(SelLine { label: "RECIPE".into(), value: recipe, tone: Tone::Label });
+        if let Some(n) = granted.in_stock(&part.id) {
+            let tone = if held > n { Tone::Coral } else { Tone::Number };
+            stats.push(SelLine { label: "IN STOCK".into(), value: format!("{n}  ·  THE DESIGN HOLDS {held}"), tone });
+        }
+    }
     let bonuses = lines
         .iter()
         .filter_map(|l| {
@@ -413,11 +431,15 @@ mod tests {
         let d = runner_design(&content);
         let mut ui = DrydockUi::new(&content, &d, &data::career::Unlocks::all(&content));
         ui.picked = Some("capacitor".into());
-        let insp = picked(&content, &ui);
+        let granted = Granted { stock: [("capacitor".to_string(), 3)].into_iter().collect(), ..Granted::default() };
+        let insp = picked(&content, &ui, &granted, 4);
         assert_eq!(insp.installed, None);
         assert!(insp.stats.iter().any(|l| l.label == "BUILD POINTS"));
         assert!(insp.bonuses.iter().any(|l| l.contains("TO ADJACENT")), "{:?}", insp.bonuses);
+        let line = |l: &str| insp.stats.iter().find(|x| x.label == l).map(|x| x.value.clone());
+        assert_eq!(line("RECIPE").as_deref(), Some("1 CERAMIC · 3 COPPER"));
+        assert_eq!(line("IN STOCK").as_deref(), Some("3  ·  THE DESIGN HOLDS 4"));
         ui.picked = None;
-        assert_eq!(picked(&content, &ui).name, "Nothing picked");
+        assert_eq!(picked(&content, &ui, &granted, 0).name, "Nothing picked");
     }
 }

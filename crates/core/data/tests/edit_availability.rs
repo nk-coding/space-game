@@ -1,9 +1,10 @@
 //! Part availability in the drydock editing model (GDR-0082): with a count set, the design holds at most that
 //! many of a part, counting the parts already in it; every tool that puts parts down is refused with
 //! `Refusal::NoneLeft` when none is left, a mirror image that would need one more is skipped, fill fills as many
-//! cells as are left. The career gives every part unlimited for now.
+//! cells as are left. The career leaves designs unlimited (GDR-0108: its stock limits the launch); the lab's runs set
+//! counts.
 
-use data::career::{Availability, Career};
+use data::career::Availability;
 use data::design::edit::{Drydock, Refusal, Twin};
 use data::{Blueprint, Content, Placement};
 
@@ -89,13 +90,6 @@ fn paint_fill_slopes_and_mirror_images_use_up_the_count() {
     assert_eq!(dock.place_slope(&slope, (10, 2), "steel", None).map(|_| ()), Err(Refusal::NoneLeft(slope.clone())));
     assert!(dock.place_slope(&slope, (8, 2), "steel", None).unwrap().changed);
     assert!(dock.place_slope(&slope, (8, 2), "composite", None).unwrap().changed);
-}
-
-#[test]
-fn the_career_gives_every_part_unlimited_for_now() {
-    let c = data::base_content();
-    let career = Career::new(&c, "rim_awakening", 1).unwrap();
-    assert!(c.parts.iter().all(|p| career.available(&p.id) == Availability::Unlimited));
 }
 
 /// Bevel after the stroke (GDR-0081) cuts a corner only while a slope is left; the rest stay blocks.

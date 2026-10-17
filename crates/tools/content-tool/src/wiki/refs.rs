@@ -210,11 +210,6 @@ impl Refs {
             }
             if let Some(sv) = &p.salvage {
                 put(format!("part:{}.salvage_data", p.id), w.data_amount(ROOT, &sv.family, sv.data));
-                let items = w.material_items(ROOT, &sv.materials);
-                put(
-                    format!("part:{}.salvage_materials", p.id),
-                    if items.is_empty() { "none".into() } else { items.join(", ") },
-                );
                 let fragment = w.material_items(ROOT, &sv.fragment);
                 put(
                     format!("part:{}.fragment", p.id),
@@ -229,14 +224,20 @@ impl Refs {
         }
         for p in c.parts.iter().filter(|p| !p.hull) {
             let html = match &p.salvage {
-                Some(sv) => {
-                    let mut items = vec![w.data_amount(ROOT, &sv.family, sv.data)];
-                    items.extend(w.material_items(ROOT, &sv.materials));
-                    items.join(", ")
-                }
+                Some(sv) => w.data_amount(ROOT, &sv.family, sv.data),
                 None => "nothing".into(),
             };
             put(format!("part:{}.salvage", p.id), html);
+            let recipe = match &p.recipe {
+                Some(r) => w.material_items(ROOT, &r.materials).join(", "),
+                None => "salvage only".into(),
+            };
+            put(format!("part:{}.recipe", p.id), recipe);
+        }
+        if let Some((f, r)) = c.workshop() {
+            put(format!("facility:{}.dismantle", f.id), format!("{}%", format_number(r.dismantle * 100.0, 0)));
+            put(format!("facility:{}.broken", f.id), format!("{}%", format_number(r.broken * 100.0, 0)));
+            put(format!("facility:{}.keep", f.id), r.keep.to_string());
         }
         for m in c.materials.iter().filter(|m| m.armor.is_some()) {
             let html = match &m.salvage {
@@ -449,6 +450,7 @@ pub fn sim_values() -> Vec<(&'static str, String)> {
         ("settle_speed", num(cfg.salvage.settle_speed, 1, "m/s")),
         ("settle_decel", num(cfg.salvage.settle_decel, 1, "m/s²")),
         ("spill_speed", num(cfg.salvage.spill_speed, 1, "m/s")),
+        ("intact_chance", format!("{}%", format_number(cfg.salvage.intact_chance * 100.0, 0))),
         (
             "ricochet_angle",
             num(sim::combat::weapons::tuning::RICOCHET_COS.acos().to_degrees(), 0, "°"),

@@ -1,5 +1,7 @@
 // How a new game begins. A new game has every part, material and frame that is not `locked` (a start names no
 // unlocks of its own). PLACEHOLDER NUMBERS (GDR-0062: mind capacity 2, research adds up to 4 in the first playable loop).
+// `materials`: in store at the start; the parts of the start ship are in the workshop's stock (GDR-0108, PLACEHOLDER:
+// enough for a spare pulse laser and a thruster).
 // `voyages`: the voyages open at the start (`voyages/*.ron`); clearing one opens those that name it in `opens_after`.
 [
     (
@@ -9,5 +11,6 @@
         ship: "rim_skiff",
         mind_capacity: 2,
         voyages: ["yard_approach"],
+        materials: {"ceramic": 2, "copper": 4, "crystal": 2, "steel": 4},
     ),
 ]

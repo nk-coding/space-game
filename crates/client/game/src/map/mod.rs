@@ -699,7 +699,7 @@ impl FleetNow<'_> {
     /// Why the selection can't launch now, if it can't.
     fn blocker(&self, pick: &Pick) -> Option<String> {
         let c = &self.content.0;
-        let fleet = fleet_blocker(c, &self.granted.unlocks, self.granted.mind_capacity, self.design.blueprint(), &self.escorts.0);
+        let fleet = fleet_blocker(c, &self.granted.unlocks, self.granted.mind_capacity, self.granted.launch_stock(), self.design.blueprint(), &self.escorts.0);
         let career = self.career.career();
         match pick {
             Pick::Voyage(id) => course_blocker(c, career, id, fleet),
@@ -1129,7 +1129,7 @@ fn sync_panel(
     let ships: Vec<&data::Blueprint> = std::iter::once(flagship).chain(escorts).collect();
     let mind = f.granted.mind_capacity;
     let used = fleet_cores(content, flagship, escorts);
-    let checks = layout::checklist(content, &f.granted.unlocks, mind, flagship, escorts);
+    let checks = layout::checklist(content, &f.granted.unlocks, mind, f.granted.launch_stock(), flagship, escorts);
     let blocker = f.blocker(pick);
     let plural = |n: u32, one: &str| if n == 1 { format!("1 {one}") } else { format!("{n} {one}S") };
     let ship_sub = |k: usize, b: &data::Blueprint| {
@@ -1145,7 +1145,7 @@ fn sync_panel(
         (why.clone(), Tone::Coral)
     } else if let Some(b) = &blocker {
         (b.clone(), Tone::Coral)
-    } else if let Some(own) = f.granted.free.then(|| fleet_blocker(content, &career.unlocks(content), career.mind_capacity(content), flagship, escorts)).flatten() {
+    } else if let Some(own) = f.granted.free.then(|| fleet_blocker(content, &career.unlocks(content), career.mind_capacity(content), Some(career.stock()), flagship, escorts)).flatten() {
         (format!("PRACTICE RUN, NOT SAVED  ·  {own}"), Tone::Gold)
     } else {
         (panel.status.clone(), Tone::Teal)

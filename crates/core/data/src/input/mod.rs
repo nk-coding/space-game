@@ -131,6 +131,7 @@ actions! {
     OpenFleet = "open_fleet",
     OpenLog = "open_log",
     OpenEvolution = "open_evolution",
+    OpenWorkshop = "open_workshop",
     OpenSettings = "open_settings",
     ToolPaint = "tool_paint",
     ToolBevel = "tool_bevel",

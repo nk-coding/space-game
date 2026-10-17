@@ -547,15 +547,23 @@ pub(in crate::drydock) fn sync_texts(
                 }
                 Tone::Dim
             }
+            // The workshop's stock less what the design holds (GDR-0108): coral when the design is short of it,
+            // dim when none is left; hull plating is not counted.
             PanelText::RowCount(k) => match row_part(k).filter(|p| granted.unlocks.has_part(&p.id)) {
-                Some(p) => match design.dock().left(&p.id) {
-                    Availability::Unlimited => {
+                Some(p) => match granted.in_stock(&p.id).filter(|_| !p.hull) {
+                    None => {
                         s.push('∞');
                         Tone::Label
                     }
-                    Availability::Count(n) => {
-                        let _ = write!(s, "{n}");
-                        if n == 0 { Tone::Coral } else { Tone::Label }
+                    Some(n) => {
+                        let used = design.dock().parts().iter().filter(|x| x.part == p.id).count() as i64;
+                        let left = i64::from(n) - used;
+                        let _ = write!(s, "{left}");
+                        match left {
+                            ..0 => Tone::Coral,
+                            0 => Tone::Dim,
+                            _ => Tone::Label,
+                        }
                     }
                 },
                 None => Tone::Label,

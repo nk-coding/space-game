@@ -29,6 +29,8 @@
 
 pub mod debrief;
 
+use std::collections::BTreeMap;
+
 use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
 use bevy_egui::input::egui_wants_any_keyboard_input;
@@ -222,11 +224,11 @@ impl LaunchInputs<'_> {
         };
         let flagship = self.design.blueprint();
         let escorts = &self.escorts.0;
-        let granted = fleet_blocker(content, &self.granted.unlocks, self.granted.mind_capacity, flagship, escorts);
+        let granted = fleet_blocker(content, &self.granted.unlocks, self.granted.mind_capacity, self.granted.launch_stock(), flagship, escorts);
         // In free mode (`?unlock=all`) the drydock grants everything; the career records only fleets its own
         // unlocks allow.
         let own = if self.granted.free {
-            fleet_blocker(content, &career.unlocks(content), career.mind_capacity(content), flagship, escorts)
+            fleet_blocker(content, &career.unlocks(content), career.mind_capacity(content), Some(career.stock()), flagship, escorts)
         } else {
             granted.clone()
         };
@@ -258,10 +260,10 @@ impl LaunchInputs<'_> {
         let content = &self.content.0;
         let flagship = self.design.blueprint();
         let escorts = &self.escorts.0;
-        if let Some(b) = fleet_blocker(content, &self.granted.unlocks, self.granted.mind_capacity, flagship, escorts) {
+        if let Some(b) = fleet_blocker(content, &self.granted.unlocks, self.granted.mind_capacity, self.granted.launch_stock(), flagship, escorts) {
             return Err(format!("NOT VOYAGE-READY · {b}"));
         }
-        let own = self.granted.free.then(|| fleet_blocker(content, &self.career.career().unlocks(content), self.career.career().mind_capacity(content), flagship, escorts)).flatten();
+        let own = self.granted.free.then(|| fleet_blocker(content, &self.career.career().unlocks(content), self.career.career().mind_capacity(content), Some(self.career.career().stock()), flagship, escorts)).flatten();
         let mut next = self.career.career().clone();
         let sk = next.exploration().ok_or("THE CAREER HAS NO GALAXY")?.skeleton().clone();
         let cl = sk.clusters.get(k as usize).ok_or_else(|| format!("THE GALAXY HAS {} CLUSTERS", sk.clusters.len()))?;
@@ -305,7 +307,7 @@ impl LaunchInputs<'_> {
     fn launch_cluster(&mut self, galaxy: Option<u64>, cluster: &str) -> Result<(), String> {
         let content = &self.content.0;
         let flagship = self.design.blueprint();
-        if let Some(b) = fleet_blocker(content, &self.granted.unlocks, self.granted.mind_capacity, flagship, &self.escorts.0) {
+        if let Some(b) = fleet_blocker(content, &self.granted.unlocks, self.granted.mind_capacity, self.granted.launch_stock(), flagship, &self.escorts.0) {
             return Err(format!("NOT VOYAGE-READY · {b}"));
         }
         let career = self.career.career();
@@ -367,8 +369,9 @@ pub fn default_voyage<'c>(career: &Career, content: &'c Content) -> Option<&'c s
 }
 
 /// The first reason the fleet may not fly a voyage, in words: a ship that can't fly (the design report), then
-/// `data::career::voyage_ready`'s first blocker; `None`: ready (the no-cargo warning doesn't block).
-pub fn fleet_blocker(content: &Content, unlocks: &Unlocks, mind: u32, flagship: &Blueprint, escorts: &[Blueprint]) -> Option<String> {
+/// `data::career::voyage_ready`'s first blocker with this stock (`None`: unlimited); `None`: ready (the no-cargo
+/// warning doesn't block).
+pub fn fleet_blocker(content: &Content, unlocks: &Unlocks, mind: u32, stock: Option<&BTreeMap<String, u32>>, flagship: &Blueprint, escorts: &[Blueprint]) -> Option<String> {
     for (k, bp) in std::iter::once(flagship).chain(escorts).enumerate() {
         let report = sim::design_report(content, bp, &SimConfig::default());
         if let Err(why) = flight_ready(&report) {
@@ -376,7 +379,7 @@ pub fn fleet_blocker(content: &Content, unlocks: &Unlocks, mind: u32, flagship: 
             return Some(format!("{who}CAN'T FLY · {}", why.to_uppercase()));
         }
     }
-    voyage_ready(content, unlocks, mind, flagship, escorts).iter().find(|r| r.blocks()).map(|r| readiness_words(content, r))
+    voyage_ready(content, unlocks, mind, stock, flagship, escorts).iter().find(|r| r.blocks()).map(|r| readiness_words(content, r))
 }
 
 /// Decides a launch of `voyage` on `career` (changed only when it is recorded): `Ok((seed, None))` recorded,
@@ -939,14 +942,17 @@ mod tests {
     fn the_fleet_blocker_names_the_first_problem() {
         let (content, _, pc) = fresh();
         let (unlocks, mind) = (pc.career().unlocks(&content), pc.career().mind_capacity(&content));
+        let stock = Some(pc.career().stock());
         let skiff = content.ships.get("rim_skiff").unwrap().clone();
-        assert_eq!(fleet_blocker(&content, &unlocks, mind, &skiff, &[]), None);
+        assert_eq!(fleet_blocker(&content, &unlocks, mind, stock, &skiff, &[]), None);
         let runner = content.ships.get("halvex_runner").unwrap().clone();
-        assert!(fleet_blocker(&content, &unlocks, mind, &runner, &[]).unwrap().starts_with("USES "));
-        assert_eq!(fleet_blocker(&content, &unlocks, mind, &skiff, std::slice::from_ref(&skiff)).as_deref(), Some("4 CORES, YOUR MIND RUNS 2"));
+        assert!(fleet_blocker(&content, &unlocks, mind, stock, &runner, &[]).unwrap().starts_with("USES "));
+        assert_eq!(fleet_blocker(&content, &unlocks, mind, None, &skiff, std::slice::from_ref(&skiff)).as_deref(), Some("4 CORES, YOUR MIND RUNS 2"));
+        // A second skiff is not in stock: the first part it is short of, in id order (GDR-0108).
+        assert_eq!(fleet_blocker(&content, &unlocks, mind, stock, &skiff, std::slice::from_ref(&skiff)).as_deref(), Some("CAPACITOR 2 OF 4 IN STOCK"));
         let mut adrift = skiff.clone();
         adrift.parts.retain(|p| !p.part.contains("thruster"));
-        let why = fleet_blocker(&content, &unlocks, mind, &skiff, &[adrift]).unwrap();
+        let why = fleet_blocker(&content, &unlocks, mind, None, &skiff, &[adrift]).unwrap();
         assert!(why.starts_with("ESCORT 1 CAN'T FLY"), "{why}");
     }
 
@@ -961,7 +967,7 @@ mod tests {
         let stored = |s: &Storage| s.read::<crate::career::CareerDoc>("career").unwrap().unwrap().doc.0;
         assert_eq!(stored(&storage).underway(), Some("yard_approach"));
         let haul: Haul = [
-            (HaulItem::Part { part: "automaton_cannon".into(), material: None }, 2),
+            (HaulItem::Broken { part: "automaton_cannon".into(), material: None }, 2),
             (HaulItem::Fragment { part: "automaton_core".into() }, 1),
         ]
         .into_iter()

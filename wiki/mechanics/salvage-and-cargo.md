@@ -1,6 +1,6 @@
 ---
 title: "Salvage and cargo"
-description: "What counts as salvage, how your ships collect it by flying slowly over it, cargo holds and what they spill, the fragments destroyed cores leave, and how a haul becomes research data and materials at home."
+description: "What counts as salvage, how your ships collect it by flying slowly over it, cargo holds and what they spill, the fragments destroyed cores leave, why most parts break, and how the workshop turns a haul into stock, research data and materials."
 ---
 
 # Salvage and cargo
@@ -105,7 +105,7 @@ Your hold is the summed [[stat:cargo_capacity]] of the cargo parts on your vesse
 A destroyed [[part:logic_core]] or [[part:automaton_core]] leaves a **fragment** of
 [[material:programmable_matter]]: a small loose item where the core was, drifting on with the speed it had. It stays
 until you collect it or the voyage ends (the test range clears old ones after a while). Only cores destroyed by
-damage leave one; a core you collect whole gives research data as well.
+damage leave one; a core you collect gives research data as well.
 
 ## Bringing it home
 
@@ -114,20 +114,42 @@ within [[sim:recall_radius]] of your vessels, or as an emergency recall when non
 The haul is everything in the holds of all your vessels when you warp. If your last vessel is lost instead, the haul
 stays behind in the wreck, and your ships re-form at home without it. See [voyages](/mechanics/voyages).
 
-## Dismantling at home
+## Most parts break
 
-At home the haul is taken apart (VOYAGE HOME · HAUL UNLOADED on the debrief), and the LOG keeps a record of it:
+Tearing a part off a wreck usually breaks it: only [[sim:intact_chance]] of the parts you strip come away intact,
+the rest come aboard broken. Hull plating is never counted as either; it is taken apart at home anyway. Broken
+parts take the same room in the hold, but a hold that shrinks drops them before intact ones.
 
-- A **whole part** gives the research data of its kind to its research family, and some parts give materials too.
-  A [[part:fission_reactor]] gives [[part:fission_reactor.salvage_data]]; a [[part:logic_core]] gives
-  [[part:logic_core.salvage_data]] and [[part:logic_core.salvage_materials]]; an [[part:automaton_core]]
-  [[part:automaton_core.salvage_data]] and [[part:automaton_core.salvage_materials]]. Damage doesn't matter: a part
-  that came home counts whole.
-- A **hull part** gives its armour's data for every cell of hull area, slopes counting half: steel gives
-  [[material:steel.salvage_data]] per cell.
+## At home: the workshop
+
+When the haul comes home (VOYAGE HOME · HAUL UNLOADED on the debrief, and the LOG keeps a record of it):
+
+- A **broken part** is dismantled at once: it gives the research data of its kind to its research family and
+  [[facility:workshop.broken]] of the materials in its recipe. A broken [[part:fission_reactor]] gives
+  [[part:fission_reactor.salvage]] and a share of [[part:fission_reactor.recipe]].
+- A **hull part** gives its armour's data for every cell of hull area, slopes counting half (steel gives
+  [[material:steel.salvage_data]] per cell), and [[facility:workshop.broken]] of a unit of its armour per cell.
 - A **fragment** gives its materials: [[part:logic_core.fragment]] from a logic core, [[part:automaton_core.fragment]]
   from an automaton core.
+- An **intact part** waits in the [[facility:workshop]]. There you keep it (it goes into stock, and your ships can
+  carry it) or dismantle it for its research data and [[facility:workshop.dismantle]] of its recipe's materials. The
+  workshop suggests a sort: keep while fewer than [[facility:workshop.keep]] are in stock or your fleet needs more,
+  dismantle the rest; SORT AS SUGGESTED does it in one click.
 
-Each part's page lists what it gives under Salvage. Research data and materials pay for research: new parts, armour,
-frames and more mind capacity, such as [[research:tamed_core]], which lets you build the [[part:automaton_core]]
-yourself. See [research, the fleet and the career](/mechanics/career) and [[family:logic]].
+Shares are summed over the haul (or over the parts dismantled together) and rounded to whole units. Each part's page
+lists what it gives under Salvage and what it is made of under Recipe. Research data and materials pay for research:
+new parts, armour, frames and more mind capacity, such as [[research:tamed_core]], which lets you fly the
+[[part:automaton_core]] yourself. See [research, the fleet and the career](/mechanics/career) and [[family:logic]].
+
+## Fabricating and the stock
+
+Your ships are fitted from the workshop's stock: a fleet launches only when the stock holds every part its ships
+carry (hull plating is not counted). The drydock shows each part's stock and what the design is short of. The
+workshop fabricates parts from materials: an unlocked part with a recipe, such as a [[part:pulse_laser]] from
+[[part:pulse_laser.recipe]]. Some recipes need a workshop upgrade: the [[facility:fusion_workshop]] for the
+[[part:fusion_reactor]] and the [[part:torch_drive]], the [[facility:grown_vat]] for the Grown's parts. The
+automatons' own parts need the [[facility:automaton_forge]], which nothing installs yet, so they come only from
+intact salvage.
+
+Fitting takes nothing from the stock: the parts come back when a ship comes home, and when a ship is lost its
+bonded parts re-form at home with it. Only the haul is at stake.

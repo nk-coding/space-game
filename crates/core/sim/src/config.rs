@@ -117,6 +117,10 @@ pub struct SalvageTuning {
     pub settle_speed: f32,
     /// ... by this much every second (m/s²).
     pub settle_decel: f32,
+    /// The chance that a part stripped from salvage comes away intact (GDR-0108, Niklas 18 Oct 2026: intact parts
+    /// are rare); the rest break (`Item::Broken`). Hull parts are never rolled. 1: every part intact (as before
+    /// 18 Oct 2026), no draw.
+    pub intact_chance: f32,
 }
 
 impl SalvageTuning {
@@ -153,6 +157,7 @@ impl Default for SalvageTuning {
             collects,
             settle_speed: 3.0,
             settle_decel: 4.0,
+            intact_chance: 0.15,
         }
     }
 }
@@ -215,6 +220,9 @@ impl SimConfig {
         fix(&mut p.ram_damage, dp.ram_damage);
         fix(&mut self.salvage.reach, d.salvage.reach);
         fix(&mut self.salvage.max_speed, d.salvage.max_speed);
+        if !(0.0..=1.0).contains(&self.salvage.intact_chance) {
+            self.salvage.intact_chance = d.salvage.intact_chance;
+        }
         fix(&mut self.voyage.spawn_radius, d.voyage.spawn_radius);
         fix(&mut self.voyage.recall_radius, d.voyage.recall_radius);
         self
@@ -294,6 +302,7 @@ impl StateHash for SimConfig {
         }
         h.f32(s.settle_speed);
         h.f32(s.settle_decel);
+        h.f32(s.intact_chance);
         self.voyage.hash_state(h);
     }
 }

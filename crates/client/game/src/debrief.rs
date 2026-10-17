@@ -134,15 +134,16 @@ fn dismiss(
     }
 }
 
-/// Shown at home while open, and not under FLEET, SETTINGS, the LOG or EVOLUTION (the layers over home leave the world
+/// Shown at home while open, and not under FLEET, SETTINGS, the LOG, EVOLUTION or the WORKSHOP (the layers over home leave the world
 /// behind them barely there, so a panel left showing would read through them).
+#[allow(clippy::type_complexity)]
 fn show(
     mode: Res<State<AppMode>>,
-    (fleet, settings, log, evo): (Res<Fleet>, Res<SettingsLayer>, Res<VoyageLog>, Res<crate::evolution::EvolutionLayer>),
+    (fleet, settings, log, evo, ws): (Res<Fleet>, Res<SettingsLayer>, Res<VoyageLog>, Res<crate::evolution::EvolutionLayer>, Res<crate::workshop::WorkshopLayer>),
     debrief: Res<Debrief>,
     mut panel: Single<&mut ScreenFx, With<PanelRoot>>,
 ) {
-    let home = *mode.get() == AppMode::Home && !fleet.open && !settings.open && !log.open && !evo.open;
+    let home = *mode.get() == AppMode::Home && !fleet.open && !settings.open && !log.open && !evo.open && !ws.open;
     show_screen(&mut panel, home && debrief.data.is_some() && debrief.open);
 }
 

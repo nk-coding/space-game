@@ -450,7 +450,7 @@ pub fn card_state(content: &Content, granted: &Granted, d: &FleetDesign, in_flee
     if d.cores > free {
         return (format!("NEEDS {}  ·  {free} FREE", plural(d.cores, "CORE")), Tone::Coral);
     }
-    if let Some(locked) = voyage_ready(content, &granted.unlocks, u32::MAX, &d.blueprint, &[]).iter().find(|r| r.blocks()) {
+    if let Some(locked) = voyage_ready(content, &granted.unlocks, u32::MAX, None, &d.blueprint, &[]).iter().find(|r| r.blocks()) {
         return (readiness_words(content, locked), Tone::Gold);
     }
     if in_fleet { (format!("IN THE FLEET  ·  {}", plural(d.cores, "CORE")), Tone::Label) } else { (format!("FITS  ·  {}", plural(d.cores, "CORE")), Tone::Teal) }

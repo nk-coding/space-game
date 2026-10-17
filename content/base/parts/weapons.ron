@@ -4,6 +4,8 @@
 // Power tier (lead default): guns come last. A beam below half its draw cannot hold focus (placeholder).
 // `salvage`: what the part gives when salvaged and dismantled at home (research data about its build points;
 // PLACEHOLDER, lead defaults of 13 Oct 2026 after docs/plans/first-playable-loop.md 3.2).
+// `recipe`: what the workshop fabricates it from (GDR-0108; PLACEHOLDER amounts, about twice the build points);
+// `needs` names the workshop upgrade it takes. Dismantling gives a share back (facilities.ron).
 [
     (
         id: "pulse_laser",
@@ -21,6 +23,7 @@
         heat: (output: 1.5, limit: 3),
         weapon: (family: Energy, damage: 1, range: 60, delivery: Pulse(rate: 4)),
         salvage: (family: "energy", data: 3),
+        recipe: (materials: {"copper": 3, "crystal": 2, "steel": 1}),
     ),
     (
         id: "beam_laser",
@@ -41,6 +44,7 @@
         heat: (output: 3.2, limit: 4.2),
         weapon: (family: Energy, damage: 2.6, range: 45, delivery: Beam),
         salvage: (family: "energy", data: 7),
+        recipe: (materials: {"copper": 6, "crystal": 6, "steel": 2}),
     ),
     (
         id: "reverse_engineered_cannon",
@@ -65,5 +69,6 @@
         heat: (output: 1, limit: 3),
         weapon: (family: Kinetic, damage: 1.1, range: 75, delivery: Projectile(rate: 1.1, speed: 150, penetration: 1, recoil: 2)),
         salvage: (family: "kinetic", data: 3),
+        recipe: (materials: {"automaton_plate": 3, "copper": 1, "steel": 2}),
     ),
 ]

@@ -4,6 +4,8 @@
 // armour in between lets only its `blast_factor` through.
 // `salvage`: what the part gives when salvaged and dismantled at home (research data about its build points;
 // PLACEHOLDER, lead defaults of 13 Oct 2026 after docs/plans/first-playable-loop.md 3.2).
+// `recipe`: what the workshop fabricates it from (GDR-0108; PLACEHOLDER amounts, about twice the build points);
+// `needs` names the workshop upgrade it takes. Dismantling gives a share back (facilities.ron).
 [
     (
         id: "fission_reactor",
@@ -21,6 +23,7 @@
         heat: (output: 3, limit: 6),
         explosion: (damage: 1.5, radius: 1.5), // radius 1 → 1.5 (GDR-0085): two cells deep
         salvage: (family: "power", data: 4),
+        recipe: (materials: {"ceramic": 3, "copper": 2, "steel": 3}),
     ),
     (
         id: "fusion_reactor",
@@ -40,6 +43,7 @@
         heat: (output: 6, limit: 8),
         explosion: (damage: 2.5, radius: 2), // radius 1.5 → 2 (GDR-0085): two cells deep
         salvage: (family: "power", data: 10),
+        recipe: (materials: {"ceramic": 8, "copper": 6, "steel": 6}, needs: "fusion_workshop"),
     ),
     (
         id: "capacitor",
@@ -56,6 +60,7 @@
         heat: (output: 0.15, limit: 4),
         explosion: (damage: 0.5, radius: 0.6),
         salvage: (family: "power", data: 2),
+        recipe: (materials: {"ceramic": 1, "copper": 3}),
         bonuses: [
             (target: Tag("laser"), stat: "fire_rate", effect: Percent(15), max_stacks: 3),
         ],

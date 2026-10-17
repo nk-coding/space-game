@@ -39,7 +39,7 @@
         family: "power",
         kind: NewPart,
         cost: (data: {"power": 10}),
-        unlocks: [Part("fusion_reactor")],
+        unlocks: [Part("fusion_reactor"), Facility("fusion_workshop")], // the workshop upgrade that fabricates it and the torch drive (GDR-0108)
     ),
     (
         id: "torch_drive",

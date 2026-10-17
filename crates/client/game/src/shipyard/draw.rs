@@ -75,6 +75,8 @@ pub struct Lights {
     /// A voyage's result waits in the LOG: its mast glows.
     pub log: bool,
     pub evolution: Evo,
+    /// Hauled parts wait in the workshop to be sorted (GDR-0108): its bays glow gold, else teal.
+    pub workshop: bool,
 }
 
 /// The EVOLUTION lab's state (GDR-0092 "Its states"): dark until its research node opens it, dim without a run, its
@@ -538,13 +540,25 @@ pub fn evolution_glow(pen: &mut Pen, pal: &Palette) {
     pen.circle(Vec2::ZERO, 2.05, 0.07, vcol(pal.gold, 0.85));
 }
 
-/// Three dark bays: a building waiting for its screen (the fabricator, the salvage bay).
-fn bays(pen: &mut Pen, pal: &Palette, c: Vec2, s: f32) {
+/// The workshop (GDR-0108): three bays with a part on the bench in each, its windows lit (gold while hauled parts
+/// wait to be sorted), and a crane arm off its outer face over the middle bay.
+fn workshop(pen: &mut Pen, l: &Layout, pal: &Palette, waiting: bool) {
+    let b = &l.workshop;
+    let col = if waiting { pal.gold } else { pal.teal };
+    block(pen, pal, b.rect(), true, col);
+    let (c, s) = (b.centre, 0.0233);
     for k in 0..3 {
         let x = c.x + (-45.0 + 32.0 * k as f32) * s;
         let r = Rect::new(x, c.y - 22.0 * s, x + 24.0 * s, c.y + 22.0 * s);
-        pen.boxed(r, vcol(pal.dark, 1.0), vcol(pal.dim, 1.0), 0.06);
+        pen.boxed(r, vcol(pal.dark, 1.0), vcol(col, 0.55), 0.06);
+        // The part on its bench.
+        pen.boxed(Rect::from_center_size(Vec2::new(r.center().x, r.min.y + 0.35), Vec2::new(0.32, 0.32)), vcol(pal.hull_hi, 1.0), vcol(col, 0.8), 0.04);
     }
+    // The crane arm over the middle bay, from the roof's left end.
+    let roof = b.rect().min.y;
+    pen.line(Vec2::new(c.x - 2.6, roof), Vec2::new(c.x - 2.6, roof - 0.9), 0.14, vcol(pal.hull_hi, 1.0));
+    pen.line(Vec2::new(c.x - 2.6, roof - 0.9), Vec2::new(c.x + 0.4, roof - 0.9), 0.12, vcol(pal.hull_hi, 1.0));
+    pen.line(Vec2::new(c.x + 0.2, roof - 0.9), Vec2::new(c.x + 0.2, roof - 0.35), 0.05, vcol(col, 0.7));
 }
 
 /// The mind's emblem plate: a hexagon (its spokes and core turn and pulse over it, `super::life`).
@@ -794,17 +808,13 @@ pub fn yard(pen: &mut Pen, l: &Layout, pal: &Palette, lights: Lights) {
         mooring(pen, pal, *c, if c.y > l.area.center().y { 1.0 } else { -1.0 }, k < lights.moored);
     }
     // Struts under the buildings (the mind's collar is its own), and the one from the range's tower to its lane.
-    for b in [&l.research, &l.fabricator, &l.range, &l.salvage, &l.log, &l.evolution] {
+    for b in [&l.research, &l.range, &l.workshop, &l.log, &l.evolution] {
         strut(pen, pal, b.strut.0, b.strut.1);
     }
     let t = l.range.rect();
     strut(pen, pal, Vec2::new(t.max.x - 0.1, l.lane.0.y), l.lane.0 - Vec2::X * 1.0);
     research_house(pen, l, pal, lights.research);
-    // The fabricator and the salvage bay: dark until they have screens.
-    block(pen, pal, l.fabricator.rect(), false, pal.dim);
-    bays(pen, pal, l.fabricator.centre, 0.0287);
-    block(pen, pal, l.salvage.rect(), false, pal.dim);
-    bays(pen, pal, l.salvage.centre, 0.0233);
+    workshop(pen, l, pal, lights.workshop);
     mind_house(pen, l, pal);
     log_mast(pen, l, pal);
     evolution_lab(pen, l, pal, lights.evolution);

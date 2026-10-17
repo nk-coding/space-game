@@ -530,7 +530,7 @@ impl Setup {
             build_points: self.build_points,
             min_hold: self.min_hold,
             max_cores: self.voyage_ready.then_some(free_cores),
-            counts: (!free && !granted.counts.is_empty()).then(|| granted.counts.clone()),
+            counts: None,
             parts: (!free).then(|| granted.unlocks.parts.clone()),
             materials: (!free).then(|| granted.unlocks.materials.clone()),
             mirror: self.mirror,

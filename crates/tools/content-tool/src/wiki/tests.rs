@@ -755,21 +755,24 @@ fn parts_materials_and_frames_show_salvage_and_unlocks() {
         assert!(!page(&site, path).contains(needle), "{path} has {needle}")
     };
     let pm = "<a href=\"../materials/programmable_matter.html\">Programmable matter</a>";
-    // A part's salvage block: data for its family and materials when intact, the fragment when destroyed.
+    // A part's salvage block: data for its family and a share of its recipe when dismantled, the fragment when
+    // destroyed; its recipe and the workshop upgrade it needs (GDR-0108).
     let core = "parts/automaton_core.html";
-    has(
-        core,
-        &format!(
-            "<tr><th>Intact part</th><td>4 <a href=\"../families/logic.html\">Logic and sensors</a> data, 1 {pm}</td></tr>"
-        ),
-    );
+    let logic = "4 <a href=\"../families/logic.html\">Logic and sensors</a> data";
+    has(core, &format!("<tr><th>Intact part</th><td>kept in stock, or dismantled for {logic} and 40% of its recipe's materials</td></tr>"));
+    has(core, &format!("<tr><th>Broken part</th><td>{logic} and 25% of its recipe's materials</td></tr>"));
+    has(core, &format!("3 {pm}"));
+    has(core, "<tr><th>Needs</th><td><a href=\"../facilities/automaton_forge.html\">Automaton forge</a>");
+    has("parts/radiator.html", "<tr><th>Materials</th><td>2 ");
+    has("facilities/workshop.html", "keep while fewer than 2 are in stock");
+    has("facilities/fusion_workshop.html", "<a href=\"../parts/torch_drive.html\">Torch drive</a>");
     has(
         core,
         &format!("<tr><th>Destroyed part</th><td>leaves a fragment of 1 {pm}</td></tr>"),
     );
     has(
         "parts/pulse_laser.html",
-        "<td>3 <a href=\"../families/energy.html\">Energy weapons</a> data</td></tr>\n<tr><th>Destroyed part</th><td>leaves nothing</td>",
+        "<td>3 <a href=\"../families/energy.html\">Energy weapons</a> data and 25% of its recipe's materials</td></tr>\n<tr><th>Destroyed part</th><td>leaves nothing</td>",
     );
     // Hull parts give data by their material, per cell of hull area (a 1×3 slope is 1.5 cells).
     let slope = "parts/slope_1x3.html";
@@ -820,10 +823,10 @@ fn parts_materials_and_frames_show_salvage_and_unlocks() {
     );
     let matter = "materials/programmable_matter.html";
     lacks(matter, "<h2>Salvage</h2>");
-    has(matter, "<h2>From salvage</h2>");
+    has(matter, "<h2>Recipes and salvage</h2>");
     has(
         matter,
-        "href=\"../parts/logic_core.html\">Logic core</a></td><td>1 per intact part, 1 per fragment of a destroyed one</td>",
+        "href=\"../parts/logic_core.html\">Logic core</a></td><td>2 in its recipe, 1 per fragment of a destroyed one</td>",
     );
     has(matter, "href=\"../parts/automaton_core.html\"");
     has(matter, "<h2>Research that costs it</h2>");
@@ -906,7 +909,7 @@ fn tricky_content() -> Content {
             r#"(id: "tricky_part", name: "<Tricky & \"Part\">", summary: "Uses <b>bold</b> & [[part:radiator|<i>rad</i>]].",
                 description: "`<code>` and **<strong>**", lore: "'quoted' <lore>", tags: ["odd"],
                 category: "power", size: (1, 1), build_points: 1, mass: 4, hp: 1, power: (output: 1),
-                salvage: (family: "tricky_family", data: 2, materials: {"programmable_matter": 1}))"#,
+                salvage: (family: "tricky_family", data: 2), recipe: (materials: {"programmable_matter": 1}))"#,
         ),
         (
             "ships/s.ron",

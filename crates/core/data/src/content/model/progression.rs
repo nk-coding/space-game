@@ -102,7 +102,8 @@ entry!(ResearchNode, Kind::Research);
 
 /// `facilities.ron` / `facilities/*.ron`: a building of the home shipyard that the player opens (GDR-0071: "each area
 /// needs states from content"; GDR-0092): its name, the label over it at home, and whether research must open it
-/// first. The shipyard places and draws it (`game::shipyard`); the evolution lab is the only one so far.
+/// first. The shipyard places and draws the buildings (`game::shipyard`: the workshop and the evolution lab); a
+/// facility `within` another is an upgrade installed in it (the workshop's, GDR-0031's hub upgrades, GDR-0108).
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Facility {
@@ -118,10 +119,30 @@ pub struct Facility {
     /// Dark until a research node's [`Unlock::Facility`] opens it.
     #[serde(default)]
     pub locked: bool,
+    /// An upgrade installed in this facility (id): no building of its own; recipes that name it in `needs` can be
+    /// fabricated once it is open.
+    #[serde(default)]
+    pub within: Option<String>,
+    /// The workshop's rules (GDR-0108): this facility keeps or dismantles the haul's parts and fabricates.
+    #[serde(default)]
+    pub workshop: Option<WorkshopRules>,
     #[serde(skip_deserializing)]
     pub source: Source,
 }
 entry!(Facility, Kind::Facility);
+
+/// How the workshop treats the haul (GDR-0108, provisional numbers in content).
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct WorkshopRules {
+    /// Share of a part's recipe materials that dismantling an intact part gives back (0..=1).
+    pub dismantle: f32,
+    /// Share that a broken part gives back (dismantled at once when the haul comes home), and a hull part per
+    /// cell of its armour material.
+    pub broken: f32,
+    /// The suggested sort keeps an intact part while fewer than this many are in stock (or the fleet needs more).
+    pub keep: u32,
+}
 
 /// `starts.ron` / `starts/*.ron`: how a new game begins. A new game has every part, material and frame that is
 /// not `locked` (a start names no unlocks of its own).
@@ -144,6 +165,9 @@ pub struct Start {
     /// Voyages (ids) open at the start; clearing them opens the voyages that name them in `opens_after`.
     #[serde(default)]
     pub voyages: Vec<String>,
+    /// Materials (id → amount) in store at the start, besides the parts of its ship, which are in stock (GDR-0108).
+    #[serde(default)]
+    pub materials: BTreeMap<String, u32>,
     #[serde(skip_deserializing)]
     pub source: Source,
 }

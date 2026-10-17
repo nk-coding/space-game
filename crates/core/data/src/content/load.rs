@@ -810,6 +810,23 @@ impl Content {
                 .any(|p| p.power.as_ref().is_some_and(|x| x.output > 0.0))
     }
 
+    /// The parts a ship is fitted from stock (GDR-0108): its placements that are not hull, counted by part id
+    /// (parts the content doesn't know count too, under their id).
+    pub fn ship_parts(&self, ship: &Blueprint) -> BTreeMap<String, u32> {
+        let mut out = BTreeMap::new();
+        for p in &ship.parts {
+            if self.parts.get(&p.part).is_none_or(|x| !x.hull) {
+                *out.entry(p.part.clone()).or_insert(0u32) += 1;
+            }
+        }
+        out
+    }
+
+    /// The workshop (GDR-0108): the first facility with workshop rules, and its rules.
+    pub fn workshop(&self) -> Option<(&Facility, &WorkshopRules)> {
+        self.facilities.iter().find_map(|f| f.workshop.as_ref().map(|w| (f, w)))
+    }
+
     /// Hit points of a placed part: the part's `hp`, or for hull parts `hp_per_cell × area`.
     pub fn placement_hp(&self, p: &Placement) -> Option<f32> {
         self.parts.get(&p.part)?.hp_in(self.placement_armor(p))

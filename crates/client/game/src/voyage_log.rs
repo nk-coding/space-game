@@ -454,7 +454,7 @@ mod tests {
         let mut c = Career::new(&content, "rim_awakening", 4207).unwrap();
         assert!(rows(&content, c.history()).is_empty());
         c.voyage_launched(&content, "yard_approach").unwrap();
-        let haul: Haul = [(HaulItem::Part { part: "automaton_cannon".into(), material: None }, 6), (HaulItem::Fragment { part: "automaton_core".into() }, 1)].into_iter().collect();
+        let haul: Haul = [(HaulItem::Broken { part: "automaton_cannon".into(), material: None }, 6), (HaulItem::Fragment { part: "automaton_core".into() }, 1)].into_iter().collect();
         c.voyage_ended(&content, "yard_approach", VoyageEnd::Recalled { haul, cleared: true, ticks: 30 * 462 }).unwrap();
         c.voyage_launched(&content, "yard_approach").unwrap();
         c.voyage_ended(&content, "yard_approach", VoyageEnd::Lost { ticks: 30 * 61 }).unwrap();
@@ -466,7 +466,7 @@ mod tests {
         let cleared = &r[1];
         assert_eq!((cleared.name.as_str(), cleared.time.as_str(), cleared.parts), ("Shipyard approach", "7:42", Some(7)));
         let haul = cleared.haul();
-        assert!(haul.starts_with("7 PARTS  »  KINETIC WEAPONS +") && haul.ends_with("PROGRAMMABLE MATTER +1"), "{haul}");
+        assert!(haul.starts_with("7 PARTS  »  KINETIC WEAPONS +") && haul.contains("PROGRAMMABLE MATTER +1"), "{haul}");
         assert_eq!(cleared.line(), format!("LAST VOYAGE  ·  SHIPYARD APPROACH  ·  GOAL CLEARED  ·  7:42  ·  {haul}"));
 
         assert!(c.read_log());

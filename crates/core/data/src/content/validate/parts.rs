@@ -89,8 +89,25 @@ impl<'a> Validator<'a> {
             }
             self.family_ref(p, "salvage.family", &s.family);
             self.research_data(p, "salvage.data", s.data, false);
-            self.material_amounts(p, "salvage.materials", &s.materials);
             self.material_amounts(p, "salvage.fragment", &s.fragment);
+        }
+        if let Some(r) = &p.recipe {
+            if p.hull {
+                self.err(p, "recipe", "hull parts are not fabricated (their plating is not counted); remove `recipe`");
+            }
+            if r.materials.is_empty() {
+                self.err(p, "recipe.materials", "a recipe takes at least one material");
+            }
+            self.material_amounts(p, "recipe.materials", &r.materials);
+            if let Some(n) = &r.needs {
+                match self.c.facilities.get(n) {
+                    None => self.err(p, "recipe.needs", format!("unknown facility `{n}`")),
+                    Some(f) if f.within.is_none() => {
+                        self.err(p, "recipe.needs", format!("`{n}` is no workshop upgrade (it has no `within`)"))
+                    }
+                    Some(_) => {}
+                }
+            }
         }
         if let Some(x) = &p.power {
             self.number(p, "power.output", x.output, 0.0, false);

@@ -1,7 +1,43 @@
 // The home shipyard's facilities (GDR-0071 "each area needs states from content", GDR-0092): the buildings research
 // opens. `name` is the label over the building at home; a `locked` one stays dark until a research node's
-// `Facility(id)` opens it. The shipyard places and draws them; the fabricator and the salvage bay come later.
+// `Facility(id)` opens it. The shipyard places and draws the buildings.
+// The workshop (GDR-0108) keeps or dismantles the haul's parts and fabricates new ones; its `workshop` rules are
+// PLACEHOLDER NUMBERS (lead, 18 Oct 2026): an intact part dismantled gives back `dismantle` of its recipe's
+// materials, a broken one (and a hull part, per cell of its armour) `broken`; the suggested sort keeps an intact part
+// while fewer than `keep` are in stock or the fleet needs more. Facilities `within` the workshop are its upgrades
+// (GDR-0031's hub upgrades): a recipe that `needs` one is fabricated only once it is open.
 [
+    (
+        id: "workshop",
+        name: "Workshop",
+        summary: "Sorts the haul's parts into stock or dismantles them for research data and materials, and fabricates parts from materials.",
+        description: "Ships are fitted from its stock: a fleet launches only when the stock holds every part its ships carry. Fitted parts come back to stock when the ship comes home, and re-form there when it is lost.",
+        workshop: (dismantle: 0.4, broken: 0.25, keep: 2),
+    ),
+    (
+        id: "fusion_workshop",
+        name: "Fusion workshop",
+        summary: "A workshop upgrade that fabricates fusion reactors and torch drives.",
+        description: "Researching the [[research:fusion_reactor]] installs it in the [[facility:workshop]]. Until then these parts come only from intact salvage.",
+        locked: true,
+        within: "workshop",
+    ),
+    (
+        id: "grown_vat",
+        name: "Growing vat",
+        summary: "A workshop upgrade that grows the Grown's living parts from their tissue.",
+        description: "Researching [[research:living_weapons]] installs it in the [[facility:workshop]]. Until then these parts come only from intact salvage.",
+        locked: true,
+        within: "workshop",
+    ),
+    (
+        id: "automaton_forge",
+        name: "Automaton forge",
+        summary: "A workshop upgrade that would forge the automatons' own cores and cannons.",
+        description: "No research installs it yet: until then the automatons' parts come only from intact salvage.",
+        locked: true,
+        within: "workshop",
+    ),
     (
         id: "evolution",
         name: "Evolution",

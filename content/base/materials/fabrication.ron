@@ -1,0 +1,26 @@
+// Fabrication resources (GDR-0031, GDR-0108): what parts' recipes take besides steel, programmable matter and the
+// races' own matter (automaton plate, grown tissue). For now dismantling salvage is their only source: a share of a
+// part's recipe comes back (the workshop's rules, facilities.ron). Harvesting comes later (GDR-0104's ores).
+[
+    (
+        id: "copper",
+        name: "Copper",
+        summary: "Wiring and windings: power, guns and every circuit.",
+        description: "In the recipes of [[part:capacitor|capacitors]], lasers, gyros and reactors. Dismantled parts give it back, [[part:shield_emitter|shield emitters]] and lasers the most.",
+        icon: "copper",
+    ),
+    (
+        id: "ceramic",
+        name: "Ceramic",
+        summary: "Heat-proof linings for drives, reactors and radiators.",
+        description: "In the recipes of [[part:thruster|thrusters]], reactors and [[part:radiator|radiators]]. Every raider's thruster gives a little back.",
+        icon: "ceramic",
+    ),
+    (
+        id: "crystal",
+        name: "Lattice crystal",
+        summary: "Grown lattice for lenses, emitters and logic.",
+        description: "In the recipes of lasers, [[part:shield_emitter|shield emitters]], [[part:scanner|scanners]] and [[part:logic_core|logic cores]]. The rarest of the three at the rim.",
+        icon: "crystal",
+    ),
+]

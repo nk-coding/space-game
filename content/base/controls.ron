@@ -48,6 +48,7 @@
     (id: "open_fleet", name: "Fleet", summary: "Opens FLEET at the moorings.", section: shipyard, contexts: [home], inputs: ["KeyF"]),
     (id: "open_log", name: "Log", summary: "Opens the LOG at the records mast: the last voyages and what they brought home.", section: shipyard, contexts: [home], inputs: ["KeyL"]),
     (id: "open_evolution", name: "Evolution", summary: "Opens the EVOLUTION lab: runs that breed your designs against enemies, every fight to watch again.", section: shipyard, contexts: [home], inputs: ["KeyE"]),
+    (id: "open_workshop", name: "Workshop", summary: "Opens the WORKSHOP: sort the haul into stock or dismantle it, fabricate parts.", section: shipyard, contexts: [home], inputs: ["KeyW"]),
     (id: "open_settings", name: "Settings", summary: "Opens SETTINGS: controls and display.", section: shipyard, contexts: [home], inputs: ["KeyO"]),
     // The drydock and the behavior editor.
     (id: "tool_paint", name: "Paint", summary: "The drydock's paint tool: places the picked part.", section: drydock, contexts: [drydock], inputs: ["KeyB"]),

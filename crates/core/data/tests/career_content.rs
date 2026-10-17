@@ -204,15 +204,15 @@ const PART: &str = r#"id: "p", name: "P", summary: "S.", category: "logic", size
 #[test]
 fn salvage_on_parts() {
     let good = format!(
-        r#"({PART}, salvage: (family: "logic", data: 2.5, materials: {{"programmable_matter": 1}}, fragment: {{"programmable_matter": 2}}))"#
+        r#"({PART}, salvage: (family: "logic", data: 2.5, fragment: {{"programmable_matter": 2}}), recipe: (materials: {{"programmable_matter": 1}}))"#
     );
     let p = problems_with(&[("parts/p.ron", &good)]);
     assert_clean(&p, "p");
     let c = Content::merge(&[base(), pack(&[("parts/p.ron", &good)])]);
     let s = c.parts.get("p").unwrap().salvage.clone().unwrap();
     assert_eq!((s.family.as_str(), s.data), ("logic", 2.5));
-    assert_eq!(s.materials["programmable_matter"], 1);
     assert_eq!(s.fragment["programmable_matter"], 2);
+    assert_eq!(c.parts.get("p").unwrap().recipe.as_ref().unwrap().materials["programmable_matter"], 1);
     // Data alone is enough; zero data is allowed.
     let p = problems_with(&[(
         "parts/p.ron",
@@ -221,7 +221,7 @@ fn salvage_on_parts() {
     assert_clean(&p, "p");
 
     let bad = format!(
-        r#"({PART}, salvage: (family: "lasers", data: -1, materials: {{"unobtainium": 1}}, fragment: {{"steel": 0}}))"#
+        r#"({PART}, salvage: (family: "lasers", data: -1, fragment: {{"steel": 0}}), recipe: (materials: {{"unobtainium": 1}}, needs: "evolution"))"#
     );
     let p = problems_with(&[("parts/p.ron", &bad)]);
     assert_error(
@@ -231,7 +231,8 @@ fn salvage_on_parts() {
         "unknown research family `lasers`",
     );
     assert_error(&p, "p", "salvage.data", "finite number >= 0");
-    assert_error(&p, "p", "salvage.materials.unobtainium", "unknown material");
+    assert_error(&p, "p", "recipe.materials.unobtainium", "unknown material");
+    assert_error(&p, "p", "recipe.needs", "no workshop upgrade");
     assert_error(&p, "p", "salvage.fragment.steel", "an amount of 1 to");
     let p = problems_with(&[(
         "parts/p.ron",
@@ -609,8 +610,9 @@ fn base_salvage_blocks() {
         let s = part(id);
         assert_eq!((s.family.as_str(), s.data), (family, data), "{id}");
     }
-    // Cores give programmable matter, and a destroyed core leaves a fragment of it (GDR-0063); nothing else does,
-    // and the Grown's ganglion neither (GDR-0103: the Grown are not precursor work).
+    // A destroyed core leaves a fragment of programmable matter (GDR-0063), and its recipe takes some (GDR-0031:
+    // it hosts a copy of you); nothing else leaves one, and the Grown's ganglion neither (GDR-0103: the Grown are not
+    // precursor work).
     for p in c
         .parts
         .iter()
@@ -618,10 +620,12 @@ fn base_salvage_blocks() {
     {
         let core = p.0.logic.is_some() && !p.0.tags.iter().any(|t| t == "grown");
         assert_eq!(!p.1.fragment.is_empty(), core, "{}", p.0.id);
-        assert_eq!(!p.1.materials.is_empty(), core, "{}", p.0.id);
+        let pm = p.0.recipe.as_ref().is_some_and(|r| r.materials.contains_key("programmable_matter"));
+        assert!(!core || pm, "{}", p.0.id);
+        // Every part but hull has a recipe (GDR-0108).
+        assert!(p.0.recipe.is_some(), "{}", p.0.id);
     }
     assert_eq!(part("automaton_core").fragment["programmable_matter"], 1);
-    assert_eq!(part("logic_core").materials["programmable_matter"], 1);
     let hull = |id: &str| c.materials.get(id).unwrap().salvage.clone().unwrap();
     assert_eq!(
         (hull("steel").family.as_str(), hull("steel").data),

@@ -17,7 +17,16 @@ use data::{Blueprint, Content, Kind, Pack, Problem, Severity};
 const START: &str = "rim_awakening";
 const FIRST: &str = "yard_approach";
 
+/// A part that broke when stripped (GDR-0108): dismantled at once at home, so its data counts on arrival.
 fn part(id: &str) -> HaulItem {
+    HaulItem::Broken {
+        part: id.into(),
+        material: None,
+    }
+}
+
+/// An intact part: it waits in the workshop's intake.
+fn intact(id: &str) -> HaulItem {
     HaulItem::Part {
         part: id.into(),
         material: None,
@@ -106,7 +115,13 @@ fn a_new_game_has_the_early_game_kit() {
     );
     assert_eq!(career.packs(), [("base".to_string(), "0.1.0".to_string())]);
     assert!(career.researched().is_empty() && career.data().is_empty());
-    assert!(career.materials().is_empty() && career.escorts().is_empty());
+    assert!(career.escorts().is_empty() && career.intake().is_empty());
+    // The start's materials in store, its ship's parts in stock (GDR-0108).
+    let start = c.starts.get(START).unwrap();
+    assert_eq!(career.materials(), &start.materials);
+    assert_eq!(career.stock(), &c.ship_parts(&ship(&c, &start.ship)));
+    assert_eq!(career.stock()["pulse_laser"], 2);
+    assert!(!career.stock().contains_key("armor_block"), "hull is not stocked");
     assert_eq!(career.log(), &Log::default());
     assert!(career.history().is_empty() && career.underway().is_none());
     assert!(career.voyage(FIRST).is_none());
@@ -182,22 +197,25 @@ fn unload_turns_a_haul_into_data_and_materials() {
             ("propulsion", 6.0),
         ])
     );
-    // Cores give programmable matter, and so do the fragments destroyed cores leave (but no data).
-    assert_eq!(report.materials, map(&[("programmable_matter", 3 + 3)]));
+    // Broken parts give the workshop's `broken` share (0.25) of their recipes, hull its armour per cell, summed
+    // over the haul and rounded to the nearest unit once: automaton plate 4 + 1.5, copper 1 + 0.5 + 0.5 + 0.5, steel
+    // 2 + 1.5 + 1, ceramic 1, crystal 0.25 + 0.5, programmable matter 0.5 + 1.5 and 3 from the fragments; composite
+    // 0.25 rounds to nothing.
     assert_eq!(
-        report.parts,
-        map(&[
-            ("armor_block", 3),
-            ("automaton_cannon", 4),
-            ("automaton_core", 2),
-            ("logic_core", 1),
-            ("slope_1x1", 2),
-            ("slope_1x2", 1),
-            ("thruster", 2),
-        ])
+        report.materials,
+        map(&[("automaton_plate", 6), ("ceramic", 1), ("copper", 3), ("crystal", 1), ("programmable_matter", 2 + 3), ("steel", 5)])
     );
+    assert_eq!(
+        report.broken,
+        map(&[("automaton_cannon", 4), ("automaton_core", 2), ("logic_core", 1), ("thruster", 2)])
+    );
+    assert_eq!(report.parts, map(&[("armor_block", 3), ("slope_1x1", 2), ("slope_1x2", 1)]));
     assert_eq!(report.fragments, map(&[("automaton_core", 3)]));
     assert_eq!(report.items(), 15 + 3);
+    // An intact part gives nothing yet: it waits in the workshop.
+    let whole = unload(&c, &haul(&[(intact("thruster"), 2)]));
+    assert!(whole.data.is_empty() && whole.materials.is_empty());
+    assert_eq!(whole.parts, map(&[("thruster", 2)]));
     // The same items in a different order make the same haul and the same report.
     let mut again = Haul::default();
     again.add(fragment("automaton_core"), 1);
@@ -226,17 +244,16 @@ fn unload_gives_nothing_for_what_it_cannot_value() {
             (hull("armor_block", "wood"), 1),                // an unknown material
             (hull("armor_block", "programmable_matter"), 1), // not an armour material: no salvage block
             (fragment("thruster"), 4),                       // leaves no fragment materials
-            (hull("pulse_laser", "steel"), 1), // not a hull part: its own block, no material
-            (part("radiator"), 0),             // nothing at all
+            (part("pulse_laser"), 1), // broken: its own block and 0.25 of its recipe
+            (part("radiator"), 0),    // nothing at all
         ]),
     );
     assert_eq!(report.data, map(&[("energy", 3.0)]));
-    assert!(report.materials.is_empty());
+    // Copper 0.75 and crystal 0.5 round up, steel 0.25 down.
+    assert_eq!(report.materials, map(&[("copper", 1), ("crystal", 1)]));
     // Whatever came home is listed, worth something or not.
-    assert_eq!(
-        report.parts,
-        map(&[("armor_block", 3), ("pulse_laser", 1), ("warp_core", 2)])
-    );
+    assert_eq!(report.parts, map(&[("armor_block", 2)]));
+    assert_eq!(report.broken, map(&[("armor_block", 1), ("pulse_laser", 1), ("warp_core", 2)]));
     assert_eq!(report.fragments, map(&[("thruster", 4), ("warp_core", 1)]));
 }
 
@@ -290,6 +307,7 @@ fn research_pays_and_unlocks_at_once() {
         ],
     );
     assert_eq!(career.data()["logic"], 3.0);
+    // The fragment's 1 and a quarter of the broken core's 2, rounded up.
     assert_eq!(career.materials()["programmable_matter"], 2);
     career.research(&c, "tamed_core").unwrap();
     assert!(!career.data().contains_key("logic"));
@@ -616,7 +634,7 @@ fn voyage_seeds_are_fixed() {
 fn the_starter_ship_is_voyage_ready() {
     let c = content();
     let skiff = ship(&c, "rim_skiff");
-    assert_eq!(voyage_ready(&c, &new_game_unlocks(&c), 2, &skiff, &[]), []);
+    assert_eq!(voyage_ready(&c, &new_game_unlocks(&c), 2, None, &skiff, &[]), []);
 }
 
 #[test]
@@ -625,7 +643,7 @@ fn locked_parts_and_materials_are_named_once_per_ship() {
     let u = new_game_unlocks(&c);
     let runner = ship(&c, "halvex_runner");
     let flag = FleetSlot::Flagship;
-    let found = voyage_ready(&c, &u, 2, &runner, &[]);
+    let found = voyage_ready(&c, &u, 2, None, &runner, &[]);
     assert_eq!(
         found,
         [
@@ -648,12 +666,12 @@ fn locked_parts_and_materials_are_named_once_per_ship() {
         ]
     );
     assert!(found.iter().all(Readiness::blocks));
-    assert_eq!(voyage_ready(&c, &Unlocks::all(&c), 2, &runner, &[]), []);
+    assert_eq!(voyage_ready(&c, &Unlocks::all(&c), 2, None, &runner, &[]), []);
     // A part the content doesn't have counts as locked (and a ship that cannot be built has no hold).
     let mut odd = ship(&c, "rim_skiff");
     odd.parts[2].part = "warp_core".into();
     assert_eq!(
-        voyage_ready(&c, &u, 2, &odd, &[]),
+        voyage_ready(&c, &u, 2, None, &odd, &[]),
         [
             Readiness::LockedPart {
                 ship: flag,
@@ -670,19 +688,19 @@ fn escorts_count_against_the_mind() {
     let u = new_game_unlocks(&c);
     let skiff = ship(&c, "rim_skiff");
     assert_eq!(
-        voyage_ready(&c, &u, 2, &skiff, std::slice::from_ref(&skiff)),
+        voyage_ready(&c, &u, 2, None, &skiff, std::slice::from_ref(&skiff)),
         [Readiness::TooManyCores {
             cores: 4,
             capacity: 2
         }]
     );
     assert_eq!(
-        voyage_ready(&c, &u, 4, &skiff, std::slice::from_ref(&skiff)),
+        voyage_ready(&c, &u, 4, None, &skiff, std::slice::from_ref(&skiff)),
         []
     );
     // An escort's locked parts name the escort.
     let raider = ship(&c, "automaton_raider");
-    let found = voyage_ready(&c, &u, 4, &skiff, &[skiff.clone(), raider]);
+    let found = voyage_ready(&c, &u, 4, None, &skiff, &[skiff.clone(), raider]);
     let escort = FleetSlot::Escort(1);
     assert_eq!(
         found,
@@ -712,12 +730,12 @@ fn no_cargo_is_only_a_warning() {
     let c = content();
     let raider = ship(&c, "automaton_raider");
     let all = Unlocks::all(&c);
-    let found = voyage_ready(&c, &all, 2, &raider, &[]);
+    let found = voyage_ready(&c, &all, 2, None, &raider, &[]);
     assert_eq!(found, [Readiness::NoCargo]);
     assert!(!found[0].blocks());
     // One ship with a hold is enough.
     assert_eq!(
-        voyage_ready(&c, &all, 3, &raider, &[ship(&c, "rim_skiff")]),
+        voyage_ready(&c, &all, 3, None, &raider, &[ship(&c, "rim_skiff")]),
         []
     );
 }
@@ -730,7 +748,7 @@ fn a_ship_must_fit_an_unlocked_frame() {
     big.size = (30, 30);
     let flag = FleetSlot::Flagship;
     assert_eq!(
-        voyage_ready(&c, &u, 2, &big, &[]),
+        voyage_ready(&c, &u, 2, None, &big, &[]),
         [Readiness::LockedFrame {
             ship: flag,
             size: (30, 30),
@@ -740,7 +758,7 @@ fn a_ship_must_fit_an_unlocked_frame() {
     let mut huge = big.clone();
     huge.size = (100, 24);
     assert_eq!(
-        voyage_ready(&c, &u, 2, &huge, &[]),
+        voyage_ready(&c, &u, 2, None, &huge, &[]),
         [Readiness::LockedFrame {
             ship: flag,
             size: (100, 24),
@@ -748,7 +766,7 @@ fn a_ship_must_fit_an_unlocked_frame() {
         }]
     );
     u.frames.insert("cruiser".into());
-    assert_eq!(voyage_ready(&c, &u, 2, &big, &[]), []);
+    assert_eq!(voyage_ready(&c, &u, 2, None, &big, &[]), []);
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -787,9 +805,9 @@ fn the_history_keeps_the_last_voyages() {
     }
     let h = career.history();
     assert_eq!(h.len(), MAX_HISTORY);
-    assert_eq!(h[0].report.parts["thruster"], 6, "the five oldest went");
+    assert_eq!(h[0].report.broken["thruster"], 6, "the five oldest went");
     let last = career.last_voyage().unwrap();
-    assert_eq!(last.report.parts["thruster"], n + 5);
+    assert_eq!(last.report.broken["thruster"], n + 5);
     assert_eq!(career.log().recalled, n + 5, "the counts keep every voyage");
     assert_eq!(career.unread(), MAX_HISTORY);
     assert_eq!(Career::from_ron(&career.to_ron()).unwrap(), career);
@@ -1051,7 +1069,7 @@ fn a_removed_mod_takes_its_research_with_it() {
     assert!(loaded.researched().is_empty() && loaded.data().is_empty());
     // The debrief keeps what came home.
     assert_eq!(
-        loaded.last_voyage().unwrap().report.parts,
+        loaded.last_voyage().unwrap().report.broken,
         map(&[("seeker_rack", 2)])
     );
 }
@@ -1064,7 +1082,7 @@ fn an_evening(c: &Content) -> Career {
     let mut career = new_game(c);
     let skiff = ship(c, "rim_skiff");
     assert_eq!(
-        voyage_ready(c, &career.unlocks(c), career.mind_capacity(c), &skiff, &[]),
+        voyage_ready(c, &career.unlocks(c), career.mind_capacity(c), None, &skiff, &[]),
         []
     );
 
@@ -1080,7 +1098,12 @@ fn an_evening(c: &Content) -> Career {
         ],
     );
     assert_eq!(report.data, map(&[("hull", 8.0), ("kinetic", 12.0)]));
-    assert_eq!(career.materials(), &map(&[("programmable_matter", 2)]));
+    // The start's materials, a quarter of the broken cannons' recipes and of the plating per cell (automaton plate
+    // 4 + 2, copper 1, steel 2), the fragments' programmable matter.
+    assert_eq!(
+        career.materials(),
+        &map(&[("automaton_plate", 6), ("ceramic", 2), ("copper", 5), ("crystal", 2), ("programmable_matter", 2), ("steel", 6)])
+    );
     let last = career.last_voyage().unwrap();
     assert_eq!(
         (last.voyage.as_str(), last.outcome),
@@ -1096,10 +1119,10 @@ fn an_evening(c: &Content) -> Career {
         Err(Refusal::Requires(vec!["tamed_core".into()]))
     );
 
-    // A core graveyard, goal cleared.
+    // A core graveyard, goal cleared: five intact cores wait in the workshop.
     career.voyage_launched(c, FIRST).unwrap();
     let end = VoyageEnd::Recalled {
-        haul: haul(&[(part("automaton_core"), 5)]),
+        haul: haul(&[(intact("automaton_core"), 5)]),
         cleared: true,
         ticks: 12000,
     };
@@ -1107,7 +1130,19 @@ fn an_evening(c: &Content) -> Career {
         career.voyage_ended(c, FIRST, end).unwrap().outcome,
         Outcome::Cleared
     );
-    assert_eq!(career.data()["logic"], 20.0);
+    assert_eq!(career.intake(), &map(&[("automaton_core", 5)]));
+    assert!(!career.data().contains_key("logic"));
+    // The workshop suggests keeping two (none in stock), dismantling the rest; one is kept, four dismantled:
+    // 4 logic data each and 0.4 of the recipe, rounded (programmable matter and automaton plate 4.8, copper and
+    // crystal 1.6).
+    let sort = career.suggested(c, &BTreeMap::new());
+    assert_eq!(sort["automaton_core"], data::career::Sort { keep: 2, dismantle: 3 });
+    career.keep("automaton_core", 1).unwrap();
+    let got = career.dismantle(c, "automaton_core", 4).unwrap();
+    assert_eq!(got.materials, map(&[("automaton_plate", 5), ("copper", 2), ("crystal", 2), ("programmable_matter", 5)]));
+    assert_eq!(career.dismantle(c, "automaton_core", 1), Err(Refusal::NotInIntake("automaton_core".into())));
+    assert!(career.intake().is_empty() && career.stock()["automaton_core"] == 1);
+    assert_eq!(career.data()["logic"], 16.0);
     assert_eq!(career.materials()["programmable_matter"], 7);
 
     // A tamed core, then room in the mind for an escort.
@@ -1121,9 +1156,12 @@ fn an_evening(c: &Content) -> Career {
     );
     assert_eq!(
         career.data(),
-        &map(&[("hull", 8.0), ("kinetic", 9.0), ("logic", 7.0)])
+        &map(&[("hull", 8.0), ("kinetic", 9.0), ("logic", 3.0)])
     );
-    assert_eq!(career.materials(), &map(&[("programmable_matter", 3)]));
+    assert_eq!(
+        career.materials(),
+        &map(&[("automaton_plate", 11), ("ceramic", 2), ("copper", 7), ("crystal", 4), ("programmable_matter", 3), ("steel", 6)])
+    );
 
     // Three cores: the skiff and a one-core escort fit, two skiffs don't.
     let unlocks = career.unlocks(c);
@@ -1140,14 +1178,32 @@ fn an_evening(c: &Content) -> Career {
         group: None,
     });
     let cap = career.mind_capacity(c);
-    assert_eq!(voyage_ready(c, &unlocks, cap, &skiff, &[drone]), []);
+    assert_eq!(voyage_ready(c, &unlocks, cap, None, &skiff, std::slice::from_ref(&drone)), []);
     assert_eq!(
-        voyage_ready(c, &unlocks, cap, &skiff, std::slice::from_ref(&skiff)),
+        voyage_ready(c, &unlocks, cap, None, &skiff, std::slice::from_ref(&skiff)),
         [Readiness::TooManyCores {
             cores: 4,
             capacity: 3
         }]
     );
+    // The stock holds one skiff and the kept core: the drone's other parts are missing, the core is not.
+    let found = voyage_ready(c, &unlocks, cap, Some(career.stock()), &skiff, std::slice::from_ref(&drone));
+    assert!(found.contains(&Readiness::MissingParts { part: "capacitor".into(), need: 4, have: 2 }), "{found:?}");
+    assert!(!found.iter().any(|r| matches!(r, Readiness::MissingParts { part, .. } if part == "automaton_core" || part == "logic_core")));
+    // The workshop fabricates a capacitor (ceramic 1, copper 3); two more take more than is left.
+    career.fabricate(c, "capacitor", 1).unwrap();
+    assert_eq!(career.stock()["capacitor"], 3);
+    assert_eq!((career.materials()["ceramic"], career.materials()["copper"]), (1, 4));
+    assert_eq!(
+        career.fabricate(c, "capacitor", 2),
+        Err(Refusal::CannotPay(vec![
+            Shortfall::Material { material: "ceramic".into(), have: 1, cost: 2 },
+            Shortfall::Material { material: "copper".into(), have: 4, cost: 6 },
+        ]))
+    );
+    assert_eq!(career.can_fabricate(c, "beam_laser", 1), Err(Refusal::LockedPart("beam_laser".into())));
+    assert_eq!(career.can_fabricate(c, "automaton_core", 1), Err(Refusal::NeedsFacility("automaton_forge".into())));
+    assert_eq!(career.can_fabricate(c, "armor_block", 1), Err(Refusal::NoRecipe("armor_block".into())));
 
     let record = career.voyage(FIRST).unwrap();
     assert_eq!(
@@ -1214,7 +1270,7 @@ fn cargo_off_the_main_piece_is_no_cargo() {
     assert_eq!(c.ship_hold(&skiff), 0);
     assert_eq!(c.ship_hold(&ship(&c, "rim_skiff")), 4);
     let all = Unlocks::all(&c);
-    assert_eq!(voyage_ready(&c, &all, 2, &skiff, &[]), [Readiness::NoCargo]);
+    assert_eq!(voyage_ready(&c, &all, 2, None, &skiff, &[]), [Readiness::NoCargo]);
 }
 
 /// A save written by an editor that adds a byte order mark reads; one above the document size limit is refused
@@ -1229,4 +1285,60 @@ fn saves_take_the_blueprints_input_limits() {
     );
     let p = Career::from_ron(&huge).unwrap_err();
     assert!(p[0].message.contains("bytes"), "{}", show(&p));
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// The workshop (GDR-0108)
+
+/// Intact parts wait in the intake; the suggestion keeps up to the rules' two (or what the fleet needs) and
+/// dismantles the rest; sorting as suggested empties the intake; unknown parts in stock or intake are dropped at load.
+#[test]
+fn the_workshop_sorts_the_intake() {
+    let c = content();
+    let mut career = new_game(&c);
+    bring_home(&mut career, &c, &[(intact("thruster"), 5), (intact("gyro"), 1), (hull("armor_block", "steel"), 2)]);
+    assert_eq!(career.intake(), &map(&[("gyro", 1), ("thruster", 5)]), "hull is never kept");
+    // The skiff's stock: two thrusters, two gyros. Keep two: nothing more; the fleet needs four thrusters: two.
+    let none = career.suggested(&c, &BTreeMap::new());
+    assert_eq!((none["thruster"].keep, none["thruster"].dismantle, none["gyro"].keep), (0, 5, 0));
+    let need = map(&[("thruster", 4)]);
+    let sort = career.suggested(&c, &need);
+    assert_eq!((sort["thruster"].keep, sort["thruster"].dismantle), (2, 3));
+    let got = career.sort_suggested(&c, &need).unwrap();
+    assert!(career.intake().is_empty());
+    assert_eq!(career.stock()["thruster"], 4);
+    // Three thrusters and a gyro at 0.4: steel 3.6 + 1.6, ceramic 2.4, copper 1.2 + 1.2, rounded per part kind.
+    assert_eq!(got.materials, map(&[("ceramic", 2), ("copper", 2), ("steel", 6)]));
+    assert_eq!(got.data["propulsion"], 3.0 * 3.0 + 4.0);
+    assert_eq!(career.keep("thruster", 1), Err(Refusal::NotInIntake("thruster".into())));
+    // Reading back keeps the stock; unknown or hull parts are dropped with a note.
+    let text = career.to_ron().replace("stock: {", "stock: {\"warp_core\": 2, \"armor_block\": 1, ");
+    let mut loaded = Career::from_ron(&text).unwrap();
+    let notes = loaded.reconcile(&c);
+    note(&notes, "stock.warp_core");
+    note(&notes, "stock.armor_block");
+    assert_eq!(loaded.stock(), career.stock());
+}
+
+/// A format 4 save (before the workshop) reads with an empty stock; stocking its designs raises every part to what
+/// the fleet carries in all and to what any one saved design carries, so the fleet launches as before.
+#[test]
+fn an_older_save_gets_its_designs_stocked() {
+    let c = content();
+    let text = r#"(start: "rim_awakening", seed: 9, generator: 2, researched: ["automaton_cannon"], materials: {"programmable_matter": 3}, escorts: ["wing"])"#;
+    let mut career = Career::from_ron(text).unwrap();
+    assert!(career.reconcile(&c).is_empty() && career.stock().is_empty());
+    let skiff = ship(&c, "rim_skiff");
+    let runner = ship(&c, "halvex_runner");
+    let fleet = [skiff.clone(), skiff.clone()];
+    let u = Unlocks::all(&c);
+    assert!(!voyage_ready(&c, &u, 9, Some(career.stock()), &fleet[0], &fleet[1..]).is_empty());
+    let added = career.stock_designs(&c, &fleet, std::slice::from_ref(&runner));
+    assert_eq!(added["pulse_laser"], 4, "two skiffs");
+    assert_eq!(added["capacitor"], 4, "the runner's four, the fleet's four");
+    assert_eq!(added["fusion_reactor"], 1, "a saved design's");
+    assert!(!added.contains_key("armor_block"));
+    assert_eq!(voyage_ready(&c, &u, 9, Some(career.stock()), &fleet[0], &fleet[1..]), []);
+    assert!(career.stock_designs(&c, &fleet, &[runner]).is_empty(), "a second time adds nothing");
+    assert_eq!(career.materials(), &map(&[("programmable_matter", 3)]));
 }

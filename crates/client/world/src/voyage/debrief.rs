@@ -10,6 +10,15 @@ use data::career::{Haul, HaulItem, Lead, Outcome, SignalState, VoyageResult, unl
 use data::{Career, Content, Reward};
 use kit::ui_kit::Tone;
 
+/// How a part came home: intact (to the workshop, or hull taken apart at once), broken, or as a fragment.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+enum Kept {
+    Workshop,
+    Whole,
+    Broken,
+    Fragment,
+}
+
 /// What one part's items gave: how many, research data per family, materials per id.
 type Gave = (u32, BTreeMap<String, f32>, BTreeMap<String, u32>);
 
@@ -100,13 +109,16 @@ impl DebriefData {
         let family = |id: &str| content.families.get(id);
         let upper = |s: &str| s.to_uppercase();
 
-        // Rows: per part (fragments apart), what its items gave, most first. Data cores are no part (the finds, E6).
-        let mut rows: BTreeMap<(bool, String), Gave> = BTreeMap::new();
+        // Rows: per part (intact, broken and fragments apart), what its items gave, most first; intact parts that are
+        // not hull went to the workshop (GDR-0108). Data cores are no part (the finds, E6).
+        let mut rows: BTreeMap<(Kept, String), Gave> = BTreeMap::new();
         for (item, &n) in &haul.items {
             let one = unload(content, &[(item.clone(), n)].into_iter().collect());
             let key = match item {
-                HaulItem::Part { part, .. } => (false, part.clone()),
-                HaulItem::Fragment { part } => (true, part.clone()),
+                HaulItem::Part { part, .. } if content.parts.get(part).is_some_and(|p| !p.hull) => (Kept::Workshop, part.clone()),
+                HaulItem::Part { part, .. } => (Kept::Whole, part.clone()),
+                HaulItem::Broken { part, .. } => (Kept::Broken, part.clone()),
+                HaulItem::Fragment { part } => (Kept::Fragment, part.clone()),
                 HaulItem::DataCore { .. } => continue,
             };
             let row = rows.entry(key).or_default();
@@ -120,10 +132,18 @@ impl DebriefData {
         }
         let mut rows: Vec<PartRow> = rows
             .into_iter()
-            .map(|((fragment, part), (count, data, materials))| {
+            .map(|((kept, part), (count, data, materials))| {
                 let base = content.parts.get(&part).map_or(part.clone(), |p| p.name.clone());
-                let name = if fragment { format!("{base} fragment") } else { base };
+                let name = match kept {
+                    Kept::Fragment => format!("{base} fragment"),
+                    Kept::Broken => format!("{base}, broken"),
+                    Kept::Workshop => format!("{base}, intact"),
+                    Kept::Whole => base,
+                };
                 let mut gives: Vec<String> = data.iter().map(|(f, x)| format!("{} +{}", upper(family(f).map_or(f, |f| &f.name)), amount(*x))).collect();
+                if kept == Kept::Workshop {
+                    gives.push("TO THE WORKSHOP".into());
+                }
                 gives.extend(materials.iter().map(|(m, x)| format!("{} +{x}", upper(content.materials.get(m).map_or(m, |m| &m.name)))));
                 let color = data.keys().next().and_then(|f| family(f)).and_then(|f| f.color.clone());
                 PartRow { name, count, gives: gives.join("  ·  "), color }
@@ -286,7 +306,7 @@ mod tests {
             c
         };
         let haul: Haul = [
-            (HaulItem::Part { part: "automaton_cannon".into(), material: None }, 6),
+            (HaulItem::Broken { part: "automaton_cannon".into(), material: None }, 6),
             (HaulItem::Part { part: "thruster".into(), material: None }, 3),
             (HaulItem::Fragment { part: "automaton_core".into() }, 1),
         ]
@@ -300,8 +320,11 @@ mod tests {
         assert_eq!(d.head(), ("VOYAGE HOME  ·  HAUL UNLOADED", Tone::Label));
         assert_eq!(d.outcome_chip().0, "GOAL CLEARED");
         let cannon = &d.rows[0];
-        assert_eq!((cannon.name.as_str(), cannon.count), ("Automaton cannon", 6));
+        assert_eq!((cannon.name.as_str(), cannon.count), ("Automaton cannon, broken", 6));
         assert!(cannon.gives.starts_with("KINETIC WEAPONS +"), "{}", cannon.gives);
+        // Intact parts go to the workshop to be sorted (GDR-0108).
+        let thruster = d.rows.iter().find(|r| r.name == "Thruster, intact").unwrap();
+        assert_eq!((thruster.count, thruster.gives.as_str()), (3, "TO THE WORKSHOP"));
         let fragment = d.rows.iter().find(|r| r.name.ends_with("fragment")).unwrap();
         assert!(fragment.gives.contains("PROGRAMMABLE MATTER +1"), "{}", fragment.gives);
         let kinetic = d.families.iter().find(|f| f.name == "KINETIC WEAPONS").unwrap();

@@ -12,6 +12,8 @@
 //! turned so the galaxy's centre lies right of home and home sits at [`HOME_AT`]. The bands' edges come from the
 //! content (`bands.ron`), so they are arcs across the map; a slice voyage sits on the cluster it is pinned to.
 
+use std::collections::BTreeMap;
+
 use bevy::math::{Rect, Vec2};
 use data::career::{Exploration, Lead, Readiness, TrailSignal, Unlocks, voyage_ready};
 use data::skeleton::{Point, UNITS_PER_S};
@@ -337,7 +339,7 @@ fn ships_words(min: u32, max: u32) -> String {
     if max == 1 { format!("{n} SHIP") } else { format!("{n} SHIPS") }
 }
 
-/// The parts worth most in an encounter's wrecks (their salvage data, materials counted three times), best first,
+/// The parts worth most in an encounter's wrecks (their salvage data and half their recipe's materials), best first,
 /// each once; hull parts left out (plate is everywhere).
 fn best_parts(content: &Content, e: &data::Encounter, n: usize) -> Vec<String> {
     let mut parts: Vec<(f32, usize, String)> = Vec::new();
@@ -349,7 +351,7 @@ fn best_parts(content: &Content, e: &data::Encounter, n: usize) -> Vec<String> {
             if parts.iter().any(|q| q.2 == def.name) {
                 continue;
             }
-            let worth = s.data + 3.0 * s.materials.values().sum::<u32>() as f32;
+            let worth = s.data + 0.5 * def.recipe.as_ref().map_or(0, |r| r.materials.values().sum::<u32>()) as f32;
             parts.push((worth, parts.len(), def.name.clone()));
         }
     }
@@ -413,7 +415,7 @@ impl Check {
 /// The voyage-ready checklist (`data::career::voyage_ready` and the design report), always four lines: every ship
 /// flight-ready, only unlocked parts (else the first locked one), the cores against the mind, the cargo room (a
 /// fleet without any is a gold warning: it may fly, but nothing comes home).
-pub fn checklist(content: &Content, unlocks: &Unlocks, mind: u32, flagship: &Blueprint, escorts: &[Blueprint]) -> [Check; 4] {
+pub fn checklist(content: &Content, unlocks: &Unlocks, mind: u32, stock: Option<&BTreeMap<String, u32>>, flagship: &Blueprint, escorts: &[Blueprint]) -> [Check; 4] {
     let grounded = std::iter::once(flagship).chain(escorts).enumerate().find_map(|(k, bp)| {
         let report = sim::design_report(content, bp, &sim::SimConfig::default());
         flight_ready(&report).err().map(|why| (k, why))
@@ -423,10 +425,11 @@ pub fn checklist(content: &Content, unlocks: &Unlocks, mind: u32, flagship: &Blu
         Some((k, _)) => Check::new(format!("ESCORT {k} CAN'T FLY"), Tone::Coral),
         None => Check::new("FLIGHT-READY", Tone::Teal),
     };
-    let list = voyage_ready(content, unlocks, mind, flagship, escorts);
-    let locked = list.iter().find(|r| matches!(r, Readiness::LockedFrame { .. } | Readiness::LockedPart { .. } | Readiness::LockedMaterial { .. }));
+    let list = voyage_ready(content, unlocks, mind, stock, flagship, escorts);
+    let locked = list.iter().find(|r| matches!(r, Readiness::LockedFrame { .. } | Readiness::LockedPart { .. } | Readiness::LockedMaterial { .. } | Readiness::MissingParts { .. }));
     let parts = match locked {
         Some(r) => Check::new(readiness_words(content, r), Tone::Coral),
+        None if stock.is_some() => Check::new("PARTS IN STOCK", Tone::Teal),
         None => Check::new("ONLY UNLOCKED PARTS", Tone::Teal),
     };
     let used = fleet_cores(content, flagship, escorts);
@@ -545,15 +548,17 @@ pub(super) mod tests {
         // The fleet's own words: the starter fleet is ready; the runner uses locked parts.
         let unlocks = career(&content).unlocks(&content);
         let skiff = content.ships.get("rim_skiff").unwrap().clone();
-        let checks = checklist(&content, &unlocks, 2, &skiff, &[]);
+        let checks = checklist(&content, &unlocks, 2, None, &skiff, &[]);
         assert!(checks.iter().all(Check::ok), "{checks:?}");
         assert_eq!(checks.iter().map(|c| c.words.as_str()).collect::<Vec<_>>()[..3], ["FLIGHT-READY", "ONLY UNLOCKED PARTS", "CORES 2 / 2"]);
+        let stock = career(&content).stock().clone();
+        assert_eq!(checklist(&content, &unlocks, 2, Some(&stock), &skiff, &[])[1].words, "PARTS IN STOCK");
         assert!(checks[3].words.starts_with("CARGO "));
         let runner = content.ships.get("halvex_runner").unwrap().clone();
-        let checks = checklist(&content, &unlocks, 2, &runner, std::slice::from_ref(&skiff));
+        let checks = checklist(&content, &unlocks, 2, None, &runner, std::slice::from_ref(&skiff));
         assert!(checks[1].words.starts_with("USES ") && !checks[1].ok());
         assert!(!checks[2].ok(), "{:?}", checks[2]);
-        let blocker = world::voyage::fleet_blocker(&content, &unlocks, 2, &runner, &[]);
+        let blocker = world::voyage::fleet_blocker(&content, &unlocks, 2, None, &runner, &[]);
         assert!(course_blocker(&content, &career(&content), "yard_approach", blocker).unwrap().starts_with("NOT VOYAGE-READY  ·  USES "));
     }
 

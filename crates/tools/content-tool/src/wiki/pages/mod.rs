@@ -119,6 +119,9 @@ impl Wiki<'_> {
         sections.push(("Used by ships".to_string(), list_or_none(&ships)));
         sections.extend(self.unlocked_by(&Unlock::Part(p.id.clone()), p.locked));
         sections.push(("Salvage".to_string(), self.part_salvage(root, p)));
+        if !p.hull {
+            sections.push(("Recipe".to_string(), self.part_recipe(root, p)));
+        }
 
         let figure = if p.hull {
             let armor: Vec<String> = self
@@ -280,15 +283,14 @@ impl Wiki<'_> {
         if m.armor.is_some() {
             sections.push(("Salvage".to_string(), self.material_salvage(root, m)));
         }
-        // Parts whose salvage gives this material, intact or as the fragment a destroyed one leaves.
+        // Parts whose recipe takes this material (dismantling gives a share back), or whose fragment gives it.
         let mut rows = String::new();
         for p in &self.c.parts {
-            let Some(s) = &p.salvage else { continue };
             let mut from = Vec::new();
-            if let Some(n) = s.materials.get(&m.id) {
-                from.push(format!("{n} per intact part"));
+            if let Some(n) = p.recipe.as_ref().and_then(|r| r.materials.get(&m.id)) {
+                from.push(format!("{n} in its recipe"));
             }
-            if let Some(n) = s.fragment.get(&m.id) {
+            if let Some(n) = p.salvage.as_ref().and_then(|s| s.fragment.get(&m.id)) {
                 from.push(format!("{n} per fragment of a destroyed one"));
             }
             if !from.is_empty() {
@@ -304,7 +306,7 @@ impl Wiki<'_> {
         }
         if !rows.is_empty() {
             sections.push((
-                "From salvage".to_string(),
+                "Recipes and salvage".to_string(),
                 format!("<table class=\"list\">\n{rows}</table>\n"),
             ));
         }
@@ -873,4 +875,9 @@ pub(crate) fn default_inputs(e: &data::Control) -> String {
     let keys: Vec<String> =
         e.inputs.iter().map(|s| s.parse::<data::input::Chord>().map_or_else(|_| esc(s), |c| format!("<kbd>{}</kbd>", esc(&c.label())))).collect();
     if keys.is_empty() { "none".into() } else { keys.join(" or ") }
+}
+
+/// A share as a whole percentage (`0.4` → `40%`).
+fn pct(x: f32) -> String {
+    format!("{}%", format_number(x * 100.0, 0))
 }

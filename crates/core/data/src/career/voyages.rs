@@ -72,11 +72,12 @@ impl Career {
     /// the caller to name.
     pub(super) fn recalled(&mut self, content: &Content, haul: &Haul, ticks: u64, cleared: bool) -> VoyageResult {
         let report = unload(content, haul);
-        for (family, &x) in &report.data {
-            add_data(&mut self.data, family, x);
-        }
-        for (material, &x) in &report.materials {
-            add_materials(&mut self.materials, material, x);
+        self.credit(&report);
+        // Intact parts that are not hull wait in the workshop to be kept or dismantled.
+        for (part, &n) in &report.parts {
+            if content.parts.get(part).is_some_and(|p| !p.hull) {
+                add_materials(&mut self.intake, part, n);
+            }
         }
         self.log.recalled = self.log.recalled.saturating_add(1);
         self.log.salvaged = self.log.salvaged.saturating_add(report.items());
@@ -107,41 +108,31 @@ impl Career {
     }
 }
 
-/// What a haul is dismantled into at home, through the content's `salvage` blocks (`docs/content-model.md`
-/// "Salvage"): a whole part gives its block's data and materials; a hull part gives its armour material's data
-/// per cell of area (slopes count half a cell); a fragment gives its part's `fragment` materials; a data core is a
-/// log to decode (counted in `logs`; the career keeps which, [`Career::cluster_ended`]). Items the content
-/// doesn't know or that have no block give nothing (but whole parts are still listed). Pure: the career adds the
-/// result to its stores in [`Career::voyage_ended`].
+/// What a haul gives at home (GDR-0063, GDR-0108), through the content's `salvage` blocks and recipes
+/// (`docs/content-model.md` "Salvage") and the workshop's rules: an intact part that is not hull gives nothing yet (it
+/// waits in the workshop's intake, [`Career::keep`], [`Career::dismantle`]); a broken part gives its block's data
+/// and the rules' `broken` share of its recipe; a hull part (whole or broken) its armour material's data per cell of
+/// area (slopes count half a cell) and the `broken` share of one unit of that material per cell; a fragment its
+/// part's `fragment` materials; a data core is a log to decode (counted in `logs`; the career keeps which,
+/// [`Career::cluster_ended`]). Shares are summed per material over the haul and rounded to the nearest unit once. Items the content
+/// doesn't know or that have no block give nothing (but parts are still listed). Pure: the career adds the result
+/// to its stores in [`Career::voyage_ended`].
 pub fn unload(content: &Content, haul: &Haul) -> HaulReport {
+    let share = content.workshop().map_or(0.0, |(_, r)| r.broken);
     let mut r = HaulReport::default();
+    let mut shares: BTreeMap<String, f32> = BTreeMap::new();
+    let mut share_of = |m: &str, x: f32| *shares.entry(m.to_string()).or_default() += share * x;
     for (item, &n) in &haul.items {
         if n == 0 {
             continue;
         }
-        match item {
-            HaulItem::Part { part, material } => {
-                let count = r.parts.entry(part.clone()).or_default();
-                *count = count.saturating_add(n);
-                let Some(p) = content.parts.get(part) else {
-                    continue;
-                };
-                if p.hull {
-                    let spec = material
-                        .as_deref()
-                        .and_then(|m| content.materials.get(m))
-                        .and_then(|m| m.salvage.as_ref());
-                    if let Some(s) = spec {
-                        add_data(&mut r.data, &s.family, s.data * p.area() * n as f32);
-                    }
-                } else if let Some(s) = &p.salvage {
-                    add_data(&mut r.data, &s.family, s.data * n as f32);
-                    for (m, &a) in &s.materials {
-                        add_materials(&mut r.materials, m, a.saturating_mul(n));
-                    }
-                }
+        let (part, material, broken) = match item {
+            HaulItem::Part { part, material } => (part, material, false),
+            HaulItem::Broken { part, material } => (part, material, true),
+            HaulItem::DataCore { .. } => {
+                r.logs = r.logs.saturating_add(n);
+                continue;
             }
-            HaulItem::DataCore { .. } => r.logs = r.logs.saturating_add(n),
             HaulItem::Fragment { part } => {
                 let count = r.fragments.entry(part.clone()).or_default();
                 *count = count.saturating_add(n);
@@ -150,21 +141,48 @@ pub fn unload(content: &Content, haul: &Haul) -> HaulReport {
                         add_materials(&mut r.materials, m, a.saturating_mul(n));
                     }
                 }
+                continue;
+            }
+        };
+        let list = if broken { &mut r.broken } else { &mut r.parts };
+        let count = list.entry(part.clone()).or_default();
+        *count = count.saturating_add(n);
+        let Some(p) = content.parts.get(part) else {
+            continue;
+        };
+        if p.hull {
+            let armour = material.as_deref().and_then(|m| content.materials.get(m));
+            if let Some((m, s)) = armour.and_then(|m| m.salvage.as_ref().map(|s| (m, s))) {
+                add_data(&mut r.data, &s.family, s.data * p.area() * n as f32);
+                share_of(&m.id, p.area() * n as f32);
+            }
+        } else if broken {
+            if let Some(s) = &p.salvage {
+                add_data(&mut r.data, &s.family, s.data * n as f32);
+            }
+            for (m, &a) in p.recipe.iter().flat_map(|x| &x.materials) {
+                share_of(m, a as f32 * n as f32);
             }
         }
+    }
+    for (m, x) in shares {
+        add_materials(&mut r.materials, &m, x.round() as u32);
     }
     r
 }
 
-/// Is the fleet (the flagship and the escorts) voyage-ready with these unlocks and this mind capacity? Empty:
-/// yes. Entries, in order: per ship (flagship first) a frame too big for every unlocked frame, then the locked
-/// parts and materials it uses (each once, in placement order); then too many logic cores for the mind; then the
+/// Is the fleet (the flagship and the escorts) voyage-ready with these unlocks, this mind capacity and this stock
+/// (`None`: unlimited, the free mode)? Empty: yes. Entries, in order: per ship (flagship first) a frame too big for
+/// every unlocked frame, then the locked parts and materials it uses (each once, in placement order); then every
+/// unlocked part the fleet carries more of than the stock holds (GDR-0108, in id order); then too many logic cores
+/// for the mind; then the
 /// warning that no ship has cargo room ([`Readiness::blocks`] is false only for that). The drydock and the map show
 /// the first entry. Flight-readiness (power, thrust: the design report) is the sim's question, not this one.
 pub fn voyage_ready(
     content: &Content,
     unlocks: &Unlocks,
     mind_capacity: u32,
+    stock: Option<&BTreeMap<String, u32>>,
     flagship: &Blueprint,
     escorts: &[Blueprint],
 ) -> Vec<Readiness> {
@@ -218,6 +236,14 @@ pub fn voyage_ready(
         );
         cores = cores.saturating_add(content.ship_totals(ship).logic_cores);
         cargo = cargo.saturating_add(content.ship_hold(ship));
+    }
+    if let Some(stock) = stock {
+        for (part, need) in fleet_parts(content, std::iter::once(flagship).chain(escorts)) {
+            let have = stock.get(&part).copied().unwrap_or(0);
+            if need > have && unlocks.has_part(&part) {
+                out.push(Readiness::MissingParts { part, need, have });
+            }
+        }
     }
     if cores > mind_capacity {
         out.push(Readiness::TooManyCores {

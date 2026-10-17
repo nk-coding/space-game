@@ -106,8 +106,8 @@ impl Wiki<'_> {
         Some(("Unlocked by".into(), html))
     }
 
-    /// "Salvage" on a part page: what it gives when the haul is dismantled at home (GDR-0063). Hull parts give
-    /// research data by their material, per cell of hull area.
+    /// "Salvage" on a part page: what it gives when the haul is dismantled at home (GDR-0063, GDR-0108). Hull parts
+    /// give research data by their material, per cell of hull area.
     pub(crate) fn part_salvage(&self, root: &str, p: &Part) -> String {
         if p.hull {
             let rows: Vec<String> = self
@@ -137,17 +137,38 @@ impl Wiki<'_> {
         let Some(s) = &p.salvage else {
             return not_salvaged();
         };
-        let mut intact = vec![self.data_amount(root, &s.family, s.data)];
-        intact.extend(self.material_items(root, &s.materials));
+        let data = self.data_amount(root, &s.family, s.data);
         let fragment = self.material_items(root, &s.fragment);
+        let (dismantle, broken) = self.c.workshop().map_or((0.0, 0.0), |(_, r)| (r.dismantle, r.broken));
+        let share = |x: f32| match &p.recipe {
+            Some(_) => format!(" and {} of its recipe's materials", pct(x)),
+            None => String::new(),
+        };
         format!(
-            "<table class=\"list\">\n<tr><th>Intact part</th><td>{}</td></tr>\n<tr><th>Destroyed part</th><td>{}</td></tr>\n</table>\n",
-            intact.join(", "),
+            "<table class=\"list\">\n<tr><th>Intact part</th><td>kept in stock, or dismantled for {data}{}</td></tr>\n<tr><th>Broken part</th><td>{data}{}</td></tr>\n<tr><th>Destroyed part</th><td>{}</td></tr>\n</table>\n",
+            share(dismantle),
+            share(broken),
             if fragment.is_empty() {
                 "leaves nothing".to_string()
             } else {
                 format!("leaves a fragment of {}", fragment.join(", "))
             }
+        )
+    }
+
+    /// "Recipe" on a part page (GDR-0108): what the workshop fabricates it from and the upgrade it needs; a part
+    /// without one comes only from intact salvage.
+    pub(crate) fn part_recipe(&self, root: &str, p: &Part) -> String {
+        let Some(r) = &p.recipe else {
+            return "<p class=\"none\">Not fabricated: it comes only from intact salvage.</p>\n".into();
+        };
+        let needs = match &r.needs {
+            Some(f) => format!("<tr><th>Needs</th><td>{}</td></tr>\n", self.a_badged(root, Kind::Facility, f)),
+            None => String::new(),
+        };
+        format!(
+            "<table class=\"list\">\n<tr><th>Materials</th><td>{}</td></tr>\n{needs}</table>\n",
+            self.material_items(root, &r.materials).join(", ")
         )
     }
 
@@ -350,10 +371,38 @@ impl Wiki<'_> {
         )
     }
 
-    /// A facility of the home shipyard: whether a new game has it, and the research that opens it.
+    /// A facility of the home shipyard: whether a new game has it, and the research that opens it; the workshop's
+    /// rules and upgrades, an upgrade's parts (GDR-0108).
     pub(crate) fn facility_page(&self, f: &data::Facility) -> String {
-        let facts = vec![("At home".to_string(), if f.locked { "dark until researched".into() } else { "open from the start".into() })];
-        let sections = self.unlocked_by(&Unlock::Facility(f.id.clone()), f.locked).into_iter().collect();
+        let root = UP;
+        let mut facts = vec![("At home".to_string(), if f.locked { "dark until researched".into() } else { "open from the start".into() })];
+        if let Some(w) = &f.within {
+            facts.push(("Installed in".into(), self.a(root, Kind::Facility, w)));
+        }
+        let mut sections: Vec<(String, String)> = self.unlocked_by(&Unlock::Facility(f.id.clone()), f.locked).into_iter().collect();
+        if let Some(r) = &f.workshop {
+            sections.push((
+                "Rules".into(),
+                format!(
+                    "<table class=\"list\">\n<tr><th>Dismantling an intact part</th><td>{} of its recipe's materials</td></tr>\n<tr><th>A broken part, a hull cell</th><td>{} (dismantled when the haul comes home)</td></tr>\n<tr><th>Suggested sort</th><td>keep while fewer than {} are in stock or the fleet needs more</td></tr>\n</table>\n",
+                    pct(r.dismantle),
+                    pct(r.broken),
+                    r.keep
+                ),
+            ));
+            let ups: Vec<String> = self.c.facilities.iter().filter(|u| u.within.as_deref() == Some(&f.id)).map(|u| self.a_badged(root, Kind::Facility, &u.id)).collect();
+            sections.push(("Upgrades".into(), list_or_none(&ups)));
+        }
+        let parts: Vec<String> = self
+            .c
+            .parts
+            .iter()
+            .filter(|p| p.recipe.as_ref().and_then(|r| r.needs.as_deref()) == Some(f.id.as_str()))
+            .map(|p| self.a_badged(root, Kind::Part, &p.id))
+            .collect();
+        if f.within.is_some() {
+            sections.push(("Fabricates".into(), list_or_none(&parts)));
+        }
         self.entry(
             f,
             EntryParts {

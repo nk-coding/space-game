@@ -52,7 +52,6 @@ use bevy::prelude::*;
 use bevy::text::LetterSpacing;
 use bevy::ui::{ComputedNode, UiGlobalTransform};
 use bevy::window::PrimaryWindow;
-use data::career::Availability;
 use data::{Content, Part, Shape, Unlock};
 use kit::style::{Style, ui_color};
 use kit::ui_icons::{Glyph, UiIcon};

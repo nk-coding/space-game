@@ -29,6 +29,7 @@ The save holds only what you did:
 - the start your game began from;
 - the research nodes you have researched;
 - the research data in store, per family, and the materials in store;
+- the workshop's stock of parts, and the hauled parts still waiting there to be sorted;
 - your escorts;
 - which NEW parts you have already seen;
 - for every voyage: how often you launched it, whether you cleared it, and your best time;
@@ -50,14 +51,16 @@ BLUEPRINTS first, and the drydock starts again with a copy of the start's ship.
 
 ## Research data
 
-Research is paid with **research data**, and data comes only from salvage. Everything your fleet brings home is
-**dismantled** the moment you arrive. Each part gives research data to one **research family**:
+Research is paid with **research data**, and data comes only from salvage. What your fleet brings home is
+**dismantled**: broken parts and hull the moment you arrive, intact parts when you dismantle them in the
+[[facility:workshop]] instead of keeping them ([salvage and cargo](/mechanics/salvage-and-cargo)). Each part gives
+research data to one **research family**:
 
 [[family:hull]], [[family:power]], [[family:energy]], [[family:kinetic]], [[family:shields]],
 [[family:thermal]], [[family:propulsion]], [[family:logic]] and [[family:utility]]. Each family is one tech tree in
 the lab, and each research node's cost names the family data it takes.
 
-A whole part gives its own amount of data to its family; some give materials too. A hull part gives its armour's
+A part gives its own amount of data to its family, and a share of the materials in its recipe. A hull part gives its armour's
 data for every cell it covers (a slope counts half a cell). A **fragment** (what a destroyed logic core leaves
 behind) gives materials but no data. A few examples:
 

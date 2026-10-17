@@ -992,8 +992,7 @@ mod tests {
         assert_eq!(core["unlocked_by"], json!(["tamed_core"]));
         assert_eq!(
             core["salvage"],
-            json!({"family": "logic", "data": 4.0, "materials": {"programmable_matter": 1},
-                   "fragment": {"programmable_matter": 1}})
+            json!({"family": "logic", "data": 4.0, "fragment": {"programmable_matter": 1}})
         );
         assert_eq!(find("parts", "pulse_laser")["unlocked_by"], json!([]));
         assert_eq!(

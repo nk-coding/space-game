@@ -22,8 +22,8 @@ pub struct ArmorSpec {
     pub heal: f32,
 }
 
-/// `materials/*.ron`: materials. For now only armour materials (with an `armor` block); fabrication
-/// resources will be materials without one.
+/// `materials/*.ron`: materials: armour materials (with an `armor` block) and fabrication resources (without one,
+/// GDR-0031, GDR-0108): what parts' recipes take and dismantling gives back.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Material {
@@ -64,23 +64,33 @@ pub struct BarrelArt {
     pub muzzle: f32,
 }
 
-/// What a salvaged part gives when the haul is dismantled at home (GDR-0063). The career turns a haul into
-/// research data and materials with it. The sim reads only two facts: a part without it is never collected, and
-/// only a part whose `fragment` is not empty leaves a fragment when destroyed.
+/// What a salvaged part gives when the haul is dismantled at home (GDR-0063): research data. Its materials come
+/// from its [`Recipe`] (a share of them, GDR-0108). The sim reads only two facts: a part without it is never
+/// collected, and only a part whose `fragment` is not empty leaves a fragment when destroyed.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct SalvageSpec {
     /// The research family (id) the data goes to.
     pub family: String,
-    /// Research data one intact part gives.
+    /// Research data one dismantled part gives (intact or broken).
     pub data: f32,
-    /// Materials (id → amount) one intact part gives besides the data.
-    #[serde(default)]
-    pub materials: BTreeMap<String, u32>,
     /// Materials (id → amount) a destroyed part of this kind leaves as a fragment to scoop (GDR-0063: destroyed
     /// cores leave programmable matter). Empty: it leaves nothing.
     #[serde(default)]
     pub fragment: BTreeMap<String, u32>,
+}
+
+/// What the workshop fabricates a part from (GDR-0031, GDR-0108): materials, taken once, and the workshop
+/// upgrade (a facility `within` the workshop) it needs, if any. Dismantling gives a share of the materials back.
+/// Hull parts have none: their plating is not counted yet.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Recipe {
+    /// Materials (id → amount) one part takes.
+    pub materials: BTreeMap<String, u32>,
+    /// The facility (id, an upgrade of the workshop) that must be open to fabricate it.
+    #[serde(default)]
+    pub needs: Option<String>,
 }
 
 /// What one cell of hull area in an armour material gives when salvaged (slopes count half a cell): research data
@@ -523,6 +533,9 @@ pub struct Part {
     /// What the part gives when salvaged (non-hull parts; hull parts take it from their material per cell).
     #[serde(default)]
     pub salvage: Option<SalvageSpec>,
+    /// What the workshop fabricates it from (non-hull parts, GDR-0108). None: it cannot be fabricated.
+    #[serde(default)]
+    pub recipe: Option<Recipe>,
     /// Not in a new game: research unlocks it per player (GDR-0063). The free drydock hides it; the career's
     /// drydock shows it dimmed until it is researched (GDR-0065). Content ships may still use it.
     #[serde(default)]

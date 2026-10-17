@@ -4,6 +4,8 @@
 // `salvage`: what the part gives when salvaged and dismantled at home (research data about its build points;
 // PLACEHOLDER, lead defaults of 13 Oct 2026 after docs/plans/first-playable-loop.md 3.2).
 // Cores also give programmable matter, and a destroyed core leaves a fragment of it to scoop (GDR-0063).
+// `recipe`: what the workshop fabricates it from (GDR-0108; PLACEHOLDER amounts, about twice the build points);
+// `needs` names the workshop upgrade it takes. Dismantling gives a share back (facilities.ron).
 [
     (
         id: "automaton_core",
@@ -26,7 +28,8 @@
         gyro: (torque: 300), // 13 Oct 2026 (GDR-0055): the raider turns 90° in ~0.57 s, still the snappiest
         // A power plant: it goes off like a fission reactor (PLACEHOLDER, lead default, 14 Oct 2026, GDR-0085).
         explosion: (damage: 1.5, radius: 1.5),
-        salvage: (family: "logic", data: 4, materials: {"programmable_matter": 1}, fragment: {"programmable_matter": 1}),
+        salvage: (family: "logic", data: 4, fragment: {"programmable_matter": 1}),
+        recipe: (materials: {"automaton_plate": 3, "copper": 1, "crystal": 1, "programmable_matter": 3}, needs: "automaton_forge"),
     ),
     (
         id: "automaton_cannon",
@@ -49,5 +52,6 @@
         // reverse-engineered cannon is an upgrade for the starter (docs/results/slice-balance-2026-10-13.md).
         weapon: (family: Kinetic, damage: 1.2, range: 75, delivery: Projectile(rate: 1.2, speed: 150, penetration: 1, recoil: 2)),
         salvage: (family: "kinetic", data: 3),
+        recipe: (materials: {"automaton_plate": 4, "copper": 1, "steel": 2}, needs: "automaton_forge"),
     ),
 ]

@@ -4,6 +4,8 @@
 // `salvage`: what the part gives when salvaged and dismantled at home (research data about its build points;
 // PLACEHOLDER, lead defaults of 13 Oct 2026 after docs/plans/first-playable-loop.md 3.2).
 // Cores also give programmable matter, and a destroyed core leaves a fragment of it to scoop (GDR-0063).
+// `recipe`: what the workshop fabricates it from (GDR-0108; PLACEHOLDER amounts, about twice the build points);
+// `needs` names the workshop upgrade it takes. Dismantling gives a share back (facilities.ron).
 [
     (
         id: "logic_core",
@@ -22,7 +24,8 @@
         logic: (rule_slots: 6, control_capacity: 16), // control capacity: lead placeholder (12 Oct 2026)
         sensor: (range: 800), // lead default, 16 Oct 2026 (GDR-0095)
         gyro: (torque: 50),
-        salvage: (family: "logic", data: 3, materials: {"programmable_matter": 1}, fragment: {"programmable_matter": 1}),
+        salvage: (family: "logic", data: 3, fragment: {"programmable_matter": 1}),
+        recipe: (materials: {"copper": 2, "crystal": 1, "programmable_matter": 2}),
     ),
     // The scanner (GDR-0080, GDR-0093: Niklas's numbers, placeholders). It draws its power only while a scan charges.
     (
@@ -41,5 +44,6 @@
         heat: (output: 0.4, limit: 3),
         scanner: (range: 1200, charge: 2, cooldown: 8, wake: 300),
         salvage: (family: "logic", data: 3),
+        recipe: (materials: {"copper": 2, "crystal": 3}),
     ),
 ]
