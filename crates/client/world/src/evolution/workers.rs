@@ -21,13 +21,16 @@ use super::out::Executor;
 
 /// The worker's script: Trunk's loader for the `lab-worker` binary (`index.html`), next to the game's files.
 const SCRIPT: &str = "./lab-worker_loader.js";
+/// Chunks a worker holds at once: the one it fights and the next, so it goes on without waiting for a frame to hand
+/// it more (the frame takes answers in and hands out only once a frame).
+const DEPTH: usize = 2;
 
 /// What a worker is doing.
 enum State {
     Loading,
-    Ready,
-    /// Running a chunk: its batch, first job and message (sent again elsewhere if the worker fails).
-    Busy(u64, usize, String),
+    /// Ready, with the chunks it holds, oldest first: batch, first job and message (sent again elsewhere if it
+    /// fails).
+    Working(VecDeque<(u64, usize, String)>),
     Gone,
 }
 
@@ -97,13 +100,15 @@ impl Workers {
         let slot = &mut self.slots[k];
         warn!("lab: web worker {k} let go: {why}");
         slot.worker.terminate();
-        if let State::Busy(batch, first, text) = std::mem::replace(&mut slot.state, State::Gone) {
-            self.queue.push_front((batch, first, text));
+        if let State::Working(held) = std::mem::replace(&mut slot.state, State::Gone) {
+            for chunk in held.into_iter().rev() {
+                self.queue.push_front(chunk);
+            }
         }
     }
 
-    /// Takes what the workers said and gives the free ones the waiting chunks.
-    fn poll(&mut self) {
+    /// Takes what the workers said (a worker ready, answers, failures) and gives the free ones the waiting chunks.
+    pub fn poll(&mut self) {
         let heard = std::mem::take(&mut *self.inbox.borrow_mut());
         for (k, h) in heard {
             if matches!(self.slots[k].state, State::Gone) {
@@ -112,10 +117,12 @@ impl Workers {
             match h {
                 Heard::Failed(why) => self.drop_worker(k, &why),
                 Heard::Message(text) => match arena::worker::read::<Reply>(&text) {
-                    Ok(Reply::Ready { content }) if content == self.key => self.slots[k].state = State::Ready,
+                    Ok(Reply::Ready { content }) if content == self.key => self.slots[k].state = State::Working(VecDeque::new()),
                     Ok(Reply::Ready { content }) => self.drop_worker(k, &format!("it fights with other content ({content:016x})")),
                     Ok(Reply::Done { batch, first, results }) => {
-                        self.slots[k].state = State::Ready;
+                        if let State::Working(held) = &mut self.slots[k].state {
+                            held.pop_front();
+                        }
                         self.done.push((batch, first as usize, results));
                     }
                     Ok(Reply::Refused(why)) => self.drop_worker(k, &why),
@@ -123,13 +130,25 @@ impl Workers {
                 },
             }
         }
-        for k in 0..self.slots.len() {
-            if !matches!(self.slots[k].state, State::Ready) {
-                continue;
-            }
-            let Some((batch, first, text)) = self.queue.pop_front() else { break };
+        // The waiting chunks to the workers holding the fewest, up to DEPTH each.
+        while !self.queue.is_empty() {
+            let free = self
+                .slots
+                .iter()
+                .enumerate()
+                .filter_map(|(k, s)| match &s.state {
+                    State::Working(held) if held.len() < DEPTH => Some((held.len(), k)),
+                    _ => None,
+                })
+                .min();
+            let Some((_, k)) = free else { break };
+            let (batch, first, text) = self.queue.pop_front().expect("a chunk waits");
             match self.slots[k].worker.post_message(&text.as_str().into()) {
-                Ok(()) => self.slots[k].state = State::Busy(batch, first, text),
+                Ok(()) => {
+                    if let State::Working(held) = &mut self.slots[k].state {
+                        held.push_back((batch, first, text));
+                    }
+                }
                 Err(e) => {
                     self.queue.push_front((batch, first, text));
                     self.drop_worker(k, &format!("{e:?}"));
@@ -140,8 +159,9 @@ impl Workers {
 }
 
 impl Executor for Workers {
+    /// Chunks the ready workers hold at most: [`DEPTH`] each.
     fn width(&self) -> usize {
-        self.slots.iter().filter(|s| matches!(s.state, State::Ready | State::Busy(..))).count()
+        DEPTH * self.slots.iter().filter(|s| matches!(s.state, State::Working(_))).count()
     }
 
     fn spawn(&mut self, batch: u64, first: usize, jobs: &[Job]) {

@@ -90,6 +90,10 @@ pub(super) fn press(layer: &mut EvolutionLayer, ctx: &mut Ctx, b: LadderButton) 
 }
 
 fn rate(layer: &mut EvolutionLayer, ctx: &mut Ctx, ids: &[String]) {
+    if ids.is_empty() {
+        layer.say("no saved design to rate: the drydock's SAVE makes one", Tone::Label);
+        return;
+    }
     match ctx.lab.rate(&ctx.storage, &ctx.content.0, &ctx.behaviors, &ctx.design, ids) {
         Ok(0) => layer.say("those are being rated already", Tone::Label),
         Ok(n) => layer.say(format!("{n} {} on the ladder  ·  a run waits meanwhile", if n == 1 { "design goes" } else { "designs go" }), Tone::Teal),

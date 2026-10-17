@@ -613,6 +613,9 @@ pub struct Lab {
     pub last_generation: Option<(f32, f32)>,
     /// When the generation in progress got its first slice.
     started: Option<Instant>,
+    /// What the open generation has cost the frames so far (ms on the main thread: breeding, handing out, taking
+    /// in; with the jobs out of the frame this is all of it), for the log.
+    frame_ms: f32,
     /// The open generation's jobs (or a validation's, or a rating's) out on the threads or the web workers.
     out: Option<out::Out>,
     /// Batches handed out so far (each [`out::Out`]'s number).
@@ -1018,11 +1021,12 @@ impl Lab {
         self.last_generation = Some((took, write));
         let p = l.run.progress();
         info!(
-            "lab: {id} generation {} of {} in {took:.1} s ({:.1} µs a tick of work, {:.0} ticks/s), written in {write:.1} ms ({:.1} kB)",
+            "lab: {id} generation {} of {} in {took:.1} s ({:.1} µs a tick of work, {:.0} ticks/s; {:.0} ms of it in the frames), written in {write:.1} ms ({:.1} kB)",
             p.generation,
             p.generations,
             self.rate.us_per_tick,
             self.rate.ticks_per_second,
+            std::mem::take(&mut self.frame_ms),
             written.as_ref().map_or(0.0, |b| *b as f32 / 1024.0)
         );
         let state = l.run.state();
@@ -1397,7 +1401,10 @@ pub fn compute(mode: Res<State<AppMode>>, time: Res<Time<Real>>, mut lab: ResMut
         return;
     }
     let exec = threads.get_or_insert_with(|| out::Threads::new(&content.0));
-    if lab.bypass_change_detection().compute_out(&mut storage, exec, ms, time.delta_secs()) {
+    let (t0, l) = (Instant::now(), lab.bypass_change_detection());
+    let changed = l.compute_out(&mut storage, exec, ms, time.delta_secs());
+    l.frame_ms += t0.elapsed().as_secs_f32() * 1000.0;
+    if changed {
         lab.set_changed();
     }
 }
@@ -1422,11 +1429,14 @@ pub fn compute(
         return;
     }
     let frame = time.delta_secs();
-    let pool = match params.flag("lab_workers") {
+    let mut pool = match params.flag("lab_workers") {
         Some(false) => None,
         _ => Some(pool.0.get_or_insert_with(|| workers::Workers::start(arena::worker::content_key(&content.0)))),
     };
-    let l = lab.bypass_change_detection();
+    let (t0, l) = (Instant::now(), lab.bypass_change_detection());
+    if let Some(p) = pool.as_mut() {
+        p.poll();
+    }
     let changed = match pool {
         Some(p) if p.gone() => {
             l.take_back();
@@ -1435,6 +1445,7 @@ pub fn compute(
         Some(p) if l.has_out() || out::Executor::width(p) > 0 => l.compute_out(&mut storage, p, ms, frame),
         _ => ms > 0.0 && l.compute(&mut storage, ms, frame),
     };
+    l.frame_ms += t0.elapsed().as_secs_f32() * 1000.0;
     if changed {
         lab.set_changed();
     }

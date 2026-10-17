@@ -1000,19 +1000,27 @@ fn replay(o: &Opts) -> Result<(), String> {
     let (j, record) = run
         .job(g, child, job)
         .ok_or_else(|| format!("{path}: no job {job} of child {child} of generation {g}"))?;
-    let code = run
-        .fight_code(g, child, job)
-        .ok_or_else(|| format!("{path}: job {job} of child {child} of generation {g} is no fight"))?;
     let genome = run.state().records[g as usize].children[child].genome;
-    println!(
-        "# {path}: generation {g}, child {child} (genome {genome}), job {job}: seed {}, {}, score {:.3}, hash {:016x}",
-        code.spec.seed,
-        outcome(code.record.outcome),
-        record.score,
-        code.record.state_hash
-    );
-    if let Job::Fight { spec, .. } = &j {
-        println!("# {} against {}", side_text(&spec.sides[0]), side_text(&spec.sides[1]));
+    let code = run
+        .replay_code(g, child, job)
+        .ok_or_else(|| format!("{path}: job {job} of child {child} of generation {g} didn't build"))?;
+    match &code {
+        arena::Code::Fight(c) => {
+            println!(
+                "# {path}: generation {g}, child {child} (genome {genome}), job {job}: seed {}, {}, score {:.3}, hash {:016x}",
+                c.spec.seed,
+                outcome(c.record.outcome),
+                record.score,
+                c.record.state_hash
+            );
+            if let Job::Fight { spec, .. } = &j {
+                println!("# {} against {}", side_text(&spec.sides[0]), side_text(&spec.sides[1]));
+            }
+        }
+        arena::Code::Voyage(c) => println!(
+            "# {path}: generation {g}, child {child} (genome {genome}), job {job}: voyage {}, seed {}, {} ticks, score {:.3}, hash {:016x}",
+            c.spec.voyage, c.spec.seed, c.ticks, record.score, c.state_hash
+        ),
     }
     println!("{}", code.encode());
     Ok(())
