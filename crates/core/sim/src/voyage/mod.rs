@@ -673,6 +673,11 @@ impl Voyage {
         self.site_of(ship)
             .is_some_and(|k| self.sites[k].state == SiteState::Asleep)
     }
+    /// The player's vessels the director looked from at its last pass (not dormant): where each is and how far it sees
+    /// (`Ship::sensor_range`). What the fleet's sensors show (GDR-0095) lies within one of these.
+    pub fn sensors(&self) -> &[(Vec2, f32)] {
+        &self.players
+    }
     /// Is a player vessel within `r` of `p`?
     fn near(&self, p: Vec2, r: f32) -> bool {
         self.players.iter().any(|&(q, _)| (q - p).length_squared() <= r * r)

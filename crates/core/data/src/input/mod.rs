@@ -114,6 +114,7 @@ actions! {
     AllAssists = "all_assists",
     Recall = "recall",
     ClusterMap = "cluster_map",
+    Minimap = "minimap",
     Leave = "leave",
     TestReturn = "test_return",
     Waves = "waves",
