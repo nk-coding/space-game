@@ -18,7 +18,7 @@
 //! let haul: Haul = [(HaulItem::Part { part: "automaton_cannon".into(), material: None }, 4)].into_iter().collect();
 //! career.voyage_ended(&content, "yard_approach", VoyageEnd::Recalled { haul, cleared: false, ticks: 9000 }).unwrap();
 //! career.research(&content, "automaton_cannon").unwrap();
-//! assert!(career.unlocks(&content).has_part("automaton_cannon"));
+//! assert!(career.unlocks(&content).has_part("reverse_engineered_cannon"));
 //! ```
 
 mod galaxy;

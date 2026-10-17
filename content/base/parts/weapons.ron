@@ -42,4 +42,26 @@
         weapon: (family: Energy, damage: 2.6, range: 45, delivery: Beam),
         salvage: (family: "energy", data: 7),
     ),
+    (
+        id: "reverse_engineered_cannon",
+        name: "Reverse-engineered cannon",
+        summary: "A copy of the automatons' crude kinetic gun, built in your own shipyard.",
+        // 18 Oct 2026 (Niklas, GDR-0100's status): the player's own copy of `automaton_cannon` so the gun can be
+        // toned down without touching the automatons. Rate and damage 1.2 → 1.1 (a shot still 1 hit point: below it
+        // a hit no longer takes a gun off and the gun is worse than the pulse laser), so the cannon starter clears
+        // the Warden about 28 % (docs/results/slice-balance-2026-10-18.md). PLACEHOLDER.
+        description: "Copied from the [[part:automaton_cannon|automaton cannon]] and a little slower to fire. Needs a clear line of fire.",
+        locked: true, // research unlocks it (`automaton_cannon` in research/rim.ron)
+        category: "weapons",
+        icon: "automaton-cannon",
+        barrel: (width: 0.2, length: 0.6, muzzle: 0.15),
+        size: (1, 1),
+        build_points: 3,
+        mass: 2,
+        hp: 1,
+        power: (draw: 2, tier: Low),
+        heat: (output: 1, limit: 3),
+        weapon: (family: Kinetic, damage: 1.1, range: 75, delivery: Projectile(rate: 1.1, speed: 150, penetration: 1, recoil: 2)),
+        salvage: (family: "kinetic", data: 3),
+    ),
 ]

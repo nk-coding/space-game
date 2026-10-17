@@ -128,7 +128,7 @@ the top left of the HUD or [[control:leave.keys]] brings you back from the test 
 7. **Read the debrief** at home. It lists the parts that were dismantled, the research data they gave, and what you
    can research now.
 8. **Research** ([[control:open_research.keys]] at home). [[research:automaton_cannon]] is the cheapest start: it
-   lets you build the raiders' own gun. Unlocked parts show a NEW tag in the drydock. See
+   lets you build a copy of the raiders' own gun, the [[part:reverse_engineered_cannon]]. Unlocked parts show a NEW tag in the drydock. See
    [research, the fleet and the career](/mechanics/career).
 9. **Clear the goal.** Each voyage has one goal site. Clear it and come home, and a new voyage signal appears on the
    map.

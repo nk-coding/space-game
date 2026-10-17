@@ -12,7 +12,7 @@
         family: "kinetic",
         kind: NewPart,
         cost: (data: {"kinetic": 3}),
-        unlocks: [Part("automaton_cannon")],
+        unlocks: [Part("reverse_engineered_cannon")], // the player's copy, a little slower (18 Oct 2026, GDR-0100)
     ),
     (
         id: "composite_plating",

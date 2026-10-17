@@ -342,7 +342,7 @@ mod tests {
         assert_eq!(career.researched(), ["automaton_cannon"]);
         assert!(!career.data().contains_key("kinetic"), "paid down to nothing");
         let content = data::base_content();
-        assert!(career.fresh_parts(&content).contains("automaton_cannon"), "NEW in the drydock");
+        assert!(career.fresh_parts(&content).contains("reverse_engineered_cannon"), "NEW in the drydock");
         // The save on disk says the same.
         let saved = app.world().resource::<Storage>().read::<CareerDoc>("career").unwrap().unwrap();
         assert_eq!(saved.doc.0.researched(), ["automaton_cannon"]);

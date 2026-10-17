@@ -521,8 +521,8 @@ mod tests {
         let now = |mind| Now { mind, range: 2.5 };
         assert_eq!(unlocked_words(&content, n, now(2)), "REVERSE-ENGINEERED CANNON  ·  NOW IN THE DRYDOCK");
         assert_eq!(state(&content, &c, "automaton_cannon"), CardState::Done);
-        assert!(c.unlocks(&content).has_part("automaton_cannon"));
-        assert!(c.fresh_parts(&content).contains("automaton_cannon"), "the drydock shows it NEW");
+        assert!(c.unlocks(&content).has_part("reverse_engineered_cannon"));
+        assert!(c.fresh_parts(&content).contains("reverse_engineered_cannon"), "the drydock shows it NEW");
         let n = c.research(&content, "tamed_core").unwrap();
         assert_eq!(n.id, "tamed_core");
         assert!(c.data().get("logic").is_some_and(|x| (x - 6.5).abs() < 1e-4));

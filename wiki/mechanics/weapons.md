@@ -15,7 +15,7 @@ decide when guns fire.
 
 Each weapon belongs to a **family**, and shields treat the families differently
 ([shields](/mechanics/damage#shields)). The lasers are energy weapons; the [[part:automaton_cannon]] is a kinetic
-gun. The game knows more families (missiles, disruption, drones, utility) that have no guns yet.
+gun (research builds you a slower copy, the [[part:reverse_engineered_cannon]]). The game knows more families (missiles, disruption, drones, utility) that have no guns yet.
 
 <StatTable stats="damage,range,shot_rate,shot_speed,penetration,recoil" />
 

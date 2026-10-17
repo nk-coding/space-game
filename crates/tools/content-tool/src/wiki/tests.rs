@@ -784,7 +784,7 @@ fn parts_materials_and_frames_show_salvage_and_unlocks() {
         "<h2>Unlocked by</h2>\n<table class=\"list\">\n<tr><td class=\"name\"><a href=\"../research/tamed_core.html\">",
     );
     has(
-        "parts/automaton_cannon.html",
+        "parts/reverse_engineered_cannon.html",
         "href=\"../research/automaton_cannon.html\"",
     );
     has(

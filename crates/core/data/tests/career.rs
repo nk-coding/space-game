@@ -275,7 +275,9 @@ fn research_pays_and_unlocks_at_once() {
     assert_eq!(career.data()["kinetic"], 12.0);
     assert_eq!(career.researched(), ["automaton_cannon"]);
     assert!(career.is_researched("automaton_cannon"));
-    assert!(career.unlocks(&c).has_part("automaton_cannon"));
+    // The node unlocks the player's copy of the gun; the automatons' own stays theirs.
+    let u = career.unlocks(&c);
+    assert!(u.has_part("reverse_engineered_cannon") && !u.has_part("automaton_cannon"));
 
     // Paying a store down to nothing removes it; materials are paid the same way.
     bring_home(
@@ -324,11 +326,11 @@ fn researched_parts_are_fresh_until_seen() {
     );
     career.research(&c, "automaton_cannon").unwrap();
     career.research(&c, "tamed_core").unwrap();
-    let both = BTreeSet::from(["automaton_cannon".to_string(), "automaton_core".to_string()]);
+    let both = BTreeSet::from(["reverse_engineered_cannon".to_string(), "automaton_core".to_string()]);
     assert_eq!(career.fresh_parts(&c), both);
     // Seeing it once is enough; locked parts not researched yet are not fresh.
-    assert!(career.mark_seen(&c, "automaton_cannon"));
-    assert!(!career.mark_seen(&c, "automaton_cannon"));
+    assert!(career.mark_seen(&c, "reverse_engineered_cannon"));
+    assert!(!career.mark_seen(&c, "reverse_engineered_cannon"));
     assert!(!career.mark_seen(&c, "beam_laser"));
     assert_eq!(
         career.fresh_parts(&c),
@@ -337,14 +339,14 @@ fn researched_parts_are_fresh_until_seen() {
     // The save keeps what was seen.
     let text = career.to_ron();
     assert!(
-        text.contains("seen: [\n        \"automaton_cannon\",\n    ],"),
+        text.contains("seen: [\n        \"reverse_engineered_cannon\",\n    ],"),
         "{text}"
     );
     assert_eq!(Career::from_ron(&text).unwrap(), career);
     // A seen part the content no longer has goes without a note.
     let text = text.replace(
-        "\"automaton_cannon\",\n    ],",
-        "\"automaton_cannon\",\n        \"gone_gun\",\n    ],",
+        "\"reverse_engineered_cannon\",\n    ],",
+        "\"reverse_engineered_cannon\",\n        \"gone_gun\",\n    ],",
     );
     let mut back = Career::from_ron(&text).unwrap();
     assert!(back.reconcile(&c).is_empty());
@@ -861,7 +863,7 @@ fn a_hand_written_save_reads() {
     assert_eq!((career.history().len(), career.unread()), (1, 0));
     assert!(career.to_ron().contains("history: ["));
     let u = career.unlocks(&c);
-    assert!(u.has_part("automaton_cannon") && u.has_material("composite"));
+    assert!(u.has_part("reverse_engineered_cannon") && u.has_material("composite"));
 }
 
 /// ADR-0024: a save of an older voyage roller is migrated (nothing it stores refers to a rolled voyage, so its next
@@ -1086,9 +1088,9 @@ fn an_evening(c: &Content) -> Career {
     );
 
     // The cannon.
-    assert!(!career.unlocks(c).has_part("automaton_cannon"));
+    assert!(!career.unlocks(c).has_part("reverse_engineered_cannon"));
     career.research(c, "automaton_cannon").unwrap();
-    assert!(career.unlocks(c).has_part("automaton_cannon"));
+    assert!(career.unlocks(c).has_part("reverse_engineered_cannon"));
     assert_eq!(
         career.can_pay(c, "mind_expansion_1"),
         Err(Refusal::Requires(vec!["tamed_core".into()]))

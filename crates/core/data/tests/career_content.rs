@@ -647,7 +647,8 @@ fn base_locks_follow_the_early_game_kit() {
             "thorn_gun",
             "fusion_reactor",
             "torch_drive",
-            "beam_laser"
+            "beam_laser",
+            "reverse_engineered_cannon"
         ]
     );
     let locked_materials: Vec<&str> = c
