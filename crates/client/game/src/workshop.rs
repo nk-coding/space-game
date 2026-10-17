@@ -42,8 +42,8 @@ use crate::home::HomeAction;
 /// The layout's size (logical px), like the LOG's.
 const STAGE: Vec2 = Vec2::new(1280.0, 720.0);
 /// The two columns' boxes on the stage.
-const SORT: (Vec2, Vec2) = (Vec2::new(60.0, 104.0), Vec2::new(520.0, 540.0));
-const MAKE: (Vec2, Vec2) = (Vec2::new(620.0, 104.0), Vec2::new(600.0, 540.0));
+const SORT: (Vec2, Vec2) = (Vec2::new(40.0, 104.0), Vec2::new(560.0, 540.0));
+const MAKE: (Vec2, Vec2) = (Vec2::new(640.0, 104.0), Vec2::new(600.0, 540.0));
 const ROW: f32 = 44.0;
 
 /// One part of the intake as the workshop shows it.
@@ -362,9 +362,10 @@ fn fill_sort(p: &mut ChildSpawnerCommands, fonts: &HudFonts, style: &Style, rows
             BorderColor::all(ui_color(ui.dim, 0.25)),
         ))
         .with_children(|row| {
-            row.spawn((prose(fonts, &r.name, 15.0, c(Tone::Number)), Node { width: px(130), flex_shrink: 0.0, ..default() }));
-            row.spawn((number(fonts, &format!("×{}", r.count), 14.0, c(Tone::Number)), Node { width: px(34), flex_shrink: 0.0, ..default() }));
-            row.spawn((label(fonts, &format!("IN STOCK {}", r.stock), 8.5, c(Tone::Label)), Node { width: px(70), flex_shrink: 0.0, ..default() }));
+            row.spawn(Node { flex_direction: FlexDirection::Column, row_gap: px(3), width: px(150), flex_shrink: 0.0, ..default() }).with_children(|col| {
+                col.spawn(prose(fonts, &r.name, 15.0, c(Tone::Number)));
+                col.spawn(label(fonts, &format!("×{}  ·  IN STOCK {}", r.count, r.stock), 8.5, c(Tone::Label)));
+            });
             row.spawn((label(fonts, &format!("KEEP {}  ·  DISMANTLE {}", r.keep, r.dismantle), 8.5, c(Tone::Dim)), Node { flex_grow: 1.0, ..default() }));
             spawn_pill(row, fonts, "KEEP", 9.0, 26.0, None, Pill::new(Tone::Teal), (Do::Keep(r.part.clone()), Tip::new("KEEP ONE  ·  INTO STOCK")));
             spawn_pill(row, fonts, "DISMANTLE", 9.0, 26.0, None, Pill::new(Tone::Gold), (Do::Dismantle(r.part.clone()), Tip::new("DISMANTLE ONE  ·  DATA AND MATERIALS")));
@@ -466,7 +467,7 @@ fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>) {
                         });
                     stage.spawn((SortList, ScreenPart::new(Edge::Fade, 1), Scrollbar::vertical(), ScrollPosition::default(), list(SORT)));
                     stage.spawn((MakeList, ScreenPart::new(Edge::Fade, 1), Scrollbar::vertical(), ScrollPosition::default(), list(MAKE)));
-                    stage.spawn((Said, ScreenPart::new(Edge::Bottom, 0), abs(Vec2::new(60.0, 664.0), None)));
+                    stage.spawn((Said, ScreenPart::new(Edge::Bottom, 0), abs(Vec2::new(40.0, 664.0), None)));
                 });
             });
         });
