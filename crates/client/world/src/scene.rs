@@ -420,6 +420,13 @@ fn build_world(scene: &mut Scene, focus: &mut PilotFocus, inputs: &mut SceneInpu
                         world.sim.command(id, command);
                     }
                 }
+                // `twin=1`: a second copy holds just under it, close enough that its bubbles reach the design's
+                // hull (for looking at whose bubbles show over whose hull, `shield.rs`).
+                if params.flag("twin").unwrap_or(false) {
+                    let at = sim::Vec2::new(0.0, -(crate::player::library::parts_size(base, bp).1 as f32 + 0.2));
+                    let twin = world.sim.spawn_ship(runner.clone(), PLAYER, Body::at(at, 0.0));
+                    world.sim.command(twin, ShipCommand::Maneuver { maneuver: Maneuver::Hold { at }, fire: false });
+                }
                 // The showcase is for looking: nobody flies the runner (no focus).
                 focus.0 = None;
                 rig.mode = CamMode::Free;

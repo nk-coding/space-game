@@ -2,16 +2,17 @@
 //! brightens towards a soft-glowing rim, a slow shimmer, a ripple from every hit, flicker when low, and a
 //! shatter when the bubble collapses. Drawn procedurally by `shield.wesl` (no textures).
 //!
-//! Batching (ADR-0029): every bubble of every ship is a quad in **one** world-space mesh with one material, so
-//! all bubbles are one draw call, after every ship ([`Z_BUBBLES`]). Each quad's vertices carry the depth of its
-//! piece's draw layer plus `ship_view::BUBBLE_DZ` (the focused vessel's: `Z_FOCUS` plus it), and the lit ship
-//! tiles write depth (an opaque mesh, `ship_view`): a bubble is hidden under the tiles of every ship above its
-//! own and shows over every ship below, as if it were drawn between the layers. The mesh is rewritten in place
-//! every frame (like `fx.rs`); each quad carries its bubble's state in vertex attributes (offset from the
-//! centre, radius, seed, charge, presence, shatter progress, up to [`MAX_HITS`] hits). The material only holds
-//! the style tokens and never changes; the shader animates from `globals.time`. The bubbles blend with `max`
-//! (colour and alpha), so overlapping bubbles never add up to bright lenses, and the order of the quads does not
-//! matter.
+//! Batching (ADR-0029): every bubble of every ship is a quad in **one** world-space mesh, drawn after every ship
+//! ([`Z_BUBBLES`]) by two entities with a material each, so all bubbles are two draw calls. The lit ship tiles
+//! write depth (an opaque mesh, `ship_view`), and each quad's vertices carry the depth of its piece's draw layer
+//! (the focused vessel's: `Z_FOCUS`). One material draws the bubbles over space: at [`Z_SPACE`], under every
+//! ship's tiles, which hide them; the other over their own piece's tiles only: at that piece's depth, tested for
+//! equality (17 Oct 2026). So a bubble never shows over another ship's hull, above or below its own. The mesh is
+//! rewritten in place every frame (like `fx.rs`); each quad carries its bubble's state in vertex attributes
+//! (offset from the centre, radius, seed, charge, presence, shatter progress, up to [`MAX_HITS`] hits). The
+//! materials only hold the style tokens and never change; the shader animates from `globals.time`. The bubbles
+//! blend with `max` (colour and alpha), so overlapping bubbles never add up to bright lenses, and the order of the
+//! quads does not matter.
 //!
 //! State lives here, keyed by `(ShipId, emitter part)`, so a piece view rebuilt in the middle of a ripple or a
 //! shatter (a part destroyed by the same shot) keeps playing it. Hits arrive from `sim_bridge::apply_events`.
@@ -25,8 +26,8 @@ use bevy::mesh::{
 };
 use bevy::prelude::*;
 use bevy::render::render_resource::{
-    AsBindGroup, BlendComponent, BlendFactor, BlendOperation, BlendState, RenderPipelineDescriptor, ShaderType,
-    SpecializedMeshPipelineError,
+    AsBindGroup, BlendComponent, BlendFactor, BlendOperation, BlendState, CompareFunction, RenderPipelineDescriptor,
+    ShaderType, SpecializedMeshPipelineError,
 };
 use bevy::shader::ShaderRef;
 use bevy::sprite_render::{AlphaMode2d, Material2d, Material2dKey, Material2dPipeline, Material2dPlugin};
@@ -34,12 +35,14 @@ use sim::{PartIdx, ShipId, Stat};
 use kit::params::RenderToggles;
 use kit::style::{ShieldStyle, Style};
 
-use crate::ship_view::{BUBBLE_DZ, PieceView};
+use crate::ship_view::PieceView;
 use crate::sim_bridge::SimWorld;
 
 /// The bubble mesh draws after every ship (the focus is at `ship_view::Z_FOCUS`), below weapons and sparks
 /// (`fx::Z_WEAPONS`); its quads' depths are their pieces' layers.
 const Z_BUBBLES: f32 = 200.0;
+/// The depth the bubbles are drawn at over space: under every ship's tiles (`ship_view::draw_layer`: z 10 and up).
+pub(crate) const Z_SPACE: f32 = 1.0;
 /// Hits a bubble shows at once; a new hit replaces the oldest.
 pub const MAX_HITS: usize = 4;
 /// A hit this close (seconds, angle) to a younger one only strengthens it: a beam hits every tick.
@@ -79,16 +82,34 @@ struct BubbleUniform {
     shape: Vec4,
     /// `(low share, 0, 0, 0)`.
     low: Vec4,
+    /// `(1: over space, at world z y; 0: over its own piece's tiles, at their depth, 0, 0)`.
+    depth: Vec4,
+}
+
+/// The pipeline's depth test: over space (as every 2D mesh) or over the own piece's tiles (equal depth).
+#[repr(C)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct BubbleKey {
+    over_space: bool,
 }
 
 #[derive(Asset, TypePath, AsBindGroup, Clone, Debug)]
+#[bind_group_data(BubbleKey)]
 pub struct BubbleMaterial {
     #[uniform(0)]
     style: BubbleUniform,
+    over_space: bool,
+}
+
+impl From<&BubbleMaterial> for BubbleKey {
+    fn from(m: &BubbleMaterial) -> Self {
+        Self { over_space: m.over_space }
+    }
 }
 
 impl BubbleMaterial {
-    fn new(s: &ShieldStyle) -> Self {
+    /// The bubbles over space (`over_space`), or over their own piece's tiles.
+    fn new(s: &ShieldStyle, over_space: bool) -> Self {
         let rgb = |c: Color| {
             let l = c.to_linear();
             Vec4::new(l.red, l.green, l.blue, 1.0)
@@ -100,7 +121,9 @@ impl BubbleMaterial {
                 opacity: Vec4::new(s.fill_center_opacity, s.fill_rim_opacity, s.rim_opacity, s.glow_opacity),
                 shape: Vec4::new(s.rim_width, s.glow_width, s.shimmer, s.shimmer_speed),
                 low: Vec4::new(s.low_share, 0.0, 0.0, 0.0),
+                depth: Vec4::new(if over_space { 1.0 } else { 0.0 }, Z_SPACE, 0.0, 0.0),
             },
+            over_space,
         }
     }
 }
@@ -126,7 +149,7 @@ impl Material2d for BubbleMaterial {
         _pipeline: &Material2dPipeline,
         descriptor: &mut RenderPipelineDescriptor,
         layout: &MeshVertexBufferLayoutRef,
-        _key: Material2dKey<Self>,
+        key: Material2dKey<Self>,
     ) -> Result<(), SpecializedMeshPipelineError> {
         let mut attrs = vec![
             Mesh::ATTRIBUTE_POSITION.at_shader_location(0),
@@ -144,6 +167,13 @@ impl Material2d for BubbleMaterial {
         let target = descriptor.fragment.as_mut().and_then(|f| f.targets.first_mut()).and_then(Option::as_mut);
         if let Some(target) = target {
             target.blend = Some(BlendState { color: max, alpha: max });
+        }
+        // Over the own piece's tiles: exactly where their depth is the quad's (both come from the same layer z
+        // through the same transforms, so they are equal to the bit).
+        if !key.bind_group_data.over_space
+            && let Some(depth) = descriptor.depth_stencil.as_mut()
+        {
+            depth.depth_compare = Some(CompareFunction::Equal);
         }
         Ok(())
     }
@@ -340,13 +370,15 @@ fn setup(
     mut materials: ResMut<Assets<BubbleMaterial>>,
     mut bubbles: ResMut<ShieldBubbles>,
 ) {
-    let material = materials.add(BubbleMaterial::new(&style.shield));
     let mut mesh = Mesh::new(PrimitiveTopology::TriangleList, RenderAssetUsages::default());
     let mut empty = Scratch::default();
     empty.degenerate();
     empty.write(&mut mesh);
     let mesh = meshes.add(mesh);
-    commands.spawn((Mesh2d(mesh.clone()), MeshMaterial2d(material), Transform::from_xyz(0.0, 0.0, Z_BUBBLES), NoFrustumCulling));
+    for over_space in [true, false] {
+        let material = materials.add(BubbleMaterial::new(&style.shield, over_space));
+        commands.spawn((Mesh2d(mesh.clone()), MeshMaterial2d(material), Transform::from_xyz(0.0, 0.0, Z_BUBBLES), NoFrustumCulling));
+    }
     bubbles.empty = true;
     commands.insert_resource(BubbleMesh(mesh));
 }
@@ -408,9 +440,9 @@ pub(crate) fn draw_bubbles(
             let r = if shatter > 0.0 { radius } else { radius * (0.85 + 0.15 * rise) };
             let reach = if shatter > 0.0 { r * SHATTER_REACH } else { 0.0 };
             let half = r + reach + 4.0 * s.glow_width + 0.1;
-            // z: the piece's draw layer (`sync_piece_views` posed it; `Z_FOCUS` for the focus) plus BUBBLE_DZ, in
-            // the mesh's frame: depth-tested against the opaque tiles of every ship.
-            let centre = tf.transform_point(view.visual.to_local(p.center).extend(0.0)) + Vec3::Z * (BUBBLE_DZ - Z_BUBBLES);
+            // z: the piece's draw layer (`sync_piece_views` posed it; `Z_FOCUS` for the focus), in the mesh's
+            // frame: its tiles' depth exactly (the bubbles over space replace it with `Z_SPACE` in the shader).
+            let centre = tf.transform_point(view.visual.to_local(p.center).extend(0.0)) - Vec3::Z * Z_BUBBLES;
             let mut hits = [[0.0, 0.0, 1.0, 0.0]; MAX_HITS];
             for (k, h) in b.hits.iter().enumerate() {
                 if let Some(h) = h {

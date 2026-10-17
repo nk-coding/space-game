@@ -15,6 +15,8 @@ struct BubbleStyle {
     shape: vec4<f32>,
     // share of capacity below which the bubble flickers
     low: vec4<f32>,
+    // 1: over space, at world z y (under every ship's tiles); 0: over its own piece's tiles, at their depth
+    depth: vec4<f32>,
 };
 
 @group(constants::MATERIAL_BIND_GROUP) @binding(0) var<uniform> style: BubbleStyle;
@@ -48,7 +50,10 @@ struct VertexOutput {
 fn vertex(v: Vertex) -> VertexOutput {
     var out: VertexOutput;
     let world_from_local = mesh_functions::get_world_from_local(v.instance_index);
-    let world = mesh_functions::mesh2d_position_local_to_world(world_from_local, vec4<f32>(v.position, 1.0));
+    var world = mesh_functions::mesh2d_position_local_to_world(world_from_local, vec4<f32>(v.position, 1.0));
+    if style.depth.x > 0.5 {
+        world.z = style.depth.y;
+    }
     out.clip = mesh_functions::mesh2d_position_world_to_clip(world);
     out.offset = v.bubble.xy;
     out.bubble = v.bubble.zw;

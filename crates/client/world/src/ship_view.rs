@@ -11,9 +11,9 @@
 //! batched mesh for all ships (`shield.rs`), placed from the piece views. The body mesh has five
 //! variants (style 2a lit/dark, without pre-blurred glow lit/dark, debug shapes), built lazily on first use;
 //! toggles and power changes swap the handle. A lit piece's tiles (alpha 1) are a mesh of their own in the
-//! opaque pass, so they write depth: every shield bubble quad sits just above its own piece's layer
-//! ([`BUBBLE_DZ`]) and is hidden under the tiles of every piece above it, although all bubbles are one draw
-//! after every ship. Dark pieces (tiles at half alpha) keep their tiles in the body. Local coordinates are the
+//! opaque pass, so they write depth: the shield bubbles (one mesh drawn after every ship, `shield.rs`) show over
+//! space and over their own piece's tiles (at its layer's depth), never over another ship's. Dark pieces (tiles
+//! at half alpha) keep their tiles in the body. Local coordinates are the
 //! sim's piece frame (`blueprint (x, y) → (x − origin.x, origin.y − y)`), so the transform is the sim pose as is.
 
 use bevy::prelude::*;
@@ -124,8 +124,6 @@ pub struct PieceTiles;
 
 /// The focused vessel's piece draws above every other ship (their layers are z 10..90).
 pub const Z_FOCUS: f32 = 100.0;
-/// A shield bubble's depth above its own piece: under the next piece up (layers are 1/8 apart, `shield.rs`).
-pub const BUBBLE_DZ: f32 = 1.0 / 16.0;
 /// Aura and barrels lie this far below their piece's tiles in depth: under its own tiles, over every lower piece.
 const UNDER_DZ: f32 = -1.0 / 64.0;
 
@@ -483,10 +481,10 @@ mod tests {
     use super::*;
 
     /// Draw layers are a function of the ids alone, so a view rebuilt after a part dies keeps its place (review
-    /// finding 3), and the depths line up: a bubble lies over its own piece's tiles and under every piece of a
-    /// higher layer, aura and barrels included; trails stay under every ship, the focus above every layer.
+    /// finding 3), and the depths line up: aura and barrels lie under their own tiles and over every lower piece;
+    /// trails and the bubbles over space stay under every ship, the focus above every layer.
     #[test]
-    fn draw_layers_are_stable_and_keep_bubbles_between_ships() {
+    fn draw_layers_are_stable_and_keep_ships_apart() {
         let mut layers: Vec<f32> =
             (0..80).flat_map(|s| (0..8).map(move |p| draw_layer(ShipId(s), PieceId(p)))).collect();
         layers.sort_by(f32::total_cmp);
@@ -494,10 +492,10 @@ mod tests {
         assert_eq!(layers.len(), 80 * 8, "80 ships x 8 pieces, all apart");
         for w in layers.windows(2) {
             let (below, above) = (w[0], w[1]);
-            assert!(below + BUBBLE_DZ < above + UNDER_DZ, "{below} {above}");
+            assert!(below < above + UNDER_DZ, "{below} {above}");
         }
-        assert!(layers[0] + UNDER_DZ > crate::fx::Z_TRAILS);
-        assert!(layers[layers.len() - 1] + BUBBLE_DZ < Z_FOCUS);
+        assert!(layers[0] + UNDER_DZ > crate::fx::Z_TRAILS.max(crate::shield::Z_SPACE));
+        assert!(layers[layers.len() - 1] < Z_FOCUS + UNDER_DZ);
         // Ids wrap after 80 ships and 8 pieces: the layer never leaves its range.
         assert_eq!(draw_layer(ShipId(85), PieceId(9)), draw_layer(ShipId(5), PieceId(1)));
     }
