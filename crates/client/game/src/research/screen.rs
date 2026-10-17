@@ -29,14 +29,15 @@ const TREE_RIGHT: f32 = 878.0;
 /// The tier heads, then the tree's area (the lanes scroll inside it).
 const TIER_Y: f32 = 84.0;
 const TREE_TOP: f32 = 104.0;
-const TREE_BOTTOM: f32 = 664.0;
+const TREE_BOTTOM: f32 = 670.0;
 /// A card: its height, its widest, the least gap between columns; a lane row's pitch (least, most); the card's
-/// place in its row.
+/// place in its row. 18 Oct 2026 (GDR-0103): the least pitch 66 → 60, the card 4 px higher in its row and the tree
+/// 6 px longer, so the base pack's nine rows (seven lanes, the Grown's last) fit with the last row's cost pills.
 const CARD_H: f32 = 40.0;
 const CARD_MAX_W: f32 = 210.0;
 const COLUMN_GAP: f32 = 40.0;
 const ROW_PITCH: (f32, f32) = (60.0, 96.0);
-const CARD_TOP: f32 = 8.0;
+const CARD_TOP: f32 = 4.0;
 /// The detail panel on the right.
 const PANEL_X: f32 = 912.0;
 const PANEL_W: f32 = 344.0;
