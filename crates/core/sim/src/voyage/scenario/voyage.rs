@@ -56,7 +56,8 @@ pub(super) fn voyage_scenario(content: &Content, seed: u64) -> Result<Scenario, 
 }
 
 impl Scenario {
-    /// The voyage scenario's script for this tick: the scripted kills, then each player ship fights, salvages or
+    /// The voyage scenario's script for this tick: the scripted kills (not in the grown scenario, whose hearts need
+    /// living ships), then each player ship fights, salvages or
     /// flies on (re-decided every `SALVAGE_RETARGET` ticks, staggered) and scans whenever it decides (the sim
     /// ignores it while its scanner charges or cools down, and for a ship without one).
     pub(super) fn voyage_run(&mut self, tick: u64) {
@@ -65,7 +66,8 @@ impl Scenario {
         };
         // The enemies that matter (GDR-0068): armed and awake.
         let awake = |s: &Ship| self.sim.armed_enemy(Owner::PLAYER, s);
-        if tick > 0
+        if self.kind == ScenarioKind::Voyage
+            && tick > 0
             && tick.is_multiple_of(VOYAGE_KILL_EVERY)
             && let Some(enemy) = self.sim.ships().iter().find(|s| awake(s))
         {

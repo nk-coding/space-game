@@ -9,6 +9,7 @@
 //! `resolve_breakage`. The per-tick code walks compact cached rows and allocates nothing.
 
 mod caches;
+mod living;
 mod piece;
 mod scan;
 mod systems;
@@ -309,6 +310,8 @@ pub struct Ship {
     /// The intact hit points its hull share (the `hull` condition) is measured against: the whole design's for
     /// a spawned ship, the parts of its own piece's for a vessel split off another (GDR-0064).
     pub(crate) hull_base: f32,
+    /// Seconds each heart (`ShipDesign::hearts`) has worked towards its next re-formed part (`living.rs`).
+    pub(crate) regrowth: Vec<f32>,
 }
 
 impl Ship {
@@ -374,8 +377,10 @@ impl Ship {
             burned_out: false,
             scan: Scan::Ready,
             hull_base: 0.0,
+            regrowth: Vec::new(),
         };
         ship.hull_base = ship.design.hp_total;
+        ship.regrowth = vec![0.0; ship.design.hearts.len()];
         let all: Vec<PartIdx> = (0..n as u32).collect();
         for &p in &all {
             ship.refresh_exposure(p);
@@ -740,6 +745,10 @@ impl StateHash for Ship {
         }
         h.bool(self.burned_out);
         h.f32(self.hull_base);
+        // Nothing for a ship without hearts, so worlds without them keep their hashes.
+        for &t in &self.regrowth {
+            h.f32(t);
+        }
         self.cargo.hash_state(h);
         h.u32(self.parts.len() as u32);
         for ps in &self.parts {

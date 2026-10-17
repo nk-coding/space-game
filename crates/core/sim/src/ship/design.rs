@@ -209,6 +209,15 @@ pub struct PartSpec {
     pub blast_factor: f32,
     /// Heat capacity (heat units per degree); proportional to area.
     pub heat_capacity: f32,
+    /// Living tissue (GDR-0099 A4): hit points regained per second on a vessel's controlling piece (a hull part
+    /// its armour's `heal × area`, other parts their `heal`; 0: never heals).
+    pub heal: f32,
+    /// A heart (content `heart`, GDR-0099 A1): its regrowth's interval and the share of hit points a re-formed part
+    /// starts with.
+    pub heart: Option<data::HeartSpec>,
+    /// As the touching part of a ram (content `ram`, GDR-0099 A2): the factor on the ram damage the other side
+    /// takes, and on its own side's (1 and 1 for parts without `ram`).
+    pub ram: [f32; 2],
 }
 
 /// Two linked parts and the number of cell edges they share (heat conducts through each).
@@ -334,6 +343,10 @@ pub struct ShipDesign {
     pub sensors: Vec<PartIdx>,
     /// Scanners, ascending.
     pub scanners: Vec<PartIdx>,
+    /// Hearts, ascending (`ship/living.rs`).
+    pub hearts: Vec<PartIdx>,
+    /// Parts that heal (`PartSpec::heal` above 0), ascending.
+    pub healing: Vec<PartIdx>,
     /// Parts that block each gun's line of fire (cells straight ahead, to the grid edge), per gun slot.
     pub gun_blockers: Csr<PartIdx>,
     /// Every engine's plume lanes (see `EngineSpec::lanes`).
@@ -518,6 +531,9 @@ impl ShipDesign {
                     1.0
                 },
                 heat_capacity: HEAT_CAPACITY_PER_CELL * area,
+                heal: def.heal_in(content.placement_armor(pl)).unwrap_or(0.0),
+                heart: def.heart.clone(),
+                ram: def.ram.as_ref().map_or([1.0, 1.0], |r| [r.dealt, r.taken]),
             });
         }
 
@@ -639,6 +655,7 @@ impl ShipDesign {
         let hp_total = parts.iter().map(|p: &PartSpec| p.hp).sum::<f32>();
         let with = |f: fn(&PartSpec) -> bool| (0..n as PartIdx).filter(|&i| f(&parts[i as usize])).collect::<Vec<_>>();
         let (sensors, scanners) = (with(|p| p.sensor > 0.0), with(|p| p.scanner.is_some()));
+        let (hearts, healing) = (with(|p| p.heart.is_some()), with(|p| p.heal > 0.0));
         Ok(ShipDesign {
             id: ship.id.clone(),
             name: ship.name.clone(),
@@ -653,6 +670,8 @@ impl ShipDesign {
             slot_of_part,
             sensors,
             scanners,
+            hearts,
+            healing,
             gun_blockers: Csr::from_lists(gun_blockers),
             plume_lanes,
             plume_path: Csr::from_lists(plume_path),

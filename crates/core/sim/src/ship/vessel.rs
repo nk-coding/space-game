@@ -212,6 +212,7 @@ impl Ship {
             burned_out: false,
             scan: crate::ship::Scan::Ready,
             hull_base: 0.0,
+            regrowth: self.regrowth.clone(),
         };
         for i in 0..self.parts.len() {
             if !self.parts[i].alive {

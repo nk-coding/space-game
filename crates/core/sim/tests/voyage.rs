@@ -643,10 +643,112 @@ fn one_site(ships: Vec<sim::Spawn>, wake_radius: f32) -> VoyagePlan {
             core: None,
             pos: Vec2::ZERO,
             wake_radius,
+            wary: false,
             ships,
             wrecks: Vec::new(),
         }],
+        star: None,
     }
+}
+
+/// A wary site (GDR-0099 A3): two raiders at the origin, waking within 250 m if they were not wary, and a wreck
+/// 60 m below them.
+fn wary_site(c: &data::Content) -> VoyagePlan {
+    let spawn = |pos: Vec2| sim::Spawn { design: design(c, "automaton_raider"), body: Body::at(pos, 0.0), damage: 0.0, seed: 0 };
+    let mut plan = one_site(vec![spawn(Vec2::ZERO), spawn(Vec2::new(12.0, 0.0))], 250.0);
+    plan.sites[0].wary = true;
+    plan.sites[0].wrecks.push(spawn(Vec2::new(0.0, -60.0)));
+    plan
+}
+
+fn wary_world(c: &data::Content, at: Vec2) -> (Sim, ShipId) {
+    let mut w = Sim::new(1);
+    w.set_behaviors(sim::BehaviorLibrary::new(c).unwrap());
+    w.start_voyage(wary_site(c), Owner::PLAYER, ENEMY);
+    let me = w.spawn_ship(design(c, "rim_skiff"), Owner::PLAYER, Body::at(at, 0.0));
+    w.command(me, sim::ShipCommand::Focus);
+    (w, me)
+}
+
+#[test]
+fn a_wary_site_sleeps_through_a_visit_and_wakes_on_a_scan_close_by() {
+    let c = content();
+    let (mut w, me) = wary_world(&c, Vec2::new(0.0, -120.0));
+    for _ in 0..150 {
+        step(&mut w);
+        put(&mut w, me, Vec2::new(0.0, -120.0));
+    }
+    assert_eq!(state(&w, 0), SiteState::Asleep, "within the wake radius, but wary");
+    w.command(me, sim::ShipCommand::Scan);
+    let mut woke = None;
+    for t in 0..300 {
+        if step(&mut w).iter().any(|e| matches!(e, SimEvent::SiteWoke { site: 0 })) {
+            woke = Some(t);
+            break;
+        }
+    }
+    assert!(woke.is_some(), "a scan within the scanner's wake radius wakes it");
+    assert_eq!(state(&w, 0), SiteState::Awake);
+}
+
+#[test]
+fn a_wary_site_wakes_when_a_shot_hits_or_its_wreck_is_stripped() {
+    let c = content();
+    // A shot at one of its ships.
+    let (mut w, me) = wary_world(&c, Vec2::new(0.0, -120.0));
+    step(&mut w);
+    let target = w.voyage().unwrap().sites()[0].ships()[0];
+    let at = w.ship(target).unwrap().pieces()[0].com_world();
+    w.spawn_projectile(me, data::WeaponFamily::Kinetic, at + Vec2::new(-4.0, 0.0), Vec2::new(90.0, 0.0), 0.1, 1, 1.0);
+    for _ in 0..4 {
+        step(&mut w);
+    }
+    assert_eq!(state(&w, 0), SiteState::Awake);
+    // Stripping its wreck: a collector parked beside it (but further than the shot) takes a part.
+    let (mut w, me) = wary_world(&c, Vec2::new(-8.0, -60.0));
+    let mut stripped = false;
+    for _ in 0..120 {
+        put(&mut w, me, Vec2::new(-8.0, -60.0));
+        let ev = step(&mut w);
+        stripped |= ev.iter().any(|e| matches!(e, SimEvent::Collected { .. }));
+        if stripped {
+            break;
+        }
+        assert_eq!(state(&w, 0), SiteState::Asleep);
+    }
+    assert!(stripped, "the collector took a part");
+    step(&mut w);
+    assert_eq!(state(&w, 0), SiteState::Awake, "stripping its wreck wakes it");
+}
+
+#[test]
+fn a_site_of_wary_ships_rolls_wary_and_a_hot_cluster_its_star() {
+    let mut c = content();
+    let mut bp = c.ships.get("automaton_raider").unwrap().clone();
+    bp.id = "grown_test".into();
+    bp.faction = "grown".into();
+    c.ships.upsert(bp);
+    let mut e = c.encounters.get("raider_pair").unwrap().clone();
+    e.id = "grove_test".into();
+    e.ships[0].ship = "grown_test".into();
+    c.encounters.upsert(e);
+    let interior = galaxy::Interior {
+        radius: 2000.0,
+        spacing: (600.0, 1200.0),
+        sites: ["grove_test", "raider_pair"]
+            .iter()
+            .map(|e| galaxy::InteriorSite { encounter: Some((*e).into()), place: None })
+            .collect(),
+        star: Some(galaxy::InteriorStar { x: 3600.0, y: 0.0, heat: 0.3 }),
+    };
+    let plan = VoyagePlan::roll_interior(&c, "test", &interior, &Default::default(), 5).unwrap();
+    assert!(plan.sites[0].wary && !plan.sites[1].wary);
+    let star = plan.star.expect("its star");
+    assert_eq!((star.pos, star.heat, star.reach), (Vec2::new(3600.0, 0.0), 0.3, 3600.0));
+    // The same roll without the star: the sites lie where they lay.
+    let cold = VoyagePlan::roll_interior(&c, "test", &galaxy::Interior { star: None, ..interior }, &Default::default(), 5).unwrap();
+    assert!(cold.star.is_none());
+    assert_eq!(cold.sites.iter().map(|s| s.pos).collect::<Vec<_>>(), plan.sites.iter().map(|s| s.pos).collect::<Vec<_>>());
 }
 
 /// A blueprint in two cored pieces (13 Oct 2026 review): the second forms a vessel of its own at spawn. Its

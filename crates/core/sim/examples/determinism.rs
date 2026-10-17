@@ -1,7 +1,7 @@
 //! Prints the per-tick state hashes of the deterministic scenario, one `tick hash` line per tick.
 //! Built natively and for `wasm32-wasip1`; `scripts/determinism-check.sh` runs both and compares.
 //!
-//! Usage: `determinism [--seed N] [--ticks N] [--scenario core|flight|assists|load|behavior|salvage|voyage] [--ships N]`
+//! Usage: `determinism [--seed N] [--ticks N] [--scenario core|flight|assists|load|behavior|salvage|voyage|grown] [--ships N]`
 //! (`--ships` sets the load test's ship count, default 20).
 
 fn main() {
@@ -36,7 +36,7 @@ fn main() {
         all.u64(h);
     }
     println!(
-        "# final={:016x} parts_destroyed={} splits={} pieces_spawned={} pieces_destroyed={} overheated_part_ticks={} firing_ticks={} shots={} hits={} shield_hits={} ricochets={} script_evals={} impacts={} rams={} burns={} explosions={} split_vessels={} vessels_lost={} dormant={} woken={} focus_changes={} collected={} collected_units={} collected_cargo={} collected_fragments={} fragments={} sites_woken={} sites_cleared={} recall_ticks={}",
+        "# final={:016x} parts_destroyed={} splits={} pieces_spawned={} pieces_destroyed={} overheated_part_ticks={} firing_ticks={} shots={} hits={} shield_hits={} ricochets={} script_evals={} impacts={} rams={} burns={} explosions={} split_vessels={} vessels_lost={} dormant={} woken={} focus_changes={} collected={} collected_units={} collected_cargo={} collected_fragments={} fragments={} sites_woken={} sites_cleared={} recall_ticks={} regrown={}",
         all.finish(),
         stats.parts_destroyed,
         stats.splits,
@@ -65,6 +65,7 @@ fn main() {
         stats.fragments,
         stats.sites_woken,
         stats.sites_cleared,
-        stats.recall_ticks
+        stats.recall_ticks,
+        stats.regrown
     );
 }

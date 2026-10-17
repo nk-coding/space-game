@@ -59,6 +59,13 @@ pub enum SimEvent {
         part: PartIdx,
         volatile: bool,
     },
+    /// A heart re-grew a lost part (GDR-0099 A1, `ship/living.rs`): it is alive again on `piece`, with the hit points
+    /// it starts with; a `PieceChanged` for the piece follows in the same tick.
+    PartRegrown {
+        ship: ShipId,
+        piece: PieceId,
+        part: PartIdx,
+    },
     /// A destroyed part exploded (a chain reaction, GDR-0084, GDR-0085): every part within `radius` m of its
     /// centre, on any piece of any ship, took `damage` (times its armour's `blast_factor`, less what armour in
     /// between and other ships' bubbles held back) at once, before the breakage was resolved; parts that died of

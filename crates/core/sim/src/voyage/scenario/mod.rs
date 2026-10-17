@@ -28,6 +28,10 @@
 //!   nearest salvage (pieces and loose fragments) and collecting it, two raiders under their content behavior
 //!   whose cores are shot out (fragments), a cargo part of one collector destroyed (its hold sheds) and one
 //!   collector lost with its cargo (its wreck keeps it; the others strip it), plus random hits.
+//! * [`ScenarioKind::Grown`]: the Grown's mechanics (`grown.rs`, GDR-0102): a wary grove of thornbacks (hearts, ram
+//!   prows, thorn guns, tissue armour) and their wreck beside a hot star, the player's ships with a hold and a mender
+//!   (a heart of its own) on the voyage script without its kills; random hits and blasts, a ram run every
+//!   [`grown::GROWN_RAM_EVERY`] ticks: regrowth, healing, prow rams, thorns, star heat and the wary wake rules.
 //! * [`ScenarioKind::Voyage`]: the voyage director (`voyage/mod.rs`): the content's first voyage rolled from the seed
 //!   and started, one player ship per ship-mind blueprint with a hold entering at its edge. Each flies random
 //!   pilot input locked on the nearest armed awake enemy (`Sim::armed_enemy`) within reach of a fight, else to the
@@ -40,6 +44,7 @@
 //! The state hash includes the physics (Rapier) state, so the native-vs-wasm check covers the engine too.
 
 mod fixtures;
+mod grown;
 mod salvage;
 mod voyage;
 
@@ -64,6 +69,7 @@ use fixtures::{
     BURNER, HEAT_STRESS, assign_assists, assign_behaviors, burner_blueprint, heat_stress_blueprint, library, nth_alive,
 };
 use salvage::{SALVAGE_RETARGET, destroy_parts, salvage_scenario, salvage_target};
+use grown::{GROWN_RAM_EVERY, grown_scenario};
 use voyage::voyage_scenario;
 
 /// The owner a scenario gives a design's ships: ship-mind ships are the player's, everyone else is one
@@ -90,6 +96,8 @@ pub enum ScenarioKind {
     Salvage,
     /// A voyage: sites spawning, sleeping, waking and clearing, salvage, the recall check.
     Voyage,
+    /// The Grown's mechanics: regrowth, healing, ram prows, thorn guns, a hot star, a wary grove.
+    Grown,
 }
 
 impl ScenarioKind {
@@ -102,6 +110,7 @@ impl ScenarioKind {
             "behavior" => Some(ScenarioKind::Behavior),
             "salvage" => Some(ScenarioKind::Salvage),
             "voyage" => Some(ScenarioKind::Voyage),
+            "grown" => Some(ScenarioKind::Grown),
             _ => None,
         }
     }
@@ -114,6 +123,7 @@ impl ScenarioKind {
             ScenarioKind::Behavior => 0.06,
             ScenarioKind::Salvage => 0.04,
             ScenarioKind::Voyage => 0.03,
+            ScenarioKind::Grown => 0.05,
             ScenarioKind::Load(_) => 0.0,
         }
     }
@@ -123,7 +133,7 @@ impl ScenarioKind {
         match self {
             ScenarioKind::Core => 75,
             ScenarioKind::Flight | ScenarioKind::Assists | ScenarioKind::Behavior => 150,
-            ScenarioKind::Salvage | ScenarioKind::Voyage => 300,
+            ScenarioKind::Salvage | ScenarioKind::Voyage | ScenarioKind::Grown => 300,
             ScenarioKind::Load(_) => u64::MAX,
         }
     }
@@ -133,7 +143,7 @@ impl ScenarioKind {
         match self {
             ScenarioKind::Core => 20,
             ScenarioKind::Flight | ScenarioKind::Assists | ScenarioKind::Behavior => 45,
-            ScenarioKind::Salvage | ScenarioKind::Voyage => SALVAGE_RETARGET,
+            ScenarioKind::Salvage | ScenarioKind::Voyage | ScenarioKind::Grown => SALVAGE_RETARGET,
             ScenarioKind::Load(_) => u64::MAX,
         }
     }
@@ -183,6 +193,8 @@ pub struct ScenarioStats {
     pub sites_woken: u32,
     pub sites_cleared: u32,
     pub recall_ticks: u32,
+    /// Parts re-grown by hearts (`PartRegrown`, GDR-0102).
+    pub regrown: u32,
 }
 
 pub struct Scenario {
@@ -216,6 +228,9 @@ impl Scenario {
         }
         if kind == ScenarioKind::Voyage {
             return voyage_scenario(content, seed);
+        }
+        if kind == ScenarioKind::Grown {
+            return grown_scenario(content, seed);
         }
         let mut config = crate::SimConfig::default();
         if kind == ScenarioKind::Behavior {
@@ -322,6 +337,7 @@ impl Scenario {
                 }
                 SimEvent::SiteWoke { .. } => self.stats.sites_woken += 1,
                 SimEvent::SiteCleared { .. } => self.stats.sites_cleared += 1,
+                SimEvent::PartRegrown { .. } => self.stats.regrown += 1,
                 _ => {}
             }
         }
@@ -343,7 +359,7 @@ impl Scenario {
             }
         }
         self.stats.script_evals = self.sim.script_evaluations();
-        if self.kind == ScenarioKind::Voyage && self.sim.can_recall(Owner::PLAYER) {
+        if matches!(self.kind, ScenarioKind::Voyage | ScenarioKind::Grown) && self.sim.can_recall(Owner::PLAYER) {
             self.stats.recall_ticks += 1;
         }
         self.sim.state_hash()
@@ -367,8 +383,11 @@ impl Scenario {
         if kind == ScenarioKind::Salvage {
             self.salvage_run(tick);
         }
-        if kind == ScenarioKind::Voyage {
+        if kind == ScenarioKind::Voyage || kind == ScenarioKind::Grown {
             self.voyage_run(tick);
+        }
+        if kind == ScenarioKind::Grown && tick % GROWN_RAM_EVERY == GROWN_RAM_EVERY / 2 {
+            self.ram_run(tick / GROWN_RAM_EVERY);
         }
         let ships: Vec<(crate::ShipId, usize, bool, bool)> = self
             .sim
@@ -464,7 +483,7 @@ impl Scenario {
                 }
                 // The collectors fly to salvage (`salvage_run`) or through the voyage (`voyage_run`), enemies
                 // their behavior.
-                ScenarioKind::Salvage | ScenarioKind::Voyage => {}
+                ScenarioKind::Salvage | ScenarioKind::Voyage | ScenarioKind::Grown => {}
             }
         }
 

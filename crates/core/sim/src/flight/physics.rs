@@ -509,6 +509,24 @@ impl Physics {
         })
     }
 
+    /// Does any body but `own` overlap the convex polygon `points` (counter-clockwise, in `own`'s piece frame) with
+    /// that frame at `body`? The regrowth's test (`ship/living.rs`): a part never re-forms inside another hull.
+    pub(crate) fn overlaps_other(&self, own: BodyKey, body: &Body, points: &[Vec2]) -> bool {
+        let Some(shape) = SharedShape::convex_polyline(points.iter().map(|&p| vr(p)).collect()) else {
+            return false;
+        };
+        let w = &self.world;
+        let keep = |_: ColliderHandle, c: &rapier2d::prelude::Collider| key_of(c.user_data) != own;
+        let filter = QueryFilter::default().predicate(&keep);
+        let qp = w.broad_phase.as_query_pipeline(
+            w.narrow_phase.query_dispatcher(),
+            &w.bodies,
+            &w.colliders,
+            filter,
+        );
+        qp.intersect_shape(pose_of(body), &*shape).next().is_some()
+    }
+
     /// First hit along a ray from `origin` in unit direction `dir`, up to `max_distance`, ignoring the bodies
     /// of `exclude`. A ray that starts inside a body hits it at distance 0.
     pub fn raycast(

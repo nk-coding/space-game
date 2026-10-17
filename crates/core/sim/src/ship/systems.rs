@@ -6,9 +6,9 @@ use super::*;
 impl Ship {
     /// One tick of the ship systems: per piece the control pass (idle parts), power, shield regeneration, the
     /// wrench (engines, RCS, gimbals, gyros, cores) and gun output; then heat (ship-wide); then each piece's
-    /// authority for the next plan. Reads this tick's actuator commands (`Piece::act`). No allocation once
-    /// warmed up.
-    pub fn update_systems(&mut self) {
+    /// authority for the next plan. Reads this tick's actuator commands (`Piece::act`). `star`: a hot star's heat per
+    /// second per side open to space where the ship is (GDR-0102; 0 without one). No allocation once warmed up.
+    pub fn update_systems(&mut self, star: f32) {
         let Ship {
             design,
             parts,
@@ -144,6 +144,7 @@ impl Ship {
         // costs what it owns, not the whole blueprint. A ship that still holds most of its blueprint walks all
         // parts and links in one pass instead (cheaper per part). Both give the same numbers: every part's sums
         // run in the same order. Every energy is written before it is read, so the scratch needs no clearing.
+        let sun = star * DT;
         let e = &mut scratch.energy;
         if e.len() != parts.len() {
             e.clear();
@@ -153,7 +154,7 @@ impl Ship {
         if 2 * owned >= parts.len() {
             for ((ps, k), e) in parts.iter().zip(heat_k.iter()).zip(e.iter_mut()) {
                 if ps.alive {
-                    *e = heat_energy(ps, k);
+                    *e = heat_energy(ps, k, sun);
                 }
             }
             for l in &d.links {
@@ -169,7 +170,7 @@ impl Ship {
                 for &p in &piece.parts {
                     let ps = &parts[p as usize];
                     if ps.alive {
-                        e[p as usize] = heat_energy(ps, &heat_k[p as usize]);
+                        e[p as usize] = heat_energy(ps, &heat_k[p as usize], sun);
                     }
                 }
                 for &l in &piece.heat_links {
@@ -191,10 +192,11 @@ impl Ship {
     }
 }
 
-/// Heat step, generation: a part's heat energy this tick before conduction and loss.
+/// Heat step, generation: a part's heat energy this tick before conduction and loss, with `sun` (a hot star's heat
+/// this tick per side open to space; 0 adds exactly nothing) through each of its open sides.
 #[inline]
-pub(super) fn heat_energy(ps: &PartState, k: &HeatK) -> f32 {
-    ps.heat * k.cap + k.out * ps.work * DT
+pub(super) fn heat_energy(ps: &PartState, k: &HeatK, sun: f32) -> f32 {
+    ps.heat * k.cap + k.out * ps.work * DT + sun * ps.open_sides as f32
 }
 
 /// Heat step, conduction over one link between alive parts (explicit, from the heat before this tick's step).

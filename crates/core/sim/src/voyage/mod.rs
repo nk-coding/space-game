@@ -22,9 +22,10 @@
 //!   (holding where they spawned, `Maneuver::Hold`) and wrecks (`Sim::spawn_wreck`) spawn once a vessel of the
 //!   player owner comes within `VoyageTuning::spawn_radius` of it.
 //! * **Waking**: a sleeping site's ships fly their behavior (their own or their faction's) once a player vessel
-//!   comes within the encounter's wake radius, one of them is hit (a shot or a plume on the hull, a shot its bubble
-//!   took, a ram that deals damage), or one of them stopped being a running vessel (`SimEvent::SiteWoke`). Vessels
-//!   that split off a site's ships belong to the site.
+//!   comes within the encounter's wake radius (not at a wary site, GDR-0099 A3: every ship of a wary faction), one of
+//!   them is hit (a shot or a plume on the hull, a shot its bubble took, a ram that deals damage), one of its wrecks is
+//!   stripped (a part or its cargo collected, GDR-0102), or one of them stopped being a running vessel
+//!   (`SimEvent::SiteWoke`). Vessels that split off a site's ships belong to the site.
 //! * **Clearing** (GDR-0068): an awake site is cleared when each of its ships is destroyed or disarmed: none is a
 //!   vessel (running, dark or dormant) that is still armed ([`Ship::is_armed`]) (`SimEvent::SiteCleared { goal }`);
 //!   clearing is final. A site that rolled no ships is quiet: nothing wakes there and it is never cleared.
@@ -47,6 +48,7 @@ use std::sync::Arc;
 
 use data::Content;
 
+use crate::combat::salvage::Salvaged;
 use crate::ship::design::ShipDesign;
 use crate::events::SimEvent;
 use crate::hash::{StateHash, StateHasher};
@@ -153,6 +155,9 @@ pub struct SitePlan {
     pub pos: Vec2,
     /// From the encounter (m).
     pub wake_radius: f32,
+    /// Calm unless provoked (GDR-0099 A3): every ship of the encounter is of a wary faction, so the site does not
+    /// wake when a player vessel comes within `wake_radius`, only when it is hit, rammed, scanned or stripped.
+    pub wary: bool,
     pub ships: Vec<Spawn>,
     pub wrecks: Vec<Spawn>,
 }
@@ -169,6 +174,36 @@ pub struct VoyagePlan {
     pub entry: Body,
     /// In the content's order (an entry with a count gives that many sites in a row).
     pub sites: Vec<SitePlan>,
+    /// A hot star beside the cluster (GDR-0102; a generated cluster whose type has one).
+    pub star: Option<Star>,
+}
+
+/// A hot star beside a cluster (GDR-0102, content `ClusterType::star`): every part takes `heat` per second for each
+/// of its sides open to space at `reach` metres from the star (the cluster's centre), growing with the inverse
+/// square of the distance nearer it, at most [`data::STAR_HEAT_CAP`] times.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Star {
+    /// World position (m).
+    pub pos: Vec2,
+    pub heat: f32,
+    /// Its distance from the cluster's centre (m), where it heats by `heat`.
+    pub reach: f32,
+}
+
+impl Star {
+    /// Heat per second per open side at world point `p`. Only `+ − × ÷` and `min` (deterministic).
+    pub fn heat_at(&self, p: Vec2) -> f32 {
+        let d2 = (p - self.pos).length_squared().max(1.0);
+        self.heat * (self.reach * self.reach / d2).min(data::STAR_HEAT_CAP)
+    }
+}
+
+impl StateHash for Star {
+    fn hash_state(&self, h: &mut StateHasher) {
+        h.vec2(self.pos);
+        h.f32(self.heat);
+        h.f32(self.reach);
+    }
 }
 
 impl VoyagePlan {
@@ -212,7 +247,12 @@ impl VoyagePlan {
                 Ok((e, false, signal, s.place.filter(|p| leads.cores.contains(p))))
             })
             .collect::<Result<Vec<_>, String>>()?;
-        Self::roll_sites(content, id, interior.radius, interior.spacing, &list, seed)
+        let mut plan = Self::roll_sites(content, id, interior.radius, interior.spacing, &list, seed)?;
+        plan.star = interior.star.as_ref().map(|s| {
+            let pos = Vec2::new(s.x, s.y);
+            Star { pos, heat: s.heat, reach: pos.length() }
+        });
+        Ok(plan)
     }
 
     /// The roll of both: `list` holds each site to roll ([`SiteRoll`]).
@@ -292,6 +332,7 @@ impl VoyagePlan {
                 core,
                 pos: pos[k],
                 wake_radius: e.map_or(0.0, |e| e.wake_radius),
+                wary: e.is_some_and(|e| wary(content, e)),
                 ships,
                 wrecks,
             });
@@ -302,8 +343,21 @@ impl VoyagePlan {
             radius,
             entry: Body::at(entry, 0.0),
             sites,
+            star: None,
         })
     }
+}
+
+/// Is an encounter calm unless provoked (GDR-0099 A3): it has ships, and every ship's faction is wary?
+fn wary(content: &Content, e: &data::Encounter) -> bool {
+    !e.ships.is_empty()
+        && e.ships.iter().all(|s| {
+            content
+                .ships
+                .get(&s.ship)
+                .and_then(|b| content.factions.get(&b.faction))
+                .is_some_and(|f| f.wary)
+        })
 }
 
 /// The push that turns a piece back at a voyage's edge (GDR-0095): nothing inside `edge` (m from the centre);
@@ -529,6 +583,7 @@ pub struct Voyage {
     player: Owner,
     enemy: Owner,
     sites: Vec<Site>,
+    star: Option<Star>,
     /// Every bearing a scan gave, oldest first.
     bearings: Vec<Bearing>,
     /// The site of every ship spawned for one and of the vessels split off them (derived from `sites`).
@@ -560,6 +615,10 @@ impl Voyage {
     }
     pub fn sites(&self) -> &[Site] {
         &self.sites
+    }
+    /// The hot star beside the cluster, if any (GDR-0102).
+    pub fn star(&self) -> Option<&Star> {
+        self.star.as_ref()
     }
     /// Every bearing a scan gave to a hidden signal's site, oldest first (one per site and scan).
     pub fn bearings(&self) -> &[Bearing] {
@@ -621,6 +680,10 @@ impl StateHash for Site {
         }
         h.vec2(p.pos);
         h.f32(p.wake_radius);
+        // Only when wary, so plans without wary sites hash as before.
+        if p.wary {
+            h.u8(1);
+        }
         for list in [&p.ships, &p.wrecks] {
             h.u32(list.len() as u32);
             for s in list {
@@ -649,6 +712,10 @@ impl StateHash for Voyage {
         h.u32(self.sites.len() as u32);
         for s in &self.sites {
             s.hash_state(h);
+        }
+        // Only with a star, so voyages without one hash as before.
+        if let Some(star) = &self.star {
+            star.hash_state(h);
         }
         h.u32(self.bearings.len() as u32);
         for b in &self.bearings {
@@ -685,6 +752,7 @@ impl Sim {
             player,
             enemy,
             sites,
+            star: plan.star,
             bearings: Vec::new(),
             site_of: BTreeMap::new(),
             players: Vec::new(),
@@ -825,6 +893,14 @@ impl Sim {
                 v.sites[k].hit = true;
             }
         };
+        // Stripped: a player vessel took a part or cargo from one of its wrecks (GDR-0099 A3, GDR-0102).
+        let stripped = |v: &mut Voyage, ship: ShipId| {
+            if let Some(k) = v.site_of(ship)
+                && v.sites[k].wrecks.binary_search(&ship).is_ok()
+            {
+                v.sites[k].hit = true;
+            }
+        };
         for e in &self.events {
             match e {
                 &SimEvent::VesselFormed {
@@ -848,6 +924,9 @@ impl Sim {
                     mark(&mut v, c.a.ship);
                     mark(&mut v, c.b.ship);
                 }
+                SimEvent::Collected { from: Salvaged::Part { ship, .. } | Salvaged::Cargo { ship, .. }, .. } => {
+                    stripped(&mut v, *ship)
+                }
                 _ => {}
             }
         }
@@ -855,7 +934,7 @@ impl Sim {
             let site = &v.sites[k];
             if site.state == SiteState::Asleep
                 && (site.hit
-                    || v.near(site.plan.pos, site.plan.wake_radius)
+                    || (!site.plan.wary && v.near(site.plan.pos, site.plan.wake_radius))
                     || site.ships.iter().any(|&s| !self.running(s)))
             {
                 for &id in &site.ships {

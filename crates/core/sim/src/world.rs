@@ -747,8 +747,14 @@ impl Sim {
         self.plans = plans;
 
         mark(StepPhase::Systems);
+        // A hot star heats each ship by where its controlling (else first) piece is (GDR-0102).
+        let star = self.voyage.as_deref().and_then(|v| v.star().copied());
         for s in &mut self.ships {
-            s.update_systems();
+            let heat = star.map_or(0.0, |st| {
+                let at = s.control_piece().and_then(|c| s.piece(c)).or(s.pieces().first());
+                at.map_or(0.0, |p| st.heat_at(p.com_world()))
+            });
+            s.update_systems(heat);
             if let Some(sw) = s.advance_scan() {
                 self.events.push(SimEvent::Scanned {
                     ship: s.id(),
@@ -758,6 +764,9 @@ impl Sim {
                 });
             }
         }
+
+        // Living parts: tissue heals, hearts re-grow lost parts (GDR-0099, `ship/living.rs`).
+        self.living();
 
         // Weapons (shields, projectiles, guns) and engine plumes, then whatever they broke; then salvage.
         mark(StepPhase::Weapons);
@@ -913,19 +922,30 @@ impl Sim {
             if c.damage <= 0.0 {
                 continue;
             }
-            // The normal points out of `a` into `b`: inward is against it for `a`, along it for `b`.
-            for (key, part, by, inward) in [
-                (c.a, c.part_a, c.b, c.normal * -1.0),
-                (c.b, c.part_b, c.a, c.normal),
+            // The normal points out of `a` into `b`: inward is against it for `a`, along it for `b`. A ram prow
+            // (GDR-0099 A2) touching on either side scales what this side takes.
+            for (key, part, by, other, inward) in [
+                (c.a, c.part_a, c.b, c.part_b, c.normal * -1.0),
+                (c.b, c.part_b, c.a, c.part_a, c.normal),
             ] {
                 if let (Some(part), Some(k)) = (part, self.ship_index(key.ship)) {
-                    let hull = self.ram_shields(by, c.point, c.damage);
+                    let damage = c.damage * self.ram_factor(by, other, 0) * self.ram_factor(key, Some(part), 1);
+                    let hull = self.ram_shields(by, c.point, damage);
                     rammed |= self.ram_crush(k, key, part, c.point, inward, hull);
                 }
             }
         }
         if rammed {
             self.resolve_breakage();
+        }
+    }
+
+    /// A touching part's ram factor (`PartSpec::ram`): `which` 0 for the damage it deals, 1 for what its side takes;
+    /// 1 without a part or a ship.
+    fn ram_factor(&self, key: BodyKey, part: Option<PartIdx>, which: usize) -> f32 {
+        match (part, self.ship_index(key.ship)) {
+            (Some(p), Some(k)) => self.ships[k].design.parts[p as usize].ram[which],
+            _ => 1.0,
         }
     }
 

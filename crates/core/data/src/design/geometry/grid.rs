@@ -132,6 +132,22 @@ impl ShipGrid {
         }
     }
 
+    /// Puts a removed part back (a heart re-grew it, GDR-0099). Refused (false) when any of its cells is taken, and
+    /// for a part that is present.
+    pub fn restore(&mut self, i: usize) -> bool {
+        if self.present[i] || !self.is_free(i) {
+            return false;
+        }
+        self.present[i] = true;
+        self.stamp(i);
+        true
+    }
+
+    /// Are all of part `i`'s cells free (for a removed part: could it be restored)?
+    pub fn is_free(&self, i: usize) -> bool {
+        self.shapes[i].cells().into_iter().all(|c| self.occupant(c).is_none())
+    }
+
     pub fn shapes(&self) -> &[PlacedShape] {
         &self.shapes
     }
