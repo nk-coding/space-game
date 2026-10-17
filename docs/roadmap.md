@@ -503,7 +503,9 @@ Next session:
   precursor guardian at each gate to the middle reach. Not built yet; a candidate for the bands past the rim.
 - **Fight balance targets** ([GDR-0100](gdr/0100-fight-balance-targets.md)): GDR-0073's curve (the Warden about 40 %
   for a Runner and an escort), shields that collapse, encounter counts first, turn rates and test-range waves kept;
-  the re-measurement is in `results/slice-balance-2026-10-17.md`.
+  the re-measurement is in `results/slice-balance-2026-10-17.md`: the Warden's raiders 2–3 and Corran Reach's
+  hunter packs ×2 bring the Warden to 44 % (was 62 %); open: the first voyages stay easy for the starter, the cannon
+  starter clears the Warden alone 37 %, shields collapse in 0–9 % of waves.
 - **Lead defaults accepted**: twenty records' defaults, and GDR-0089's except the speed governor (judge in play);
   `gdr/README.md` lists them.
 

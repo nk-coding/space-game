@@ -1,6 +1,11 @@
 # GDR-0073: Slice tuning v1: smaller packs, a gentler first voyage, research costs about halved
 
-- Status: Accepted (baseline for Niklas's play-test; numbers stay placeholders)
+- Status: Accepted (baseline for Niklas's play-test; numbers stay placeholders).
+  2026-10-17: re-measured for [GDR-0100](0100-fight-balance-targets.md) (240 seeds, `docs/results/slice-balance-2026-10-17.md`):
+  the Warden's raiders 1–2 → 2–3 and Corran Reach's hunter packs 1 → 2; the starter clears 96 / 62 / 42 / 15 %, the
+  Runner 66 / 68 / 49 / 26 %, a Runner with the starter as escort the Warden 44 % (was 62 %). The first two voyages
+  stay above this record's curve (raiders hardly hurt the starter since its emitters moved forward; counts would
+  crush the Runner first), and the cannon starter alone clears the Warden 37 %: open for Niklas.
 - Date: 2026-10-13
 - Decided by: balance agent (proposal, tracks 7J/7K); accepted by Niklas on 13 Oct 2026
 - Related: [GDR-0061](0061-fight-balance-after-turning-v2.md), [GDR-0062](0062-first-playable-loop.md), [GDR-0063](0063-salvage-and-research-v1.md), [GDR-0064](0064-lock-feed-forward-and-ai-flight-fixes.md), [GDR-0066](0066-phase-7-wave-1-defaults.md), [GDR-0068](0068-voyage-sites-clear-when-enemies-are-disarmed.md), `docs/results/slice-balance-2026-10-13.md`, `docs/plans/first-playable-loop.md` 3.5, `docs/sim.md` "The headless voyage runner"

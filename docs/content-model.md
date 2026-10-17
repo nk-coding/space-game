@@ -695,13 +695,13 @@ gone (`Sim::spawn_wreck`). Variants by count (a pair, a pack, a den) are entries
 | `wake_radius` | m, above 0 and at most 20000 |
 
 An encounter needs ships or wrecks. Base encounters (placeholders, `../space-game-archive/plans/slice-content.md` 3.2, counts tuned
-by GDR-0073): `raider_pair` (2 raiders), `raider_pack` (3), `raider_den` (2–3, wakes at 300 m), `hunter_pack` (1
+by GDR-0073, re-measured 17 Oct 2026): `raider_pair` (2 raiders), `raider_pack` (3), `raider_den` (2–3, wakes at 300 m), `hunter_pack` (1
 hunter, 1 raider), `hunter_den` (2–3 hunters), `derelict_field` (0–1 raider; a `sample_early` and 2–3 raider wrecks,
 half their parts gone), `precursor_wrecks` (0–1 raider; 1–2 `sample_mid` wrecks), `core_graveyard` (0–1 raider; 4–6
-raider wrecks, 30 % gone, so most of their cores are intact), `the_warden` (the `automaton_warden` and 1–2 raiders).
+raider wrecks, 30 % gone, so most of their cores are intact), `the_warden` (the `automaton_warden` and 2–3 raiders; 1–2 until 17 Oct 2026).
 Packs wake at 250 m, wreck sites at 200 m, dens and the Warden at 300 m. The voyages (`voyages/rim.ron`): Shipyard
 approach (raider pair ×2, derelict field, goal raider pair), Halvex Drift (raider pair, precursor wrecks, core
-graveyard, goal raider den), Corran Reach (hunter pack, precursor wrecks, goal hunter den), the Warden's gate (raider
+graveyard, goal raider den), Corran Reach (hunter pack ×2 (one until 17 Oct 2026), precursor wrecks, goal hunter den), the Warden's gate (raider
 pack, core graveyard, goal the Warden).
 
 ### Controls (`controls.ron`, added 15 Oct 2026, GDR-0090)
