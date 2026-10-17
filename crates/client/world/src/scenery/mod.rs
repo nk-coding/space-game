@@ -6,6 +6,9 @@
 //!   drifting about (thicker round the sites), derelict shells drifting slowly along the way a little below the play.
 //! * **Far things** (`far.rs`): landmarks far off on layers of their own (a derelict station, a beacon, a junk ring),
 //!   a hot star's corona at the edge of the view towards it, and fights flashing in the distance now and then.
+//! * **The sky** (`sky/`, GDR-0105): a planet, its moons, a nebula and a far galaxy behind everything, from the cluster
+//!   type's or the band's `sky`, rolled from the cluster's own seed (the same sky at every visit), drawn the same size
+//!   at any zoom.
 //!
 //! Everything but the rocks is seeded from the voyage's seed in the client and never touches the sim; it moves with
 //! the sim's clock (paused with it). Each piece sits at an anchor in the world with a parallax `p`: it is drawn at
@@ -14,6 +17,7 @@
 mod far;
 mod filler;
 mod rocks;
+mod sky;
 
 use bevy::prelude::*;
 use kit::atlas::{Atlas, AtlasMaterial};
@@ -30,10 +34,11 @@ impl Plugin for SceneryPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<Scenery>()
             .init_resource::<far::Fights>()
+            .init_resource::<sky::SkyDrift>()
             .add_systems(Update, (sync, rocks::draw_rocks).chain())
             .add_systems(
                 PostUpdate,
-                (place, filler::place_tiles, far::corona, far::fights, far::blink)
+                (place, filler::place_tiles, far::corona, far::fights, far::blink, sky::place)
                     .after(CameraSet)
                     .before(bevy::transform::TransformSystems::Propagate),
             );
@@ -57,6 +62,9 @@ struct Spec {
     entry: Vec2,
     sites: Vec<Vec2>,
     star: Option<Vec2>,
+    /// The sky (the cluster type's, else the band's) and the seed it rolls from.
+    sky: Option<data::Sky>,
+    sky_seed: u64,
 }
 
 /// Every entity of the scenery (despawned when the voyage changes or the flight ends).
@@ -109,6 +117,8 @@ fn sync(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<AtlasMaterial>>,
     mut fights: ResMut<far::Fights>,
+    mut drift: ResMut<sky::SkyDrift>,
+    params: Res<kit::params::Params>,
     parts: Query<Entity, With<SceneryPart>>,
 ) {
     let voyage = world.sim.voyage().filter(|_| *mode.get() == AppMode::Flight);
@@ -123,11 +133,20 @@ fn sync(
     state.key = key;
     state.rocks_drawn = 0;
     state.spec = voyage.and_then(|v| {
-        // A generated cluster flies its type's scenery; a content voyage (also one replayed) its own.
+        // A generated cluster flies its type's scenery; a content voyage (also one replayed) its own. The sky is the
+        // cluster type's or else its band's, a content voyage's its band's.
+        let content = &world.content;
         let cluster = run.launched.as_ref().filter(|l| l.voyage == v.id()).and_then(|l| l.cluster.as_ref());
-        let scenery = match cluster {
-            Some(c) => world.content.cluster_types.get(&c.interior.kind)?.scenery.clone(),
-            None => world.content.voyages.get(v.id())?.scenery.clone(),
+        let band_sky = |band: &str| content.bands.get(band).and_then(|b| b.sky.clone());
+        let (scenery, sky, sky_seed) = match cluster {
+            Some(c) => {
+                let t = content.cluster_types.get(&c.interior.kind)?;
+                (t.scenery.clone(), t.sky.clone().or_else(|| band_sky(&c.band)), c.sky_seed)
+            }
+            None => {
+                let voyage = content.voyages.get(v.id())?;
+                (voyage.scenery.clone(), band_sky(&voyage.band), data::hash::fnv1a64(v.id().as_bytes()))
+            }
         };
         Some(Spec {
             scenery,
@@ -136,6 +155,8 @@ fn sync(
             entry: v2(v.entry().pos),
             sites: v.sites().iter().map(|s| v2(s.pos())).collect(),
             star: v.star().map(|s| v2(s.pos)),
+            sky,
+            sky_seed,
         })
     });
     let Some(spec) = &state.spec else { return };
@@ -146,6 +167,21 @@ fn sync(
         "scenery: {} glint tiles of {} motes, {} debris groups ({} bits), {} derelicts, {} landmarks{}",
         counts.tiles, counts.motes, counts.groups, counts.bits, counts.derelicts, far.landmarks, if far.corona { ", a corona" } else { "" }
     );
+    if let Some(sky) = &spec.sky {
+        let star = spec.star.map(|s| s - spec.entry);
+        let s = sky::SkySpec { sky, seed: spec.sky_seed, star, planet: params.text("planet") };
+        let start = bevy::platform::time::Instant::now();
+        if let Some(c) = sky::spawn(cx, &s, &world.content, &mut drift) {
+            let [planet, moons, nebula, galaxy] = c.vertices;
+            info!(
+                "sky: {} with moons [{}]; vertices: planet {planet}, moons {moons}, nebula {nebula} (at most {} blobs over a point), galaxy {galaxy}; built in {:.0} ms",
+                c.planet,
+                c.moons.join(", "),
+                c.nebula_peak,
+                start.elapsed().as_secs_f32() * 1000.0
+            );
+        }
+    }
 }
 
 /// What spawning the scenery needs.

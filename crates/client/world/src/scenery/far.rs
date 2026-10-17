@@ -21,7 +21,7 @@ use super::{Build, Layered, Scenery, SceneryPart, Spec, clock, salted, view};
 use crate::camera::MainCamera;
 use crate::sim_bridge::SimWorld;
 
-/// Landmarks: over the backdrop's stars (z −801), under its dust (−800).
+/// Landmarks: over the backdrop's stars (z −893) and the sky (`sky/`, −897 to −883), under its dust (−800).
 const Z_LANDMARKS: f32 = -800.5;
 /// Over the backdrop's star glow (−880), under its dust.
 const Z_CORONA: f32 = -870.0;

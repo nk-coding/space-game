@@ -1,5 +1,6 @@
 //! The space backdrop: the radial gradient from the style guide stretched over the viewport, two parallax
-//! layers of faint dust particles, a far layer of stars twinkling in three groups, and dotted range rings around
+//! layers of faint dust particles, a far layer of stars twinkling in three groups (behind a cluster's sky in flight,
+//! `scenery::sky`), and dotted range rings around
 //! the followed ship; and the veil the screens over the station (BEHAVIOR, RESEARCH, FLEET) lay over all of it, so
 //! they share one dark ground. In a cluster beside a hot star (GDR-0102) a heat-coloured glow rises at the edge of
 //! the view towards the star, the stronger the nearer the star's heat is to its peak.
@@ -23,6 +24,8 @@ const Z_BACKDROP: f32 = -900.0;
 /// The hot star's glow: over the gradient, under the dust and the stars.
 const Z_STAR_GLOW: f32 = -880.0;
 const Z_DUST: f32 = -800.0;
+/// The far stars: under a cluster's sky (its nebula, planet and moons, `scenery::sky`), over its galaxy.
+const Z_STARS: f32 = -893.0;
 const Z_RINGS: f32 = -700.0;
 /// The veil: over the gradient, the dust and the rings, under the station and everything else in the world.
 const Z_VEIL: f32 = -650.0;
@@ -72,15 +75,17 @@ struct DustLayer {
 }
 
 /// Two layers of dust, then three groups of stars (far away, each group twinkling on its own).
+/// The stars at 0.02, farther than a cluster's planet (0.05, GDR-0105; 0.12 until 17 Oct 2026).
 const LAYERS: [DustLayer; 5] =
-    [DustLayer { parallax: 0.35 }, DustLayer { parallax: 0.7 }, DustLayer { parallax: 0.12 }, DustLayer { parallax: 0.12 }, DustLayer { parallax: 0.12 }];
+    [DustLayer { parallax: 0.35 }, DustLayer { parallax: 0.7 }, DustLayer { parallax: 0.02 }, DustLayer { parallax: 0.02 }, DustLayer { parallax: 0.02 }];
 const STAR_LAYER: usize = 2;
 /// Stars per group and tile.
 const STARS: usize = 140;
-/// The dust's drift outside flight (m/s, in the far layer's space; nearer layers pass faster; Niklas, 15 Oct 2026:
-/// 0.55 m/s moved too fast).
+/// The dust's drift outside flight (m/s, in the space of a layer of parallax [`DRIFT_PARALLAX`]; each layer passes by
+/// its parallax over that; Niklas, 15 Oct 2026: 0.55 m/s moved too fast).
 const DRIFT: Vec2 = Vec2::new(-0.16, 0.035);
-/// The drift wraps after this many metres: a whole number of tiles in every layer (it moves 1, 35/12 and 70/12
+const DRIFT_PARALLAX: f32 = 0.12;
+/// The drift wraps after this many metres: a whole number of tiles in every layer (it moves 1/6, 35/12 and 70/12
 /// times as far in the stars', the far dust's and the near dust's space), so nothing jumps.
 const DRIFT_WRAP: f32 = TILE * 12.0;
 /// The range rings: radius (m), and their dots' least size and spacing on screen (logical px).
@@ -205,7 +210,7 @@ fn spawn_backdrop(
                 Twinkle(group),
                 Mesh2d(mesh.clone()),
                 MeshMaterial2d(material.clone()),
-                Transform::from_xyz(0.0, 0.0, Z_DUST - 1.0),
+                Transform::from_xyz(0.0, 0.0, Z_STARS),
             ));
         }
     }
@@ -367,7 +372,7 @@ fn place_dust(
         let f = LAYERS[copy.layer].parallax;
         // Camera position in layer space (plus the drift, nearer layers passing faster); the layer is shifted so it
         // moves `f` times as fast as the world.
-        let q = cam_pos * f - drift.0 * (f / LAYERS[STAR_LAYER].parallax);
+        let q = cam_pos * f - drift.0 * (f / DRIFT_PARALLAX);
         let first = ((q - view / 2.0) / TILE).floor();
         let (ix, iy) = (copy.slot % COPIES, copy.slot / COPIES);
         let tile = first + Vec2::new(ix as f32, iy as f32);

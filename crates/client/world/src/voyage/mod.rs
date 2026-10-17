@@ -123,6 +123,10 @@ pub struct Launched {
 #[derive(Clone, Debug, PartialEq)]
 pub struct ClusterLaunch {
     pub cluster: u32,
+    /// The cluster's own seed in the galaxy (its skeleton's) and its band: what its sky is rolled from (GDR-0105),
+    /// the same at every launch.
+    pub sky_seed: u64,
+    pub band: String,
     pub interior: galaxy::Interior,
     pub leads: Leads,
 }
@@ -260,7 +264,8 @@ impl LaunchInputs<'_> {
         let own = self.granted.free.then(|| fleet_blocker(content, &self.career.career().unlocks(content), self.career.career().mind_capacity(content), flagship, escorts)).flatten();
         let mut next = self.career.career().clone();
         let sk = next.exploration().ok_or("THE CAREER HAS NO GALAXY")?.skeleton().clone();
-        let name = sk.clusters.get(k as usize).ok_or_else(|| format!("THE GALAXY HAS {} CLUSTERS", sk.clusters.len()))?.name.clone();
+        let cl = sk.clusters.get(k as usize).ok_or_else(|| format!("THE GALAXY HAS {} CLUSTERS", sk.clusters.len()))?;
+        let (name, sky_seed, band) = (cl.name.clone(), cl.seed, cl.band.clone());
         let interior = galaxy::interior(content, &sk, k).map_err(|e| e.0.to_uppercase())?;
         let leads = next.leads(content, k);
         let (seed, practice) = match own {
@@ -283,7 +288,7 @@ impl LaunchInputs<'_> {
                 mind: self.granted.mind_capacity,
                 escorts: escorts.clone(),
                 practice,
-                cluster: Some(ClusterLaunch { cluster: k, interior, leads }),
+                cluster: Some(ClusterLaunch { cluster: k, sky_seed, band, interior, leads }),
             }),
             ..default()
         };
@@ -335,7 +340,7 @@ impl LaunchInputs<'_> {
                 mind: self.granted.mind_capacity,
                 escorts: self.escorts.0.clone(),
                 practice: Some("A GENERATED CLUSTER, FOR TESTING".into()),
-                cluster: Some(ClusterLaunch { cluster: k, interior, leads }),
+                cluster: Some(ClusterLaunch { cluster: k, sky_seed: c.seed, band: c.band.clone(), interior, leads }),
             }),
             ..default()
         };
@@ -1009,7 +1014,7 @@ mod tests {
             mind: 2,
             escorts: Vec::new(),
             practice: None,
-            cluster: Some(ClusterLaunch { cluster: k, interior: galaxy::interior(&content, pc.career().exploration().unwrap().skeleton(), k).unwrap(), leads: Leads::default() }),
+            cluster: Some(ClusterLaunch { cluster: k, sky_seed: 1, band: "rim".into(), interior: galaxy::interior(&content, pc.career().exploration().unwrap().skeleton(), k).unwrap(), leads: Leads::default() }),
         };
         let d = ended(&mut pc, &mut storage, &content, &l, &[Find::Heard(s)], VoyageEnd::Lost { ticks: 90 }, &Haul::default(), DebriefStats::default());
         let saved = storage.read::<crate::career::CareerDoc>("career").unwrap().unwrap().doc.0;
