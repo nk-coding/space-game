@@ -1,7 +1,8 @@
 // Parts of the Grown, the outer reach's living ships (GDR-0099, GDR-0102). PLACEHOLDER NUMBERS (lead defaults,
-// 17 Oct 2026). Locked: a new game starts without them; `?unlock=all` puts them in the drydock until the Grown
-// research family exists (phase 2 of the outer reach). They use the enemy (coral) system colour, like the
-// automatons' parts. `salvage`: data to the nearest family of the rim's until that family exists.
+// 17 Oct 2026). Locked: a new game starts without them; the Grown research family (`research/grown.ron`, GDR-0103)
+// unlocks all but the ganglion, which stays the Grown's own like the automaton plate. They use the enemy (coral)
+// system colour, like the automatons' parts. `salvage`: data to the Grown family (18 Oct 2026, GDR-0103; was the
+// rim's nearest families, logic, hull and kinetic).
 [
     (
         id: "grown_heart",
@@ -20,7 +21,7 @@
         heat: (output: 0, limit: 4),
         // One part every 2.5 s, starting at 35% of its hit points (lead default, GDR-0102).
         heart: (interval: 2.5, hp: 0.35),
-        salvage: (family: "logic", data: 6),
+        salvage: (family: "grown", data: 6),
     ),
     (
         id: "ram_prow",
@@ -38,7 +39,7 @@
         hp: 6,
         heal: 0.1,
         ram: (dealt: 2, taken: 0.5),
-        salvage: (family: "hull", data: 4),
+        salvage: (family: "grown", data: 4),
     ),
     (
         id: "thorn_gun",
@@ -58,6 +59,31 @@
         heat: (output: 0.8, limit: 3),
         // 0.4 hit points a spine, 40 m (the cannon's 1 hit point at 75 m): strongest close in.
         weapon: (family: Kinetic, damage: 1.6, range: 40, delivery: Projectile(rate: 4, speed: 110, penetration: 1, recoil: 0.5)),
-        salvage: (family: "kinetic", data: 3),
+        salvage: (family: "grown", data: 3),
+    ),
+    // The Grown's mind and power (GDR-0103, lead default 18 Oct 2026): what an automaton core is to a raider, a
+    // knot of nerve tissue that thinks and feeds the ship. 8 MW runs two thorn guns and two thrusters (7 MW). It
+    // gives no programmable matter (the Grown are not precursor work).
+    (
+        id: "grown_ganglion",
+        name: "Grown ganglion",
+        summary: "The knot of living nerves that thinks for a Grown ship and feeds it power.",
+        description: "A Grown ship is a vessel while its ganglion lives. It runs a few rules, feeds the guns and engines, and heals slowly like the tissue round it. Salvaged, it gives research data, but no programmable matter: the Grown are not precursor work.",
+        tags: ["grown", "core"],
+        locked: true, // the Grown's own: no research unlocks it
+        category: "logic",
+        icon: "grown-ganglion",
+        color: "enemy",
+        size: (1, 1),
+        build_points: 5,
+        mass: 2.5,
+        hp: 2.5,
+        heal: 0.05,
+        power: (output: 8),
+        heat: (output: 1, limit: 4),
+        logic: (rule_slots: 3, control_capacity: 6),
+        sensor: (range: 800),
+        gyro: (torque: 260),
+        salvage: (family: "grown", data: 5),
     ),
 ]

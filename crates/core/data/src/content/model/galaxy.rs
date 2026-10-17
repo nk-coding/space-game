@@ -123,6 +123,10 @@ entry!(Band, Kind::Band);
 pub struct Weighted {
     pub id: String,
     pub weight: u32,
+    /// Rolled only for clusters within this many S of the band's outer edge (GDR-0103: the outer reach's rim
+    /// stragglers near the border); `None` everywhere in the band.
+    #[serde(default)]
+    pub border: Option<f32>,
 }
 
 /// A band's gates ([`Band::gates`]): `count` clusters near its inner edge, spread around the disc, each the end of a

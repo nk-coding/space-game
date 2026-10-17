@@ -1,0 +1,28 @@
+// Grown thornback: the groves' skirmisher (GDR-0099 A2, GDR-0103). Four thorn guns across the nose, no prow; the
+// heart behind them and two ganglions behind it (16 MW for the four guns and two thrusters, 10 MW). It covers the
+// rammers' approach. PLACEHOLDER layout (lead default, 18 Oct 2026).
+(
+    id: "grown_thornback",
+    name: "Grown thornback",
+    summary: "A 4×4 living ship with four thorn guns across its nose.",
+    description: "Thornbacks circle close and throw spines while the rammers charge. Four [[part:thorn_gun|thorn guns]] take a shield down fast, but they reach only a short way: keep your distance. Two [[part:grown_ganglion|ganglions]] run it, and the [[part:grown_heart|heart]] between the guns and them grows it back.",
+    tags: ["enemy", "outer"],
+    faction: "grown",
+    behavior: "grown_thornback",
+    size: (4, 4),
+    parts: [
+        (part: "thorn_gun", x: 0, y: 0),
+        (part: "thorn_gun", x: 1, y: 0),
+        (part: "thorn_gun", x: 2, y: 0),
+        (part: "thorn_gun", x: 3, y: 0),
+        (part: "armor_block", x: 0, y: 1, material: "grown_tissue"),
+        (part: "grown_heart", x: 1, y: 1),
+        (part: "armor_block", x: 3, y: 1, material: "grown_tissue"),
+        (part: "slope_1x1", x: 0, y: 2, rot: 2, material: "grown_tissue"),
+        (part: "slope_1x1", x: 3, y: 2, rot: 2, flip: true, material: "grown_tissue"),
+        (part: "thruster", x: 0, y: 3),
+        (part: "grown_ganglion", x: 1, y: 3),
+        (part: "grown_ganglion", x: 2, y: 3),
+        (part: "thruster", x: 3, y: 3),
+    ],
+)

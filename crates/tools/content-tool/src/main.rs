@@ -945,7 +945,12 @@ mod tests {
         assert_eq!(logic["text_keys"]["name"], json!("family.logic.name"));
         assert_eq!(
             logic["salvaged_from_parts"],
-            json!(["automaton_core", "grown_heart", "logic_core", "scanner"])
+            json!(["automaton_core", "logic_core", "scanner"])
+        );
+        // The Grown's family takes their parts' salvage (GDR-0103).
+        assert_eq!(
+            find("families", "grown")["salvaged_from_parts"],
+            json!(["grown_heart", "ram_prow", "thorn_gun", "grown_ganglion"])
         );
         assert_eq!(
             logic["research"],
@@ -953,7 +958,12 @@ mod tests {
         );
         assert_eq!(
             find("families", "hull")["salvaged_from_materials"],
-            json!(["steel", "composite", "reactive", "automaton_plate", "grown_tissue"])
+            json!(["steel", "composite", "reactive", "automaton_plate"])
+        );
+        assert_eq!(find("families", "grown")["salvaged_from_materials"], json!(["grown_tissue"]));
+        assert_eq!(
+            find("families", "grown")["research"],
+            json!(["regrowing_tissue", "living_weapons", "grown_heart"])
         );
         let node = find("research", "mind_expansion_1");
         assert_eq!(node["kind"], json!("Refinement"));
@@ -1053,18 +1063,19 @@ mod tests {
             json!(["gate_sentinel", "the_warden"])
         );
         assert_eq!(find("ships", "rim_skiff")["in_encounters"], json!([]));
-        // The raider is almost everywhere: fighting in every encounter but the hunters' den, the gate sentinel, the
-        // memory wreck and the gunners' pair and den, lying as a wreck in some.
+        // The raider is almost everywhere in the rim: fighting in every encounter but the hunters' den, the gate
+        // sentinel, the memory wreck and the gunners' pair and den, lying as a wreck in some; in the outer reach
+        // only among the stragglers (the five and the outer reach's six without it: Grown sites and the bastion's).
         assert_eq!(
             find("ships", "automaton_raider")["in_encounters"]
                 .as_array()
                 .unwrap()
                 .len(),
-            c.encounters.len() - 5
+            c.encounters.len() - 11
         );
         assert_eq!(
             find("ships", "automaton_gunner")["in_encounters"],
-            json!(["gunner_pair", "raiding_party", "gunner_den"])
+            json!(["gunner_pair", "raiding_party", "gunner_den", "rim_stragglers", "bastion_gate"])
         );
         assert_eq!(v["texts"]["encounter.the_warden.name"], json!("The Warden"));
         // f32 numbers export as written, without the noise of widening them to f64.

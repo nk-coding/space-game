@@ -144,6 +144,12 @@ impl<'a> Validator<'a> {
                 self.err(b, format!("clusters[{k}].weight"), "a weight above 0");
             }
             self.count(b, &format!("clusters[{k}].weight"), w.weight, MAX_COUNT);
+            if let Some(d) = w.border {
+                self.number(b, &format!("clusters[{k}].border"), d, 0.0, true);
+            }
+        }
+        if !b.clusters.is_empty() && b.clusters.iter().all(|w| w.border.is_some()) {
+            self.err(b, "clusters", "at least one cluster type without a `border`, for the band's inner clusters");
         }
         if let Some(gates) = &b.gates {
             if gates.count == 0 {

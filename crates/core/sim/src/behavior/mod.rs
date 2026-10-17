@@ -178,6 +178,7 @@ pub const BUILTIN_NODES: &[NodeSig] = {
         node("kite", Action, None, DIST),
         node("face", Action, None, &[]),
         node("flee", Action, None, &[]),
+        node("ram", Action, None, &[]),
         node("hold", Action, None, &[]),
         node("escort", Action, None, DIST),
         node("scan", Action, None, &[]),

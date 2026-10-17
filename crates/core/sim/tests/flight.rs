@@ -321,6 +321,7 @@ fn maneuver_goals_never_ask_for_more_than_the_top_speed() {
         (Maneuver::Orbit { target: t, radius: 40.0, ccw: false }, Vec2::new(0.0, 200.0)),
         (Maneuver::FaceTarget { target: t, aim }, Vec2::new(0.0, 30.0)),
         (Maneuver::Flee { from: t }, Vec2::new(0.0, 30.0)),
+        (Maneuver::Ram { target: t }, Vec2::new(0.0, 30.0)),
     ] {
         let goal = m.goal_for(&kin, Some(fast(at)), &tuning);
         let v = goal.velocity.unwrap().length();

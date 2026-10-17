@@ -291,6 +291,35 @@ fn a_ram_prow_deals_more_and_takes_less() {
     assert!(close(b0[pb as usize] - b1[pb as usize], hit.damage * prow.dealt, 1e-4), "dealt {dealt} of {}", hit.damage);
 }
 
+/// GDR-0103: a Grown rammer under its content behavior charges a ship that sits still, prow first, and its ram
+/// deals damage; a ram flies at top speed straight at the target and never brakes for it.
+#[test]
+fn a_grown_rammer_rams_with_its_prow() {
+    let c = content();
+    let rammer = design(&c, "grown_rammer");
+    let runner = design(&c, "halvex_runner");
+    let mut w = Sim::new(1);
+    let me = w.spawn_ship(runner, Owner::PLAYER, Body::at(Vec2::ZERO, 0.0));
+    let r = w.spawn_ship(rammer.clone(), Owner(1), Body::at(Vec2::new(0.0, -70.0), 0.0));
+    fight(&mut w, &c, r);
+    assert_eq!(w.behaviors().default_for(&rammer), w.behaviors().id("grown_rammer"));
+    let prow = find(&rammer, "ram_prow", 1, 0);
+    let mut by_prow = 0.0;
+    for _ in 0..30 * 60 {
+        step(&mut w);
+        for e in w.events() {
+            if let SimEvent::Impact(i) = e {
+                let mine = if i.a.ship == r { i.part_a } else if i.b.ship == r { i.part_b } else { None };
+                if mine == Some(prow) && i.damage > 0.0 {
+                    by_prow += i.damage;
+                }
+            }
+        }
+    }
+    assert!(by_prow > 0.0, "the rammer never rammed with its prow");
+    assert!(w.ship(me).unwrap().parts().iter().any(|p| !p.alive), "the ram broke nothing");
+}
+
 /// A shield emitter open on its top and right side beside a core and a reactor over steel; with `radiator`, a
 /// radiator right of the emitter.
 fn emitter_ship(c: &data::Content, radiator: bool) -> std::sync::Arc<sim::ShipDesign> {

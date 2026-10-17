@@ -403,6 +403,21 @@ fn part_errors() {
 
 /// The Grown's blocks (GDR-0102): a heart's interval and share, healing (non-hull parts; hull parts heal by their
 /// armour), ram factors, an armour's healing and a cluster's hot star.
+/// GDR-0103: a part stands in for others in saved designs only with their footprint, never for itself, and two
+/// parts never stand in for the same one (the base's `reverse_engineered_cannon` already does for the automaton
+/// cannon).
+#[test]
+fn replaces_errors() {
+    let e = errors_with(
+        "parts/p.ron",
+        &format!("({PART_HEAD}, category: \"weapons\", mass: 1, hp: 1, replaces: [\"p\", \"automaton_cannon\", \"ram_prow\"])"),
+    );
+    assert_error(&e, "p", "replaces[0]", "cannot stand in for itself");
+    // Reported on the part later by id.
+    assert_error(&e, "reverse_engineered_cannon", "replaces[0]", "`p` stands in for `automaton_cannon` already");
+    assert_error(&e, "p", "replaces[2]", "another footprint");
+}
+
 #[test]
 fn living_part_and_hot_star_errors() {
     let e = errors_with(

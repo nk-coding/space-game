@@ -1,0 +1,45 @@
+// The Grown's tactics (GDR-0099 A2, GDR-0103): living prows charge and ram while thorn guns cover the approach.
+// Thorn guns reach 40 m, so the shares of the weapon reach below are short. A charge works from a standstill
+// relative to the target (`ram` flies nose first: out of an orbit it slid past), so the rammers close in to thorn
+// range facing the target and charge from within 45 m; the first charge comes 7 s after the target is picked, so
+// the thorns cover the approach (a charge at once crushed a Runner with an escort: a grove cleared about a third).
+// A thornback circles and shoots like a raider pack, closer in; a grove guardian charges less often. Each fits the
+// ganglion's three rule slots. PLACEHOLDER (lead defaults, 18 Oct 2026; docs/results/outer-balance-2026-10-18.md).
+[
+    (
+        id: "grown_rammer",
+        name: "Grown rammer",
+        summary: "Hold at thorn range with the thorns firing, then charge prow first, and again.",
+        description: "Picks the nearest enemy and closes in to thorn range, its nose on the target and its thorns firing. For the last three seconds of every ten, within 45 m, it rams, flying on through the target, then comes round and closes in again.",
+        tags: ["grown", "attack"],
+        target: "nearest",
+        rules: [
+            "when target_in_range(45m) and cycle(10s) >= 7s -> ram",
+            "always -> approach(80%)",
+        ],
+    ),
+    (
+        id: "grown_thornback",
+        name: "Grown thornback",
+        summary: "Close in to thorn range and circle the target, shooting.",
+        description: "Picks the nearest enemy and aims at its guns. Within reach it circles at three quarters of its thorns' reach for five seconds out of every eight and closes in for the other three.",
+        tags: ["grown", "attack"],
+        target: "nearest(weapons)",
+        rules: [
+            "when target_in_range(130%) and cycle(8s) >= 3s -> orbit(75%)",
+            "always -> approach(70%)",
+        ],
+    ),
+    (
+        id: "grown_guardian",
+        name: "Grove guardian",
+        summary: "Close in slowly with the thorns firing, and charge now and then.",
+        description: "Picks the nearest enemy, closes in to thorn range and keeps its prow on the target. For the last three seconds of every twelve, within 45 m, it rams.",
+        tags: ["grown", "attack"],
+        target: "nearest",
+        rules: [
+            "when target_in_range(45m) and cycle(12s) >= 9s -> ram",
+            "always -> approach(70%)",
+        ],
+    ),
+]

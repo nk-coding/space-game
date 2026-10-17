@@ -56,6 +56,15 @@
         tags: ["move"],
         role: Action,
     ),
+    // The Grown's charge (GDR-0099 A2, GDR-0103, 18 Oct 2026); anyone may fly it.
+    (
+        id: "ram",
+        name: "Ram",
+        summary: "Charge the target nose first at top speed and fly on through it.",
+        description: "The nose points straight at the target and the ship never brakes for it, so it hits as hard as it can: build something tough in the nose, such as a [[part:ram_prow|ram prow]]. Mix it with a cycle so the ship pulls away between charges.",
+        tags: ["move", "attack"],
+        role: Action,
+    ),
     (
         id: "hold",
         name: "Hold",

@@ -35,7 +35,7 @@ const TREE_BOTTOM: f32 = 664.0;
 const CARD_H: f32 = 40.0;
 const CARD_MAX_W: f32 = 210.0;
 const COLUMN_GAP: f32 = 40.0;
-const ROW_PITCH: (f32, f32) = (66.0, 96.0);
+const ROW_PITCH: (f32, f32) = (60.0, 96.0);
 const CARD_TOP: f32 = 8.0;
 /// The detail panel on the right.
 const PANEL_X: f32 = 912.0;
@@ -817,7 +817,7 @@ mod tests {
     use super::*;
 
     /// The base pack's tree fits the 1280 × 720 layout: three columns of full-width cards end before the detail
-    /// panel, six lanes fit without scrolling.
+    /// panel, seven lanes (nine rows) fit without scrolling.
     #[test]
     fn the_tree_fits_the_layout() {
         let content = data::base_content();

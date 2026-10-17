@@ -6,8 +6,8 @@ description: "The Grown's living parts: hearts that grow lost blocks back, tissu
 # Living parts
 
 The [[faction:grown]] of the outer reach fly living ships. Their hulls heal and grow back, they love ramming with
-living prows, and they cover the approach with thorn guns. Their parts are not in a new game yet; the drydock offers
-them in free mode (`?unlock=all`) until the Grown's research comes.
+living prows, and they cover the approach with thorn guns. Their parts are not in a new game: salvage from Grown ships
+gives research data to [[family:grown]], whose research unlocks them for your own ships (below).
 
 ## Hearts and regrowth
 
@@ -61,3 +61,25 @@ strip one of its wrecks. See [voyages](/mechanics/voyages#sites).
 
 Some clusters of the outer reach, like the [[cluster_type:scorched_deep]], lie beside a hot star. Its heat comes in
 through every side open to space; see [power, heat and control](/mechanics/power-and-heat#hot-stars).
+
+## The Grown's ships
+
+Every Grown ship carries a [[part:grown_heart]] right beside its [[part:grown_ganglion]], the knot of nerves that
+thinks for it and feeds it power, in a hide of [[material:grown_tissue]]:
+
+- the [[ship:grown_rammer]] charges prow first ([[behavior:grown_rammer]]): it flies the
+  [[behavior_node:ram]] action, nose straight at you at top speed, and circles at thorn range between charges;
+- the [[ship:grown_thornback]] has four thorn guns and no prow, and circles close while the rammers charge
+  ([[behavior:grown_thornback]]);
+- the [[ship:grown_guardian]] keeps a grove: slow, thick-skinned, it charges now and then
+  ([[behavior:grown_guardian]]);
+- the [[ship:grown_elder]], a giant with two hearts and two prows, rests at an [[encounter:elder_grove]] of its own.
+
+Keep out of thorn range and away from the prows, and shoot through to the heart or the ganglion: once either is gone
+the ship stops growing back.
+
+## The Grown's research
+
+[[family:grown]] research turns what you salvage from them into parts of your own:
+[[research:regrowing_tissue]] (the tissue for any hull part), then [[research:living_weapons]] (the ram prow and the
+thorn gun) and last [[research:grown_heart]]. The ganglion stays theirs.

@@ -1,0 +1,26 @@
+// Grown rammer: the groves' small rammer (GDR-0099 A2, GDR-0103). A ram prow out in front, so it is what touches
+// in a charge, a thorn gun on either side a row back, the heart right behind the prow and the ganglion behind the heart (a heart works only on the controlling piece, GDR-0102),
+// tissue round them and two thrusters. 8 MW feeds the guns and engines (7 MW). PLACEHOLDER layout (lead default,
+// 18 Oct 2026).
+(
+    id: "grown_rammer",
+    name: "Grown rammer",
+    summary: "A 4×4 living ship with a ram prow out in front and a thorn gun on either side.",
+    description: "The groves' rammers charge prow first and fly on through what they hit, their [[part:thorn_gun|thorn guns]] firing on the way in. The [[part:grown_heart|heart]] behind the prow grows lost blocks back: kill it, or the [[part:grown_ganglion|ganglion]] behind it, and the ship stays broken.",
+    tags: ["enemy", "outer"],
+    faction: "grown",
+    behavior: "grown_rammer",
+    size: (4, 4),
+    parts: [
+        (part: "ram_prow", x: 1, y: 0),
+        (part: "thorn_gun", x: 0, y: 1),
+        (part: "grown_heart", x: 1, y: 1),
+        (part: "thorn_gun", x: 3, y: 1),
+        (part: "armor_block", x: 0, y: 2, material: "grown_tissue"),
+        (part: "armor_block", x: 3, y: 2, material: "grown_tissue"),
+        (part: "thruster", x: 0, y: 3),
+        (part: "grown_ganglion", x: 1, y: 3),
+        (part: "armor_block", x: 2, y: 3, material: "grown_tissue"),
+        (part: "thruster", x: 3, y: 3),
+    ],
+)

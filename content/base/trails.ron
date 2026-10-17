@@ -4,7 +4,8 @@
 // ("SIGNAL · SOMETHING OLD"). Bands place gate trails (`gates`), caches and graveyards (`trails`); lore fragments
 // place their own. Following a trail to its end gives its reward (GDR-0098): a gate opens, a fragment joins the
 // memory log, `gives` goes into store (a cache's research data and materials), a graveyard is salvage.
-// PLACEHOLDER NUMBERS (lead, 16 Oct 2026, from the plan's section 4.3; the rewards and targets 17 Oct 2026, track E8).
+// PLACEHOLDER NUMBERS (lead, 16 Oct 2026, from the plan's section 4.3; the rewards and targets 17 Oct 2026, track E8;
+// the outer reach's gates and elder groves 18 Oct 2026, GDR-0103).
 [
     (
         id: "rim_gate",
@@ -26,6 +27,26 @@
         target: "the_warden",
         sources: ["hauler_log", "precursor_log", "old_beacon"],
         hint: "A gate",
+    ),
+    (
+        id: "outer_gate",
+        name: "An outer gate",
+        summary: "The long trail to one of the outer reach's gates, and the precursor guardian that keeps it.",
+        reward: Gate,
+        length: (3, 4),
+        target: "bastion_gate",
+        sources: ["hauler_log", "precursor_log", "old_beacon"],
+        hint: "A gate",
+    ),
+    (
+        id: "elder_grove",
+        name: "An elder grove",
+        summary: "A trail to one of the Grown's giants, at rest in a grove of its own: rich salvage, if it can be beaten.",
+        reward: Salvage,
+        length: (2, 3),
+        target: "elder_grove",
+        sources: ["distress_call", "old_beacon"],
+        hint: "Something vast",
     ),
     (
         id: "precursor_cache",

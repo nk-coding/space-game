@@ -75,7 +75,8 @@ const SANDBOX_LOOSE_TICKS: u32 = 1800;
 /// tuning panel's scales), smallest (by build points) first: what the waves draw from; the showcase's attackers fly
 /// the smallest (the base pack's `automaton_raider`).
 fn enemy_designs(world: &mut SimWorld) -> Vec<Arc<ShipDesign>> {
-    let ids: Vec<String> = world.content.ships.iter().filter(|s| s.tags.iter().any(|t| t == waves::ENEMY_TAG)).map(|s| s.id.clone()).collect();
+    let content = &world.content;
+    let ids: Vec<String> = content.ships.iter().filter(|s| waves::wave_ship(content, s)).map(|s| s.id.clone()).collect();
     if ids.is_empty() {
         warn_once!("no content ship is tagged `{}`: no raiders", waves::ENEMY_TAG);
     }

@@ -135,6 +135,8 @@ pub enum Action {
     Kite(Dist),
     Face,
     Flee,
+    /// Charge the target nose first (GDR-0103).
+    Ram,
     Hold,
     /// Keep within this distance of the leader (GDR-0065).
     Escort(Dist),
@@ -409,6 +411,7 @@ pub(crate) fn compile(program: &Program, vocab: &Vocab) -> Result<Code, Vec<Line
             "kite" => Action::Kite(dist(args[0])),
             "face" => Action::Face,
             "flee" => Action::Flee,
+            "ram" => Action::Ram,
             "hold" => Action::Hold,
             "escort" => Action::Escort(dist(args[0])),
             "scan" => Action::Scan,

@@ -28,7 +28,7 @@ use data::{Blueprint, Career, Content, ResearchNode, Unlock};
 use kit::params::Params;
 use kit::ui_kit::Tone;
 
-use crate::player::library::{DesignDoc, problems_text};
+use crate::player::library::{self, DesignDoc, problems_text};
 use crate::mode::AppMode;
 use crate::sim_bridge::GameContent;
 use crate::storage::{Document, Storage, now_unix, valid_name};
@@ -157,6 +157,16 @@ pub fn load(storage: &mut Storage, content: &Content, switches: Switches, seed: 
         None => (new_career(content, seed, &mut notes, &mut kept), kept.is_none()),
     };
     let migrated = chart(content, &mut career, &mut notes) && !new_game && kept.is_none();
+    // Saved designs carrying a part the content now stands in for (GDR-0103).
+    match library::refit_saved(storage, content) {
+        Ok(names) if !names.is_empty() => {
+            info!("career: refitted {} saved designs: {}", names.len(), names.join(", "));
+            let body = format!("{} now carry the parts that replaced their old ones.", shortened(&names.join(", "), 90));
+            notes.push(Note::new("DESIGNS REFITTED", body, Tone::Teal));
+        }
+        Ok(_) => {}
+        Err(e) => warn!("career: saved designs not refitted: {e}"),
+    }
     if slot != DEFAULT_SLOT {
         let body = format!("This game is {key}; the usual one, {}/{DEFAULT_SLOT}, is untouched.", CareerDoc::NAMESPACE);
         notes.push(Note::new(format!("SAVE SLOT  ·  ?SAVE={}", slot.to_uppercase()), body, Tone::Gold));

@@ -411,15 +411,15 @@ mod tests {
         (tree.lanes[c.lane].family.clone(), c.row, c.column)
     }
 
-    /// The base pack's twelve nodes: six lanes (families with nodes, content order), three columns (the mind
-    /// expansions' chain), connectors along the chains; the simulation vault under the tamed core and the first jump
-    /// calibration under the torch drive (both need nothing).
+    /// The base pack's fifteen nodes: seven lanes (families with nodes, content order), three columns (the mind
+    /// expansions' chain, the Grown's), connectors along the chains; the simulation vault under the tamed core and the
+    /// first jump calibration under the torch drive (both need nothing).
     #[test]
     fn lanes_follow_the_families_and_columns_the_requirement_depth() {
         let content = data::base_content();
         let tree = Tree::new(&content);
         let lanes: Vec<&str> = tree.lanes.iter().map(|l| l.family.as_str()).collect();
-        assert_eq!(lanes, ["hull", "power", "energy", "kinetic", "propulsion", "logic"]);
+        assert_eq!(lanes, ["hull", "power", "energy", "kinetic", "propulsion", "logic", "grown"]);
         assert_eq!(tree.columns, 3);
         assert_eq!(tree.cards.len(), content.research.len());
         assert_eq!(at(&tree, "composite_plating"), ("hull".into(), 0, 0));
@@ -430,10 +430,13 @@ mod tests {
         assert_eq!(at(&tree, "simulation_vault"), ("logic".into(), 1, 0));
         assert_eq!(at(&tree, "jump_calibration_1"), ("propulsion".into(), 1, 0));
         assert_eq!(at(&tree, "jump_calibration_2"), ("propulsion".into(), 0, 1));
+        assert_eq!(at(&tree, "grown_heart"), ("grown".into(), 0, 2));
         let link = |a: &str, b: &str| Link { from: tree.card_of(a).unwrap(), to: tree.card_of(b).unwrap() };
         assert_eq!(
             tree.links,
             [
+                link("regrowing_tissue", "living_weapons"),
+                link("living_weapons", "grown_heart"),
                 link("jump_calibration_1", "jump_calibration_2"),
                 link("tamed_core", "mind_expansion_1"),
                 link("mind_expansion_1", "mind_expansion_2"),

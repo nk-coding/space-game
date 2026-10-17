@@ -45,8 +45,9 @@ pub use data::skeleton::{Area, Cluster, Place, Point, Signal, Skeleton, TrailPla
 pub use interior::{Interior, InteriorSite, InteriorStar, interior};
 
 /// The generator's version: saves store it next to the skeleton (ADR-0024). Raise it when the same seed and content
-/// would generate a different skeleton or interior. 2: the set pieces (galaxy plan E7).
-pub const GENERATOR_VERSION: u32 = 2;
+/// would generate a different skeleton or interior. 2: the set pieces (galaxy plan E7). 3: cluster types rolled only
+/// near their band's outer edge (`Weighted::border`, GDR-0103).
+pub const GENERATOR_VERSION: u32 = 3;
 
 /// Placement attempts before generation gives up (each a fresh sampling of the disc).
 const ATTEMPTS: u64 = 32;

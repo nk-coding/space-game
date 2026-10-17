@@ -532,7 +532,9 @@ fn galaxy_pages_link_both_ways() {
     has("galaxy/galaxy.html", "<p class=\"note\">Seed 1: ");
     has("bands/rim.html", "<a href=\"../cluster_types/wreck_drift.html\">Wreck drift</a>");
     has("bands/rim.html", "<a href=\"../trails/rim_gate.html\">A rim gate</a></td><td>A band gate</td><td class=\"num\">2 (one per gate but the first)</td>");
-    has("bands/outer.html", "<span class=\"tag\">stub</span>");
+    has("bands/middle.html", "<span class=\"tag\">stub</span>");
+    has("bands/outer.html", "<a href=\"../cluster_types/grove_reach.html\">Grove reach</a>");
+    has("trails/outer_gate.html", "<dt>At its end</dt><dd><a href=\"../encounters/bastion_gate.html\">Bastion gate</a></dd>");
     has("bands/index.html", "<span class=\"badge stub\"");
     has("cluster_types/wreck_drift.html", "<dt>Radius</dt><dd>2000–2600 m</dd>");
     has("cluster_types/wreck_drift.html", "<a href=\"../encounters/derelict_field.html\">Derelict field</a>");

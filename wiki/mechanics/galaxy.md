@@ -24,8 +24,8 @@ about the distance between two neighbouring clusters. No two clusters lie closer
 
 [[galaxy:galaxy]] is a disc of [[galaxy:galaxy.bands]] bands around the centre: [[band:rim]] (out to
 [[band:rim.edge]] from the centre), [[band:outer]], [[band:middle]], [[band:inner]] and [[band:core]]. Each band is a
-ring filled with clusters at the galaxy's spacing, so there is no empty stretch wider than about one spacing. Only the
-rim is fully made so far; the bands past it are stand-ins until their races and guardians exist.
+ring filled with clusters at the galaxy's spacing, so there is no empty stretch wider than about one spacing. The rim
+and the outer reach are made so far; the bands past them are stand-ins until their races and guardians exist.
 
 A cluster is one place you fly a voyage in: one space a couple of kilometres across. Its **cluster type** says what
 kind of place it is and what it holds:
@@ -33,6 +33,14 @@ kind of place it is and what it holds:
 - [[cluster_type:wreck_drift]] ([[cluster_type:wreck_drift.radius]]): old hulls and the raiders that pick them over;
 - [[cluster_type:hunting_reach]] ([[cluster_type:hunting_reach.radius]]): open space where hunters run in packs;
 - [[cluster_type:quiet_field]] ([[cluster_type:quiet_field.radius]]): a still field of wreckage, little to guard it.
+
+The outer reach is the [[faction:grown]]'s ([living parts](/mechanics/living-parts)):
+
+- [[cluster_type:grove_reach]] ([[cluster_type:grove_reach.radius]]): the Grown's groves, calm until provoked;
+- [[cluster_type:scorched_deep]] ([[cluster_type:scorched_deep.radius]]): groves beside a hot star whose heat soaks
+  into every part open to space;
+- [[cluster_type:border_drift]] ([[cluster_type:border_drift.radius]]): only near the rim's border, where automaton
+  stragglers run into the first groves.
 
 What a cluster holds is rolled from its own seed the first time a fleet warps in, so it is the same every time you
 come back.
@@ -65,7 +73,9 @@ Each band but the core has [[band:rim.gates]] **gates** near its inner edge, spr
 cluster with an old guardian; beat it and the gate opens the next band inwards. Any one gate of a band opens the next.
 Gates are hidden: each lies at the end of a trail of its own ([[trail:rim_gate]] in the rim). The rim's first gate is
 the one [[encounter:the_warden]] keeps: the first four voyages are its trail, and clearing [[voyage:wardens_gate]] opens
-it. The rim's other gates are kept by a [[encounter:gate_sentinel]].
+it. The rim's other gates are kept by a [[encounter:gate_sentinel]]. The outer reach's gates ([[trail:outer_gate]]) are
+kept by a precursor guardian of their own, the [[ship:automaton_bastion]] ([[encounter:bastion_gate]]); the Grown's
+giants are no gate guardians but rest at an [[encounter:elder_grove]] at the end of a trail of their own.
 
 ## Trails and signals
 
@@ -77,6 +87,8 @@ the next place of the trail; the last place holds the reward:
 | [[trail:rim_gate]] | [[trail:rim_gate.length]] | a gate and its guardian, a [[encounter:gate_sentinel]]: beaten, the gate opens |
 | [[trail:precursor_cache]] | [[trail:precursor_cache.length]] | a [[encounter:sealed_cache]]: beat its keepers and research data and programmable matter go straight into store, beside rich wrecks |
 | [[trail:graveyard]] | [[trail:graveyard.length]] | a [[encounter:deep_graveyard]] with far more salvage than usual |
+| [[trail:outer_gate]] | [[trail:outer_gate.length]] | an outer gate and its guardian, a [[encounter:bastion_gate]]: beaten, the gate opens |
+| [[trail:elder_grove]] | [[trail:elder_grove.length]] | an [[encounter:elder_grove]]: a [[ship:grown_elder]] at rest, rich salvage if it can be beaten |
 | [[trail:memory]] | [[trail:memory.length]] | a [[encounter:memory_wreck]]: see it and its fragment of what happened joins the memory log |
 
 Following a trail to its end gives its reward once, even if the voyage is lost on the way home: a gate, a cache's

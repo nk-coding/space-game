@@ -1,9 +1,10 @@
 // The galaxy's bands from the rim inwards (GDR-0026), each a ring around the centre out to its `edge` (S). A band's
 // clusters fill its ring at the galaxy's spacing; its `gates` lie near its inner edge, each at the end of a trail (the
 // rim's first is the Warden's, a set piece whose trail is the slice's voyages, GDR-0098);
-// `trails` adds caches and graveyards (lore trails come from `lore/`). Only the rim is real: the other bands are
-// stubs (tag `stub`) until their races and guardians exist (plan track E8 and later); the outer reach's hot clusters
-// (`scorched_deep`, GDR-0102) came first. PLACEHOLDER NUMBERS (lead, 16 Oct 2026, GDR-0094).
+// `trails` adds caches, graveyards and the outer reach's elder groves (lore trails come from `lore/`). The rim and
+// the outer reach are real (the outer reach's Grown, guardians and elders 18 Oct 2026, GDR-0103); the other bands
+// are stubs (tag `stub`) until their races and guardians exist. PLACEHOLDER NUMBERS (lead, 16 Oct 2026, GDR-0094;
+// the outer reach's 18 Oct 2026, GDR-0103).
 [
     (
         id: "rim",
@@ -17,11 +18,16 @@
     (
         id: "outer",
         name: "The outer reach",
-        summary: "The band behind the rim's gates, where some clusters lie beside hot stars. Uncharted.",
-        tags: ["stub"],
+        summary: "The band behind the rim's gates: the Grown's groves, hot stars, and rim stragglers near the border.",
         edge: 4.2,
-        clusters: [(id: "uncharted_deep", weight: 2), (id: "scorched_deep", weight: 1)],
-        gates: (count: 3, trail: "deep_gate"),
+        // `border`: rolled only within that many S of the band's outer edge (18 Oct 2026, GDR-0103).
+        clusters: [
+            (id: "grove_reach", weight: 3),
+            (id: "scorched_deep", weight: 2),
+            (id: "border_drift", weight: 4, border: 0.45),
+        ],
+        gates: (count: 3, trail: "outer_gate"),
+        trails: [(trail: "elder_grove", count: 2)],
     ),
     (
         id: "middle",

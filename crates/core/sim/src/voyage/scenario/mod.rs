@@ -1,6 +1,7 @@
 //! Deterministic scenarios for the determinism check (native vs wasm, later the browser) and for tests. Both
-//! spawn two copies of every ship blueprint in the content (load order), so they need no hard-coded ids and
-//! grow with the content, and both roll their inputs and hits on the `Scenario` RNG stream.
+//! spawn two copies of every ship blueprint in the content (load order) but the outer reach's ([`OUTER_TAG`]), so
+//! they need no hard-coded ids and grow with the content, and both roll their inputs and hits on the `Scenario` RNG
+//! stream.
 //!
 //! * [`ScenarioKind::Core`]: raw engine throttles and fire flags (every second ship flat out), random hits and
 //!   a blast every 75 ticks: power, heat, damage, splits, collisions and ramming. Plus one
@@ -63,6 +64,16 @@ use crate::combat::salvage::{Item, Salvaged};
 use crate::ship::{Body, Ship, ShipControls};
 use crate::ship::vessel::Owner;
 use crate::world::{DamageCommand, ShipCommand, Sim, TickInputs};
+
+/// Content ships with this tag (the outer reach's: the Grown, the bastion) are left out of the scenarios that spawn
+/// every blueprint: the `grown` scenario flies the Grown's mechanics, and two of each would outnumber the player's
+/// ships two to one (GDR-0103), so those scenarios run as before them.
+pub const OUTER_TAG: &str = "outer";
+
+/// The blueprints the scenarios spawn "every blueprint" of: the content's in load order, but [`OUTER_TAG`]'s.
+pub(super) fn scenario_blueprints(content: &Content) -> impl Iterator<Item = &data::Blueprint> {
+    content.ships.iter().filter(|b| !b.tags.iter().any(|t| t == OUTER_TAG))
+}
 
 pub use fixtures::BEHAVIOR_MIND_CAPACITY;
 use fixtures::{
@@ -212,7 +223,7 @@ impl Scenario {
         Scenario::with_kind(content, seed, ScenarioKind::Core)
     }
 
-    /// Two ships of every blueprint in `content`, placed on a circle, spinning a little.
+    /// Two ships of every blueprint in `content` ([`scenario_blueprints`]), placed on a circle, spinning a little.
     pub fn with_kind(content: &Content, seed: u64, kind: ScenarioKind) -> Result<Scenario, String> {
         if let ScenarioKind::Load(n) = kind {
             return Ok(Scenario {
@@ -237,9 +248,7 @@ impl Scenario {
             config.mind_capacity[Owner::PLAYER.0 as usize] = BEHAVIOR_MIND_CAPACITY;
         }
         let mut sim = Sim::with_config(seed, config);
-        let designs: Vec<Arc<ShipDesign>> = content
-            .ships
-            .iter()
+        let designs: Vec<Arc<ShipDesign>> = scenario_blueprints(content)
             .map(|b| ShipDesign::compile(content, b).map(Arc::new))
             .collect::<Result<_, _>>()?;
         let n = designs.len() * 2;

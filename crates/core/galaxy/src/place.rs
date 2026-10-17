@@ -201,11 +201,14 @@ pub(crate) fn skeleton(c: &Content, g: &Galaxy, bands: &[&Band], pieces: &[Piece
     let mut clusters = Vec::with_capacity(l.points.len());
     for (k, &at) in l.points.iter().enumerate() {
         let band = bands[l.band[k]];
-        let total: u32 = band.clusters.iter().map(|w| w.weight).sum();
+        // A type with a `border` only within that many S of the band's outer edge.
+        let fits = |w: &&data::Weighted| w.border.is_none_or(|d| at.r2() >= units(band.edge - d).max(0).pow(2));
+        let total: u32 = band.clusters.iter().filter(fits).map(|w| w.weight).sum();
         let mut roll = kinds.below(total);
         let kind = band
             .clusters
             .iter()
+            .filter(fits)
             .find(|w| {
                 let hit = roll < w.weight;
                 roll = roll.saturating_sub(w.weight);

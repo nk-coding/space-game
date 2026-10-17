@@ -25,16 +25,25 @@ fn has(problems: &[Problem], id: &str, field: &str, needle: &str) {
 }
 
 #[test]
-fn the_base_galaxy_is_the_rim_and_four_stub_bands() {
+fn the_base_galaxy_is_the_rim_the_outer_reach_and_three_stub_bands() {
     let c = data::base_content();
     let g = c.galaxies.get("galaxy").unwrap();
     assert_eq!(g.bands, ["rim", "outer", "middle", "inner", "core"]);
     // Niklas, 16 Oct 2026 (GDR-0093): the drive jumps 2.5 S at the start.
     assert_eq!(g.jump_range, 2.5);
     assert!(g.spacing <= 0.9, "the first loop's voyages lie 0.9 S and more apart: they must fit");
-    for b in &g.bands[1..] {
+    for b in &g.bands[2..] {
         assert!(c.bands.get(b).unwrap().tags.iter().any(|t| t == "stub"), "{b} is a stub");
     }
+    // The outer reach (GDR-0103): no stub, a precursor guardian at each gate, the elders at sites of their own.
+    let outer = c.bands.get("outer").unwrap();
+    assert!(!outer.tags.iter().any(|t| t == "stub"));
+    let gate = c.trails.get(&outer.gates.as_ref().unwrap().trail).unwrap();
+    assert_eq!((gate.reward, gate.target.as_str()), (Reward::Gate, "bastion_gate"));
+    let elder = c.trails.get("elder_grove").unwrap();
+    assert_eq!((elder.reward, elder.target.as_str()), (Reward::Salvage, "elder_grove"));
+    assert!(outer.trails.iter().any(|t| t.trail == "elder_grove"));
+    assert!(outer.clusters.iter().all(|w| !c.cluster_types.get(&w.id).unwrap().tags.iter().any(|t| t == "stub")));
     let rim = c.bands.get("rim").unwrap();
     assert!(!rim.tags.iter().any(|t| t == "stub"));
     assert_eq!(c.trails.get(&rim.gates.as_ref().unwrap().trail).unwrap().reward, Reward::Gate);
@@ -82,7 +91,7 @@ fn validation_refuses_broken_bands_types_trails_sources_and_lore() {
     let p = problems_with(&[
         (
             "bands.ron",
-            r#"(id: "odd", name: "Odd", summary: "A band.", edge: 0, clusters: [(id: "nothing", weight: 0)],
+            r#"(id: "odd", name: "Odd", summary: "A band.", edge: 0, clusters: [(id: "nothing", weight: 0, border: -1)],
                 gates: (count: 0, trail: "graveyard"), trails: [(trail: "rim_gate", count: 1)])"#,
         ),
         (
@@ -108,6 +117,8 @@ fn validation_refuses_broken_bands_types_trails_sources_and_lore() {
     has(&p, "odd", "edge", "must be a finite number > 0");
     has(&p, "odd", "clusters[0].id", "unknown cluster_type `nothing`");
     has(&p, "odd", "clusters[0].weight", "above 0");
+    has(&p, "odd", "clusters[0].border", "must be a finite number > 0");
+    has(&p, "odd", "clusters", "without a `border`");
     has(&p, "odd", "gates.count", "at least one gate");
     has(&p, "odd", "gates.trail", "leads to Salvage");
     has(&p, "odd", "trails[0].trail", "leads to Gate");

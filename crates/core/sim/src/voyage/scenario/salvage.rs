@@ -12,15 +12,13 @@ pub(super) const SALVAGE_HOLD_HIT: u64 = 450;
 /// keeps its cargo); the last collector waits until then with an empty hold and then strips that wreck.
 pub(super) const SALVAGE_LOST: u64 = 540;
 
-/// The salvage scenario: a wreck of every blueprint in a ring (radius 30 m, drifting a little, 20–50 % of
-/// their parts gone), one collector per ship-mind blueprint with a hold in a ring outside it (45 m), two raiders
-/// 100 m out under their content behavior.
+/// The salvage scenario: a wreck of every blueprint ([`scenario_blueprints`]) in a ring (radius 30 m, drifting a
+/// little, 20–50 % of their parts gone), one collector per ship-mind blueprint with a hold in a ring outside it
+/// (45 m), two raiders 100 m out under their content behavior.
 pub(super) fn salvage_scenario(content: &Content, seed: u64) -> Result<Scenario, String> {
     let mut sim = Sim::new(seed);
     sim.set_behaviors(library(content)?);
-    let designs: Vec<Arc<ShipDesign>> = content
-        .ships
-        .iter()
+    let designs: Vec<Arc<ShipDesign>> = scenario_blueprints(content)
         .map(|b| ShipDesign::compile(content, b).map(Arc::new))
         .collect::<Result<_, _>>()?;
     let ring = |k: usize, n: usize, r: f32| {

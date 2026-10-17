@@ -1,0 +1,97 @@
+// What waits in the outer reach (GDR-0099 A5-A7, GDR-0103): the Grown's groves, wary (they wake only when provoked:
+// a shot, a ram, a scan close by or a stripped wreck, GDR-0102), so `wake_radius` matters only for a scan; the
+// rim's stragglers near the border; the outer gates' precursor guardian; and the elders, the Grown's giants, at
+// sites of their own. A grove's own dead lie among its living: strip them and the grove wakes. PLACEHOLDER
+// NUMBERS (lead defaults, 18 Oct 2026; counts tuned with the headless voyage runner,
+// docs/results/outer-balance-2026-10-18.md).
+[
+    (
+        id: "grove_pair",
+        name: "Thorn pair",
+        summary: "A rammer and a thornback drifting together, calm until something provokes them.",
+        tags: ["grown"],
+        ships: [
+            (ship: "grown_rammer", count: (1, 1)),
+            (ship: "grown_thornback", count: (1, 1)),
+        ],
+        wake_radius: 250,
+    ),
+    (
+        id: "grove",
+        name: "Grove",
+        summary: "A rammer of the Grown among their own dead, sometimes a thornback beside it: calm until you strip a wreck or open fire.",
+        description: "Its wrecks are rich in Grown salvage, and stripping one wakes the whole grove.",
+        lore: "They leave their dead where they fell and grow round them.",
+        tags: ["grown", "wrecks"],
+        ships: [
+            (ship: "grown_rammer", count: (1, 1)),
+            (ship: "grown_thornback", count: (0, 1)),
+        ],
+        wrecks: [(ship: "grown_rammer", count: (1, 2), damage: 0.4)],
+        wake_radius: 250,
+    ),
+    (
+        id: "guarded_grove",
+        name: "Guarded grove",
+        summary: "A grove kept by a guardian, a rammer close by.",
+        description: "The [[ship:grown_guardian]] is slow but hard to break; its rammer charges first.",
+        tags: ["grown", "wrecks"],
+        ships: [
+            (ship: "grown_guardian", count: (1, 1)),
+            (ship: "grown_rammer", count: (1, 1)),
+        ],
+        wrecks: [(ship: "grown_thornback", count: (1, 1), damage: 0.4)],
+        wake_radius: 300,
+    ),
+    (
+        id: "grown_dead",
+        name: "Grown dead",
+        summary: "Grown wrecks drifting alone, their tissue still faintly warm.",
+        tags: ["grown", "wrecks"],
+        wrecks: [
+            (ship: "grown_rammer", count: (1, 2), damage: 0.3),
+            (ship: "grown_thornback", count: (0, 1), damage: 0.3),
+        ],
+        wake_radius: 200,
+    ),
+    (
+        id: "rim_stragglers",
+        name: "Rim stragglers",
+        summary: "Automatons that wandered past the rim's gates, waking when a ship comes near.",
+        lore: "They came through the gates after something and never found their way back.",
+        tags: ["raiders"],
+        ships: [
+            (ship: "automaton_raider", count: (1, 2)),
+            (ship: "automaton_gunner", count: (0, 1)),
+        ],
+        wake_radius: 250,
+    ),
+    (
+        id: "bastion_gate",
+        name: "Bastion gate",
+        summary: "A gate to the middle band, the precursor guardian that keeps it, and a gunner and a hunter at its side.",
+        description: "Shoot the [[ship:automaton_bastion]] apart and its fists fight on alone; the heart holds until both its cores go dark. Beaten, its gate opens.",
+        lore: "Further in, the gates were built to keep something out, not in.",
+        tags: ["boss"],
+        ships: [
+            (ship: "automaton_bastion", count: (1, 1)),
+            (ship: "automaton_gunner", count: (1, 1)),
+            (ship: "automaton_hunter", count: (1, 1)),
+        ],
+        wake_radius: 300,
+    ),
+    (
+        id: "elder_grove",
+        name: "Elder grove",
+        summary: "One of the Grown's giants at rest in a grove of its own, a rammer beside it.",
+        description: "The [[ship:grown_elder]] is calm until provoked, like every Grown: choose when the fight starts. Its wrecked young are rich salvage.",
+        lore: "The groves around it all lean the same way, as if towards a light.",
+        tags: ["boss", "grown", "wrecks"],
+        ships: [
+            (ship: "grown_elder", count: (1, 1)),
+            (ship: "grown_rammer", count: (1, 1)),
+        ],
+        wrecks: [(ship: "grown_guardian", count: (1, 2), damage: 0.4)],
+        wake_radius: 350,
+    ),
+]

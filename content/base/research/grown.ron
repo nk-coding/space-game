@@ -1,0 +1,40 @@
+// The Grown research family (GDR-0099 A4, GDR-0103): what the outer reach's living ships teach, paid with the data
+// their salvage gives (every Grown part's `salvage` goes to `grown`). One chain of three, so the research screen
+// keeps a single row for it: regrowing tissue first (A4), then the ram prow with the thorn gun that covers it, the
+// heart last and dearest. The ganglion stays the Grown's own. PLACEHOLDER NUMBERS (lead defaults, 18 Oct 2026): a
+// grove's wrecks give about 15-25 Grown data, so the first node comes with the first grove and the heart after
+// three or four.
+[
+    (
+        id: "regrowing_tissue",
+        name: "Regrowing tissue",
+        summary: "Armour of living tissue that heals while the ship flies.",
+        description: "Unlocks [[material:grown_tissue]] for every hull part: lighter than steel, a little tougher, and it regains its hit points slowly while it is on a vessel.",
+        family: "grown",
+        kind: Variant,
+        cost: (data: {"grown": 8}),
+        unlocks: [Material("grown_tissue")],
+    ),
+    (
+        id: "living_weapons",
+        name: "Prows and thorns",
+        summary: "The Grown's ram prow and the thorn gun that covers its charge.",
+        description: "Unlocks the [[part:ram_prow]], which deals twice the ram damage and takes half, and the [[part:thorn_gun]], a quick kinetic gun with a short reach.",
+        family: "grown",
+        kind: Alien,
+        cost: (data: {"grown": 14, "kinetic": 4}),
+        requires: ["regrowing_tissue"],
+        unlocks: [Part("ram_prow"), Part("thorn_gun")],
+    ),
+    (
+        id: "grown_heart",
+        name: "Grown heart",
+        summary: "A living heart that grows the ship's lost blocks back while it beats.",
+        description: "Unlocks the [[part:grown_heart]]. Build it beside the core: it works only on the piece with the ship's logic core.",
+        family: "grown",
+        kind: Alien,
+        cost: (data: {"grown": 24}, materials: {"programmable_matter": 2}),
+        requires: ["living_weapons"],
+        unlocks: [Part("grown_heart")],
+    ),
+]

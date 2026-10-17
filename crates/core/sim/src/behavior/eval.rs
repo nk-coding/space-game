@@ -806,6 +806,7 @@ impl Ctx<'_> {
                 aim: AimMode::Auto,
             },
             Action::Flee => Maneuver::Flee { from: target },
+            Action::Ram => Maneuver::Ram { target },
             Action::Hold | Action::Escort(_) | Action::Scan => Maneuver::Brake,
         }
     }

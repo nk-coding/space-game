@@ -37,6 +37,11 @@ pub enum Maneuver {
     },
     /// Run straight away from the target at top speed.
     Flee { from: Target },
+    /// Charge the target nose first at top speed and fly on through it (the behavior action `ram`, GDR-0103):
+    /// the nose straight at it, no lead, never braking for it. A ship with only stern thrust cannot take out
+    /// sideways velocity this way, so a charge works from a standstill relative to the target (after an
+    /// `approach`), not out of an orbit.
+    Ram { target: Target },
     /// Stay within `distance` metres of the leader (the behavior action `escort`, GDR-0065): close in like an
     /// approach while farther (`HeadingGoal::Auto`), keep pace with it while within.
     Escort { leader: Target, distance: f32 },
@@ -50,7 +55,8 @@ impl Maneuver {
             Maneuver::FaceTarget { target, .. }
             | Maneuver::Approach { target, .. }
             | Maneuver::Orbit { target, .. }
-            | Maneuver::KeepRange { target, .. } => Some(target),
+            | Maneuver::KeepRange { target, .. }
+            | Maneuver::Ram { target } => Some(target),
             Maneuver::Flee { from } => Some(from),
             Maneuver::Escort { leader, .. } => Some(leader),
         }
@@ -61,9 +67,9 @@ impl Maneuver {
         match *self {
             Maneuver::Brake => true,
             Maneuver::Hold { at } => at.is_finite(),
-            Maneuver::FaceTarget { target, .. } | Maneuver::Flee { from: target } => {
-                target.is_finite()
-            }
+            Maneuver::FaceTarget { target, .. }
+            | Maneuver::Flee { from: target }
+            | Maneuver::Ram { target } => target.is_finite(),
             Maneuver::Approach { target, range, .. } | Maneuver::KeepRange { target, range, .. } => {
                 target.is_finite() && range.is_finite()
             }
@@ -180,6 +186,18 @@ impl Maneuver {
                 }
                 None => brake,
             },
+            Maneuver::Ram { .. } => match ts {
+                Some(ts) => {
+                    let to = ts.pos - kin.pos;
+                    let dist = to.length();
+                    let dir = if dist > 1e-3 { to * (1.0 / dist) } else { Vec2::Y };
+                    FlightGoal {
+                        heading: face(kin, &ts, AimMode::Target),
+                        velocity: Some(ts.vel + dir * kin.top_speed),
+                    }
+                }
+                None => brake,
+            },
             Maneuver::Escort { distance, .. } => match ts {
                 Some(ts) => FlightGoal {
                     heading: HeadingGoal::Auto,
@@ -267,6 +285,10 @@ impl StateHash for Maneuver {
             Maneuver::Flee { from } => {
                 h.u8(6);
                 from.hash_state(h);
+            }
+            Maneuver::Ram { target } => {
+                h.u8(8);
+                target.hash_state(h);
             }
             Maneuver::Escort { leader, distance } => {
                 h.u8(7);

@@ -39,6 +39,12 @@ fn every_seed_keeps_the_rules() {
     let total: usize = (1..=SEEDS).map(|seed| generate(&c, "galaxy", seed).unwrap().clusters.len()).sum();
     let mean = total as f64 / SEEDS as f64;
     assert!((70.0..=95.0).contains(&mean), "about 80 clusters (GDR-0026), {mean} on average");
+    // The outer reach's border types turn up (GDR-0103: rim stragglers near the border).
+    let bordered = (1..=SEEDS)
+        .flat_map(|seed| generate(&c, "galaxy", seed).unwrap().clusters)
+        .filter(|k| c.bands.get(&k.band).unwrap().clusters.iter().any(|w| w.id == k.kind && w.border.is_some()))
+        .count();
+    assert!(bordered > 0, "no cluster of a border type in {SEEDS} seeds");
     assert!(g.bands.len() == 5);
 }
 
@@ -59,7 +65,12 @@ fn check(c: &Content, s: &Skeleton) {
         let inner = g.bands.get(k + 1).map_or(0, |b| units(c.bands.get(b).unwrap().edge));
         assert!(a.at.r2() <= outer * outer && a.at.r2() > inner * inner, "seed {seed}: {} outside its band", a.name);
         let band = c.bands.get(&a.band).unwrap();
-        assert!(band.clusters.iter().any(|w| w.id == a.kind), "seed {seed}: {} has a type of another band", a.name);
+        let w = band.clusters.iter().find(|w| w.id == a.kind);
+        assert!(w.is_some(), "seed {seed}: {} has a type of another band", a.name);
+        // A type with a border only that near the band's outer edge (GDR-0103).
+        if let Some(d) = w.and_then(|w| w.border) {
+            assert!(a.at.r2() >= units(band.edge - d).pow(2), "seed {seed}: {} ({}) too far in", a.name, a.kind);
+        }
     }
     let names: BTreeSet<&str> = s.clusters.iter().map(|k| k.name.as_str()).collect();
     assert_eq!(names.len(), s.clusters.len(), "seed {seed}: names are unique");
@@ -177,5 +188,5 @@ fn interiors_follow_their_cluster_types_and_hold_the_trail_places() {
 #[test]
 fn the_generation_hash_is_pinned() {
     let c = data::base_content();
-    assert_eq!(format!("{:016x}", generate(&c, "galaxy", 1).unwrap().hash()), "6c2845db355809ce");
+    assert_eq!(format!("{:016x}", generate(&c, "galaxy", 1).unwrap().hash()), "f898e1535374653d");
 }

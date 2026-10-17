@@ -572,6 +572,7 @@ fn base_families() {
             ("propulsion", Some("propulsion")),
             ("logic", Some("logic")),
             ("utility", Some("cargo")),
+            ("grown", Some("enemy")),
         ]
     );
 }
@@ -600,17 +601,22 @@ fn base_salvage_blocks() {
         ("shield_emitter", "shields", 3.0),
         ("radiator", "thermal", 2.0),
         ("capacitor", "power", 2.0),
+        ("grown_heart", "grown", 6.0),
+        ("ram_prow", "grown", 4.0),
+        ("thorn_gun", "grown", 3.0),
+        ("grown_ganglion", "grown", 5.0),
     ] {
         let s = part(id);
         assert_eq!((s.family.as_str(), s.data), (family, data), "{id}");
     }
-    // Cores give programmable matter, and a destroyed core leaves a fragment of it (GDR-0063); nothing else does.
+    // Cores give programmable matter, and a destroyed core leaves a fragment of it (GDR-0063); nothing else does,
+    // and the Grown's ganglion neither (GDR-0103: the Grown are not precursor work).
     for p in c
         .parts
         .iter()
         .filter_map(|p| p.salvage.as_ref().map(|s| (p, s)))
     {
-        let core = p.0.logic.is_some();
+        let core = p.0.logic.is_some() && !p.0.tags.iter().any(|t| t == "grown");
         assert_eq!(!p.1.fragment.is_empty(), core, "{}", p.0.id);
         assert_eq!(!p.1.materials.is_empty(), core, "{}", p.0.id);
     }
@@ -645,6 +651,7 @@ fn base_locks_follow_the_early_game_kit() {
             "grown_heart",
             "ram_prow",
             "thorn_gun",
+            "grown_ganglion",
             "fusion_reactor",
             "torch_drive",
             "beam_laser",
@@ -677,6 +684,9 @@ fn base_research_nodes() {
     assert_eq!(
         ids,
         [
+            "regrowing_tissue",
+            "living_weapons",
+            "grown_heart",
             "automaton_cannon",
             "composite_plating",
             "beam_laser",

@@ -200,15 +200,17 @@ mod tests {
         let in_order = |ids: &[&str]| -> Vec<String> { content.parts.iter().filter(|p| ids.contains(&p.id.as_str())).map(|p| p.id.clone()).collect() };
         let new_game = career(&[]).unlocks(&content);
         let weapons = section(&content, &new_game, "weapons", "").unwrap();
-        assert_eq!(weapons.parts, [vec!["pulse_laser".to_string()], in_order(&["beam_laser", "reverse_engineered_cannon"])].concat());
-        assert_eq!(weapons.locked, 2);
+        // The Grown's prow and thorn gun show too, locked: their research can unlock them (GDR-0103).
+        let locked = ["beam_laser", "reverse_engineered_cannon", "ram_prow", "thorn_gun"];
+        assert_eq!(weapons.parts, [vec!["pulse_laser".to_string()], in_order(&locked)].concat());
+        assert_eq!(weapons.locked, 4);
         let all_sections: Vec<String> = palette_sections(&content, &new_game, "").into_iter().map(|s| s.category).collect();
         assert_eq!(all_sections, content.categories.iter().map(|c| c.id.clone()).collect::<Vec<_>>());
         // Research moves a part up among the unlocked ones.
         let cannon = career(&["automaton_cannon"]);
         let weapons = section(&content, &cannon.unlocks(&content), "weapons", "").unwrap();
-        assert_eq!(weapons.parts, [in_order(&["pulse_laser", "reverse_engineered_cannon"]), vec!["beam_laser".to_string()]].concat());
-        assert_eq!(weapons.locked, 1);
+        assert_eq!(weapons.parts, [in_order(&["pulse_laser", "reverse_engineered_cannon"]), in_order(&["beam_laser", "ram_prow", "thorn_gun"])].concat());
+        assert_eq!(weapons.locked, 3);
         assert!(cannon.fresh_parts(&content).contains("reverse_engineered_cannon"));
         // A search filters the whole list, locked ones last in their section, empty sections dropped; free mode
         // locks nothing.
@@ -227,5 +229,6 @@ mod tests {
         assert!(armor_materials(&content).any(|m| m.id == "composite") && armor_materials(&content).all(|m| m.armor.is_some()));
         assert!(material_shown(&content, &new_game, "steel") && material_shown(&content, &new_game, "composite"));
         assert!(!material_shown(&content, &new_game, "reactive") && material_shown(&content, &all, "reactive"));
+        assert!(material_shown(&content, &new_game, "grown_tissue"), "its research can unlock it");
     }
 }

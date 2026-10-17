@@ -292,7 +292,8 @@ impl LaunchInputs<'_> {
     }
 
     /// A practice run into a generated cluster (galaxy plan E3, E4; [`url_launch`]): cluster `cluster` (`signal`: the
-    /// first that holds a trail's place; `hot`: the first beside a hot star, GDR-0102) of the career's galaxy, rolled from the seed its next launch would get and
+    /// first that holds a trail's place; `hot`: the first beside a hot star, GDR-0102; a cluster type's id: the first
+    /// of that type, GDR-0103) of the career's galaxy, rolled from the seed its next launch would get and
     /// carrying what the career knows (`Career::leads`: what a recorded launch carries). With `galaxy`, the base
     /// galaxy generated from that seed instead, rolled from the cluster's own seed, every trail place a signal's site
     /// and every log's data core in place ([`every_lead`]). Never saved.
@@ -315,6 +316,9 @@ impl LaunchInputs<'_> {
         let k = match cluster.parse::<u32>() {
             Ok(k) => k,
             Err(_) if cluster == "hot" => sk.clusters.iter().position(|c| hot(&c.kind)).ok_or("NO CLUSTER LIES BESIDE A HOT STAR")? as u32,
+            Err(_) if content.cluster_types.contains(cluster) => {
+                sk.clusters.iter().position(|c| c.kind == cluster).ok_or_else(|| format!("NO CLUSTER IS A {}", cluster.to_uppercase()))? as u32
+            }
             Err(_) => sk.trails.iter().flat_map(|t| &t.places).map(|p| p.cluster).find(|&k| k != sk.home).ok_or("NO CLUSTER HOLDS A TRAIL'S PLACE")?,
         };
         let c = sk.clusters.get(k as usize).ok_or_else(|| format!("THE GALAXY HAS {} CLUSTERS", sk.clusters.len()))?;

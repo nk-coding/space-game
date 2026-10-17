@@ -38,7 +38,9 @@ mod embedded {
 
 /// SVG user units per ship cell in all art sources.
 pub const UNITS_PER_CELL: f32 = 20.0;
-/// Pixel-density tiers (pixels per cell). Powers of two; the top tier keeps the atlas within 4096 pixels.
+/// Pixel-density tiers (pixels per cell). Powers of two; the tiers below the top keep the atlas within 4096 pixels,
+/// the top one within 8192 (the Grown's parts, 18 Oct 2026, grew the base atlas past 8 × 8 units; a GPU whose
+/// largest texture is smaller caps the tier, `max_tier`).
 pub const MIN_TIER: u32 = 32;
 pub const MAX_TIER: u32 = 512;
 /// Soft layers are rendered at this tier once and resampled for higher ones (blurred by 5 px or more here, so a
@@ -278,7 +280,8 @@ mod tests {
         let layout = Layout::new(&data::base_content());
         for tier in [MIN_TIER, 64, 128, 256, MAX_TIER] {
             let (w, h) = layout.pixel_size(tier);
-            assert!(w <= 4096 && h <= 4096, "tier {tier}: {w}x{h}");
+            let most = if tier == MAX_TIER { 8192 } else { 4096 };
+            assert!(w <= most && h <= most, "tier {tier}: {w}x{h}");
         }
         assert_eq!(tier_for(10.0), MIN_TIER);
         assert_eq!(tier_for(100.0), 128);

@@ -92,13 +92,19 @@ pub fn build_points(design: &ShipDesign) -> f32 {
     design.parts.iter().map(|p| p.build_points).sum()
 }
 
-/// The content's enemy ships (tagged [`ENEMY_TAG`], those that compile) with their build points, smallest first:
-/// what [`wave`] draws from.
+/// Does a wave send this content ship? Tagged [`ENEMY_TAG`] and of no wary faction (GDR-0099 A3, GDR-0103: the Grown
+/// wait to be provoked, they never come at a ship in waves).
+pub fn wave_ship(content: &Content, ship: &data::Blueprint) -> bool {
+    ship.tags.iter().any(|t| t == ENEMY_TAG) && !content.factions.get(&ship.faction).is_some_and(|f| f.wary)
+}
+
+/// The content's enemy ships ([`wave_ship`], those that compile) with their build points, smallest first: what
+/// [`wave`] draws from.
 pub fn wave_enemies(content: &Content) -> Vec<(String, f32)> {
     let mut out: Vec<(String, f32)> = content
         .ships
         .iter()
-        .filter(|s| s.tags.iter().any(|t| t == ENEMY_TAG))
+        .filter(|s| wave_ship(content, s))
         .filter_map(|s| Some((s.id.clone(), build_points(&ShipDesign::compile(content, s).ok()?))))
         .collect();
     out.sort_by(|a, b| a.1.total_cmp(&b.1));

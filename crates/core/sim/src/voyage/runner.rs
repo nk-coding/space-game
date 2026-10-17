@@ -5,7 +5,8 @@
 //!
 //! The pilot (a script, not a player), every [`DECIDE`] ticks, in this order:
 //! - **Fight** an armed awake enemy (`Sim::armed_enemy`, GDR-0068) within 400 m, or the nearest such ship of the
-//!   awake site it is heading for. It keeps its lock on one enemy while that one is armed and near (else the
+//!   awake site it is heading for, or (a wary site asleep, GDR-0102: it never wakes on sight) the nearest armed ship
+//!   within 400 m of the site it is heading for: it opens fire, as a player picks the fight. It keeps its lock on one enemy while that one is armed and near (else the
 //!   nearest), as the balance study's *closing* stand-in (`docs/results/balance-2026-10-13.md`): locked on it,
 //!   firing, the stick towards it while it is farther than 75 % of its shortest clear gun's reach, eased off over
 //!   the last 40 m and never more than 60 % of the top speed (a ship without forward thrust cannot brake with its
@@ -426,7 +427,24 @@ impl VoyageRunner {
                     .filter(|e| site.ships().contains(&e.1))
                     .min_by(|a, b| a.0.total_cmp(&b.0))
             })
-            .copied();
+            .copied()
+            .or_else(|| {
+                // The site it heads for is wary and asleep (GDR-0102: it never wakes on sight): open fire on its
+                // nearest armed ship within reach of a fight, as a player picks the fight.
+                let (k, ..) = next.filter(|n| n.3 == SiteState::Asleep)?;
+                let site = &v.sites()[k];
+                site.plan()
+                    .wary
+                    .then(|| {
+                        site.ships()
+                            .iter()
+                            .filter(|&&id| sim.ship(id).is_some_and(|s| s.is_armed() && s.is_vessel()))
+                            .filter_map(|&id| at(sim, id).map(|p| ((p - here).length(), id, p)))
+                            .filter(|e| e.0 <= FIGHT_RANGE)
+                            .min_by(|a, b| a.0.total_cmp(&b.0))
+                    })
+                    .flatten()
+            });
         pilot.lock = foe.map(|f| f.1);
         // Done (or full), or given up: home as soon as the sim allows.
         // (Done: the goal cleared, every site done and nothing left in reach to strip.)
