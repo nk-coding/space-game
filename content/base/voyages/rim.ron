@@ -5,7 +5,8 @@
 // gate, its four voyages the gate's trail: clearing the Warden opens the outer reach.
 // PLACEHOLDER NUMBERS (track 7J draft of 13 Oct 2026; sites tuned with the headless
 // voyage runner the same day, GDR-0073 and docs/results/slice-balance-2026-10-13.md; re-measured 17 Oct 2026, Corran
-// Reach's hunter packs 1 -> 2, docs/results/slice-balance-2026-10-17.md).
+// Reach's hunter packs 1 -> 2, docs/results/slice-balance-2026-10-17.md; the first two voyages' raiders became gunners
+// and Corran Reach gained a gunner pair the same day, GDR-0101, docs/results/slice-balance-2026-10-17b.md).
 [
     (
         id: "yard_approach",
@@ -17,9 +18,9 @@
         minutes: (6, 8),
         cleared: "The lanes around the shipyard are quiet again. Further out, the [[voyage:halvex_drift]] is waiting.",
         sites: [
-            (encounter: "raider_pair", count: 2),
+            (encounter: "gunner_pair", count: 2),
             (encounter: "derelict_field"),
-            (encounter: "raider_pair", goal: true),
+            (encounter: "raiding_party", goal: true),
         ],
     ),
     (
@@ -31,12 +32,12 @@
         radius: 900,
         spacing: (400, 700),
         minutes: (6, 10),
-        cleared: "The raiders' den is broken. Their hunters still hold the [[voyage:corran_reach]].",
+        cleared: "The gunners' den is broken. Their hunters still hold the [[voyage:corran_reach]].",
         sites: [
-            (encounter: "raider_pair"),
+            (encounter: "gunner_pair"),
             (encounter: "precursor_wrecks"),
             (encounter: "core_graveyard"),
-            (encounter: "raider_den", goal: true),
+            (encounter: "gunner_den", goal: true),
         ],
     ),
     (
@@ -47,10 +48,11 @@
         opens_after: ["halvex_drift"],
         radius: 1000,
         spacing: (400, 700),
-        minutes: (5, 8),
+        minutes: (6, 9), // 5-8 until 17 Oct 2026 (its gunner pair: the scripted run's median 4.1 min, doubled 8.2)
         cleared: "The hunters are scattered. Beyond the Reach, something old still keeps the gate.",
         sites: [
             (encounter: "hunter_pack", count: 2),
+            (encounter: "gunner_pair"),
             (encounter: "precursor_wrecks"),
             (encounter: "hunter_den", goal: true),
         ],

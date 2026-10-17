@@ -344,8 +344,26 @@ fn rapier_mass_properties_are_the_pieces() {
         if t % 50 != 0 && t != 399 {
             continue;
         }
+        // A piece that changed this tick reached Rapier as new colliders, whose mass Rapier sums at its next step:
+        // one crushed in the impacts phase (after this tick's physics step) still reads the old mass until then.
+        let changed: Vec<(sim::ShipId, sim::PieceId)> = sc
+            .sim
+            .events()
+            .iter()
+            .flat_map(|e| match e {
+                SimEvent::PieceChanged { ship, piece } => vec![(*ship, piece.id)],
+                SimEvent::Split(s) => std::iter::once(s.kept.id)
+                    .chain(s.spawned.iter().map(|p| p.id))
+                    .map(|p| (s.ship, p))
+                    .collect(),
+                _ => Vec::new(),
+            })
+            .collect();
         for ship in sc.sim.ships() {
             for p in ship.pieces() {
+                if changed.contains(&(ship.id(), p.id)) {
+                    continue;
+                }
                 let k = BodyKey {
                     ship: ship.id(),
                     piece: p.id,

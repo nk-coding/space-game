@@ -113,6 +113,9 @@ the sites done of all (`SITES n / m`) and the time since you arrived.
 | [[encounter:raider_pair]] | [[encounter:raider_pair.wake_radius]] |
 | [[encounter:raider_pack]] | [[encounter:raider_pack.wake_radius]] |
 | [[encounter:raider_den]] | [[encounter:raider_den.wake_radius]] |
+| [[encounter:gunner_pair]] | [[encounter:gunner_pair.wake_radius]] |
+| [[encounter:raiding_party]] | [[encounter:raiding_party.wake_radius]] |
+| [[encounter:gunner_den]] | [[encounter:gunner_den.wake_radius]] |
 | [[encounter:hunter_pack]] | [[encounter:hunter_pack.wake_radius]] |
 | [[encounter:hunter_den]] | [[encounter:hunter_den.wake_radius]] |
 | [[encounter:derelict_field]] | [[encounter:derelict_field.wake_radius]] |

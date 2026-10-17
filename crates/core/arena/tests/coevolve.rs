@@ -211,7 +211,11 @@ fn an_evolved_enemy_exports_to_content() {
 #[test]
 fn the_arms_race_preset_and_its_refusals() {
     let c = data::base_content();
-    assert_eq!(arena::evolve::enemy_starts(&c), ["automaton_hunter", "automaton_raider"], "the warden is a boss");
+    assert_eq!(
+        arena::evolve::enemy_starts(&c),
+        ["automaton_gunner", "automaton_hunter", "automaton_raider"],
+        "the warden is a boss"
+    );
     let preset = c.lab.trial("arms_race").unwrap();
     let ships = arena::evolve::enemy_starts(&c);
     let pop = Population::from_preset(&c, preset, &ships, 32).unwrap();

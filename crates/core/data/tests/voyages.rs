@@ -501,21 +501,23 @@ fn base_voyages_form_the_slice_chain() {
             goal("corran_reach"),
             goal("wardens_gate")
         ],
-        ["raider_pair", "raider_den", "hunter_den", "the_warden"]
+        ["raiding_party", "gunner_den", "hunter_den", "the_warden"]
     );
     let sites: Vec<u32> = chain
         .iter()
         .map(|id| c.voyages.get(id).unwrap().site_count())
         .collect();
-    assert_eq!(sites, [4, 4, 4, 3]);
-    // Every encounter is used by a voyage or a trail's end (galaxy plan E8), and the Warden waits at the end.
+    assert_eq!(sites, [4, 4, 5, 3]);
+    // Every encounter is used by a voyage, a kind of cluster or a trail's end (galaxy plan E8; the raider pair and
+    // den only in clusters since GDR-0101), and the Warden waits at the end.
     for e in c.encounters.iter() {
         assert!(
             c.voyages
                 .iter()
                 .any(|v| v.sites.iter().any(|s| s.encounter == e.id))
+                || c.cluster_types.iter().any(|t| t.sites.iter().any(|s| s.encounter == e.id))
                 || c.trails.iter().any(|t| t.target == e.id),
-            "{} is used by no voyage and no trail",
+            "{} is used by no voyage, no kind of cluster and no trail",
             e.id
         );
     }

@@ -1075,10 +1075,10 @@ mod tests {
         assert_eq!(sites_done(v), (0, 4));
         let goal = v.sites().iter().position(|s| s.goal()).unwrap() as u32;
         let (t, sub, tone) = site_banner(&content, v, &SimEvent::SiteCleared { site: goal, goal: true }).unwrap();
-        assert_eq!((t.as_str(), tone), ("GOAL CLEARED  ·  RAIDER PAIR", Tone::Gold));
+        assert_eq!((t.as_str(), tone), ("GOAL CLEARED  ·  RAIDING PARTY", Tone::Gold));
         assert!(sub.starts_with("SITES 0 / 4"), "{sub}");
         let (t, _, tone) = site_banner(&content, v, &SimEvent::SiteWoke { site: 0 }).unwrap();
-        assert_eq!((t.as_str(), tone), ("RAIDER PAIR  ·  AWAKE", Tone::Coral));
+        assert_eq!((t.as_str(), tone), ("GUNNER PAIR  ·  AWAKE", Tone::Coral));
         assert!(site_banner(&content, v, &SimEvent::ShipSpawned { ship: sim::ShipId(0) }).is_none());
     }
 

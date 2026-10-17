@@ -1,0 +1,29 @@
+// Automaton gunner: the first voyages' answer to a shielded nose (GDR-0101). A raider's frame widened to take two
+// cannons side by side, the core and its thruster behind the left one (one automaton core powers exactly two
+// cannons and one thruster, 6 MW, as in the hunter and the warden's fists). It flies `gunner_pack`: the raider's
+// cycle, aimed at the target's engines (behind the starter's shielded nose) rather than its centre. PLACEHOLDER
+// layout (lead default, 17 Oct 2026; docs/results/slice-balance-2026-10-17b.md).
+(
+    id: "automaton_gunner",
+    name: "Automaton gunner",
+    summary: "A 4×3 rogue automaton with twin cannons in its nose that shoots for the engines.",
+    description: "Gunners run with the raiders near the shipyard. Two cannons wear a [[part:shield_emitter|shield]] down twice as fast as one, and they aim past a shielded nose at the engines behind it.",
+    tags: ["enemy"],
+    faction: "automatons",
+    behavior: "gunner_pack",
+    size: (4, 3),
+    parts: [
+        (part: "slope_1x1", x: 0, y: 0, flip: true, material: "automaton_plate"),
+        (part: "automaton_cannon", x: 1, y: 0),
+        (part: "automaton_cannon", x: 2, y: 0),
+        (part: "slope_1x1", x: 3, y: 0, material: "automaton_plate"),
+        (part: "armor_block", x: 0, y: 1, material: "automaton_plate"),
+        (part: "automaton_core", x: 1, y: 1),
+        (part: "armor_block", x: 2, y: 1, material: "automaton_plate"),
+        (part: "armor_block", x: 3, y: 1, material: "automaton_plate"),
+        (part: "slope_1x1", x: 0, y: 2, rot: 2, material: "automaton_plate"),
+        (part: "thruster", x: 1, y: 2),
+        (part: "armor_block", x: 2, y: 2, material: "automaton_plate"),
+        (part: "slope_1x1", x: 3, y: 2, rot: 2, flip: true, material: "automaton_plate"),
+    ],
+)

@@ -574,7 +574,7 @@ fn voyage_pages_link_both_ways() {
     has(first, "<dt>Sites</dt><dd>4</dd>");
     has(
         first,
-        "<dt>Goal</dt><dd><a href=\"../encounters/raider_pair.html\">Raider pair</a></dd>",
+        "<dt>Goal</dt><dd><a href=\"../encounters/raiding_party.html\">Raiding party</a></dd>",
     );
     has(
         first,
@@ -582,7 +582,7 @@ fn voyage_pages_link_both_ways() {
     );
     has(
         first,
-        "<tr><td class=\"name\"><a href=\"../encounters/raider_pair.html\">Raider pair</a></td><td><a href=\"../ships/automaton_raider.html\">Automaton raider</a>&nbsp;×2</td><td>—</td><td class=\"num\">×2</td></tr>",
+        "<tr><td class=\"name\"><a href=\"../encounters/gunner_pair.html\">Gunner pair</a></td><td><a href=\"../ships/automaton_gunner.html\">Automaton gunner</a>&nbsp;×2</td><td>—</td><td class=\"num\">×2</td></tr>",
     );
     has(
         first,
@@ -590,7 +590,7 @@ fn voyage_pages_link_both_ways() {
     );
     has(
         first,
-        &format!("href=\"../encounters/raider_pair.html\">Raider pair</a> {goal}"),
+        &format!("href=\"../encounters/raiding_party.html\">Raiding party</a> {goal}"),
     );
     lacks(first, "href=\"../encounters/raider_pack.html\"");
     has(
@@ -648,14 +648,14 @@ fn voyage_pages_link_both_ways() {
         "<td>30% of parts gone</td><td class=\"num\">×4–6</td>",
     );
     has(
-        "encounters/raider_pair.html",
+        "encounters/raiding_party.html",
         &format!(
             "<tr><td class=\"name\"><a href=\"../voyages/yard_approach.html\">Shipyard approach</a> {goal}"
         ),
     );
     has(
-        "encounters/raider_pair.html",
-        "<td class=\"num\">3 sites</td>",
+        "encounters/gunner_pair.html",
+        "<td class=\"num\">2 sites</td>",
     );
     has(
         "encounters/raider_pack.html",

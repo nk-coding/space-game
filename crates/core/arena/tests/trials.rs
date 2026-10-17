@@ -313,9 +313,13 @@ fn the_labs_presets_become_trials() {
     assert_eq!(by("beat_your_start").escorts, src.escorts, "WITH YOUR ESCORTS");
     assert!(matches!(&by("champions").kind, Trial::Champions { designs } if designs.len() == 2));
     assert!(matches!(&by("voyages").kind, Trial::Voyages { minutes, .. } if *minutes == 10.0));
-    // The encounters of the first voyage: a raider pair and the derelict field's raider (its wrecks aside).
+    // The encounters of the first voyage: a gunner pair, the derelict field's raider (its wrecks aside) and the
+    // raiding party at its goal.
     let enc = arena::evolve::encounters(&c, &["yard_approach".into()]).unwrap();
-    assert_eq!(enc.iter().map(|e| e.0.as_str()).collect::<Vec<_>>(), ["raider_pair", "derelict_field"]);
+    assert_eq!(
+        enc.iter().map(|e| e.0.as_str()).collect::<Vec<_>>(),
+        ["gunner_pair", "derelict_field", "raiding_party"]
+    );
     let none = Sources::default();
     let p = c.lab.trial("your_fleet").unwrap();
     assert!(TrialSpec::from_preset(p, 1.0, 2, false, &none).unwrap_err().contains("no saved design"));

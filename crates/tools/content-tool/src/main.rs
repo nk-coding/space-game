@@ -1011,7 +1011,7 @@ mod tests {
         assert_eq!(first["site_count"], json!(4));
         assert_eq!(
             first["sites"][2],
-            json!({"encounter": "raider_pair", "count": 1, "goal": true})
+            json!({"encounter": "raiding_party", "count": 1, "goal": true})
         );
         assert_eq!(first["opens"], json!(["halvex_drift"]));
         assert_eq!(first["opened_by_starts"], json!(["rim_awakening"]));
@@ -1027,8 +1027,8 @@ mod tests {
             (&json!([]), &json!([]))
         );
         assert_eq!(
-            find("encounters", "raider_pair")["used_by_voyages"],
-            json!(["yard_approach", "halvex_drift"])
+            find("encounters", "gunner_pair")["used_by_voyages"],
+            json!(["yard_approach", "halvex_drift", "corran_reach"])
         );
         assert_eq!(
             find("encounters", "raider_pack")["used_by_voyages"],
@@ -1053,14 +1053,18 @@ mod tests {
             json!(["gate_sentinel", "the_warden"])
         );
         assert_eq!(find("ships", "rim_skiff")["in_encounters"], json!([]));
-        // The raider is almost everywhere: fighting in every encounter but the hunters' den, the gate sentinel and the
-        // memory wreck, lying as a wreck in some.
+        // The raider is almost everywhere: fighting in every encounter but the hunters' den, the gate sentinel, the
+        // memory wreck and the gunners' pair and den, lying as a wreck in some.
         assert_eq!(
             find("ships", "automaton_raider")["in_encounters"]
                 .as_array()
                 .unwrap()
                 .len(),
-            c.encounters.len() - 3
+            c.encounters.len() - 5
+        );
+        assert_eq!(
+            find("ships", "automaton_gunner")["in_encounters"],
+            json!(["gunner_pair", "raiding_party", "gunner_den"])
         );
         assert_eq!(v["texts"]["encounter.the_warden.name"], json!("The Warden"));
         // f32 numbers export as written, without the noise of widening them to f64.

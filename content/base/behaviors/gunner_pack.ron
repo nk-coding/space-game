@@ -1,0 +1,15 @@
+// The automaton gunner's tactic (GDR-0101): the raider pack's cycle (`raider_basic`: attack for 3 s of every 9,
+// circle for the other 6), aimed at the target's nearest working engine instead of its centre. PLACEHOLDER (lead
+// default, 17 Oct 2026; docs/results/slice-balance-2026-10-17b.md).
+(
+    id: "gunner_pack",
+    name: "Gunner pack",
+    summary: "Like the raider pack, but every shot goes for the engines.",
+    description: "Picks the nearest enemy and aims at its nearest working engine. Within engagement range it attacks for three seconds out of every nine and circles the target for the other six.",
+    tags: ["automaton", "attack"],
+    target: "nearest(engines)",
+    rules: [
+        "when target_in_range(120%) and cycle(9s) >= 3s -> orbit(58%)",
+        "always -> approach(85%)",
+    ],
+)

@@ -4,7 +4,8 @@
 // variants by count (a pair, a pack, a den) are entries of their own. PLACEHOLDER NUMBERS (track 7J
 // draft of 13 Oct 2026; counts tuned with the headless voyage runner the same day, GDR-0073 and
 // docs/results/slice-balance-2026-10-13.md: no single ship of the slice wins against three raiders at once often;
-// re-measured 17 Oct 2026, the Warden's raiders 1-2 -> 2-3, docs/results/slice-balance-2026-10-17.md).
+// re-measured 17 Oct 2026, the Warden's raiders 1-2 -> 2-3, docs/results/slice-balance-2026-10-17.md; the
+// gunners' encounters for the first two voyages the same day, GDR-0101, docs/results/slice-balance-2026-10-17b.md).
 [
     (
         id: "raider_pair",
@@ -28,6 +29,33 @@
         summary: "Where the raiders gather: a pack that wakes all at once, and from farther off.",
         tags: ["raiders"],
         ships: [(ship: "automaton_raider", count: (2, 3))],
+        wake_radius: 300,
+    ),
+    (
+        id: "gunner_pair",
+        name: "Gunner pair",
+        summary: "Two gunners on watch near the shipyard, waking when a ship comes near.",
+        tags: ["raiders"],
+        ships: [(ship: "automaton_gunner", count: (2, 2))],
+        wake_radius: 250,
+    ),
+    (
+        id: "raiding_party",
+        name: "Raiding party",
+        summary: "A gunner and a raider hunting together, waking when a ship comes near.",
+        tags: ["raiders"],
+        ships: [
+            (ship: "automaton_gunner", count: (1, 1)),
+            (ship: "automaton_raider", count: (1, 1)),
+        ],
+        wake_radius: 250,
+    ),
+    (
+        id: "gunner_den",
+        name: "Gunner den",
+        summary: "Where the gunners gather: three of them, waking all at once, and from farther off.",
+        tags: ["raiders"],
+        ships: [(ship: "automaton_gunner", count: (3, 3))],
         wake_radius: 300,
     ),
     (

@@ -303,7 +303,8 @@ fn shields_absorb_energy_then_collapse() {
     assert!(cap > 0.0);
     let mut hull_hits = 0;
     let mut shield_hits = 0;
-    for _ in 0..30 {
+    // 20 ticks of the beam (2.6 per second) stay under the bubble's capacity (2).
+    for _ in 0..20 {
         w.step(&fire(s));
         hull_hits += w
             .events()
@@ -320,7 +321,7 @@ fn shields_absorb_energy_then_collapse() {
         hull_hits, 0,
         "energy is absorbed completely while the bubble holds"
     );
-    assert_eq!(shield_hits, 30);
+    assert_eq!(shield_hits, 20);
     assert!(w.bubbles().iter().any(|b| b.ship == t));
     assert!(w.ship(t).unwrap().part(emitter).shield < cap);
     // Keep burning: the bubble collapses, then the hull takes the beam.
