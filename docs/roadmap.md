@@ -544,7 +544,7 @@ Next session:
 - ([GDR-0104](gdr/0104-scenery-rocks-filler-landmarks.md), lead defaults; `results/scenery-2026-10-17.md`) Asteroid
   rock as anchored bodies per cluster type and slice voyage (fields, belts, scattered; shots, plumes and rams stop on
   it, behaviors and the scripted pilot steer round it, `avoid_collisions` sidesteps it); content kinds `rock` and
-  `landmark` and a `scenery` block; the client's glints, debris, derelicts, landmarks, the corona and distant fights
+  `landmark` and a `scenery` block; the client's glints, debris, derelicts, landmarks, the corona and distant fights (removed 17 Oct, GDR-0107)
   (`world::scenery`). The slice's curve holds with rock (120 seeds), up to 13 points harder.
 - Open: mining (a laser part, rock yield, `RockHit` into ore), drifting or breakable rock, rock on the cluster map.
 
@@ -556,6 +556,18 @@ Next session:
   cluster types and bands; the far stars slowed to 0.02. Screenshots `results/sky-*.png`.
 - Open: the sky tinting the gradient and the stars, turning planets and drifting clouds, the sky at the station and
   on the map.
+
+### 17 Oct 2026: depth layers after the play-test, the minimap
+
+- ([GDR-0107](gdr/0107-depth-layers-zoom-and-draw-order.md), lead defaults) Every layer before or behind the play
+  scales with the zoom by its depth (`camera::depth_scale`), draws by its depth (landmarks, the star's glow and
+  corona behind the planet), the stars in three layers; the distant fights removed; rocks drawn finer (rounded,
+  roughened outlines, shading, craters; colliders unchanged). Screenshots `results/depth-*.png`,
+  `results/scenery-rock-close.png`.
+- ([GDR-0106](gdr/0106-flight-minimap.md), lead defaults) The minimap: bottom right on a voyage, north up, 1 km /
+  2.5 km / off on B, only what the fleet knows; the cluster map shares its painter (and shows rocks, sensor rings and
+  contacts now). Screenshots `results/minimap-*.png`.
+- Open: a tap on touch to step the minimap; the minimap in the test range.
 
 ## Phase 4: measurement
 

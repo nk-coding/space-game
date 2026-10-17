@@ -142,7 +142,8 @@ with the [[behavior_node:scan]] action. The scanner charges for [[part:scanner.s
 
 Then it cools down for [[part:scanner.scan_cooldown]]. A banner says what the scan found, and what it did to your
 signals. [[control:cluster_map.keys]] ([[control:cluster_map]]) lays the whole cluster over your view: its edge,
-where you came in, what your scans swept, the bearings, the sites found and your fleet. A cluster has an edge
+where you came in, what your scans swept, the bearings, the sites found, the rock you came near, the ships within your
+sensors and your fleet; the minimap in the corner ([[control:minimap.keys]]) shows the same round your ship. A cluster has an edge
 [[sim:edge_margin]] outside its radius (never more than [[sim:max_edge]] from its centre): beyond it your ship is
 pushed back.
 

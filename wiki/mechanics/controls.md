@@ -57,6 +57,14 @@ the SCAN pill under the target panel, which also says what the scanner is doing 
 A vessel without a working scanner can't scan; [scanning](/mechanics/galaxy#inside-a-cluster-sensors-and-scans)
 explains what a sweep finds.
 
+### The minimap and the cluster map
+
+On a voyage the **minimap** sits in the bottom right corner: north is up and your ship is in the middle. It shows
+only what your fleet knows: ships within your sensors (enemies coral, dark ships grey, wrecks gold), the sites you
+have found, your scans' bearings and sweeps, the rock you have come near, the cluster's edge and your fleet in teal.
+[[control:minimap]] ([[control:minimap.keys]]) widens it from 1 km round you to 2.5 km, then hides it, then brings it
+back. [[control:cluster_map]] ([[control:cluster_map.keys]]) lays the whole cluster over your view, drawn the same way.
+
 ### Switching vessels
 
 You fly one vessel at a time, the focus. [[control:focus_next]] and [[control:focus_previous]]

@@ -7,6 +7,7 @@
   2026-10-17: the slice's goal is an ordinary site again (sensors show it at 800 m): its voyage is the signal, the
   slice being in the galaxy (track E7, [GDR-0098](0098-slice-in-the-galaxy-and-rim-rewards.md)).
   2026-10-17: Accepted (Niklas, 17 Oct 2026).
+  2026-10-17: the minimap shows contacts only within the fleet's sensors and sites only once found ([GDR-0106](0106-flight-minimap.md)).
 - Date: 2026-10-16
 - Decided by: lead session (defaults for Niklas to review, galaxy track E3)
 - Related: [GDR-0017](0017-combat-support-repair-capture-sensors.md), [GDR-0078](0078-galaxy-exploration-v1.md), [GDR-0080](0080-exploration-searching-and-story.md), [GDR-0093](0093-galaxy-exploration-decisions-16-oct.md), [GDR-0094](0094-galaxy-generator-defaults.md), [GDR-0092](0092-evolution-lab-for-your-own-ships.md), [ADR-0022](../adr/0022-one-simulation-space-per-cluster.md), `docs/plans/galaxy-voyages.md` (E3, 4.6, 6.2), `docs/results/2026-10-16-bigger-clusters.md`

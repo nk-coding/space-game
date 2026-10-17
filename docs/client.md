@@ -54,6 +54,7 @@ per sim tick with `sim::flight::turn_ramp_step` (like the lock's nudge with `nud
 | Home (the shipyard; the flight ends); in a voyage M opens the ABANDON VOYAGE? panel instead (GDR-0077: Enter abandons the voyage, lost; Esc or M again close it) | M, or the ring top left (not in a voyage) | the ring top left |
 | Recall home from a voyage (when no armed awake enemy is within 200 m, or the fleet has no working gun left: the emergency recall; a 3 s warp-out) | R, or the RECALL pill | the RECALL pill |
 | The cluster map on a voyage: the whole cluster laid over the view (galaxy plan E6) | N | — |
+| The minimap on a voyage ([GDR-0106](gdr/0106-flight-minimap.md)): steps its range 1 km → 2.5 km → hidden → 1 km | B | – (always 1 km) |
 | Raider waves off / on (sandbox; off removes the raiders) | C | – |
 | Tuning panel (flight only; it was T until 12 Oct 2026) | U | – |
 | Debug overlay (fps, frame and sim times, the focus ship's heading, turn rate, speed and whether the last resort turns it, the locked ship's active behavior rule; in TEST IN RANGE every rule of the tested behavior with why) | F8 (F3 until 15 Oct 2026: the assist toggles took F1–F4) | – |
@@ -482,7 +483,7 @@ PostUpdate            ship_view::sync_piece_views (render_pose(alpha) → Transf
 - **Smaller modules**: `params.rs` (launch parameters: the page URL's query, natively `GAME_PARAMS`;
   `Params::flag` / `f32` / `text`), `controls.rs` (keyboard, mouse and touch → `PlayerInput`: stick, A/D ramp and
   nudge, lock, fire, drift, V / Tab / Esc; the touch widgets), `backdrop.rs` (the radial gradient, two parallax dust
-  layers drifting slowly outside flight (0.16 m/s in the far layer), a far layer of stars twinkling in three groups (parallax 0.02, 0.12 until 17 Oct 2026: farther than a cluster's planet, GDR-0105), dotted range rings around
+  layers drifting slowly outside flight (0.16 m/s in the far layer), three layers of stars, each twinkling on its own (17 Oct 2026, GDR-0107: far 0.02, mid 0.07 and a sparse near 0.2, 70 / 30 / 12 stars a 60 m tile, all behind a cluster's planet; one layer of 0.12 until GDR-0105, then 0.02 alone, which felt static), every layer at its depth's scale (`camera::depth_scale`), dotted range rings around
   the followed ship whose dots keep at least 2.6 px across and 11 px apart at any zoom, rebuilt per zoom step), `meshbuf.rs` (`MeshBuf`, the CPU builder for
   atlas-textured, vertex-coloured 2D meshes; index order = draw order; their data lives only on the GPU, so a
   PostUpdate system that replaces one runs before `TransformSystems::Propagate`, where `atlas.rs` moves Bevy's mesh
@@ -717,31 +718,43 @@ off, the flash and its ring where it left), `voyage-warp-emergency.png` (the eme
   fills a cluster between its sites, from the voyage's or (a generated cluster) its type's `scenery`, rebuilt when the
   voyage (id and seed) changes and gone when flight ends. All vector meshes from the atlas's white texel and dots,
   moving with the sim's clock (the tick plus the overstep: paused with P, alike at any frame rate). Every piece sits at
-  an anchor with a parallax `p`, drawn at `camera + (anchor − camera) · p`.
+  an anchor with a parallax `p`, drawn at `camera + (anchor − camera) · p · s` and `s` times its size,
+  `s = camera::depth_scale(p) = (18 ÷ zoom)^(1 − p)` ([GDR-0107](gdr/0107-depth-layers-zoom-and-draw-order.md), 17 Oct
+  2026): its size on screen goes with the zoom to the power `p`, so the play scales fully, the far layers hardly, and
+  each looks as authored at the camera's starting zoom (18 px/m, `camera::REF_ZOOM`). The backdrop's dust and stars
+  and the sky follow the same rule. **Draw order** by depth, far to near: galaxy −897, stars −893 / −892.7 / −892.4,
+  nebula −890, the hot star's glow −889, its corona −888.8, landmarks −888.5, the planet's rings and the planet −887
+  to −885, moons −883, dust −800 / −799, range rings −700, glints −660, derelicts 1, debris 2, rocks 3; nothing
+  farther than the planet draws over it (the stars, points of light, stay behind the sky's bodies whatever their
+  parallax).
   - **Rocks** (`rocks.rs`): the sim's rocks (`Voyage::rocks`) as they spawn, the rocks spawned together in one mesh
-    in world coordinates (z 3, under trails and ships): the outline in the kind's tone (`world.rock.*`), facet lines
-    from a point off the centre away from the light, an edge line brighter on the sides facing the light (from the
-    upper left).
+    in world coordinates (z 3, under trails and ships). The collider stays the sim's coarse convex hull; the view
+    follows it finer (GDR-0107): the hull's corners cut a little twice, resampled to 32–96 points by size, roughened
+    along the normal by three smooth harmonics (at most about 5 % of the radius), each rock's look rolled from the
+    voyage's seed and its index. Filled in the kind's tone (`world.rock.*`, a fan from the centre), a lighter body
+    shifted towards the light (upper left) leaving a shadowed rim, 1–5 craters (dark bowls, the inner wall lit in
+    `world.rock_facet`), an edge line brighter on the sides facing the light.
   - **Filler** (`filler.rs`, drawn only): glints and motes on a near layer (`p` 0.85, a 260 m tile repeated 3 × 3 round
     the view like the backdrop's dust, the glints twinkling as one), hull debris everywhere on a tiled layer just
     under the play (`p` 0.97, a 400 m tile of 320 bits at `debris` 1, so a few are always in sight) and thicker round
     each site in three drifting groups, derelict shells (16–36 m, broken in two or three, ribs and a hole) drifting
     and turning slowly 20–120 m off the way between the entry and the sites (`p` 0.9).
   - **Far things** (`far.rs`): each landmark the cluster rolls (its chance, from the voyage's seed) anchored within
-    0.7 of the radius on its own layer between the backdrop's stars and its dust: a station (hub, spokes, a torn ring
+    0.7 of the radius on its own layer (parallax 0.03–0.04, behind the sky's planet; sizes in metres of the layer at
+    18 px/m): a station (hub, spokes, a torn ring
     with modules, two faint lights), a beacon (a mast, crossbars, a light passing every 3.2 s), a junk ring at a slant
     round a dead hub; beside a hot star the **corona**: three arcs and six loops in the corona colour at the view's
     edge towards the star, placed and scaled as the backdrop's star glow, flickering softly (thin strips: with the glow
-    the only large translucent layers, two at most); **distant fights** at the scenery's rate (exponential gaps, the
-    first after 0.3 of the mean) somewhere in the view's middle on a layer of `p` 0.06: two knots of tiny ships,
-    tracers running between them, flashes on hits, a burst at the end, 4–7 s, drawn the same size at any zoom (one
-    small mesh rebuilt while a fight shows).
+    the only large translucent layers, two at most). The distant fights were removed on 17 Oct 2026 (GDR-0107).
   - Budget (a wreck drift): 18 tiles (about 9 × 1.3 k glint vertices and 9 × 1.1 k debris vertices, static meshes,
     moved each frame), 12–24 site debris groups, up to 6 derelicts, 1–2 landmarks, one mesh per rock group (20 rocks
-    about 2.4 k vertices); per frame the transforms of about 50 entities and, while a fight shows, a mesh of up to a
-    few hundred vertices. The log line `scenery: …` counts what a voyage spawned.
+    about 8–12 k vertices); per frame the transforms and scales of about 50 entities. The log line `scenery: …` counts
+    what a voyage spawned.
   - Screenshots (headless, 1280 × 720): `docs/results/scenery-rim.png` (a wreck drift's field, debris and glints),
-    `scenery-corona.png` (the scorched deep's corona over the star's glow), `scenery-fight.png` (a distant fight).
+    `scenery-corona.png` (the scorched deep's corona over the star's glow); after GDR-0107: `depth-zoom-in.png` and
+    `depth-zoom-out.png` (the same view zoomed in and out: the planet and the station keep their size, the play
+    scales), `depth-planet-landmark.png` (a station behind the planet's layer, debris near), `scenery-rock-close.png`
+    (a rock close up, zoomed out a little).
   - **The sky** (`sky/`, 17 Oct 2026, [GDR-0105](gdr/0105-cluster-sky-planets-nebula-galaxy.md)): behind
     everything, from the cluster type's `sky` (else its band's; a content voyage its band's), rolled from the
     cluster's own seed (`ClusterLaunch::sky_seed`, the skeleton's; a content voyage's from its id) on named streams
@@ -749,7 +762,7 @@ off, the flash and its ring where it left), `voyage-warp-emergency.png` (the eme
     (`planets.ron`), large and cut by a corner or small and whole, 0–3 moons each of a different kind, a nebula of
     soft blobs along a curve (at most 3 over a point, 2 beside a hot star) with faint dust lanes, and a spiral
     galaxy. Composed in a 1600 × 900 design frame scaled to the view's height, each body at its distance from the
-    view's left or right edge, the nebula stretched to its width; drawn the same size at any zoom. `paint.rs` builds a
+    view's left or right edge, the nebula stretched to its width; about the same size at any zoom. `paint.rs` builds a
     body: an even polar mesh (40–84 rings for a planet, 10–26 for a moon) whose every vertex is coloured on the CPU
     like a shader (the surface of its form, `kinds.rs`: bands and ripples, storms, land caps with rough coasts,
     patches, ice caps, mottling; the clouds as one smooth density of noisy blobs, streaks and log-spiral swirls; the
@@ -759,14 +772,16 @@ off, the flash and its ring where it left), `voyage-warp-emergency.png` (the eme
     of feathered elliptical bands (the back under the body, darkened in its shadow). Colours are veiled 15 % towards
     the sky's dark (strength 85 %). Depth: the layer shifts against the camera's motion on screen (galaxy 0, nebula
     0.005, planet 0.05, moons 0.075; `sky::place`), kept within 0.3 of the view's height. Z: galaxy −897, the
-    backdrop's stars −893, nebula −890, rings −887 / −885, planet −886, moons −883, under the star glow (−880).
+    backdrop's stars −893 to −892.4, nebula −890, rings −887 / −885, planet −886, moons −883; the hot star's glow, its
+    corona and the landmarks between the nebula and the planet (GDR-0107; until 17 Oct 2026 the glow lay over the
+    planet). Each piece's size also goes with the zoom to the power of its parallax (GDR-0107: hardly).
     The log line `sky: …` names the planet and moons and counts vertices (a large planet 21–33 k with rings, a small
     one 7–10 k, moons 0.5–3 k, nebula about 2.9 k, galaxy 6.6 k) and the build time. `?planet=<kind>` shows that
     planet kind instead (for looking at kinds). Screenshots (1280 × 720): `docs/results/sky-rim.png`,
     `sky-grove.png`, `sky-scorched.png`, `sky-uncharted.png`, `sky-clouds.png` (a cloudy world close up).
 - **Hot stars and living parts** (17 Oct 2026, [GDR-0102](gdr/0102-grown-mechanics-and-parts-defaults.md)): in a
   cluster beside a hot star (`Voyage::star`) a soft glow in the heat colour rises at the edge of the view towards the
-  star (`backdrop.rs`, a camera child over the gradient, under the dust; a disc as wide as the view centred just past
+  star (`backdrop.rs`, a camera child over the gradient and the nebula, behind the planet, GDR-0107; a disc as wide as the view centred just past
   the edge, its strength `0.4 + 0.6 × √(heat here / peak)`), and the voyage's subtitle adds `STAR HEAT x A SIDE` (the
   star's heat a second per open side at the flown ship); the parts it pushes towards their limit show in the HUD's
   heat warnings as before. A heart's re-grown part (`SimEvent::PartRegrown`) swells softly in its hull's glow before
@@ -788,7 +803,24 @@ off, the flash and its ring where it left), `voyage-warp-emergency.png` (the eme
   fleet teal dots (the flown one with a heading tick); over it `CLUSTER MAP · NYOST FIELD · 4.3 KM ACROSS · N CLOSES`
   (at least 60 px down: in a short window it ran over the HUD's title).
   The site markers at the screen's edge step aside while it shows; the flight goes on. Screenshot:
-  `docs/results/galaxy-cluster-map.png`.
+  `docs/results/galaxy-cluster-map.png`. Since 17 Oct 2026 it is drawn by the painter it shares with the minimap
+  (`flight_hud/chart.rs`), so it also shows the rocks spawned so far, each vessel's sensor reach and the contacts
+  within it (below).
+- **The minimap** (17 Oct 2026, [GDR-0106](gdr/0106-flight-minimap.md); `flight_hud/minimap.rs`, drawn by
+  `flight_hud/chart.rs`): on a voyage a dark disc bottom right (76 px radius, 28 px from the right, 46 px up; on
+  touch 184 px up, above the fire button; a `HudZone`, so the edge markers keep clear of it), north up and centred on
+  the flown ship (the camera without one), `N` at its top, a faint ring at half the range and under it `RANGE 1.0 KM
+  · B`. In it, like the cluster map: the cluster's edge dotted, the entry, the rocks spawned so far as faint specks,
+  each scan's sweep in faint violet, the bearings dashed gold until their site is found, the sites found with their
+  rings, each non-dormant vessel's sensor reach as a faint dotted teal ring (`sim::Voyage::sensors`, the director's
+  own list), the contacts within it (running enemy vessels coral, dark or dormant ones of another side grey, wrecks
+  of at least 3 parts gold; a ship of a site not found yet and a sleeping site's ships stay hidden) and the fleet
+  (teal, the flown vessel with a heading tick). B (`minimap`) steps 1 km → 2.5 km → hidden; hidden while the cluster
+  map is open; fades with the HUD. Numbers in `art/tokens.json` (`minimap.*`). Per frame one pass over the ships'
+  pieces, the rocks, sites, bearings and scans into the FX queue. Screenshots (1280 × 720):
+  `docs/results/minimap-scan-bearings.png` (a signal's cluster after a scan: two bearings, a raider pair found),
+  `minimap-contacts.png` (flown into the raider pair: contacts and found sites round the ship, a derelict near),
+  `scenery-rock-close.png` (a rock close by: its specks beside the ship).
 - **Recall**: R or the pill asks; the next tick starts the 3 s warp-out only if the sim allows it (else `NO
   RECALL · ARMED ENEMIES WITHIN 200 M`; a disarmed fleet always may, and the banner says `EMERGENCY WARP`). The warp-out can't be broken off (`WARPING HOME · 2`, for the emergency recall `EMERGENCY WARP · 2` in gold); what it looks like: **Transitions** below; losing every vessel
   during it still loses the voyage. At its end the haul is every player vessel's cargo (dormant and dark ones

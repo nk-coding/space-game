@@ -114,7 +114,7 @@ pub(super) fn paint(
     for r in v.rocks() {
         let q = chart.at(v2(r.pos));
         if chart.inside(q, 0.0) {
-            pen.dot(q, (2.0 * r.radius * chart.scale).max(1.8), ui.label.with_alpha(0.4));
+            pen.dot(q, (2.0 * r.radius * chart.scale).max(1.8), ui.label.with_alpha(0.3));
         }
     }
 

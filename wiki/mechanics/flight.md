@@ -198,6 +198,12 @@ Under a lock, [[control:turn_left.keys]] and [[control:turn_right.keys]] nudge t
 instead, with whatever thrusters push that way. A ship with engines only at the back can't brake or strafe while
 locked: it would have to turn away from the target to do so.
 
+### Where you are
+
+The camera never turns: north is always up, on the screen as on the minimap in the corner and on the cluster map.
+On a voyage the minimap shows what your sensors and scans have found round you; see
+[Controls](/mechanics/controls#the-minimap-and-the-cluster-map).
+
 ## Turning
 
 The flight computer turns with a **first line** of sources that push the ship nowhere: gyros, the cores' reaction
