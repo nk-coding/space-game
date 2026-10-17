@@ -1,6 +1,7 @@
 # GDR-0060: Behavior editor wave B defaults: editing gestures, saving and linking, the live panel
 
-- Status: Accepted (provisional, lead); flying the faction default with a banner confirmed by Niklas in [GDR-0079](0079-review-of-lead-defaults-14-oct.md)
+- Status: Accepted (provisional, lead); flying the faction default with a banner confirmed by Niklas in [GDR-0079](0079-review-of-lead-defaults-14-oct.md).
+  2026-10-17: Accepted (Niklas, 17 Oct 2026).
 - Date: 2026-10-13
 - Decided by: lead session (defaults for Niklas to review); details by the wave-B behavior agents
 - Related: [GDR-0057](0057-behavior-editor-v1.md), [GDR-0059](0059-behavior-editor-wave-a-defaults.md), `docs/client.md` "Behavior screen", `docs/drydock.md` "Behaviors"

@@ -1,6 +1,7 @@
 # GDR-0087: Voyage transitions: the fleet visibly warps out and in, the camera eases in during the charge, every end dips to dark
 
-- Status: Accepted (provisional, lead)
+- Status: Accepted (provisional, lead).
+  2026-10-17: Accepted (Niklas, 17 Oct 2026).
 - Date: 2026-10-14
 - Decided by: Niklas asked for it ("the recall etc. could get a better animation or so", 14 Oct 2026); the look,
   the timings and the camera behaviour are lead defaults for him to review

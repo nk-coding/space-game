@@ -4,6 +4,8 @@
   by one scan addressed (4 free clusters within range of home; areas 3–4 S narrowing to 60 %); the cut labels at a
   wide window's left edge, the jump range's outline (one union, its arcs meeting at the crossings) and its flicker
   while zooming fixed; the Warden's voyage says `GATE · OPEN` once cleared (tracks E7, E8, [GDR-0098](0098-slice-in-the-galaxy-and-rim-rewards.md)).
+  2026-10-17: Accepted (Niklas, 17 Oct 2026). The lost-voyage rule is kept: finds, charts, signals and trail rewards survive a lost
+  voyage; only the haul is lost, data cores included ([GDR-0029](0029-mild-death-bonded-matter.md), [GDR-0096](0096-career-galaxy-format-3.md)).
 - Date: 2026-10-16
 - Decided by: lead session (defaults for Niklas to review, galaxy tracks E5 and E6)
 - Related: [GDR-0078](0078-galaxy-exploration-v1.md), [GDR-0080](0080-exploration-searching-and-story.md), [GDR-0091](0091-log-building-and-voyage-history.md), [GDR-0093](0093-galaxy-exploration-decisions-16-oct.md), [GDR-0095](0095-sensors-hidden-sites-and-scans.md), [GDR-0096](0096-career-galaxy-format-3.md), [GDR-0065](0065-phase-7-screens-and-escort-action.md), `docs/plans/galaxy-voyages.md` (E5, E6, 4.1–4.5), `docs/client.md` "Voyage map", "Voyages", "LOG"

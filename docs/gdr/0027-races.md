@@ -1,6 +1,8 @@
 # GDR-0027: Rogue automatons and four alien races, one per band, mainly for variety and tech
 
-- Status: Accepted
+- Status: Accepted.
+  2026-10-17: the Grown detailed in [GDR-0099](0099-the-grown-and-the-outer-reach.md) (heart-fed regrowth, rammers with thorn guns, calm until
+  provoked, their own research family).
 - Date: 2026-10-10
 - Decided by: Niklas (interactive Q&A)
 - Related: [GDR-0024](0024-tech-trees-no-mk-levels.md), [GDR-0026](0026-procedural-galaxy-and-bands.md), [GDR-0031](0031-materials-and-fabrication.md), [GDR-0032](0032-balancing-arena-evolution.md)

@@ -28,6 +28,7 @@
     and left out, and written back without them (no format version change: the new text reads in older builds).
     Every AI stream unchanged; the `assists` scenario changes (it now exercises auto-lock, dropping a lock and LOCK
     TARGET).
+  - 2026-10-17: Accepted (Niklas, 17 Oct 2026): the assists and the lead defaults above are kept.
 - Date: 2026-10-14
 - Decided by: Niklas (assist model, scope, first actions, override, default, weapon groups, fire keys, bindings);
   lead defaults where marked

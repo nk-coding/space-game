@@ -3,6 +3,8 @@
 - Status: Accepted; travel along lanes superseded by [GDR-0078](0078-galaxy-exploration-v1.md) (jump range, no lanes; 2026-10-14).
   2026-10-17: set pieces are placed into the galaxy by content, the slice's four first; the rim's first gate is the
   Warden's ([GDR-0098](0098-slice-in-the-galaxy-and-rim-rewards.md)).
+  2026-10-17: the outer reach and the Grown detailed in [GDR-0099](0099-the-grown-and-the-outer-reach.md) (hot clusters, groves, a precursor guardian at
+  each gate to the middle reach, giant Grown ships as boss sites).
 - Date: 2026-10-10
 - Decided by: Niklas (interactive Q&A)
 - Related: [GDR-0002](0002-awakened-ship-mind-light-story.md), [GDR-0027](0027-races.md), [GDR-0028](0028-clusters-and-voyages.md), [ADR-0022](../adr/0022-one-simulation-space-per-cluster.md), [ADR-0024](../adr/0024-saves-seed-and-deltas.md)

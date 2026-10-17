@@ -496,6 +496,17 @@ Next session:
 - **Shield bubbles** (ADR-0029 note): one mesh, two passes (over space under every ship's tiles; over the own
   piece's tiles at their exact depth), so no bubble shows over another ship's hull.
 
+### 17 Oct 2026: Niklas's decisions (the Grown, balance targets, the lead defaults)
+
+- **The Grown and the outer reach** ([GDR-0099](gdr/0099-the-grown-and-the-outer-reach.md)): heart-fed regrowth,
+  rammers with thorn guns, calm until provoked, regrowing tissue armour and a ram prow first, hot clusters, a
+  precursor guardian at each gate to the middle reach. Not built yet; a candidate for the bands past the rim.
+- **Fight balance targets** ([GDR-0100](gdr/0100-fight-balance-targets.md)): GDR-0073's curve (the Warden about 40 %
+  for a Runner and an escort), shields that collapse, encounter counts first, turn rates and test-range waves kept;
+  the re-measurement is in `results/slice-balance-2026-10-17.md`.
+- **Lead defaults accepted**: twenty records' defaults, and GDR-0089's except the speed governor (judge in play);
+  `gdr/README.md` lists them.
+
 ## Phase 4: measurement
 
 Status 12 Oct 2026 (new VM): `results/spike-summary.md` written. Determinism native vs wasm IDENTICAL on the new VM

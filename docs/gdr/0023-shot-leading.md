@@ -1,6 +1,7 @@
 # GDR-0023: AI ships lead their shots; the player's lock aims at the lead point for projectile weapons
 
-- Status: Accepted (provisional, lead)
+- Status: Accepted (provisional, lead).
+  2026-10-17: Accepted (Niklas, 17 Oct 2026).
 - Date: 2026-10-11
 - Decided by: lead session (default for Niklas to review)
 - Related: [GDR-0009](0009-stick-and-lock-controls.md), [GDR-0016](0016-combat-pace-and-aiming.md), [GDR-0020](0020-damage-v1-defaults.md), `docs/sim.md` "Aiming and leading"

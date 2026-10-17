@@ -1,6 +1,7 @@
 # GDR-0056: Drydock wave 2 defaults: editing gestures, stats wording, saving behaviour
 
-- Status: Accepted (provisional, lead); the right mouse button erasing confirmed by Niklas in [GDR-0079](0079-review-of-lead-defaults-14-oct.md)
+- Status: Accepted (provisional, lead); the right mouse button erasing confirmed by Niklas in [GDR-0079](0079-review-of-lead-defaults-14-oct.md).
+  2026-10-17: Accepted (Niklas, 17 Oct 2026).
 - Date: 2026-10-13
 - Decided by: lead session (defaults for Niklas to review); details by the wave-2 drydock agents
 - Related: [GDR-0051](0051-drydock-v1.md), [GDR-0052](0052-drydock-stats-full-use.md), [GDR-0053](0053-drydock-v1-lead-defaults.md), [GDR-0054](0054-drydock-locked-parts-tools-saving-sharing.md), [ADR-0031](../adr/0031-player-storage-and-design-sharing.md), `docs/drydock.md`

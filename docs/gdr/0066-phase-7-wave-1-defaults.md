@@ -4,6 +4,7 @@
   2026-10-16 (Niklas): the `rim_skiff`'s two shield emitters moved forward into row 1 and the two steel blocks there into
   the rear row: from the rear row their bubbles left the whole front row bare, both pulse lasers too; now they cover
   it and the stern is the bare end (the same day as the shields fix in [GDR-0021](0021-shields.md)'s Notes).
+  2026-10-17: Accepted (Niklas, 17 Oct 2026).
 - Date: 2026-10-13
 - Decided by: lead session (defaults for Niklas to review); details by the wave-1 agents (tracks 7A–7D)
 - Related: [GDR-0062](0062-first-playable-loop.md), [GDR-0063](0063-salvage-and-research-v1.md), [GDR-0065](0065-phase-7-screens-and-escort-action.md), [ADR-0033](../adr/0033-career-model-save-and-voyage-director.md), `docs/content-model.md`, `docs/sim.md` "Salvage", `docs/career.md`, `docs/client.md` "Home"

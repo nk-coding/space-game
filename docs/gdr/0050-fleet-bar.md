@@ -1,6 +1,7 @@
 # GDR-0050: The fleet bar: a strip at the top centre, shown with two or more vessels or a dormant one; a tap focuses, a tap on a dormant vessel wakes it
 
-- Status: Accepted (provisional, lead)
+- Status: Accepted (provisional, lead).
+  2026-10-17: Accepted (Niklas, 17 Oct 2026).
 - Date: 2026-10-12
 - Decided by: lead session (default for Niklas to review); look and details by the fleet-bar agent
 - Related: [GDR-0013](0013-vessels-and-piloting.md) (focus, fleet bar, camera glide), [GDR-0044](0044-control-cost-priority-idle-dormant-newest.md) (dormant vessels, swap in the fleet bar), [GDR-0008](0008-ui-ship-mind-interface.md) (look), [GDR-0038](0038-logic-cores-control-parts.md) (control capacity), `docs/client.md` "Fleet bar", `docs/style-guide.md` "UI"

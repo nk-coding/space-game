@@ -1,6 +1,8 @@
 # GDR-0089: Play-test of 15 Oct: the velocity follows the push at top speed, salvage settles, test-range waves bring bigger enemies, the station comes alive
 
-- Status: Accepted (provisional, lead)
+- Status: Accepted (provisional, lead).
+  2026-10-17: Accepted (Niklas, 17 Oct 2026) for the salvage settling, the station's animations and the range rings; the
+  waves' fill by size kept ([GDR-0100](0100-fight-balance-targets.md)); the speed governor stays provisional (Niklas: judge it in play).
 - Date: 2026-10-15
 - Decided by: lead session, from Niklas's play-test notes and answers (the speed model: "you find a way to make this feel better"; the waves: "fill by size", chosen interactively)
 - Related: [GDR-0041](0041-engine-rated-speed.md), [GDR-0055](0055-slower-crisper-turning.md), [GDR-0064](0064-lock-feed-forward-and-ai-flight-fixes.md), [GDR-0063](0063-salvage-and-research-v1.md), [GDR-0079](0079-review-of-lead-defaults-14-oct.md), [GDR-0074](0074-test-range-waves-emergency-recall-cannon.md), [GDR-0071](0071-shipyard-home-long-u.md), `docs/sim.md` "Top speed and the cruise flame" and "Salvage", `docs/client.md` "Scenes"

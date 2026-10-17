@@ -1,6 +1,7 @@
 # GDR-0022: Heat is simulated per part, with shutdown hysteresis
 
-- Status: Accepted (provisional, lead)
+- Status: Accepted (provisional, lead).
+  2026-10-17: Accepted (Niklas, 17 Oct 2026); the outer reach's hot clusters make heat and radiators matter ([GDR-0099](0099-the-grown-and-the-outer-reach.md)).
 - Date: 2026-10-11
 - Decided by: lead session (default for Niklas to review)
 - Related: [GDR-0004](0004-grid-ship-building-no-wiring.md), [GDR-0012](0012-halvex-runner-follows-rules.md), `docs/sim.md` "Heat"

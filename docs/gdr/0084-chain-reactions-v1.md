@@ -5,7 +5,8 @@
   deep and the automaton core, shield emitter and RCS pod explode too: [GDR-0085](0085-chain-reactions-v2.md). The
   rest stands. 17 Oct 2026: the drydock follow-up is built: the BLAST overlay shows every exploding part's reach,
   what it destroys and the armour that covers, and the status line warns when a blast would take a logic core, a
-  gun or another exploding part (`docs/drydock.md` "Overlays", "Status line").
+  gun or another exploding part (`docs/drydock.md` "Overlays", "Status line"). Accepted (Niklas, 17 Oct 2026): the
+  blasts stay as they are, numbers included.
 - Date: 2026-10-14
 - Decided by: Niklas (build chain reactions now, 14 Oct 2026); the numbers and v1 rules are lead defaults for him to
   review

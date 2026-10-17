@@ -1,6 +1,8 @@
 # GDR-0098: The slice in the galaxy and the rim's rewards: set pieces by content, the Warden's gate the rim's first gate, wider signal areas that narrow to 60 %, four free clusters by home, caches, memories and graveyards
 
-- Status: Accepted (provisional, lead)
+- Status: Accepted (provisional, lead).
+  2026-10-17: Accepted (Niklas, 17 Oct 2026): the galaxy's shape and pace are kept (the set pieces' distances, areas 3–4 S narrowing
+  to 60 %, 2–3 voyages to find a signal); a trail's reward still counts on a lost voyage ([GDR-0097](0097-galaxy-map-and-voyage-flow.md)).
 - Date: 2026-10-17
 - Decided by: lead session (defaults for Niklas to review, galaxy tracks E7 and E8, and two tunings of E4)
 - Related: [GDR-0002](0002-awakened-ship-mind-light-story.md), [GDR-0026](0026-procedural-galaxy-and-bands.md), [GDR-0029](0029-mild-death-bonded-matter.md), [GDR-0075](0075-voyages-feel-like-exploration.md), [GDR-0078](0078-galaxy-exploration-v1.md), [GDR-0080](0080-exploration-searching-and-story.md), [GDR-0093](0093-galaxy-exploration-decisions-16-oct.md), [GDR-0094](0094-galaxy-generator-defaults.md), [GDR-0095](0095-sensors-hidden-sites-and-scans.md), [GDR-0096](0096-career-galaxy-format-3.md), [GDR-0097](0097-galaxy-map-and-voyage-flow.md), [GDR-0092](0092-evolution-lab-for-your-own-ships.md), `docs/plans/galaxy-voyages.md` (E7, E8, 4.1, 4.3, 4.7)
