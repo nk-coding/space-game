@@ -5,6 +5,7 @@
   waves' fill by size kept ([GDR-0100](0100-fight-balance-targets.md)); the speed governor stays provisional (Niklas: judge it in play).
   2026-10-18: the waves leave out wary factions' ships (the Grown) and the outer gates' bastion, so they stay as
   they were ([GDR-0103](0103-the-grown-in-play-defaults.md)).
+  2026-10-18: the station's salvage bay is the WORKSHOP now and the fabricator's slot is free ([GDR-0108](0108-materials-economy-workshop.md)); the shuttles still berth beside it.
 - Date: 2026-10-15
 - Decided by: lead session, from Niklas's play-test notes and answers (the speed model: "you find a way to make this feel better"; the waves: "fill by size", chosen interactively)
 - Related: [GDR-0041](0041-engine-rated-speed.md), [GDR-0055](0055-slower-crisper-turning.md), [GDR-0064](0064-lock-feed-forward-and-ai-flight-fixes.md), [GDR-0063](0063-salvage-and-research-v1.md), [GDR-0079](0079-review-of-lead-defaults-14-oct.md), [GDR-0074](0074-test-range-waves-emergency-recall-cannon.md), [GDR-0071](0071-shipyard-home-long-u.md), `docs/sim.md` "Top speed and the cruise flame" and "Salvage", `docs/client.md` "Scenes"

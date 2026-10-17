@@ -1,6 +1,7 @@
 # GDR-0082: Drydock layout v2 (every part in sections, armour swatches on the left, tools in the bottom bar, icons and a ⋯ menu) and part availability (unlimited for now)
 
 - Status: Accepted
+  2026-10-18: the career fills no counts in the editing model ([GDR-0108](0108-materials-economy-workshop.md)): designs are not limited by the workshop's stock (they plan ahead); the launch is, and the palette rows show the stock less what the design holds. The counts stay for the lab's runs.
 - Date: 2026-10-14
 - Decided by: Niklas (in chat and interactively, with the draft `docs/plans/mockups/drydock-left-column.html`)
 - Related: [GDR-0051](0051-drydock-v1.md), [GDR-0053](0053-drydock-v1-lead-defaults.md), [GDR-0063](0063-salvage-and-research-v1.md), [GDR-0029](0029-mild-death-bonded-matter.md), [GDR-0031](0031-materials-and-fabrication.md), [GDR-0081](0081-drydock-editing-bevel-rotate-replace.md), `docs/drydock.md`

@@ -569,6 +569,20 @@ Next session:
   contacts now). Screenshots `results/minimap-*.png`.
 - Open: a tap on touch to step the minimap; the minimap in the test range.
 
+### 18 Oct 2026: the materials economy, the backdrop tuned
+
+- ([GDR-0108](gdr/0108-materials-economy-workshop.md), Niklas; numbers lead defaults) The WORKSHOP (the fabricator
+  and the salvage bay merged): recipes for every non-hull part, three fabrication resources, the first workshop
+  upgrades, the fleet fitted from the workshop's stock (launch blocked when parts are missing; FABRICATE MISSING),
+  hauled intact parts kept or dismantled (SORT AS SUGGESTED), most stripped parts break (sim `intact_chance` 0.15),
+  dismantling returns 40 % (broken 25 %); save format 5 with older saves stocked from their designs. Inflow per
+  voyage: `results/materials-inflow-2026-10-18.md`. Screenshots `results/workshop-*.png`.
+- ([GDR-0107](gdr/0107-depth-layers-zoom-and-draw-order.md) status line) The backdrop's layers by parallax (stars
+  0.01–0.06, planet 0.09, junk 0.3 and 0.7), fewer far stars, thinner near junk, smaller planets, a soft spiral
+  galaxy. Screenshots `results/backdrop-*.png`.
+- Open: hull plating as stock, dismantling stock parts, installing salvage with a bonding cost, harvesting the ores,
+  more workshop upgrades, the inflow tuned after play.
+
 ## Phase 4: measurement
 
 Status 12 Oct 2026 (new VM): `results/spike-summary.md` written. Determinism native vs wasm IDENTICAL on the new VM

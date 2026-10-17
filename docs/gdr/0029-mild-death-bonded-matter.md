@@ -1,6 +1,7 @@
 # GDR-0029: Death is mild: bonded matter re-forms your ship at home; the unbonded haul stays as a wreck
 
 - Status: Accepted
+  2026-10-18: with fabrication ([GDR-0108](0108-materials-economy-workshop.md)): ships fit from the workshop's stock without consuming it, a lost ship's parts re-form at home (only the haul is at stake); installing salvage "as is" is keeping an intact part (no bonding cost yet); refitting returns nothing to take back, as fitting takes nothing.
 - Date: 2026-10-10
 - Decided by: Niklas (interactive Q&A)
 - Related: [GDR-0002](0002-awakened-ship-mind-light-story.md), [GDR-0025](0025-research-from-salvage.md), [GDR-0030](0030-no-economy.md), [GDR-0031](0031-materials-and-fabrication.md)

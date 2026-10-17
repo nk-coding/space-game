@@ -2066,7 +2066,8 @@ were set by the salvage agent for Niklas to review.
 ### Items and cargo
 
 - **Items** (`Item`): `Part { part, material }`, a whole part by content id (hull parts carry their armour
-  material), `Fragment { part }`, what a destroyed part leaves if its `salvage` block names a `fragment` (the
+  material), `Broken { part, material }` (18 Oct 2026, GDR-0108: a part that broke as it was stripped, below),
+  `Fragment { part }`, what a destroyed part leaves if its `salvage` block names a `fragment` (the
   content id of that part), and `DataCore { trail, signal }` (16 Oct 2026, galaxy track E4, GDR-0096): a log of the
   galaxy's trail signal, one cargo unit worth `salvage::DATA_CORE_VALUE` (1000) a unit, so a hold takes it first and a
   shrinking hold drops it last; a voyage puts it into the first wreck of a log's site when the site spawns
@@ -2117,6 +2118,11 @@ Salvage pieces are every piece that is no controlling piece: wrecks, split-off d
 the cored pieces of a burned-out derelict. Only what fits counts: with 2 units free a 4-unit fusion reactor waits and
 smaller parts go first; a full hold takes nothing; only salvageable parts count (`PartSpec::salvageable`).
 
+- **Most stripped parts break** (GDR-0108, Niklas 18 Oct 2026; `SalvageTuning::intact_chance` 0.15, a placeholder):
+  a stripped part that is not hull comes away intact with that chance, one draw on `Stream::Debris` per part (in
+  the pass's ship order), else as `Item::Broken`: the same cargo units, half the value per unit (so a shrinking hold
+  sheds it before an intact one). Hull parts are never rolled (`Item::Part` always: their plating is dismantled at
+  home either way). A chance of 1 (or 0) draws nothing. Cargo already in a hold (a wreck's, a spill) keeps its item.
 - **A stripped part** leaves through the destroy path without the destruction (`Ship::remove_part`, which
   `apply_damage` shares): dead, out of the grid, its neighbours' exposure and bonuses refreshed, its piece re-checked;
   no `PartDestroyed`, no chain reaction, no fragment. Breakage then runs as for any destroyed part (`PieceChanged`,

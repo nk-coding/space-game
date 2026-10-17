@@ -116,6 +116,7 @@ overview and links to both series. Format and status rules: `CLAUDE.md`, section
 | [0105](0105-cluster-sky-planets-nebula-galaxy.md) | A cluster's sky: a planet (13 kinds), its moons (6 kinds, never two alike), a nebula and a far galaxy in soft vertex-colour style B, rolled from the cluster's seed, kinds and skies in content, drawn only at 85 % | Accepted (provisional, lead; style Niklas's) | 2026-10-17 |
 | [0106](0106-flight-minimap.md) | A minimap in flight: an always-on disc bottom right on a voyage, north up round the flown ship, 1 km (B: 2.5 km, then off), only what the sensors and scans revealed, drawn by the cluster map's painter | Accepted (provisional, lead) | 2026-10-17 |
 | [0107](0107-depth-layers-zoom-and-draw-order.md) | Depth layers: a layer of parallax p moves p of the camera's motion and scales with the zoom to the power p, draws by its depth (nothing farther than the planet over it), stars in three layers, no distant fights, finer rocks | Accepted (provisional, lead) | 2026-10-17 |
+| [0108](0108-materials-economy-workshop.md) | The materials economy: one WORKSHOP (the fabricator and the salvage bay merged), parts cost materials (recipes, workshop upgrades) and fit a fleet from its stock (nothing consumed; lost parts re-form), hauled intact parts kept or dismantled, most stripped parts break, dismantling returns 40 % (broken 25 %) | Accepted (Niklas; numbers provisional, lead)
 <!-- index:end -->
 
 ## How to add, supersede and deprecate

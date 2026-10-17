@@ -1,6 +1,7 @@
 # GDR-0063: Salvage and research v1: fly over wrecks, the haul is dismantled at home into research data, unlocks are unlimited
 
 - Status: Accepted
+  2026-10-18: unlimited parts end ([GDR-0108](0108-materials-economy-workshop.md), Niklas): parts cost materials and a fleet fits from the workshop's stock; the haul is no longer dismantled whole and automatically: most stripped parts break (dismantled at once for their data and 25 % of their recipe), intact ones wait in the workshop to be kept or dismantled; `salvage.materials` is gone (a part's materials come from its recipe).
 - Date: 2026-10-13
 - Decided by: Niklas (interactively)
 - Related: [GDR-0024](0024-tech-trees-no-mk-levels.md), [GDR-0025](0025-research-from-salvage.md), [GDR-0029](0029-mild-death-bonded-matter.md), [GDR-0030](0030-no-economy.md), [GDR-0031](0031-materials-and-fabrication.md), [GDR-0051](0051-drydock-v1.md), [GDR-0054](0054-drydock-locked-parts-tools-saving-sharing.md), [GDR-0062](0062-first-playable-loop.md), `docs/plans/first-playable-loop.md`, `docs/plans/salvage-research.md`

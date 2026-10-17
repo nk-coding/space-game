@@ -4,8 +4,10 @@ The ship editor: Drydock v1 (decided by Niklas, 12 Oct 2026) follows the desktop
 (`../space-game-archive/concept/boards/ui-mockups/desktop-drydock.png`: tools PAINT B, FILL G, ERASE X, SELECT V, ROTATE Q E,
 MIRROR M, BEVEL Shift+B, undo/redo) and the concept board (`../space-game-archive/concept/boards/concept-board/02-drydock.png`).
 Layout v2 (14 Oct 2026, [GDR-0082](gdr/0082-drydock-layout-v2-and-part-availability.md)): every part in sections
-on the left with the armour swatches, the tools in the bottom bar, icon buttons and a ⋯ menu. Parts are unlimited
-for now; the plumbing for counts is in ([Part availability](#part-availability)).
+on the left with the armour swatches, the tools in the bottom bar, icon buttons and a ⋯ menu. A design is not limited
+by the workshop's stock (GDR-0108, 18 Oct 2026): each palette row shows the stock less what the design holds (coral
+below 0, dim at 0; `∞` in free mode and for hull), the SELECTED PART block a palette part's RECIPE and IN STOCK, and
+the status line what the fleet lacks (`NOT VOYAGE-READY · PULSE LASER 1 OF 2 IN STOCK`); the workshop fabricates it.
 
 ## Where the pieces live
 
@@ -148,8 +150,8 @@ takes the material. The same part put down exactly on itself replaces nothing an
 ### Part availability
 
 GDR-0082, 14 Oct 2026. `set_available(part, Availability)` tells the editor how many of a part the player has
-(`data::career::Availability`: `Unlimited`, or `Count(n)` in all, the design's own parts included; the client passes
-`Career::available`, every part unlimited for now). Not an edit: no undo step, no revision change. `left(part)` is
+(`data::career::Availability`: `Unlimited`, or `Count(n)` in all, the design's own parts included). The career's
+drydock sets none since GDR-0108 (the stock limits the launch, not the design); the lab's runs do. Not an edit: no undo step, no revision change. `left(part)` is
 what remains (`Count(n − parts placed)`, never below 0). An edit that would put down a part with none left is
 refused with `Refusal::NoneLeft(part)` ("NO BEAM LASER LEFT" on the info line): `check`, `place` and its preview,
 a new slope, painting or bevelling an empty cell; turning, repainting, moving and erasing never are. A mirror image

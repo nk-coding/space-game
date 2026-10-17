@@ -147,7 +147,9 @@ stripped. The Grown (`factions/grown.ron`) are wary; their ships come with phase
 
 ### Materials (`materials/*.ron`)
 
-Materials with an optional component block. For now only armor:
+Materials with an optional component block: armour materials (an `armor` block), and fabrication resources without
+one (GDR-0108: `materials/fabrication.ron`'s copper, ceramic and lattice crystal, what recipes take besides steel,
+programmable matter and the races' plate and tissue), and ores (GDR-0104). Armour:
 
 ```ron
 (id: "composite", name: "Composite", summary: "...", icon: "armor-composite",
@@ -534,8 +536,9 @@ GDR-0101: `raider_basic`'s rules with the target `nearest(engines)`).
 
 ### Salvage (added 13 Oct 2026)
 
-What a salvaged part gives when the haul is dismantled at home (GDR-0063): research data for one
-[family](#research-families-familiesron-added-13-oct-2026) and, optionally, materials. The career model turns a haul
+What a salvaged part gives when it is dismantled at home (GDR-0063): research data for one
+[family](#research-families-familiesron-added-13-oct-2026); its materials are a share of its [recipe](#recipes-added-18-oct-2026-gdr-0108)
+(GDR-0108; `materials` in this block until 18 Oct 2026). The career model turns a haul
 into data and materials with it (`docs/career.md` "Unloading a haul"). The sim reads only two facts from it
 (compiled into the ship's design): a part without the block (a hull part: its material without one) is never
 collected, and only a part whose block has a non-empty `fragment` leaves a fragment when destroyed. What a
@@ -544,8 +547,7 @@ collector takes first and how much room an item needs are sim rules (`docs/sim.m
 ```ron
 // parts/automatons.ron
 (id: "automaton_cannon", ..., salvage: (family: "kinetic", data: 3)),
-(id: "automaton_core", ..., salvage: (family: "logic", data: 4,
-    materials: {"programmable_matter": 1}, fragment: {"programmable_matter": 1})),
+(id: "automaton_core", ..., salvage: (family: "logic", data: 4, fragment: {"programmable_matter": 1})),
 // materials/armor.ron: per cell of hull area in this material (slopes count half a cell)
 (id: "steel", ..., salvage: (family: "hull", data: 1)),
 ```
@@ -553,8 +555,7 @@ collector takes first and how much room an item needs are sim rules (`docs/sim.m
 | Field | Notes |
 |---|---|
 | `family` | research family id the data goes to |
-| `data` | research data one intact part gives (on a material: per cell of hull area); finite, 0 to 10000 (`data::content::validate::MAX_RESEARCH_DATA`) |
-| `materials` | parts only, optional: materials (id → amount) one intact part gives besides the data |
+| `data` | research data one dismantled part gives, intact or broken (on a material: per cell of hull area); finite, 0 to 10000 (`data::content::validate::MAX_RESEARCH_DATA`) |
 | `fragment` | parts only, optional: materials (id → amount) a **destroyed** part of this kind leaves as a fragment to scoop (GDR-0063: destroyed cores leave programmable matter); empty = it leaves nothing |
 
 Material amounts are whole numbers, 1 to 10000 (`data::content::validate::MAX_MATERIAL_AMOUNT`), of known materials. Hull
@@ -565,8 +566,25 @@ Base values (lead placeholders, 13 Oct 2026, after `docs/plans/first-playable-lo
 build points): automaton cannon kinetic 3, thruster propulsion 3, gyro propulsion 4, RCS pod propulsion 2, torch
 drive propulsion 9, pulse laser energy 3, beam laser energy 7, fission reactor power 4, fusion reactor power 10,
 capacitor power 2, shield emitter shields 3, radiator thermal 2, cargo bay utility 1.5, cargo hold utility 5, logic
-core logic 3, automaton core logic 4; both cores also give 1 programmable matter and leave a fragment of 1. Hull per
+core logic 3, automaton core logic 4; both cores leave a fragment of 1 programmable matter. Hull per
 cell: steel 1, composite 1.5, reactive 2, Automaton plate 1.
+
+### Recipes (added 18 Oct 2026, GDR-0108)
+
+What the workshop fabricates a non-hull part from: `recipe: (materials: {id: amount}, needs: "<facility>")` on the
+part. `materials` takes at least one known material, amounts 1 to 10000; `needs` (optional) names a workshop
+upgrade, a facility with `within` ([Facilities](#facilities-facilitiesron-added-16-oct-2026-gdr-0092)); hull parts
+have none (their plating is not counted yet). A part without a recipe is never fabricated (it comes only from intact
+salvage). Dismantling gives the workshop's share of it back (its rules on the facility).
+
+```ron
+(id: "pulse_laser", ..., recipe: (materials: {"copper": 3, "crystal": 2, "steel": 1})),
+(id: "fusion_reactor", ..., recipe: (materials: {"ceramic": 8, "copper": 6, "steel": 6}, needs: "fusion_workshop")),
+```
+
+Base recipes (lead placeholders, about twice the build points): every non-hull part has one; logic cores take 2
+programmable matter, automaton cores 3; the fusion reactor and the torch drive need the fusion workshop, the Grown's
+parts the growing vat, the automatons' core and cannon the automaton forge (which nothing opens yet).
 
 ### Research families (`families.ron`, added 13 Oct 2026)
 
@@ -634,6 +652,7 @@ of its own). The content needs at least one start (an error otherwise).
     ship: "rim_skiff",              // the first working design (a copy)
     mind_capacity: 2,               // logic cores the mind runs at once (GDR-0013); research adds to it
     voyages: ["yard_approach"],     // voyages open at the start
+    materials: {"copper": 4, ...},  // in store at the start (GDR-0108); the ship's parts are in stock
 )
 ```
 
@@ -642,6 +661,7 @@ of its own). The content needs at least one start (an error otherwise).
 | `ship` | a ship id. It must be one a new game can take on a voyage: no locked part or material, a size that fits a frame that is not locked, a logic core, and no more logic cores than `mind_capacity`. A ship without a hold (cargo on its main piece) is a warning: nothing salvaged would come home |
 | `mind_capacity` | 1 to 100 (`data::content::validate::MAX_MIND_CAPACITY`, a sanity bound) |
 | `voyages` | optional: voyage ids, each known and listed once. Clearing a voyage opens those that name it in `opens_after` ([Voyages](#voyages-voyagesron-added-13-oct-2026)) |
+| `materials` | optional (GDR-0108): materials in store at the start, known ids, amounts 1 to 10000; the start ship's non-hull parts are in the workshop's stock |
 
 Base start (placeholder, GDR-0062): `rim_awakening`, ship `rim_skiff`, mind capacity 2 (the two mind expansions
 bring it to 4), voyage `yard_approach` open.
@@ -768,9 +788,18 @@ the id kept for saved bindings): the nearest enemy, then the next by distance (`
 The home shipyard's buildings that the player opens (GDR-0071: "each area needs states from content"). Common header
 plus `locked` (default false): a locked facility is dark until a research node's `Facility(id)` opens it
 (`Career::unlocks`'s `facilities`; `?unlock=all` opens every one). `name` is the label over the building at home. The
-shipyard places and draws the building; only `evolution` (the evolution lab, locked, opened by `simulation_vault`) is
-content so far; the fabricator and the salvage bay come later. The wiki gives each a page with the research that
-opens it. Not in the rules' fingerprint.
+shipyard places and draws the buildings: `workshop` (open from the start) and `evolution` (the evolution lab, locked,
+opened by `simulation_vault`). Since GDR-0108 (18 Oct 2026) a facility may be:
+
+- an **upgrade** `within` another facility (no building of its own): recipes that `need` it are fabricated once it is
+  open (base: `fusion_workshop`, opened with the fusion reactor's node; `grown_vat`, with Living weapons;
+  `automaton_forge`, opened by nothing yet). `within` names a facility that is no upgrade itself.
+- **the workshop**, with `workshop: (dismantle, broken, keep)`: the share of a recipe dismantling an intact part
+  gives back (0 to 1; base 0.4), the share a broken part and a hull cell give (base 0.25), and how many of a part the
+  suggested sort keeps in stock at least (base 2). At most one facility has these rules (`Content::workshop`).
+
+The wiki gives each a page with the research that opens it, an upgrade's parts and the workshop's rules and upgrades
+(`[[facility:workshop.dismantle]]`, `.broken`, `.keep`). Not in the rules' fingerprint.
 
 ### The galaxy (`galaxy.ron`, `bands.ron`, `cluster_types/`, `trails.ron`, `signal_sources.ron`, `lore/`; added 16 Oct 2026, track E1)
 

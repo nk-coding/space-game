@@ -507,6 +507,7 @@ scene after `../space-game-archive/mockups/shipyard-long-u.png`, drawn by the ga
 | Test range: the sandbox with raider waves (a lost ship re-forms; M comes back, T opens the drydock as in any sandbox) | T, or a click on the tower or its lane |
 | FLEET: the escorts ([FLEET](#fleet)) at the moorings; Esc, CLOSE or its ring button closes it | F, or a click on the moorings |
 | LOG: the last voyages ([LOG](#log)) at the records mast; Esc, CLOSE or its ring button closes it | L, or a click on the mast |
+| WORKSHOP: the haul's parts, the stock, fabricating ([Workshop](#workshop)) under the bottom wall; Esc, CLOSE or its ring button closes it | W, or a click on the workshop |
 | EVOLUTION: the evolution lab ([Evolution](#evolution)) at the compute stack above the mind once the Simulation vault is researched (locked, E or a click open RESEARCH on that node); Esc, CLOSE or its ring button go back a page and close it from RUNS | E, or a click on the stack |
 | Voyages: the voyage map opens at once through the gate, the camera diving at it while the map opens inside its ring ([Voyage map](#voyage-map)); coming back runs the same way backwards | V, or a click on the gate |
 | Dismiss the debrief after a voyage | Esc, Enter, or DISMISS |
@@ -519,9 +520,10 @@ scene after `../space-game-archive/mockups/shipyard-long-u.png`, drawn by the ga
   drydock draws its grid, so the building area spans `0..w × −h..0` and the ship is docked where it was built (nose
   up). A bigger frame (cruiser 40 × 40) makes a bigger U and moves the buildings along; their sizes stay. The arms
   reach 3.5 m past the area, the gate's ring (7.5 m) stands 13 m beyond the tips with chevrons leading to it.
-  Research (with two dishes and an antenna), the fabricator and the LOG's records mast (on the arm's tip, the end
-  nearest the gate; GDR-0091) sit on the top wall, the test range's tower and its target lane and the salvage bay
-  under the bottom wall, the mind behind the base (joined by violet conduits), four
+  Research (with two dishes and an antenna) and the LOG's records mast (on the arm's tip, the end
+  nearest the gate; GDR-0091) sit on the top wall (the fabricator's slot between them is free since GDR-0108), the
+  test range's tower and its target lane and the workshop (three bays with a part on each bench, a crane arm; where
+  the salvage bay stood) under the bottom wall, the mind behind the base (joined by violet conduits), four
   escort moorings on two truss bridges running off the left edge (two in view, two past it).
 - **Detail** (`shipyard::draw`): plate runs in four tones with dark seams, a lattice truss along each outer face,
   three conduits (teal, gold, violet) along the inner faces, window rows (mostly lit or mostly dark by state), radiator fins,
@@ -543,7 +545,7 @@ scene after `../space-game-archive/mockups/shipyard-long-u.png`, drawn by the ga
   research runs, and the LOG's mast glowing gold while a voyage's result is new (a soft glow and a thin ring at its
   top, breathing between 0.7 and 1.15 of its size every 2.8 s; GDR-0091). **Two shuttles** roam the station's left end on their own (Niklas, 15 Oct 2026: "roam more
   freely ... not teleport"): each flies between 13 stops clear of the hulls (`Layout::shuttle_stops`: berths off
-  the four moorings' mouths, beside the mind, research and the salvage bay, and open points between the bridges,
+  the four moorings' mouths, beside the mind, research and the workshop, and open points between the bridges,
   past the gaps between the moorings and beside the mind), picking the nearest of three random stops next; it turns
   its nose towards the stop (1.6 rad/s) and thrusts along it (the sharper the turn, the less; top speed 2.6 m/s,
   1.2 m/s²), brakes into a berth (planned at 0.7 m/s²) and waits there 2–6 s six times in ten, and passes through
@@ -573,7 +575,8 @@ scene after `../space-game-archive/mockups/shipyard-long-u.png`, drawn by the ga
   escorts (`EscortDesigns`; escort 1 top near, 2 bottom near, 3 and 4 past the edge), drawn as the drydock draws
   them, nose up, at most 0.45 × the drydock's scale and smaller when they would not fit (5 × 5.2 m); an occupied
   mooring's windows and inner edge light up. **The LOG** glows while the career has a voyage's result the LOG has not
-  shown (`Career::unread`). **The fabricator and the salvage bay** stay dark (`LATER`) until they have screens.
+  shown (`Career::unread`). **The workshop**'s windows and bays are lit teal, gold while hauled parts wait there to be
+  sorted (`Career::intake`).
 - **Places and flights** (`shipyard::layout::Place`, `shipyard::fly`): a click or a tap on a place (an invisible UI
   node over it, hit-tested by `ui_kit` like any button, so touch works) or its key flies the camera there in 0.6 s
   (a smootherstep of the time since it began, so the same at any frame rate) around the flight's zoom anchor: the one
@@ -604,7 +607,7 @@ scene after `../space-game-archive/mockups/shipyard-long-u.png`, drawn by the ga
   `RESEARCH` / `2 READY` (gold while lit, else dim; `NOTHING READY` while lit with nothing to pay, `NO DATA YET`
   while dark), `VOYAGES` / `THE GATE · HALVEX DRIFT` (teal: the voyage the map will select; `DORMANT` while no
   voyage is open), `LOG` / `NO VOYAGES YET` (dim), `NEW · SHIPYARD APPROACH` or `2 NEW` (gold while a result is new),
-  `3 VOYAGES` (grey), `FABRICATOR` and `SALVAGE BAY` / `LATER`. Top left `THE SHIPYARD · RIM` and the working design's name;
+  `3 VOYAGES` (grey), `WORKSHOP` / `7 TO SORT` (gold), `FLEET SHORT OF 3` (coral) or `STOCK · 21 PARTS` (grey). Top left `THE SHIPYARD · RIM` and the working design's name;
   bottom right the career's notes (a head and a line each; the two most serious, coral before gold, and how many
   more the console has): a new game and its start's summary, a save kept as it is, content that changed under the
   save, `?save=`, `?unlock=all`, an escort whose design is gone, a refused launch ([Career](#career)). After a voyage
@@ -876,7 +879,8 @@ off, the flash and its ring where it left), `voyage-warp-emergency.png` (the eme
   theirs) until DISMISS, Esc or Enter: `VOYAGE
   HOME · HAUL UNLOADED` (or `SHIP LOST · RECALLED HOME`, `PRACTICE RUN · NOT SAVED`), the voyage's name, chips for
   the band, the outcome (`GOAL CLEARED`, `RECALLED`, `LOST`) and `FIRST CLEAR`; time, sites, kills, ships lost;
-  `14 PARTS DISMANTLED` with a row per part (fragments apart, most first, six at most) and what it gave; research
+  `14 PARTS DISMANTLED` with a row per part (intact parts, `Thruster, intact · TO THE WORKSHOP`, broken parts and
+  fragments apart, most first, six at most) and what it gave; research
   data per family with what is now in store; the materials; `RESEARCH READY · n` with the nodes the stores pay for
   now; `SIGNAL FOUND · HALVEX DRIFT` after a beacon mark for each voyage it opened (GDR-0078: the name from
   the content; Barlow has no ◆ either, so the materials have a diamond mark too); after a cluster voyage
@@ -1062,6 +1066,18 @@ there). Screenshots:
   on a voyage (`fleet::flies`: the one its design names when that flies, a content behavior or one of the player's
   without errors, else its faction's; a voyage flies the same, `behaviors::fallback`). Its cargo is on its card.
 - **Ships** are `ui_icons::UiIcon::Ship`: the design drawn as the drydock draws it, fitted into the node.
+
+## Workshop
+
+`workshop.rs`, 18 Oct 2026 ([GDR-0108](gdr/0108-materials-economy-workshop.md)): a layer over home at the workshop
+(W). Left **TO SORT**: the haul's intact parts (`Career::intake`) a row each with the count, the stock and the
+suggestion (`KEEP 2 · DISMANTLE 1`), KEEP and DISMANTLE (one at a time), and SORT AS SUGGESTED for all. Right
+**FABRICATE**: what the fleet (the working design and the escorts) is short of, with FABRICATE MISSING, then every
+unlocked part with a recipe (those the fleet lacks first): its stock (`1 / 2` against what the fleet carries, coral
+when short), its recipe (the materials it lacks in coral, an upgrade it needs in words) and MAKE. Top right the
+materials in store; bottom left what the last action did (`DISMANTLED 1 THRUSTER · PROPULSION +3 · STEEL +1`, a
+refusal in coral). Every action is the career's and writes the save. Screenshots:
+`docs/results/workshop-layer.png`, `workshop-home.png`, `workshop-drydock.png`.
 
 ## LOG
 
@@ -1448,8 +1464,8 @@ of the player's design, the screen with its widgets, editing (`data::design::edi
 overlays from `sim::report`, saving (SAVE, the autosave), the BLUEPRINTS and EXPORT screens, share codes and files
 (Storage and sharing below), the BEHAVIOR button and the test flight ([GDR-0056](gdr/0056-drydock-wave-2-defaults.md)).
 Layout v2 since 14 Oct 2026 ([GDR-0082](gdr/0082-drydock-layout-v2-and-part-availability.md), details in
-`docs/drydock.md` "Client: editing"). Parts are unlimited for now; each palette row shows how many are left (`∞`),
-from the career's part availability.
+`docs/drydock.md` "Client: editing"). Each palette row shows the workshop's stock less what the design holds (GDR-0108:
+coral when short; `∞` in free mode and for hull), the SELECTED PART block a palette part's recipe and stock.
 
 Open it with DRYDOCK at home, `?scene=drydock`, or T in flight; the ring button top left goes home. Screenshots:
 `docs/results/drydock-*.png`.

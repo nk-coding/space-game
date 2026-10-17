@@ -22,7 +22,7 @@ starts, salvage blocks, `locked`) is described in `content-model.md`.
 The model is pure, like `data::design::edit` for the drydock (ADR-0030): no Bevy, no I/O, wasm-safe, ordered containers
 only. Every question takes the `Content` it should be answered against.
 
-## The save (format 4)
+## The save (format 5)
 
 `Career` holds **facts only**. Everything that can be derived from content is derived on demand and never stored,
 so a content rebalance (a node's cost, a part's unlock) applies to old saves without a migration. The game stores
@@ -31,7 +31,7 @@ so a content rebalance (a node's cost, a part's unlock) applies to old saves wit
 (at most `limits::MAX_DOCUMENT_BYTES`, a leading byte order mark skipped).
 
 ```ron
-// space-game: saves, format 4, saved 1760351234
+// space-game: saves, format 5, saved 1760351234
 (
     packs: [
         ("base", "0.1.0"),
@@ -48,7 +48,17 @@ so a content rebalance (a node's cost, a part's unlock) applies to old saves wit
         "logic": 12.0,
     },
     materials: {
+        "copper": 4,
         "programmable_matter": 6,
+    },
+    stock: {
+        "capacitor": 2,
+        "logic_core": 2,
+        "pulse_laser": 2,
+        // ... the parts of the start ship, and what was kept or fabricated since.
+    },
+    intake: {
+        "thruster": 3,
     },
     escorts: [
         "drone_wing",
@@ -157,12 +167,14 @@ so a content rebalance (a node's cost, a part's unlock) applies to old saves wit
 | `researched` | research node ids, in the order researched |
 | `data` | research data in store per family (f32, only amounts above 0) |
 | `materials` | materials in store (whole numbers, only amounts above 0) |
+| `stock` | the workshop's parts by id (GDR-0108, format 5): what a fleet is fitted from; only counts above 0, never hull; left out when empty |
+| `intake` | intact hauled parts waiting in the workshop to be kept or dismantled (format 5); left out when empty |
 | `escorts` | saved design ids (`designs/`) flown as escorts; the flagship is the drydock's working design |
 | `seen` | parts research unlocked that the player has since picked or selected in the drydock; left out when empty (added 13 Oct 2026, track 7F: no new format, it has a default) |
 | `voyages` | per voyage ever launched: `launched` (count), `cleared` (the goal was cleared on a voyage that came home), `best_ticks` (the quickest such voyage, sim ticks at 30 per second) |
 | `underway` | the voyage launched and not ended; left out when none |
 | `log` | voyages launched, recalled, lost; items salvaged (parts and fragments unloaded) |
-| `history` | the last voyages, oldest first, at most `MAX_HISTORY` (50; GDR-0091, home's LOG): per voyage `voyage` (a content voyage, or a cluster's name), `cluster` (the generated cluster it went to; left out for a content voyage), `outcome` (`Recalled`, `Cleared` or `Lost`), `ticks`, `report` (`parts` and `fragments` by part id, `data`, `materials`, `logs`: data cores) and `new` (not shown in the LOG yet; left out when false); left out when empty. A voyage past 50 drops the oldest |
+| `history` | the last voyages, oldest first, at most `MAX_HISTORY` (50; GDR-0091, home's LOG): per voyage `voyage` (a content voyage, or a cluster's name), `cluster` (the generated cluster it went to; left out for a content voyage), `outcome` (`Recalled`, `Cleared` or `Lost`), `ticks`, `report` (`parts` (intact) and `broken` (format 5) and `fragments` by part id, `data`, `materials`, `logs`: data cores) and `new` (not shown in the LOG yet; left out when false); left out when empty. A voyage past 50 drops the oldest |
 | `galaxy` | the galaxy and what the player knows of it (format 3; format 4 the set pieces and the memory log, [below](#the-galaxy)); left out for content without a galaxy |
 
 The text is written with the pack loader's options (`Some(..)` left out, four-space indent) and is deterministic;
@@ -172,7 +184,9 @@ reading. Format 1 (until 15 Oct 2026) kept only the last voyage as `last_haul`; 
 as every save is written again on its first change. Format 2 (15–16 Oct 2026) had no `galaxy`; it reads as it is and
 gets its galaxy when the game loads it ([The galaxy](#the-galaxy), "Migrating a slice career"), and is written at once.
 Format 3 (16–17 Oct 2026) had no set pieces in its skeleton and no memory log; it reads as it is (its pins kept, its
-Warden's cluster made a gate at load, [GDR-0098](gdr/0098-slice-in-the-galaxy-and-rim-rewards.md)). Unknown fields are errors, so a field added without a new format would make an older build call a newer
+Warden's cluster made a gate at load, [GDR-0098](gdr/0098-slice-in-the-galaxy-and-rim-rewards.md)). Format 4
+(17–18 Oct 2026) had no workshop; it reads with an empty stock and intake, and the game stocks its designs at load
+and writes it at once ([The workshop](#the-workshop), "Migrating"). Unknown fields are errors, so a field added without a new format would make an older build call a newer
 save damaged instead of newer; with the format raised, its storage reports `Newer`. The history's reports are
 what was credited, not derived. A save that cannot be read (newer, damaged, or from a newer voyage roller,
 below) is never written over: the game keeps it as it is ("How the game uses it" below).
@@ -190,12 +204,10 @@ below) is never written over: the game keeps it as it is ("How the game uses it"
   every voyage with `opens_after` whose voyages have all been cleared (`VoyageRecord::cleared`: a goal cleared on
   a voyage that came home). A voyage without `opens_after` opens only through a start. Loading drops records of
   voyages the content no longer has.
-- **Part availability** (`available(part) -> Availability`, [GDR-0082](gdr/0082-drydock-layout-v2-and-part-availability.md),
-  14 Oct 2026): how many of a part the player has to build with, `Availability::Unlimited` or `Count(n)` (the parts
-  in a design use them up). Every part is `Unlimited` for now: GDR-0063 left parts unlimited until fabrication,
-  spares and bonding exist (GDR-0029, GDR-0031; their open questions stay in `../space-game-archive/plans/salvage-research.md`), and
-  this is the one place they will fill the counts in. Derived, so the save holds no counts and its format is
-  unchanged; a stored count would need a new format with a migration.
+- **Part availability** ([GDR-0082](gdr/0082-drydock-layout-v2-and-part-availability.md)): the career fills no counts
+  in the drydock's editing model since GDR-0108 (18 Oct 2026; until then every part was `Unlimited`): designs plan
+  ahead, the workshop's `stock` limits the launch ([Voyage-readiness](#voyage-readiness)). The lab's runs may still
+  set counts.
 - **Fresh parts** (`fresh_parts(&content)`): `locked` parts a researched node unlocked that are not in `seen` (the
   drydock's NEW tags). `mark_seen(&content, part)` adds a fresh part to `seen` and says whether it was fresh (the
   game writes the save then); any other part changes nothing. `reconcile` drops seen ids the content no longer has,
@@ -216,20 +228,44 @@ store paid down to that little is removed. Stores hold only amounts above 0.
 ## Unloading a haul
 
 A `Haul` is the items a voyage brought home with counts (`BTreeMap<HaulItem, u32>`). `HaulItem` mirrors the sim's
-cargo item (`Part { part, material }`, `Fragment { part }`); `data` does not depend on `sim`, so the game converts.
-`career::unload(&content, &haul) -> HaulReport` is pure and gives:
+cargo item (`Part { part, material }`, `Broken { part, material }`, `Fragment { part }`, `DataCore`); `data` does not
+depend on `sim`, so the game converts. `career::unload(&content, &haul) -> HaulReport` is pure and gives (GDR-0108;
+`share` is the workshop's `broken` rule, 0.25):
 
 | Item | Gives |
 |---|---|
-| a whole non-hull part | its `salvage` block's `data` for its family and its `materials`, per item |
-| a whole hull part | its armour material's `salvage.data` × the part's area (slopes count half a cell) for that family, per item |
+| an intact non-hull part | nothing yet: it goes to the workshop's `intake` (`Career::recalled`), to be kept or dismantled |
+| a broken non-hull part | its `salvage` block's `data` for its family, and `share` × its recipe's materials, per item |
+| a hull part, whole or broken | its armour material's `salvage.data` × the part's area (slopes count half a cell) for that family, and `share` × area units of the armour material, per item |
 | a fragment | the `fragment` materials of the part that left it; no data |
 | a data core (`DataCore { trail, signal }`) | one log in `logs`; which signal it decodes into the career keeps ([The galaxy](#the-galaxy)) |
-| an unknown part, a hull part without (or with an unknown or non-armour) material, a part without a block | nothing (whole parts are still listed) |
+| an unknown part, a hull part without (or with an unknown or non-armour) material, a part without a block | nothing (parts are still listed) |
 
-A non-hull part item that carries a material gives its own block; the material is ignored. Counts saturate; sums
-are bounded by `MAX_DATA` and `MAX_MATERIALS`. The report lists `parts` and `fragments` by part id, `data` per
-family and `materials`; `items()` counts both kinds.
+The shares are summed per material over the whole haul and rounded to the nearest unit once. A non-hull part item
+that carries a material gives its own block; the material is ignored. Counts saturate; sums are bounded by
+`MAX_DATA` and `MAX_MATERIALS`. The report lists `parts` (intact), `broken` and `fragments` by part id, `data` per
+family and `materials`; `items()` counts every kind.
+
+## The workshop
+
+GDR-0108 (18 Oct 2026), `career/workshop.rs`. The content's workshop is the first facility with `workshop` rules
+(`Content::workshop`: `dismantle` 0.4, `broken` 0.25, `keep` 2, placeholders).
+
+- **Stock**: `stock()`, the parts a fleet is fitted from. A new game has its start ship's non-hull parts
+  (`Content::ship_parts`) and the start's `materials`. Fitting takes nothing: the stock only grows.
+- **Sorting the intake**: `keep(part, n)` moves `n` into stock; `dismantle(&content, part, n)` gives the part's data
+  and `dismantle` × its recipe (rounded to the nearest unit over the `n`; `dismantle_yield` is the same, pure) and
+  returns it; both refuse with `NotInIntake` for more than wait. `suggested(&content, &need)` per intake part: keep
+  until the stock holds the rules' `keep` or what `need` (the fleet's parts, `fleet_parts`) asks for, dismantle the
+  rest; `sort_suggested` does it for every part and returns what the dismantled ones gave.
+- **Fabricating**: `can_fabricate(&content, part, n)` / `fabricate`: refused in this order with `UnknownPart`,
+  `LockedPart` (not unlocked), `NoRecipe` (salvage only), `NeedsFacility(upgrade)` (the recipe's `needs` not open),
+  `CannotPay(shortfalls)` (every material short, in id order); else the recipe × `n` leaves the store and `n` go into
+  stock.
+- **Migrating** (format 4): `stock_designs(&content, &fleet, &saved)` raises every known part to the most of what the
+  fleet carries together and of what any one saved design carries, and returns what it added. The game calls it at
+  load for a save read in a format below 5, with the working design and the escorts as the fleet and every saved
+  design (`world::career::stock_designs`), notes THE WORKSHOP and writes the save.
 
 ## Voyages
 
@@ -324,7 +360,8 @@ hand-made skeleton, and the `galaxy` crate's `tests/career.rs` for a migrated sa
 
 ## Voyage-readiness
 
-`career::voyage_ready(&content, &unlocks, mind_capacity, &flagship, &escorts) -> Vec<Readiness>`; empty means
+`career::voyage_ready(&content, &unlocks, mind_capacity, stock, &flagship, &escorts) -> Vec<Readiness>` (`stock`:
+`Some(&career.stock())`, or `None` for unlimited, the free mode); empty means
 ready. Entries, in this order: per ship (flagship first, then escorts by index, `FleetSlot`)
 
 1. `LockedFrame { ship, size, frame }`: the blueprint's `size` (a drydock design's frame) fits no unlocked frame;
@@ -334,8 +371,10 @@ ready. Entries, in this order: per ship (flagship first, then escorts by index, 
 
 then for the fleet
 
-3. `TooManyCores { cores, capacity }`: its logic cores (all ships) exceed the mind capacity.
-4. `NoCargo`: no ship has a hold (`Content::ship_hold`: cargo on its main piece, as the sim counts it; cargo on a
+3. `MissingParts { part, need, have }` (GDR-0108): per unlocked part the fleet carries more of (all ships together)
+   than the stock holds, in id order.
+4. `TooManyCores { cores, capacity }`: its logic cores (all ships) exceed the mind capacity.
+5. `NoCargo`: no ship has a hold (`Content::ship_hold`: cargo on its main piece, as the sim counts it; cargo on a
    piece that falls off at spawn holds nothing), so nothing salvaged can come home. A warning only:
    `Readiness::blocks()` is false for it alone.
 
@@ -385,7 +424,7 @@ would roll its voyages differently. The game keeps it as it is and never writes 
 
 | Constant | Value | What |
 |---|---|---|
-| `career::FORMAT` | 3 | the save's format version (1 until 15 Oct 2026, no longer read; 2 until 16 Oct 2026, read and given its galaxy) |
+| `career::FORMAT` | 5 | the save's format version (1 until 15 Oct 2026, no longer read; 2 until 16 Oct 2026, read and given its galaxy; 3 until 17 Oct, 4 until 18 Oct 2026, read and stocked) |
 | `career::GENERATOR` | 2 | the voyage roller's version, voyage seeds included |
 | `career::MAX_DATA` | 1,000,000 | research data per family a store holds (100 × the largest content cost) |
 | `career::MAX_MATERIALS` | 1,000,000 | of one material a store holds |
@@ -395,7 +434,7 @@ Not in the model: kills (the game would have to count them; the plan's log examp
 new game (the game picks it, the model has no clock), whether escort designs still exist (they live in the game's
 storage), and the evolution lab's runs (GDR-0092 step 4, 16 Oct 2026: free, GDR-0030; they live in `lab/` beside the
 save, each a head and one part per generation since ADR-0041, `docs/client.md` "Evolution", and a run's limits are taken from what the career grants when it is set up: the
-unlocked parts and materials, the part counts, the mind capacity less FLEET's escorts). The lab is locked until its
+unlocked parts and materials, the mind capacity less FLEET's escorts; no part counts since GDR-0108). The lab is locked until its
 research node, the Simulation vault (`simulation_vault`, logic 3, `Unlock::Facility("evolution")`, GDR-0092 step 8, 16
 Oct 2026), is researched: `Unlocks::facilities` holds the open facilities (`content/base/facilities.ron`), derived like
 the parts, so an existing save simply lacks it until the node is paid; `?unlock=all` opens it. A design

@@ -2,6 +2,7 @@
 
 - Status: Accepted
   2026-10-17: asteroid rock names its material (rock kinds' `material`, [GDR-0104](0104-scenery-rocks-filler-landmarks.md)): two ore materials, nickel-iron and water ice, are the hook for harvesting asteroids; nothing gives them yet (no mining).
+  2026-10-18: built (Niklas, [GDR-0108](0108-materials-economy-workshop.md)): parts have recipes in content, the WORKSHOP (one building for the fabricator and the salvage bay) fabricates them at home, three fabrication resources (copper, ceramic, lattice crystal) beside steel and programmable matter (logic cores take it), the first hub upgrades as facilities within the workshop (fusion workshop, growing vat, automaton forge); dismantling returns a share of a part's recipe (40 %, broken parts 25 %).
 - Date: 2026-10-10
 - Decided by: Niklas
 - Related: [GDR-0025](0025-research-from-salvage.md), [GDR-0026](0026-procedural-galaxy-and-bands.md), [GDR-0027](0027-races.md), [GDR-0029](0029-mild-death-bonded-matter.md), [GDR-0030](0030-no-economy.md)
