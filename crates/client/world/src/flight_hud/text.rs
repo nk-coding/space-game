@@ -165,6 +165,10 @@ pub(super) fn update_text(
                         if let Some(v) = voyage {
                             let (done, all) = voyage::sites_done(v);
                             let _ = write!(s, "SITES {done} / {all}  ·  {}", voyage::clock(tick));
+                            // A hot star (GDR-0102): its heat a second on each side open to space, here.
+                            if let (Some(star), Some(p)) = (v.star(), control) {
+                                let _ = write!(s, "  ·  STAR HEAT {:.1} A SIDE", star.heat_at(p.com_world()));
+                            }
                         }
                         if run.launched.as_ref().is_some_and(|l| l.practice.is_some()) {
                             s.push_str("  ·  PRACTICE, NOT SAVED");

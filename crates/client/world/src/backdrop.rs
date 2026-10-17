@@ -1,7 +1,8 @@
 //! The space backdrop: the radial gradient from the style guide stretched over the viewport, two parallax
 //! layers of faint dust particles, a far layer of stars twinkling in three groups, and dotted range rings around
 //! the followed ship; and the veil the screens over the station (BEHAVIOR, RESEARCH, FLEET) lay over all of it, so
-//! they share one dark ground.
+//! they share one dark ground. In a cluster beside a hot star (GDR-0102) a heat-coloured glow rises at the edge of
+//! the view towards the star, the stronger the nearer the star's heat is to its peak.
 //!
 //! Outside flight the dust drifts slowly past (the station floats; Niklas, 15 Oct 2026: "very static"); in flight
 //! it stays put, the ships' measure of their own motion. The rings keep their dots a few pixels across and apart at
@@ -19,6 +20,8 @@ use crate::camera::{CameraRig, CameraSet, MainCamera};
 use crate::mode::AppMode;
 
 const Z_BACKDROP: f32 = -900.0;
+/// The hot star's glow: over the gradient, under the dust and the stars.
+const Z_STAR_GLOW: f32 = -880.0;
 const Z_DUST: f32 = -800.0;
 const Z_RINGS: f32 = -700.0;
 /// The veil: over the gradient, the dust and the rings, under the station and everything else in the world.
@@ -33,6 +36,10 @@ const COPIES: i32 = 3;
 
 #[derive(Component)]
 struct Backdrop;
+
+/// The hot star's glow (GDR-0102): a camera child, its material faded with the star's heat here.
+#[derive(Component)]
+struct StarGlow(Handle<AtlasMaterial>);
 
 #[derive(Component)]
 struct DustCopy {
@@ -97,7 +104,7 @@ impl Plugin for BackdropPlugin {
             // After the camera moved, before the transforms are propagated (else they show last frame's place).
             .add_systems(
                 PostUpdate,
-                (fit_backdrop, place_dust, follow_rings, build_rings).after(CameraSet).before(bevy::transform::TransformSystems::Propagate),
+                (fit_backdrop, place_dust, follow_rings, build_rings, star_glow).after(CameraSet).before(bevy::transform::TransformSystems::Propagate),
             );
     }
 }
@@ -133,6 +140,24 @@ fn spawn_backdrop(
         .spawn((Veil(material.clone()), Mesh2d(meshes.add(quad.into_mesh())), MeshMaterial2d(material), Transform::from_xyz(0.0, 0.0, Z_VEIL - Z_BACKDROP), Visibility::Hidden))
         .id();
     commands.entity(backdrop).add_child(veil);
+
+    // The hot star's glow: a wide soft disc in the heat colour round a warmer core, both from the soft dot, unit size.
+    let soft = atlas.region("fx/dot_soft");
+    let mut glow = MeshBuf::default();
+    let heat = style.system_color("heat");
+    glow.region_at(&soft, Vec2::ZERO, Vec2::splat(1.0), 0.0, vcol(heat, 0.9));
+    glow.region_at(&soft, Vec2::ZERO, Vec2::splat(0.45), 0.0, vcol(heat.mix(&Color::WHITE, 0.5), 0.8));
+    let material = atlas.group_material(&mut materials);
+    let star = commands
+        .spawn((
+            StarGlow(material.clone()),
+            Mesh2d(meshes.add(glow.into_mesh())),
+            MeshMaterial2d(material),
+            Transform::from_xyz(0.0, 0.0, Z_STAR_GLOW),
+            Visibility::Hidden,
+        ))
+        .id();
+    commands.entity(*camera).add_child(star);
 
     // Dust: far layer = many tiny faint dots, near layer = fewer, slightly larger ones.
     let soft = atlas.region("fx/dot_soft");
@@ -358,6 +383,44 @@ fn place_dust(
             *vis = v;
         }
     }
+}
+
+/// The hot star's glow (GDR-0102): in flight in a cluster with a star, a disc as wide as the view centred just past
+/// its edge towards the star, as strong as the star's heat at the camera is near its peak (`data::STAR_HEAT_CAP`
+/// times its heat at the cluster's centre: about a quarter there).
+#[allow(clippy::type_complexity)]
+fn star_glow(
+    world: Res<crate::sim_bridge::SimWorld>,
+    mode: Res<State<AppMode>>,
+    camera: Single<(&Camera, &Projection, &Transform), (With<MainCamera>, Without<StarGlow>)>,
+    glow: Single<(&StarGlow, &mut Transform, &mut Visibility)>,
+    mut materials: ResMut<Assets<AtlasMaterial>>,
+) {
+    let (cam, proj, cam_tf) = camera.into_inner();
+    let (g, mut tf, mut vis) = glow.into_inner();
+    let star = world.sim.voyage().and_then(|v| v.star()).filter(|_| *mode.get() == AppMode::Flight);
+    let want = if star.is_some() { Visibility::Inherited } else { Visibility::Hidden };
+    if *vis != want {
+        *vis = want;
+    }
+    let Some(star) = star else { return };
+    let scale = match proj {
+        Projection::Orthographic(o) => o.scale,
+        _ => 1.0,
+    };
+    let view = cam.logical_viewport_size().unwrap_or(Vec2::splat(1000.0)) * scale;
+    let at = cam_tf.translation.truncate();
+    let to = crate::sim_bridge::v2(star.pos) - at;
+    let dir = to.try_normalize().unwrap_or(Vec2::X);
+    // Where the ray towards the star leaves the view, a little beyond.
+    let edge = (view / 2.0 / dir.abs().max(Vec2::splat(1e-3))).min_element();
+    let size = view.max_element() * 1.2;
+    tf.translation.x = dir.x * (edge + size * 0.06);
+    tf.translation.y = dir.y * (edge + size * 0.06);
+    tf.scale = Vec3::new(size, size, 1.0);
+    let peak = star.heat * data::STAR_HEAT_CAP;
+    let share = if peak > 0.0 { star.heat_at(crate::sim_bridge::sv(at)) / peak } else { 0.0 };
+    set_alpha(&mut materials, &g.0, 0.4 + 0.6 * share.sqrt());
 }
 
 fn follow_rings(

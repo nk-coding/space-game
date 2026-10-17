@@ -3,7 +3,7 @@
 //! `SceneKind::Voyage`), the HUD shows it (`flight_hud/`), the debrief reports it at home (`debrief.rs`).
 //!
 //! * **Launch** ([`StartVoyage`] to a slice voyage or a cluster of the career's galaxy (galaxy plan E6), or
-//!   `?scene=voyage&voyage=<id>` at start; `?scene=voyage&cluster=<id or signal>[&galaxy=<seed>]` flies a generated
+//!   `?scene=voyage&voyage=<id>` at start; `?scene=voyage&cluster=<id, signal or hot>[&galaxy=<seed>]` flies a generated
 //!   cluster of the career's galaxy, with what the career knows, as a practice run, galaxy plan E3, E4): the career
 //!   records the launch (`Career::voyage_launched`, `Career::cluster_launched`: the seed, `underway`) and the save is
 //!   written at once, so closing or reloading mid-voyage loses it (GDR-0062). The fleet is the drydock's working design (the flagship) and the
@@ -292,7 +292,7 @@ impl LaunchInputs<'_> {
     }
 
     /// A practice run into a generated cluster (galaxy plan E3, E4; [`url_launch`]): cluster `cluster` (`signal`: the
-    /// first that holds a trail's place) of the career's galaxy, rolled from the seed its next launch would get and
+    /// first that holds a trail's place; `hot`: the first beside a hot star, GDR-0102) of the career's galaxy, rolled from the seed its next launch would get and
     /// carrying what the career knows (`Career::leads`: what a recorded launch carries). With `galaxy`, the base
     /// galaxy generated from that seed instead, rolled from the cluster's own seed, every trail place a signal's site
     /// and every log's data core in place ([`every_lead`]). Never saved.
@@ -311,8 +311,10 @@ impl LaunchInputs<'_> {
                 galaxy::generate(content, &id, galaxy.unwrap_or_else(|| career.seed())).map_err(|e| e.0.to_uppercase())?
             }
         };
+        let hot = |kind: &str| content.cluster_types.get(kind).is_some_and(|t| t.star.is_some());
         let k = match cluster.parse::<u32>() {
             Ok(k) => k,
+            Err(_) if cluster == "hot" => sk.clusters.iter().position(|c| hot(&c.kind)).ok_or("NO CLUSTER LIES BESIDE A HOT STAR")? as u32,
             Err(_) => sk.trails.iter().flat_map(|t| &t.places).map(|p| p.cluster).find(|&k| k != sk.home).ok_or("NO CLUSTER HOLDS A TRAIL'S PLACE")?,
         };
         let c = sk.clusters.get(k as usize).ok_or_else(|| format!("THE GALAXY HAS {} CLUSTERS", sk.clusters.len()))?;
@@ -408,7 +410,7 @@ fn refusal_words(content: &Content, r: &Refusal) -> String {
 }
 
 /// `?scene=voyage[&voyage=<id>]`: launch at once (a practice run when the career refuses it); without any voyage
-/// to fly, home with a note. `?scene=voyage&cluster=<id or signal>[&galaxy=<seed>]`: a practice run into a generated
+/// to fly, home with a note. `?scene=voyage&cluster=<id, signal or hot>[&galaxy=<seed>]`: a practice run into a generated
 /// cluster ([`LaunchInputs::launch_cluster`]).
 fn url_launch(params: Res<Params>, mut inputs: LaunchInputs, mut next: ResMut<NextState<AppMode>>) {
     if params.text("scene") != Some("voyage") {

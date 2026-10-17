@@ -31,7 +31,7 @@
     (id: "blast_damage", name: "Blast damage", summary: "Damage the part's explosion deals once to every part within the blast radius when it is destroyed, on its own ship and on any other. The ship's own shields do not help, other ships' do; armour takes its share and shields the parts behind it.", unit: "HP", decimals: 2, better: Lower),
     (id: "blast_radius", name: "Blast radius", summary: "How far the explosion reaches from the part's centre, to the nearest point of a cell: 1 m takes the eight cells around a one-cell part, 1.5 m also the next cell straight out on each side.", unit: "m", decimals: 1, better: Lower),
     (id: "regrow_interval", name: "Regrowth", summary: "While the heart lives, one lost part of its ship re-forms from its living neighbours this often, nearest to the heart first.", unit: "s", decimals: 1, better: Lower),
-    (id: "regrow_hp", name: "Regrown strength", summary: "Share of its full hit points a re-formed part starts with.", unit: "%", decimals: 0, better: Higher),
+    (id: "regrow_hp", name: "Regrown at", summary: "Share of its full hit points a re-formed part starts with.", unit: "%", decimals: 0, better: Higher),
     (id: "heal", name: "Healing", summary: "Hit points the living part regains every second while it is on a vessel, up to its full hit points.", unit: "HP/s", decimals: 2, better: Higher),
     (id: "ram_dealt", name: "Ram damage dealt", summary: "When this part is the one that touches in a ram, the other side takes this many times the ram damage.", unit: "×", decimals: 2, better: Higher),
     (id: "ram_taken", name: "Ram damage taken", summary: "When this part is the one that touches in a ram, its own side takes this many times the ram damage.", unit: "×", decimals: 2, better: Lower),

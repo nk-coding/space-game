@@ -355,6 +355,7 @@ fn apply_events(
             SimEvent::VesselFormed { ship, from: Some((old, piece)), .. } => Act::Moved(*ship, *old, *piece),
             SimEvent::ShipRemoved { ship } => Act::ShipGone(*ship),
             SimEvent::PartDestroyed { ship, piece, part, volatile } => Act::PartGone(*ship, *piece, *part, *volatile),
+            SimEvent::PartRegrown { ship, piece, part } => Act::Regrown(*ship, *piece, *part),
             SimEvent::Explosion { ship, piece, part, at, radius, damage } => {
                 Act::Blast(*ship, *piece, *part, v2(*at), *radius, *damage)
             }
@@ -438,6 +439,12 @@ fn apply_events(
                     fx.burst(at, glow, 0.7);
                 }
             }
+            // A soft swell in the hull's glow where the part re-forms.
+            Act::Regrown(ship, piece, part) => {
+                if let Some((at, glow)) = drawn_part(world, &views, ship, piece, part) {
+                    fx.flash(at, glow, 2.2, 0.8);
+                }
+            }
             Act::Blast(ship, piece, part, at, radius, damage) => {
                 // Where the part is drawn (the sim's point is a tick ahead of the render pose), carried with its
                 // piece.
@@ -501,6 +508,8 @@ enum Act {
     ShipGone(ShipId),
     /// A part destroyed; `true`: it explodes (a `Blast` follows).
     PartGone(ShipId, PieceId, sim::PartIdx, bool),
+    /// A heart re-grew a part (GDR-0099; its piece's view is rebuilt by the `PieceChanged` after it).
+    Regrown(ShipId, PieceId, sim::PartIdx),
     /// A destroyed part exploded at a world point: radius, damage.
     Blast(ShipId, PieceId, sim::PartIdx, Vec2, f32, f32),
     Shot(ShipId, sim::ShotKind, Vec2, Vec2),
