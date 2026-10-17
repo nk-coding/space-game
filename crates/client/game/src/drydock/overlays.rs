@@ -1,4 +1,4 @@
-//! The drydock's overlays (the OVERLAY pills: HEAT, MASS, BONUS, SHIELDS, ARCS, any combination) and the
+//! The drydock's overlays (the OVERLAY pills: HEAT, MASS, BONUS, SHIELDS, ARCS, BLAST, any combination) and the
 //! issue marks, drawn over the design in world space from the design report ([`DrydockReport`]).
 //!
 //! One mesh (atlas material, vertex colours), a child of the design's mesh so it shows and hides with it, above
@@ -16,20 +16,27 @@
 //!   arrow showing which way full thrust turns the ship (gold if the gyros and gimbals hold it, coral if not).
 //! * **Bonus**: a gold link across the shared side of every source and target pair, a diamond on the side.
 //! * **Shields**: each bubble (centre, radius after bonuses) as a faint disc with a soft rim in the shield colour
-//!   (the ghost draws the same for a shield part being placed or selected: [`bubbles_mesh`]).
+//!   (the ghost draws the same for a shield part being placed or selected: [`ghost_marks_mesh`]).
 //! * **Arcs**: each gun's line of fire to its range (clear: dashed, weapons cyan; blocked: coral up to the first
 //!   blocker, a cross there, blockers outlined); each engine's plume lanes to their reach (propulsion teal; a lane
 //!   that burns an own part: coral, the part outlined). The lines end at the grid viewport's edge.
+//! * **Blast**: each part that explodes when destroyed (GDR-0084, GDR-0085): its reach (a faint coral disc with a
+//!   soft rim, the rim dashed, a burst at its centre), the logic cores and guns the blast destroys washed coral,
+//!   the other parts it destroys outlined coral, the ones that survive it outlined gold, the armour on the line
+//!   that covers them outlined teal (the ghost draws the same for an exploding part being placed or selected:
+//!   [`ghost_marks_mesh`]).
 //! * **Issue marks**, always (overlays on or off): a small triangle in the top-right corner of every part an issue
 //!   names: coral for blocked guns, parts a plume burns, parts that fall off and parts overheating past
-//!   [`RUNS_HOT_MAX`]; gold for parts that only run hot (over their limit, up to it).
+//!   [`RUNS_HOT_MAX`]; gold for parts that only run hot (over their limit, up to it). What blasts would take is
+//!   the status line's and the BLAST overlay's (nearly every reactor has a core or gun beside it: marks on all of
+//!   them said nothing).
 
 use std::collections::BTreeSet;
 
 use bevy::prelude::*;
 use data::{Cell, Dir, PlacedShape};
 use sim::DesignReport;
-use sim::report::Issue;
+use sim::report::{BlastReport, Issue};
 use kit::atlas::{Atlas, Region};
 use kit::meshbuf::{MeshBuf, ensure_ccw, inset_convex};
 use kit::style::{Style, UiPalette, mix, vcol};
@@ -333,13 +340,118 @@ fn bubble(m: &mut MeshBuf, pen: &Pen, centre: [f32; 2], radius: f32) {
     pen.fill(m, &circle(c, 0.09), pen.shield.with_alpha(0.8));
 }
 
-/// The SHIELDS overlay's bubbles alone (the ghost's: what a shield part would make where it is placed or selected).
-pub(super) fn bubbles_mesh(atlas: &Atlas, style: &Style, bubbles: &[([f32; 2], f32)]) -> Mesh {
+/// A blast as the overlays draw it: its centre (blueprint frame) and radius (m), and the shapes of the logic cores
+/// and guns it destroys, of the other parts it destroys, of the ones that survive it and of the armour that covers
+/// them.
+#[derive(Clone, Debug, PartialEq)]
+pub struct BlastMarks {
+    pub centre: [f32; 2],
+    pub radius: f32,
+    pub takes: Vec<PlacedShape>,
+    pub destroys: Vec<PlacedShape>,
+    pub survives: Vec<PlacedShape>,
+    pub cover: Vec<PlacedShape>,
+}
+
+impl BlastMarks {
+    /// The blast `b` of report `r` on the design whose part shapes are `shapes` (indices as the report's).
+    pub fn of(r: &DesignReport, b: &BlastReport, shapes: &[PlacedShape]) -> Self {
+        let shape = |p: sim::PartIdx| shapes.get(p as usize).copied();
+        // The logic cores and guns: what its `Issue::BlastTakes` names, but the parts that explode in turn.
+        let taken: Vec<sim::PartIdx> = r
+            .issues
+            .iter()
+            .filter_map(|i| match i {
+                Issue::BlastTakes { part, parts } if *part == b.part => Some(parts),
+                _ => None,
+            })
+            .flatten()
+            .copied()
+            .filter(|p| !r.blasts.iter().any(|x| x.part == *p))
+            .collect();
+        let mut cover: Vec<PlacedShape> = Vec::new();
+        for c in b.hits.iter().flat_map(|h| h.cover.iter().filter_map(|&c| shape(c))) {
+            if !cover.contains(&c) {
+                cover.push(c);
+            }
+        }
+        let taken = &taken;
+        let destroyed = |takes: bool| b.hits.iter().filter(move |h| h.destroys && taken.contains(&h.part) == takes).filter_map(|h| shape(h.part)).collect();
+        Self {
+            centre: b.centre,
+            radius: b.radius,
+            takes: destroyed(true),
+            destroys: destroyed(false),
+            survives: b.hits.iter().filter(|h| !h.destroys).filter_map(|h| shape(h.part)).collect(),
+            cover,
+        }
+    }
+}
+
+/// Blasts' reach and what they do: a faint coral disc with a soft rim and a dashed crisp rim; a logic core or gun
+/// one of them destroys washed and outlined coral, any other part one destroys outlined coral, a part that only
+/// survives them outlined gold, the armour that covers a part outlined teal just inside; a coral burst on a dark
+/// backing at each blast's centre, over everything.
+fn blasts(m: &mut MeshBuf, pen: &Pen, marks: &[BlastMarks]) {
+    let coral = pen.ui.coral;
+    for b in marks {
+        let c = world(b.centre);
+        let ring = circle(c, b.radius);
+        pen.fill(m, &ring, coral.with_alpha(0.035));
+        m.strip(&ring, true, 0.2, &pen.halo, vcol(coral, 0.22));
+        // Dashes about 0.35 m apart, so the rim reads as a reach, not a shield's bubble.
+        let n = ((b.radius * std::f32::consts::TAU / 0.35).round() as usize).max(8);
+        for k in 0..n {
+            let a = k as f32 / n as f32 * std::f32::consts::TAU;
+            let arc: Vec<Vec2> = (0..=3).map(|j| c + Vec2::from_angle(a + j as f32 / 3.0 * 0.55 * std::f32::consts::TAU / n as f32) * b.radius).collect();
+            pen.polyline(m, &arc, 0.025, coral.with_alpha(0.8));
+        }
+    }
+    // Each part once, with what the worst blast reaching it does.
+    let mut seen: Vec<&PlacedShape> = Vec::new();
+    for s in marks.iter().flat_map(|b| &b.takes) {
+        if !seen.contains(&s) {
+            seen.push(s);
+            pen.fill(m, &outline_of(s, 0.05), coral.with_alpha(0.34));
+            pen.outline(m, &outline_of(s, 0.07), 0.035, coral.with_alpha(0.95));
+        }
+    }
+    for s in marks.iter().flat_map(|b| &b.destroys) {
+        if !seen.contains(&s) {
+            seen.push(s);
+            pen.outline(m, &outline_of(s, 0.07), 0.03, coral.with_alpha(0.85));
+        }
+    }
+    for s in marks.iter().flat_map(|b| &b.survives) {
+        if !seen.contains(&s) {
+            seen.push(s);
+            pen.outline(m, &outline_of(s, 0.07), 0.03, pen.ui.gold.with_alpha(0.9));
+        }
+    }
+    let mut covers: Vec<&PlacedShape> = Vec::new();
+    for s in marks.iter().flat_map(|b| &b.cover) {
+        if !covers.contains(&s) {
+            covers.push(s);
+            pen.outline(m, &outline_of(s, 0.17), 0.03, pen.ui.teal.with_alpha(0.9));
+        }
+    }
+    for b in marks {
+        let c = world(b.centre);
+        let star = |r0: f32, r1: f32| -> Vec<Vec2> { (0..8).map(|k| c + Vec2::from_angle(k as f32 / 8.0 * std::f32::consts::TAU) * if k % 2 == 0 { r0 } else { r1 }).collect() };
+        pen.fill(m, &circle(c, 0.2), pen.ink.with_alpha(0.85));
+        pen.fill(m, &star(0.17, 0.065), coral);
+    }
+}
+
+/// The ghost's marks: the SHIELDS overlay's bubbles and the BLAST overlay's blasts of a shield or exploding part
+/// being placed or selected (what it would make there).
+pub(super) fn ghost_marks_mesh(atlas: &Atlas, style: &Style, bubbles: &[([f32; 2], f32)], marks: &[BlastMarks]) -> Mesh {
     let pen = Pen::new(atlas, style);
     let mut m = MeshBuf::default();
     for &(c, r) in bubbles {
         bubble(&mut m, &pen, c, r);
     }
+    blasts(&mut m, &pen, marks);
     if m.is_empty() { MeshBuf::placeholder() } else { m.into_mesh() }
 }
 
@@ -368,6 +480,10 @@ fn draw(m: &mut MeshBuf, pen: &Pen, r: &DesignReport, shapes: &[PlacedShape], ma
         for s in &r.shields {
             bubble(m, pen, s.centre, s.radius);
         }
+    }
+    if on(Overlay::Blast) {
+        let marks: Vec<BlastMarks> = r.blasts.iter().map(|b| BlastMarks::of(r, b, shapes)).collect();
+        blasts(m, pen, &marks);
     }
     if on(Overlay::Arcs) {
         for e in &r.engines {
@@ -516,8 +632,32 @@ mod tests {
         let (_, _, r) = runner();
         let marks = issue_marks(&r);
         let over: Vec<(usize, Tone)> = r.heat.over.iter().map(|&p| (p as usize, Tone::Gold)).collect();
-        assert_eq!(marks, over);
+        assert_eq!(marks, over, "what blasts would take is not marked");
         assert_eq!(marks.len(), 4, "both beams and both shield emitters (docs/sim.md)");
+        assert!(r.issues.iter().any(|i| matches!(i, Issue::BlastTakes { .. })));
+    }
+
+    /// A blast's marks: the cores and guns it destroys apart from the rest it destroys, the ones that survive it,
+    /// the armour that covers them, each once.
+    #[test]
+    fn blast_marks_sort_what_a_blast_does() {
+        let (_, d, r) = runner();
+        let shapes = d.dock().shapes();
+        let mut takes = 0;
+        for b in &r.blasts {
+            let marks = BlastMarks::of(&r, b, shapes);
+            assert_eq!(marks.takes.len() + marks.destroys.len() + marks.survives.len(), b.hits.len());
+            assert_eq!(marks.radius, b.radius);
+            for h in &b.hits {
+                let s = shapes[h.part as usize];
+                assert_eq!(marks.takes.contains(&s) || marks.destroys.contains(&s), h.destroys);
+                assert!(!marks.takes.contains(&s) || r.guns.iter().any(|g| g.part == h.part) || !r.blasts.iter().any(|x| x.part == h.part));
+                assert!(h.cover.iter().all(|&c| marks.cover.contains(&shapes[c as usize])));
+            }
+            assert!(marks.cover.iter().enumerate().all(|(k, c)| !marks.cover[..k].contains(c)));
+            takes += marks.takes.len();
+        }
+        assert!(takes > 0, "the Runner's reactor takes a core or a gun");
     }
 
     #[test]

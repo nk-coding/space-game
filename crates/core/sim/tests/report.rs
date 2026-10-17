@@ -233,7 +233,8 @@ fn unpowered_cores_and_no_thrust_are_blockers() {
             ("logic_core", 0, 1, 0, false, None),
         ],
     );
-    assert_eq!(r.issues, vec![Issue::NoThrust]);
+    // The reactor's blast would take the core beside it: a warning after the blocker.
+    assert_eq!(r.issues, vec![Issue::NoThrust, Issue::BlastTakes { part: 0, parts: vec![1] }]);
     assert_eq!(Issue::NoThrust.severity(), Severity::Blocker);
     assert!(
         r.flight.turn_90.is_some(),
@@ -451,6 +452,61 @@ fn report_counts_blocked_and_idle_guns_as_the_sim_fires_them() {
     }
     // With eight parts fewer the control load fits the capacity: the two lasers left both work.
     assert_eq!(working, [0, 2]);
+}
+
+/// The report's blasts are the sim's (GDR-0084, GDR-0085): a blast without a chain destroys in a world what the
+/// report says and leaves the rest with what it says; armour on the line covers; a reactor beside a gun warns.
+#[test]
+fn blasts_agree_with_the_sim() {
+    let c = content();
+    let rig: [P; 5] = [
+        ("fission_reactor", 1, 0, 0, false, None),
+        ("pulse_laser", 2, 0, 0, false, None),
+        ("armor_block", 1, 1, 0, false, Some("steel")),
+        ("logic_core", 1, 2, 0, false, None),
+        ("thruster", 0, 2, 0, false, None),
+    ];
+    let r = report_of(&c, &rig);
+    assert_eq!(r.blasts.len(), 2, "the reactor and the thruster");
+    let b = &r.blasts[0];
+    assert_eq!((b.part, b.centre, b.damage, b.radius), (0, [1.5, 0.5], 1.5, 1.5));
+    let hit = |p: u32| b.hits.iter().find(|h| h.part == p).unwrap();
+    // The laser beside it goes; the steel block takes half, and lets half through to the core behind it.
+    assert!(hit(1).destroys && hit(1).cover.is_empty());
+    assert!(!hit(2).destroys && close(hit(2).damage, 0.75, 1e-6));
+    assert_eq!(hit(3).cover, [2]);
+    assert!(close(hit(3).damage, 0.75, 1e-6) && !hit(3).destroys);
+    assert!(has(&r, |i| *i == Issue::BlastTakes { part: 0, parts: vec![1] }));
+
+    for (name, d, r) in BASE_SHIPS
+        .iter()
+        .map(|id| (*id, design(&c, id), base_report(&c, id)))
+        .chain([("shuttered", custom(&c, &SHUTTERED), report_of(&c, &SHUTTERED)), ("rig", custom(&c, &rig), r)])
+    {
+        for b in &r.blasts {
+            let chain = b.hits.iter().any(|h| h.destroys && d.parts[h.part as usize].explosion.is_some());
+            if chain {
+                continue;
+            }
+            let (mut w, s) = world_with(d.clone());
+            // Resolved at once: a step would let split-off pieces collide with the rest.
+            w.apply_damage(s, sim::DamageTarget::Part(b.part), d.parts[b.part as usize].hp);
+            w.resolve_breakage();
+            let ship = w.ship(s).unwrap();
+            for i in 0..d.parts.len() as u32 {
+                let part = ship.part(i);
+                match b.hits.iter().find(|h| h.part == i) {
+                    Some(h) => {
+                        assert_eq!(part.alive, !h.destroys, "{name} blast {} part {i}", b.part);
+                        if part.alive {
+                            assert!(close(part.hp, d.parts[i as usize].hp - h.damage, 1e-5), "{name} blast {} part {i}", b.part);
+                        }
+                    }
+                    None => assert_eq!(part.alive, i != b.part, "{name} blast {} part {i}", b.part),
+                }
+            }
+        }
+    }
 }
 
 #[test]

@@ -61,7 +61,11 @@ pub(in crate::drydock) fn spawn(mut commands: Commands, fonts: Res<HudFonts>, st
                 .with_children(|tr| {
                     tr.spawn((label(fonts, "OVERLAY", 9.0, c(Tone::Dim, 1.0)), Node { margin: UiRect::right(px(5)), ..default() }));
                     for o in Overlay::ALL {
-                        let accent = if o == Overlay::Bonus { Tone::Gold } else { Tone::Teal };
+                        let accent = match o {
+                            Overlay::Bonus => Tone::Gold,
+                            Overlay::Blast => Tone::Coral,
+                            _ => Tone::Teal,
+                        };
                         spawn_pill(tr, fonts, overlay_name(o), 10.0, 30.0, None, pill(accent), ActionButton(DrydockAction::Overlay(o)));
                     }
                 });
@@ -588,5 +592,6 @@ pub(super) fn overlay_name(o: Overlay) -> &'static str {
         Overlay::Bonus => "BONUS",
         Overlay::Shields => "SHIELDS",
         Overlay::Arcs => "ARCS",
+        Overlay::Blast => "BLAST",
     }
 }

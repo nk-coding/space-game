@@ -1,8 +1,8 @@
 //! What the pointer would do, drawn in world space over the design: the ghost of the edit under the cursor (the
 //! picked part with the flight tile look, see-through, outlined teal when it can go there and coral when it
 //! can't, its mirror twin too while mirroring), the parts it would replace (a coral wash and outline), the slopes a BEVEL
-//! paint stroke will cut when it ends (teal outlines), a shield part's bubble (placed or selected: the SHIELDS
-//! overlay's look), the fill rectangle while dragging, the part a move would put elsewhere, the pointer's mark
+//! paint stroke will cut when it ends (teal outlines), a shield part's bubble and an exploding part's blast (placed or
+//! selected: the SHIELDS and BLAST overlays' look), the fill rectangle while dragging, the part a move would put elsewhere, the pointer's mark
 //! ([`hover_mark`]: the cell, or in SELECT and ERASE the whole part under it) and corner brackets around the
 //! selected part. Why an edit can't happen goes after the grid's info line (coral), next to the last refusal.
 //!
@@ -16,7 +16,7 @@ use bevy::prelude::*;
 use bevy::mesh::VertexAttributeValues;
 use data::design::edit::{Preview, Refusal, Twin};
 use data::design::tone::HullTones;
-use data::{Blueprint, Cell, Content, Placement};
+use data::{Blueprint, Cell, Content, PlacedShape, Placement};
 use kit::atlas::Atlas;
 use kit::params::RenderToggles;
 use kit::style::{Style, ui_color};
@@ -29,6 +29,7 @@ use world::ship_view::{ShipVisual, build_body};
 use world::sim_bridge::GameContent;
 use world::tuning::Tuning;
 
+use super::overlays::BlastMarks;
 use super::report::DrydockReport;
 use super::state::{DrydockUi, Tool};
 use super::tools::{Brush, DrydockGesture, EditNote, Gesture, Selection, brush_placement, refusal_text};
@@ -38,8 +39,8 @@ use super::view::{DockShip, DrydockCursor};
 const Z_GHOST: f32 = 2.0;
 /// Outlines and brackets: the FX layer above the ships and under the veil outside the grid viewport.
 const Z_LINES: f32 = 300.0;
-/// The ghost's shield bubbles sit with the overlays (relative to the design's mesh).
-const Z_BUBBLES: f32 = 31.0;
+/// The ghost's shield bubbles and blasts sit with the overlays (relative to the design's mesh).
+const Z_MARKS: f32 = 31.0;
 /// Opacity of the ghost tiles.
 const GHOST_ALPHA: f32 = 0.55;
 
@@ -49,10 +50,10 @@ pub(super) struct GhostMesh {
     built: Option<(Vec<Placement>, bool)>,
 }
 
-/// The shield bubbles' mesh and the bubbles it shows.
+/// The shield bubbles' and blasts' mesh and what it shows.
 #[derive(Component)]
-pub(super) struct GhostBubbles {
-    built: Option<Vec<Bubble>>,
+pub(super) struct GhostMarks {
+    built: Option<(Vec<Bubble>, Vec<BlastMarks>)>,
 }
 
 /// A shield bubble: centre (frame cells, y down) and radius (m).
@@ -78,6 +79,9 @@ pub struct GhostView {
     pub hover: Option<HoverMark>,
     /// The bubbles of the shield part being placed (and its twin), after bonuses, or of the selected one.
     pub bubbles: Vec<Bubble>,
+    /// The blasts of the exploding part being placed (and its twin), on the design as the edit would leave it, or
+    /// of the selected one.
+    pub blasts: Vec<BlastMarks>,
     /// The parts the edit would replace: their cells (a coral wash) and outline (coral, drawn just inside, so it
     /// shows under a new part of the same footprint).
     pub replaced: Vec<(Vec<Cell>, Vec<Vec2>)>,
@@ -127,15 +131,15 @@ pub(super) fn setup(
             Transform::from_xyz(0.0, 0.0, Z_GHOST),
         ))
         .id();
-    let bubbles = commands
+    let marks = commands
         .spawn((
-            GhostBubbles { built: None },
+            GhostMarks { built: None },
             Mesh2d(meshes.add(kit::meshbuf::MeshBuf::placeholder())),
             MeshMaterial2d(fade.world.clone()),
-            Transform::from_xyz(0.0, 0.0, Z_BUBBLES),
+            Transform::from_xyz(0.0, 0.0, Z_MARKS),
         ))
         .id();
-    commands.entity(*ship).add_children(&[ghost, bubbles]);
+    commands.entity(*ship).add_children(&[ghost, marks]);
 }
 
 /// The coral hint span for the info line (a child of its text).
@@ -205,10 +209,10 @@ pub(super) fn update(
                     Brush::Place => {
                         let p = brush_placement(part, cell, ui.rot, m);
                         let preview = dock.preview_place(&p);
-                        if part.shield.is_some()
+                        if (part.shield.is_some() || part.explosion.is_some())
                             && let Ok(after) = &preview
                         {
-                            v.bubbles = bubbles_after(report.content().unwrap_or(content), &tuning.config(), &design, after);
+                            (v.bubbles, v.blasts) = marks_after(report.content().unwrap_or(content), &tuning.config(), &design, after);
                         }
                         v.show(content, &design, preview, Some(p.clone()), None, Some(&part.id));
                     }
@@ -221,13 +225,14 @@ pub(super) fn update(
         }
         _ => {}
     }
-    // The selected shield part's bubble (the report's, after bonuses).
+    // The selected shield part's bubble (the report's, after bonuses), an exploding part's blast.
     if ui.tool == Tool::Select
         && let Some(k) = sel.part(&design)
         && report.revision == Some(design.revision())
         && let Some(r) = report.get()
     {
         v.bubbles.extend(r.shields.iter().filter(|s| s.part as usize == k).map(|s| (s.centre, s.radius)));
+        v.blasts.extend(r.blasts.iter().filter(|b| b.part as usize == k).map(|b| BlastMarks::of(r, b, dock.shapes())));
     }
     v.hover = hover_mark(ui.tool, g.gesture, cursor.cell, |c| {
         let p = &dock.parts()[dock.part_at(c)?];
@@ -239,11 +244,11 @@ pub(super) fn update(
     }
 }
 
-/// The bubbles a shield part placed as `after` previews would make (and its twin), with the radius after bonuses: the
-/// report of the design as the edit would leave it (one `sim::design_report`, made only when the ghost changes; tens
-/// of microseconds for a frigate) with the content and config the drydock's report uses. If that design can't be
-/// compiled, the part's own radius at its centre.
-fn bubbles_after(content: &Content, config: &sim::SimConfig, design: &PlayerDesign, after: &Preview) -> Vec<Bubble> {
+/// The bubbles a shield part placed as `after` previews would make (and its twin), with the radius after bonuses, and
+/// the blasts of an exploding part with what they would take: the report of the design as the edit would leave it
+/// (one `sim::design_report`, made only when the ghost changes; tens of microseconds for a frigate) with the content
+/// and config the drydock's report uses. If that design can't be compiled, the part's own radii at its centre.
+fn marks_after(content: &Content, config: &sim::SimConfig, design: &PlayerDesign, after: &Preview) -> (Vec<Bubble>, Vec<BlastMarks>) {
     let bp = design.blueprint();
     let mut parts: Vec<Placement> = bp.parts.iter().enumerate().filter(|(i, _)| after.removed.binary_search(i).is_err()).map(|(_, p)| p.clone()).collect();
     let first = parts.len();
@@ -254,10 +259,22 @@ fn bubbles_after(content: &Content, config: &sim::SimConfig, design: &PlayerDesi
         .iter()
         .filter_map(|p| Some((content.placed_shape(p)?.center(), content.parts.get(&p.part)?.shield.as_ref()?.radius)))
         .collect();
+    let own_blasts: Vec<BlastMarks> = parts[new.clone()]
+        .iter()
+        .filter_map(|p| {
+            let radius = content.parts.get(&p.part)?.explosion.as_ref()?.radius;
+            let none = Vec::new;
+            Some(BlastMarks { centre: content.placed_shape(p)?.center(), radius, takes: none(), destroys: none(), survives: none(), cover: none() })
+        })
+        .collect();
+    let shapes: Option<Vec<PlacedShape>> = parts.iter().map(|p| content.placed_shape(p)).collect();
     let what_if = Blueprint { parts, ..header(bp) };
-    match sim::design_report(content, &what_if, config) {
-        Ok(r) => r.shields.iter().filter(|s| new.contains(&(s.part as usize))).map(|s| (s.centre, s.radius)).collect(),
-        Err(_) => own,
+    match (sim::design_report(content, &what_if, config), shapes) {
+        (Ok(r), Some(shapes)) => (
+            r.shields.iter().filter(|s| new.contains(&(s.part as usize))).map(|s| (s.centre, s.radius)).collect(),
+            r.blasts.iter().filter(|b| new.contains(&(b.part as usize))).map(|b| BlastMarks::of(&r, b, &shapes)).collect(),
+        ),
+        _ => (own, own_blasts),
     }
 }
 
@@ -377,14 +394,14 @@ pub(super) fn rebuild(
     let _ = meshes.insert(&mesh.0, body);
 }
 
-/// Rebuilds the shield bubbles' mesh when they change.
-pub(super) fn rebuild_bubbles(view: Res<GhostView>, atlas: Res<Atlas>, style: Res<Style>, mut meshes: ResMut<Assets<Mesh>>, mut ghost: Single<(&mut GhostBubbles, &Mesh2d)>) {
+/// Rebuilds the shield bubbles' and blasts' mesh when they change.
+pub(super) fn rebuild_marks(view: Res<GhostView>, atlas: Res<Atlas>, style: Res<Style>, mut meshes: ResMut<Assets<Mesh>>, mut ghost: Single<(&mut GhostMarks, &Mesh2d)>) {
     let (g, mesh) = &mut *ghost;
-    if g.built.as_ref() == Some(&view.bubbles) {
+    if g.built.as_ref().is_some_and(|(b, x)| *b == view.bubbles && *x == view.blasts) {
         return;
     }
-    g.built = Some(view.bubbles.clone());
-    let _ = meshes.insert(&mesh.0, super::overlays::bubbles_mesh(&atlas, &style, &view.bubbles));
+    g.built = Some((view.bubbles.clone(), view.blasts.clone()));
+    let _ = meshes.insert(&mesh.0, super::overlays::ghost_marks_mesh(&atlas, &style, &view.bubbles, &view.blasts));
 }
 
 /// A blueprint's header without its parts (the faction sets the glow).
@@ -513,16 +530,42 @@ mod tests {
         let radius = content.parts.get("shield_emitter").unwrap().shield.as_ref().unwrap().radius;
         let p = Placement { part: "shield_emitter".into(), x: 2, y: 2, rot: 0, flip: false, material: None, power: None, group: None };
         let after = design.dock().preview_place(&p).unwrap();
-        let bubbles = bubbles_after(&content, &sim::SimConfig::default(), &design, &after);
+        let bubbles = marks_after(&content, &sim::SimConfig::default(), &design, &after).0;
         assert_eq!(bubbles.len(), 2);
         let centre = content.placed_shape(&p).unwrap().center();
         assert_eq!(bubbles[0].0, centre);
         assert!(bubbles.iter().all(|b| b.1 >= radius * 0.999), "{bubbles:?}");
         let empty = PlayerDesign::open(&content, &data::Blueprint { parts: Vec::new(), ..design.blueprint().clone() }, (10, 10)).unwrap();
         let after = empty.dock().preview_place(&p).unwrap();
-        let alone = bubbles_after(&content, &sim::SimConfig::default(), &empty, &after);
+        let alone = marks_after(&content, &sim::SimConfig::default(), &empty, &after).0;
         assert_eq!(alone.len(), 1);
         assert!((alone[0].1 - radius).abs() < 1e-4);
+    }
+
+    /// A fission reactor being placed shows its blast with what it would take on the design as the edit leaves it;
+    /// one the report can't make still shows its reach.
+    #[test]
+    fn an_exploding_part_shows_its_blast() {
+        let content = data::base_content();
+        let design = PlayerDesign::starter(&content, "halvex_runner");
+        let radius = content.parts.get("fission_reactor").unwrap().explosion.as_ref().unwrap().radius;
+        let (w, h) = design.frame();
+        let at = |x: i32, y: i32| Placement { part: "fission_reactor".into(), x, y, rot: 0, flip: false, material: None, power: None, group: None };
+        // The first free cell beside the hull where a reactor can go.
+        let (p, after) = (0..h as i32)
+            .flat_map(|y| (0..w as i32).map(move |x| (x, y)))
+            .filter(|&(x, y)| design.dock().part_at((x, y)).is_none() && design.dock().part_at((x + 1, y)).is_some())
+            .find_map(|(x, y)| design.dock().preview_place(&at(x, y)).ok().filter(|a| a.removed.is_empty()).map(|a| (at(x, y), a)))
+            .unwrap();
+        let (_, blasts) = marks_after(&content, &sim::SimConfig::default(), &design, &after);
+        assert!(!blasts.is_empty());
+        assert_eq!((blasts[0].centre, blasts[0].radius), (content.placed_shape(&p).unwrap().center(), radius));
+        assert!(blasts[0].takes.len() + blasts[0].destroys.len() + blasts[0].survives.len() > 0, "it reaches the part beside it");
+        let empty = PlayerDesign::open(&content, &data::Blueprint { parts: Vec::new(), ..design.blueprint().clone() }, (10, 10)).unwrap();
+        let after = empty.dock().preview_place(&Placement { x: 2, y: 2, ..p }).unwrap();
+        let (_, alone) = marks_after(&content, &sim::SimConfig::default(), &empty, &after);
+        assert_eq!(alone.len(), 1);
+        assert!(alone[0].takes.is_empty() && alone[0].destroys.is_empty() && alone[0].survives.is_empty());
     }
 
     /// A 2×2 block at (3, 4)..(4, 5): its cells and its outline.

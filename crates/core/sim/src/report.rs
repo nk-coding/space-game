@@ -111,6 +111,9 @@ pub struct DesignReport {
     pub engines: Vec<EngineReport>,
     /// Every shield emitter of the ship (all pieces).
     pub shields: Vec<ShieldReport>,
+    /// Every part that explodes when damage destroys it (all pieces), in part order: what its blast would do to
+    /// the design as built.
+    pub blasts: Vec<BlastReport>,
     /// Main piece: cargo capacity (content units).
     pub cargo: f32,
     /// Main piece: behavior rule slots of its logic cores.
@@ -315,6 +318,33 @@ pub struct ShieldReport {
     pub radius: f32,
 }
 
+/// One part's chain reaction (GDR-0084, GDR-0085): the blast it sets off when damage destroys it, on the design
+/// as built (every part alive and at full hit points), by the sim's own rules (`ShipDesign::blast`, `chain.rs`).
+#[derive(Clone, Debug, PartialEq)]
+pub struct BlastReport {
+    pub part: PartIdx,
+    /// Centre of the part (blueprint frame): the blast's centre.
+    pub centre: [f32; 2],
+    /// Content `explosion`: damage and radius (m).
+    pub damage: f32,
+    pub radius: f32,
+    /// Every part it reaches, on any piece, ascending.
+    pub hits: Vec<BlastHit>,
+}
+
+/// One part a blast reaches.
+#[derive(Clone, Debug, PartialEq)]
+pub struct BlastHit {
+    pub part: PartIdx,
+    /// The damage it takes: the blast's times its own `blast_factor` and the cover's.
+    pub damage: f32,
+    /// The armour on the line from the blast's centre that shields it (each lets its `blast_factor` through):
+    /// on the exploding part's piece or the target's, ascending.
+    pub cover: Vec<PartIdx>,
+    /// The damage reaches its hit points: the blast destroys it.
+    pub destroys: bool,
+}
+
 /// Main piece control (GDR-0038, GDR-0044).
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct ControlReport {
@@ -399,6 +429,9 @@ pub enum Issue {
         capacity: u32,
         idle: Vec<PartIdx>,
     },
+    /// Destroyed, this part's blast destroys these logic cores, guns and parts that explode in turn (a chain):
+    /// GDR-0084's warning about a reactor beside a core or a gun.
+    BlastTakes { part: PartIdx, parts: Vec<PartIdx> },
 }
 
 impl Issue {
@@ -679,6 +712,42 @@ pub fn design_report(
     guns.sort_by_key(|g| g.slot);
     engines.sort_by_key(|e| e.slot);
 
+    // Blasts: the compiled targets of each exploding part, with the cover on its piece or the target's.
+    let blasts = (0..n)
+        .filter_map(|i| {
+            let e = d.parts[i].explosion.as_ref()?;
+            let hits = d
+                .blast
+                .get(i)
+                .iter()
+                .map(|t| {
+                    let ends = [piece_of(i), piece_of(t.part as usize)];
+                    let cover: Vec<PartIdx> = d
+                        .blast_cover
+                        .get(t.cover as usize)
+                        .iter()
+                        .copied()
+                        .filter(|&c| ends.contains(&piece_of(c as usize)))
+                        .collect();
+                    let damage = cover.iter().fold(t.damage, |a, &c| a * d.parts[c as usize].blast_factor);
+                    BlastHit {
+                        part: t.part,
+                        damage,
+                        cover,
+                        destroys: damage >= d.parts[t.part as usize].hp,
+                    }
+                })
+                .collect();
+            Some(BlastReport {
+                part: i as PartIdx,
+                centre: d.parts[i].shape.center(),
+                damage: e.damage,
+                radius: e.radius,
+                hits,
+            })
+        })
+        .collect();
+
     // Totals.
     let (mut cargo, mut hp) = (0.0f32, 0.0f32);
     if let Some(k) = main {
@@ -707,6 +776,7 @@ pub fn design_report(
         firepower,
         engines,
         shields,
+        blasts,
         cargo,
         rule_slots,
         control,
@@ -1022,6 +1092,22 @@ fn issues(r: &DesignReport, ship: &Ship) -> Vec<Issue> {
             capacity: r.control.capacity,
             idle: r.control.idle.clone(),
         });
+    }
+    let d = &*ship.design;
+    for b in &r.blasts {
+        let parts: Vec<PartIdx> = b
+            .hits
+            .iter()
+            .filter(|h| h.destroys)
+            .map(|h| h.part)
+            .filter(|&p| {
+                let spec = &d.parts[p as usize];
+                spec.logic || spec.weapon.is_some() || spec.explosion.is_some()
+            })
+            .collect();
+        if !parts.is_empty() {
+            out.push(Issue::BlastTakes { part: b.part, parts });
+        }
     }
     out
 }

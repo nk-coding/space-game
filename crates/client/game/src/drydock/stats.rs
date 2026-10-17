@@ -21,7 +21,7 @@
 use bevy::prelude::*;
 use data::Content;
 use data::design::stats::{format_number, with_unit};
-use sim::DesignReport;
+use sim::{DesignReport, PartIdx};
 use sim::report::{Issue, LoadClass};
 use kit::ui_kit::Tone;
 use world::career::{EscortDesigns, Granted, voyage_line};
@@ -226,6 +226,21 @@ fn warnings(content: &Content, r: &DesignReport) -> Vec<(u8, Tone, String)> {
     {
         out.push((6, Tone::Gold, format!("PULLS {} UNDER THRUST", if pull > 0 { "LEFT" } else { "RIGHT" })));
     }
+    // What blasts would take (`Issue::BlastTakes` names logic cores, guns and parts that explode in turn): the
+    // cores first, then the guns, else the chain.
+    let mut taken: Vec<PartIdx> = r.issues.iter().flat_map(|i| if let Issue::BlastTakes { parts, .. } = i { parts.clone() } else { Vec::new() }).collect();
+    taken.sort_unstable();
+    taken.dedup();
+    let guns = taken.iter().filter(|&&p| r.guns.iter().any(|g| g.part == p)).count();
+    let chain = taken.iter().filter(|&&p| r.blasts.iter().any(|b| b.part == p)).count();
+    let cores = taken.iter().filter(|&&p| !r.guns.iter().any(|g| g.part == p) && !r.blasts.iter().any(|b| b.part == p)).count();
+    if cores > 0 {
+        out.push((8, Tone::Gold, plural(cores, "A BLAST TAKES A LOGIC CORE", "LOGIC CORES IN BLAST REACH")));
+    } else if guns > 0 {
+        out.push((8, Tone::Gold, plural(guns, "A BLAST TAKES A GUN", "GUNS IN BLAST REACH")));
+    } else if chain > 0 {
+        out.push((8, Tone::Gold, "A BLAST SETS OFF A CHAIN".into()));
+    }
     out.sort_by_key(|w| w.0);
     out
 }
@@ -392,8 +407,8 @@ mod tests {
         r.flight.yaw = -f * 0.5;
         r.flight.yaw_balanced = false;
         assert_eq!(yaw(&r), ("Pulls right".into(), Tone::Coral));
-        // An unheld pull outranks running hot.
-        assert_eq!(status_line(&content, &Ok(r.clone())).line, "FLIGHT-READY  ·  PULLS RIGHT UNDER THRUST  ·  +1");
+        // An unheld pull outranks running hot and what a blast would take.
+        assert_eq!(status_line(&content, &Ok(r.clone())).line, "FLIGHT-READY  ·  PULLS RIGHT UNDER THRUST  ·  +2");
         r.flight.yaw = f * BALANCED_ARM * 0.5;
         assert_eq!(yaw(&r).0, "Balanced");
         r.flight.thrust[0] = 0.0;
@@ -412,8 +427,10 @@ mod tests {
     #[test]
     fn the_runner_is_flight_ready_and_runs_hot() {
         let (content, r) = runner();
+        // Its fusion reactor's blast would also take what sits beside it: the second warning.
+        assert!(r.issues.iter().any(|i| matches!(i, Issue::BlastTakes { .. })));
         let s = status_line(&content, &Ok(r));
-        assert_eq!(s, StatusLine { grounded: None, line: "FLIGHT-READY  ·  RUNS HOT AT FULL LOAD".into(), tone: Tone::Gold });
+        assert_eq!(s, StatusLine { grounded: None, line: "FLIGHT-READY  ·  RUNS HOT AT FULL LOAD  ·  +1".into(), tone: Tone::Gold });
     }
 
     #[test]
@@ -437,6 +454,17 @@ mod tests {
         assert_eq!(line(&r), ("FLIGHT-READY  ·  OVERHEATS AT FULL LOAD".into(), Tone::Coral));
         r.issues.clear();
         assert_eq!(line(&r), ("FLIGHT-READY".into(), Tone::Teal));
+        // What blasts take comes last: a logic core before guns, guns before a chain.
+        let (gun, blast) = (r.guns[0].part, r.blasts[0].part);
+        let core = (0..r.parts.len() as PartIdx).find(|&p| !r.guns.iter().any(|g| g.part == p) && !r.blasts.iter().any(|b| b.part == p)).unwrap();
+        r.issues = vec![Issue::BlastTakes { part: blast, parts: vec![r.blasts[1].part] }];
+        assert_eq!(line(&r), ("FLIGHT-READY  ·  A BLAST SETS OFF A CHAIN".into(), Tone::Gold));
+        r.issues.push(Issue::BlastTakes { part: r.blasts[1].part, parts: vec![gun, r.guns[1].part] });
+        assert_eq!(line(&r), ("FLIGHT-READY  ·  2 GUNS IN BLAST REACH".into(), Tone::Gold));
+        r.issues.push(Issue::BlastTakes { part: blast, parts: vec![core, gun] });
+        assert_eq!(line(&r), ("FLIGHT-READY  ·  A BLAST TAKES A LOGIC CORE".into(), Tone::Gold));
+        r.issues.push(Issue::ControlOverCapacity { load: 9, capacity: 8, idle: vec![] });
+        assert_eq!(line(&r), ("FLIGHT-READY  ·  OVER CONTROL CAPACITY  ·  +1".into(), Tone::Gold));
     }
 
     #[test]

@@ -28,10 +28,11 @@ pub enum Overlay {
     Bonus,
     Shields,
     Arcs,
+    Blast,
 }
 
 impl Overlay {
-    pub const ALL: [Overlay; 5] = [Overlay::Heat, Overlay::Mass, Overlay::Bonus, Overlay::Shields, Overlay::Arcs];
+    pub const ALL: [Overlay; 6] = [Overlay::Heat, Overlay::Mass, Overlay::Bonus, Overlay::Shields, Overlay::Arcs, Overlay::Blast];
 
     fn bit(self) -> u8 {
         1 << self as u8
