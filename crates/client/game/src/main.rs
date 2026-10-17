@@ -96,7 +96,7 @@ fn run() {
             world::controls::ControlsPlugin,
             world::fx::FxPlugin,
             world::shield::ShieldPlugin,
-            world::backdrop::BackdropPlugin,
+            (world::backdrop::BackdropPlugin, world::scenery::SceneryPlugin),
             (world::flight_hud::FlightHudPlugin, world::warp_fx::WarpFxPlugin),
             world::fleet_bar::FleetBarPlugin,
             world::hud::HudPlugin,

@@ -22,7 +22,7 @@
     scenery: (
         rocks: [
             (rock: "slag_rock", layout: Field(radius: 200), count: (1, 2), rocks: (12, 20)),
-            (rock: "slag_rock", layout: Scatter, count: (1, 1), rocks: (10, 16)),
+            (rock: "slag_rock", layout: Scatter, count: (1, 1), rocks: (25, 40)),
         ],
         dust: 1.5,
         debris: 0.6,

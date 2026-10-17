@@ -27,6 +27,8 @@
 //! - `flight_hud`, `fleet_bar`, `hud`, `tuning`: flight HUD, fleet bar (the player's vessels), debug overlay and
 //!   toggles, live tuning panel (egui).
 //! - `backdrop`: gradient, parallax dust, range rings.
+//! - `scenery`: what fills a cluster between its sites (GDR-0104): the sim's asteroid rocks, glints, drifting debris
+//!   and derelicts, landmarks far off, a hot star's corona, distant fights.
 
 // The screens read the arena's runs and fights (the evolution lab's pages) through the world, which holds them.
 pub use arena;
@@ -45,6 +47,7 @@ pub mod part_icons;
 pub mod player;
 pub mod replay;
 pub mod scene;
+pub mod scenery;
 pub mod settings;
 pub mod shield;
 pub mod ship_model;

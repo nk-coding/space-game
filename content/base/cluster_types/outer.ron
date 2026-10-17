@@ -19,7 +19,7 @@
         scenery: (
             rocks: [
                 (rock: "ice_rock", layout: Field(radius: 180), count: (1, 2), rocks: (10, 16)),
-                (rock: "ice_rock", layout: Scatter, count: (1, 1), rocks: (6, 12)),
+                (rock: "ice_rock", layout: Scatter, count: (1, 1), rocks: (20, 30)),
             ],
             dust: 1.0,
             debris: 0.4,
@@ -44,7 +44,7 @@
         scenery: (
             rocks: [
                 (rock: "iron_rock", layout: Field(radius: 200), count: (1, 2), rocks: (12, 18)),
-                (rock: "ice_rock", layout: Scatter, count: (1, 1), rocks: (6, 10)),
+                (rock: "ice_rock", layout: Scatter, count: (1, 1), rocks: (20, 30)),
             ],
             dust: 1.0,
             debris: 1.2,
