@@ -686,8 +686,9 @@ off, the flash and its ring where it left), `voyage-warp-emergency.png` (the eme
   nearest 12, a signal's site labelled `· SIGNAL`, a beacon alone `BEACON`. A sweep makes a banner:
   `SCAN · 3 SITES FOUND` / `2 BEARINGS TOWARDS A SIGNAL · SCAN AGAIN ELSEWHERE TO CROSS IT` (gold with bearings,
   else teal with `SWEPT 1.2 KM AROUND`).
-- **A generated cluster** (for testing E3, E4): `?scene=voyage&cluster=<id>|signal|hot[&galaxy=<seed>]` takes the cluster
-  (`signal`: the first that holds a trail's place; `hot`: the first beside a hot star, GDR-0102) of the career's galaxy and flies its interior
+- **A generated cluster** (for testing E3, E4): `?scene=voyage&cluster=<id>|signal|hot|<type>[&galaxy=<seed>]` takes the cluster
+  (`signal`: the first that holds a trail's place; `hot`: the first beside a hot star, GDR-0102; a cluster type's id
+  such as `grove_reach`: the first of that type, GDR-0103) of the career's galaxy and flies its interior
   (`VoyagePlan::roll_interior`) as a practice run, named after the cluster, never saved: rolled from the seed the
   career's next launch there would get, carrying what the career knows (`Career::leads`: signals' sites only of heard
   signals, data cores at the logs it has not got). With `galaxy=<seed>` the base galaxy generated from that seed
@@ -1869,7 +1870,8 @@ Icons, glows, plumes and the FX dots come from one texture atlas that `atlas.rs`
 
 - **Which tier**: what the screen needs, `zoom × window scale factor` (px per cell; the UI's part icons' need,
   `UiAtlasNeed`, when larger), rounded up to a power of two
-  and capped by the GPU's largest 2D texture (tier 512 is 4096 × 4096 since the ship drawings, 13 Oct 2026; logged once at start). Up at once, down
+  and capped by the GPU's largest 2D texture (tier 512 is 4096 × 4096 since the ship drawings, 13 Oct 2026, and
+  4096 × 5120 since the Grown's parts, 18 Oct 2026; logged once at start). Up at once, down
   only when half the tier is clearly enough. A new tier must be wanted for 0.25 s first (zooming through tiers
   costs nothing).
 - **Rebuild** (`art::Rasterizer::step`, small steps since 13 Oct 2026): zero the buffer 2 MB at a time, render
@@ -1939,8 +1941,10 @@ Icons, glows, plumes and the FX dots come from one texture atlas that `atlas.rs`
   cell; `UiAtlasNeed` asks for twice their pixels), no material or category icons (only the wiki shows those), the
   FX textures. Regions are packed on a skyline (tallest first, each at the lowest spot it fits) into 8 × 8 units:
   4096 × 4096 px at tier 512 (before: shelves, 8 × 7.5 units without the drawings; with them shelves needed 8 × 9,
-  4608 px, over the 4096 the top tier keeps to). A mod's drawings grow it; past the GPU's limit `max_tier` caps the
-  tier. Profile at tier 512 (`... --example profile -- 512 11`, load 8.4): longest step 1.6 ms median (p95 3.6),
+  4608 px, over the 4096 the top tier kept to). 18 Oct 2026: the Grown's five parts (GDR-0102, GDR-0103) need
+  8 × 10 units (59.5 units² of regions plus their gutters no longer fit 64), 4096 × 5120 px at tier 512; tier 256
+  and below stay within 4096 px. A mod's drawings grow it; past the GPU's limit `max_tier` caps the tier (to 256
+  on a GPU whose largest texture is 4096). Profile at tier 512 (`... --example profile -- 512 11`, load 8.4): longest step 1.6 ms median (p95 3.6),
   work 149 ms (130 before).
 - **Soft by design**: glows and plumes are stored at half density (they are blurred; above tier 128 their
   blurred layers are resampled from it); at the highest zoom a plume's edge is about 1.5 px soft. Everything else (drawings, barrel) is 1:1 with the tier; tiles, seams, hull lines

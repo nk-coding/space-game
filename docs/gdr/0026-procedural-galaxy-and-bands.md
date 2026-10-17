@@ -5,6 +5,8 @@
   Warden's ([GDR-0098](0098-slice-in-the-galaxy-and-rim-rewards.md)).
   2026-10-17: the outer reach and the Grown detailed in [GDR-0099](0099-the-grown-and-the-outer-reach.md) (hot clusters, groves, a precursor guardian at
   each gate to the middle reach, giant Grown ships as boss sites).
+  2026-10-18: the outer reach is real: the `automaton_bastion` guards its gates, the Grown's elders rest at sites of
+  their own ([GDR-0103](0103-the-grown-in-play-defaults.md)).
 - Date: 2026-10-10
 - Decided by: Niklas (interactive Q&A)
 - Related: [GDR-0002](0002-awakened-ship-mind-light-story.md), [GDR-0027](0027-races.md), [GDR-0028](0028-clusters-and-voyages.md), [ADR-0022](../adr/0022-one-simulation-space-per-cluster.md), [ADR-0024](../adr/0024-saves-seed-and-deltas.md)

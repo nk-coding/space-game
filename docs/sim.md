@@ -42,6 +42,11 @@ parts heal, ram prows scale the ram damage, wary sites wake only when provoked (
 stripped), a hot star heats every part open to space; a `grown` determinism scenario. See
 [Living parts](#living-parts-gdr-0099-gdr-0102), [Hot stars](#hot-stars-gdr-0102) and [Running it](#running-it).
 
+**The Grown in play on 18 Oct 2026** (GDR-0103): the `ram` behavior action (`Maneuver::Ram`); the headless voyage
+runner opens fire on a wary site it heads for (it never wakes on sight); the test range's waves leave out wary
+factions' ships; the scenarios that spawn every blueprint leave out the outer reach's (`scenario::OUTER_TAG`), so
+they run as before.
+
 No Bevy, no graphics, no threads, no filesystem, no wall-clock. Builds for `wasm32-unknown-unknown` and
 `wasm32-wasip1`. Dependencies: `data` (content), `libm` (pinned `=0.2.16`, `arch` feature off), `rhai`
 (pinned `=1.26.1`, sandboxed; see [Rhai conditions](#rhai-conditions)) and `rapier2d` (pinned `=0.36.1`,
@@ -452,7 +457,24 @@ the probes, `runner_vs_raiders` `1bd3a842a2c5dfdd`, `--galaxy 20`; `--run mixed_
 (seed 1) native = wasm, last lines `891760365f7ece43`, `5799a287e48aef13`. The content's fingerprint changed with the part, so earlier
 fight codes and lab runs are fought under other rules.
 
-Scenarios (`sim::voyage::scenario`); `core` and `flight` spawn two copies of every blueprint in the content:
+**The Grown in play** ([GDR-0103](gdr/0103-the-grown-in-play-defaults.md), 18 Oct 2026, release builds), native
+x86_64 vs wasm32-wasip1 **identical** everywhere. The outer reach's new ships are tagged `outer` and left out of the
+scenarios that spawn every blueprint, so those fly what they flew before; but the Grown's three content behaviors
+load before `gunner_pack` (`behaviors/grown.ron`), the library's ids after them shift by three, and a behavior's id
+is in the state hash, so every stream with a behavior hashes anew. Checked: with the Grown's behaviors loaded last
+instead (the file renamed for the test), flight (`370a1a72031d7d4b`), voyage (`f53bdfa38cba1588`) and
+`runner_vs_raiders` (`1bd3a842a2c5dfdd`, ending at tick 1247) are byte-identical to the build before. Last ticks now (seed
+42, 900 ticks): core `31b368b328356716` (no behavior: unchanged), flight `5b57ad1328766ee9`, assists
+`cc347ad03a8628c6`, behavior `46170123f1496acc`, salvage `d8693e4105581fb1`, voyage `6636aafb3fe98b21`, grown
+`a14b909055122d30` (seed 7 `cbd986eae19f28c5`, 22 re-grown); `runner_vs_raiders` `92f877f393ca148f` (1247 ticks),
+the probes `close_quarters` (seed 1, 300 ticks) `d75310c995d5753e`, `warden` (seed 2) `11186687c4a56d6b`;
+`--run mixed_trials` and `two_starts_locked` (seed 1) last lines `12dc217c6b728149`, `2130a78823454d40` (the `ram`
+action joined the mutations' vocabulary). The galaxy (`--galaxy 20`, generator version 3) last line
+`5c71f969886ec4ec85f965ef31269bdf`; seed 1's skeleton `f898e1535374653d` (the outer reach's cluster types). The
+content's fingerprint changed, so earlier fight codes and lab runs are fought under other rules.
+
+Scenarios (`sim::voyage::scenario`); `core` and `flight` spawn two copies of every blueprint in the content (but
+those tagged `outer`, since 18 Oct 2026):
 
 - `core`: raw throttles and fire flags (every second ship flat out), random hits, a blast every 75 ticks, a ram
   run every 600 ticks (a ship-mind vessel and an automaton or wreck launched head-on at 20 m/s each, away from the
@@ -1112,7 +1134,10 @@ handles keep working. `default_for(&design)` = the blueprint's or faction's beha
 - **Actions** → maneuvers: `approach(r)` → `Approach`, `orbit(r, dir)` → `Orbit` (`auto` = by the parity of
   the ship's and its target's ids together: half of a fleet circles a target each way, and two ships circling each
   other go the same way, whichever has the lower id; ADR-0037), `kite(r)` → `KeepRange`, `face` → `FaceTarget`, `flee` → `Flee`, `hold` → `Brake`,
-  `escort(d)` → `Escort` (GDR-0065, below). All aim with `AimMode::Auto` (lead for projectile ships).
+  `escort(d)` → `Escort` (GDR-0065, below), `ram` → `Ram` (GDR-0103, 18 Oct 2026: the velocity goal is the
+  target's velocity plus top speed straight at it, capped at the top speed like every goal, the nose on the target
+  with `AimMode::Target`, never braking for it; the Grown's rammers fly it in a cycle). All others aim with
+  `AimMode::Auto` (lead for projectile ships).
 - **`escort(d)`** (GDR-0065, 13 Oct 2026; default 30 m): keep within `d` of the leader (`ShipCommand::Leader`, the
   vessel whose lock `locked` follows: for the sandbox's `?fleet=` wingmen and TEST IN RANGE's wingman the
   player's ship). It needs no target (a rule with it never fails with `NoTarget`), so it goes last, below the
@@ -2360,7 +2385,9 @@ entry (and the escorts behind it, under the `escort` template with the flagship 
 scripted pilot (see the docs of `sim::voyage::runner`: in fights the balance study's *closing* stand-in, or a content behavior with
 `--behavior`; salvage it can catch; the sites in turn, the goal last; home once the goal and the sites are done or
 the hold is full, when it is disarmed (`Ship::is_armed`; an overheated or idle gun still counts), or after 3 minutes
-without progress; it fights armed awake enemies only, `Sim::armed_enemy`), and prints per seed the outcome
+without progress; it fights armed awake enemies only, `Sim::armed_enemy`, and, since 18 Oct 2026 (GDR-0103), the
+armed ships of a wary site it heads for, which never wake on sight: it opens fire on the nearest within 400 m),
+and prints per seed the outcome
 (recalled, lost, out of time), goal, sites cleared, time, hull lost, kills, awake enemies left (how many disarmed),
 haul items and research data per family (`data::career::unload`; every player vessel's hold), then medians, p95 and
 the step time. `--design` and `--escort` also take a blueprint file (`*.ron`, a saved or exported drydock design),
@@ -2521,7 +2548,8 @@ functions, no state, no random stream of their own:
   biggest enemies first (each as often as it fits whole), then one more of the smallest if at least half of it is
   left; at least one ship, at most `WAVE_CAP` (8). `wave(design_bp, enemies)` the wave's ships in the order they come
   in, the biggest first. `wave_enemies(content)` the content ships tagged `enemy` (`ENEMY_TAG`) with their build
-  points, smallest first; `build_points(design)` a compiled design's.
+  points, smallest first, none of a wary faction (GDR-0103: the Grown wait to be provoked; the bastion is not tagged
+  `enemy`, so the waves keep to the rim's); `build_points(design)` a compiled design's.
 - `wave_bodies(centre, n, roll)`: where the `n` ships come in around the ship they are sent at: on an arc at a random
   bearing, `WAVE_SPREAD` (0.32 rad) apart, each `WAVE_RADIUS` (105–125 m) out, nose and velocity (`WAVE_SPEED`, 3
   m/s) towards it; `sim::math`'s trigonometry. The caller rolls: the arena on the `Scenario` stream, the test range on

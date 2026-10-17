@@ -1,6 +1,9 @@
 # GDR-0102: The Grown's mechanics and parts, lead defaults: one regrown part every 2.5 s from a working heart, tissue that heals, a prow that deals twice and takes half, wary sites that wake on provocation and on stripped wrecks, hot stars by the inverse square
 
 - Status: Accepted (provisional, lead), 17 Oct 2026, for Niklas to review
+  2026-10-18: the parts and tissue are unlocked by the Grown research family and their salvage goes to it; the
+  Grown's ships and the outer reach's sites built on them ([GDR-0103](0103-the-grown-in-play-defaults.md)); the
+  ram prow sits out in front of a Grown ship, the thorn guns a row back.
 - Date: 2026-10-17
 - Decided by: lead session (defaults within [GDR-0099](0099-the-grown-and-the-outer-reach.md), Niklas's decisions)
 - Related: [GDR-0099](0099-the-grown-and-the-outer-reach.md), [GDR-0022](0022-heat-per-part.md), [GDR-0021](0021-shields.md), [GDR-0045](0045-shields-absorb-rams-no-friendly-ram-damage.md), [GDR-0047](0047-ramming-crushes-inward-bumps-free.md), [GDR-0019](0019-damage-model.md), [GDR-0070](0070-phase-7-wave-2-defaults.md), [GDR-0080](0080-exploration-searching-and-story.md), [GDR-0095](0095-sensors-hidden-sites-and-scans.md), [GDR-0094](0094-galaxy-generator-defaults.md), [GDR-0063](0063-salvage-and-research-v1.md), `docs/sim.md` "Living parts" and "Hot stars"

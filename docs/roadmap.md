@@ -523,6 +523,18 @@ Next session:
   scenario (identical native vs wasm), the parts locked behind `?unlock=all`, `?scene=voyage&cluster=hot`, wiki pages.
   Next, phase 2: the Grown's ships, behaviors, groves, cluster types, research family, gate guardians and bosses.
 
+### 18 Oct 2026: the outer reach, phase 2 of 2: the Grown in play
+
+- ([GDR-0103](gdr/0103-the-grown-in-play-defaults.md), lead defaults; `results/outer-balance-2026-10-18.md`) The
+  Grown's rammer, thornback, grove guardian and the giant elder on a ganglion beside the heart; the `ram` behavior
+  action; groves (wary, their wrecks as bait), rim stragglers in a border drift near the rim, groves beside the hot
+  stars; the `automaton_bastion` at each outer gate, two elder groves at the ends of their own trails; the Grown
+  research family (regrowing tissue → prows and thorns → the heart). A Runner with one cannon skiff clears a grove run
+  55 %, an outer gate 52 %, an elder grove 44 %. Saved designs carrying `automaton_cannon` are refitted with the
+  player's cannon on load. `?scene=voyage&cluster=grove_reach` flies the first grove reach.
+- Open: careers made before keep their galaxy (their outer reach keeps the stand-ins but for the hot clusters);
+  the Grown's materials; heat research.
+
 ## Phase 4: measurement
 
 Status 12 Oct 2026 (new VM): `results/spike-summary.md` written. Determinism native vs wasm IDENTICAL on the new VM

@@ -4,6 +4,10 @@
   2026-10-17: phase 1 built, the mechanics and parts (regrowth, healing tissue, the ram prow, the thorn gun, wary
   sites, hot stars; their rules and numbers lead defaults in [GDR-0102](0102-grown-mechanics-and-parts-defaults.md));
   phase 2 (the Grown's ships, behaviors, groves, cluster types, research family, guardians and bosses) not yet.
+  2026-10-18: phase 2 built: the Grown's rammer, thornback, grove guardian and elder, groves, the outer reach's
+  cluster types with rim stragglers near the border, the Grown research family, the bastion at each outer gate and
+  the elders at sites of their own; lead defaults in [GDR-0103](0103-the-grown-in-play-defaults.md) (A6 measured: a
+  Runner with one escort clears a grove run 55 %, an outer gate 52 %).
 - Date: 2026-10-17
 - Decided by: Niklas (interactively, 17 Oct 2026; the recommended option on every question)
 - Related: [GDR-0026](0026-procedural-galaxy-and-bands.md), [GDR-0027](0027-races.md), [GDR-0031](0031-materials-and-fabrication.md), [GDR-0022](0022-heat-per-part.md), [GDR-0021](0021-shields.md), [GDR-0024](0024-tech-trees-no-mk-levels.md), [GDR-0025](0025-research-from-salvage.md), [GDR-0047](0047-ramming-crushes-inward-bumps-free.md), [GDR-0073](0073-slice-tuning-v1.md), [GDR-0080](0080-exploration-searching-and-story.md), [GDR-0094](0094-galaxy-generator-defaults.md), [GDR-0098](0098-slice-in-the-galaxy-and-rim-rewards.md), [GDR-0100](0100-fight-balance-targets.md)

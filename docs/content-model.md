@@ -171,6 +171,12 @@ An armour material may carry a `salvage` block (what one cell of hull area in it
 (id: "composite", ..., salvage: (family: "hull", data: 1.5))
 ```
 
+`replaces` (optional on parts, added 18 Oct 2026, GDR-0103): part ids this part stands in for in the player's saved
+designs. The game refits every saved design when it loads (and the drydock's working design when it is restored):
+a placement of a replaced part becomes this one. The base pack's `reverse_engineered_cannon` replaces
+`automaton_cannon` (the player's cannon became a part of its own on 18 Oct). Validation: never the part itself, one
+part per replaced id, the same footprint (size, shape, hull).
+
 `locked` (optional, default `false`, added 13 Oct 2026), on materials, parts and frames alike: not available to
 the player until unlocked (research: an unlock of a [research node](#research-nodes-added-13-oct-2026)
 clears it per player, GDR-0063). The free drydock hides locked parts and materials (palette, armor pills, the 1–9
@@ -719,6 +725,15 @@ Corran Reach (hunter pack ×2 (one until 17 Oct 2026), gunner pair (since 17 Oct
 den), the Warden's gate (raider pack, core graveyard, goal the Warden). The raider pair and den wait only in the
 kinds of cluster now (`cluster_types/rim.ron`; a wreck drift also holds 0–1 gunner pairs).
 
+The outer reach (`encounters/grown.ron`, `cluster_types/outer.ron` and `scorched.ron`, 18 Oct 2026, GDR-0103;
+counts tuned with the headless voyage runner, `docs/results/outer-balance-2026-10-18.md`): `grove_pair` (a
+`grown_rammer` and a `grown_thornback`), `grove` (a rammer, 0–1 thornbacks, 1–2 rammer wrecks as bait),
+`guarded_grove` (a `grown_guardian` and a rammer, a thornback wreck), `grown_dead` (wrecks only), `rim_stragglers`
+(1–2 raiders, 0–1 gunners), `bastion_gate` (the `automaton_bastion`, a gunner and a hunter: the outer gates' trail
+`outer_gate`), `elder_grove` (the `grown_elder` and a rammer, 1–2 guardian wrecks: the trail `elder_grove`). Grown
+sites are wary (they wake only when provoked, GDR-0102); the Grown fly `behaviors/grown.ron`. Ships tagged `outer`
+stay out of the determinism scenarios that spawn every blueprint.
+
 ### Controls (`controls.ron`, added 15 Oct 2026, GDR-0090)
 
 The action map's actions (`data::input::Action`; every action needs exactly one entry once the content has any, and
@@ -764,8 +779,8 @@ is in the rules' fingerprint: a game keeps its generated galaxy (ADR-0035).
 | Kind | Fields besides the common header |
 |---|---|
 | `galaxy` (`galaxy.ron`) | `bands` (ids, rim first, each inside the one before), `spacing` (S, no two clusters closer), `jump_range` (S at the start; at least twice the spacing), `home_neighbours` (home's band clusters without a set piece within the jump range), `warp` (`(seconds, seconds per S)`), `signal_area: (across: (min, max) S, offset: share of the radius the place may lie off-centre, below 1, narrow: share of the radius a scan from another cluster keeps, above 0 and below 1)`, `trail_step` (`(min, max)` S between a trail's places), `names: (starts, ends)` (syllables of a cluster name's first word), `set_pieces` (`[(voyage, distance: (min, max) S from home, gate)]`: hand-made voyages placed on clusters of their band that take their names; a `gate` piece keeps its band's first gate, its voyages the gate's trail, at most one a band, its goal with ships for sure; E7, GDR-0098) |
-| `band` (`bands.ron`) | `edge` (S from the centre to its outer edge; the next band's edge is its inner one), `clusters` (`[(id: cluster type, weight)]`), `gates` (optional `(count, trail)`: gates near its inner edge, each at the end of a `Gate` trail; every band but the innermost has them), `trails` (`[(trail, count)]`, `Cache` or `Salvage` trails) |
-| `cluster_type` (`cluster_types/*.ron`) | `radius` (`(min, max)` m, at most 4000: one `f32` space, ADR-0022), `spacing` (`(min, max)` m between sites, as a voyage's), `words` (the second word of its clusters' names), `sites` (`[(encounter, count: (min, max))]`, at most 64 sites), `star` (optional `(heat, distance)`: a hot star beside the cluster, `distance` cluster radii from the centre (above 1, at most 10) in a direction rolled after its sites; every part takes `heat` per second per open side at the centre, by the inverse square of the distance nearer it, at most `data::STAR_HEAT_CAP` = 4 times; 17 Oct 2026, GDR-0102; the outer reach's stub `scorched_deep`: 0.3 at 1.8) |
+| `band` (`bands.ron`) | `edge` (S from the centre to its outer edge; the next band's edge is its inner one), `clusters` (`[(id: cluster type, weight)]`, optional `border: S` per type: rolled only for clusters within that many S of the band's outer edge, at least one type without; 18 Oct 2026, GDR-0103: the outer reach's `border_drift`), `gates` (optional `(count, trail)`: gates near its inner edge, each at the end of a `Gate` trail; every band but the innermost has them), `trails` (`[(trail, count)]`, `Cache` or `Salvage` trails) |
+| `cluster_type` (`cluster_types/*.ron`) | `radius` (`(min, max)` m, at most 4000: one `f32` space, ADR-0022), `spacing` (`(min, max)` m between sites, as a voyage's), `words` (the second word of its clusters' names), `sites` (`[(encounter, count: (min, max))]`, at most 64 sites), `star` (optional `(heat, distance)`: a hot star beside the cluster, `distance` cluster radii from the centre (above 1, at most 10) in a direction rolled after its sites; every part takes `heat` per second per open side at the centre, by the inverse square of the distance nearer it, at most `data::STAR_HEAT_CAP` = 4 times; 17 Oct 2026, GDR-0102; the outer reach's `scorched_deep`: 0.3 at 1.8) |
 | `trail` (`trails.ron`) | `reward` (`Gate`, `Cache`, `Lore`, `Salvage`), `length` (`(min, max)` signals, 1 to 4), `target` (the encounter at its end; a gate's must have ships for sure), `sources` (signal source ids, equally likely), `hint` (text: the signal's first line, "SIGNAL · A GATE"), `gives` (optional `(data: {family: amount}, materials: {material: count})`: what its end puts into store, a cache's; E8) |
 | `signal_source` (`signal_sources.ron`) | `form` (`Log`: a data core in a wreck, decoded at home; `Beacon`: scanned in the cluster), `line` (text: the signal's second line, "a log from a hauler's wreck"), `site` (the encounter at its place: required for a log and must hold wrecks; a beacon's keeper, none for the beacon alone) |
 | `lore` (`lore/*.ron`) | `band`, `trail` (a `Lore` trail: one is placed per fragment), `text` (the fragment, for the memory log) |

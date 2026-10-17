@@ -436,6 +436,11 @@ Track 7F, 13 Oct 2026: `game::career` (`crates/client/world/src/career.rs`; test
   the career's own progress (FLEET still saves its escorts).
 - **Escorts**: their saved designs are read at start and whenever home or the drydock opens (`EscortDesigns`); an
   escort whose design is gone or doesn't read leaves the fleet, the save is written and home notes it.
+- **Refits** (18 Oct 2026, GDR-0103): when the career loads, every saved design carrying a part another part
+  `replaces` (`content-model.md`) is refitted with it and written back with its saved time
+  (`world::player::library::refit_saved`); home notes DESIGNS REFITTED with their names. The drydock's working
+  design is refitted when it is restored. So designs from before 18 Oct that carry `automaton_cannon` build the
+  player's `reverse_engineered_cannon`. The save format is unchanged.
 
 ## How the game uses it
 

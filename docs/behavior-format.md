@@ -52,8 +52,13 @@ There is no `end`, no `or` and no nesting. For "this **or** that", write two rul
 
 ### Actions
 
-`approach(range)`, `orbit(radius, dir)`, `kite(range)`, `face`, `flee`, `hold`, `escort(distance)`, `scan`. See the
-vocabulary in the wiki (or `content/base/behavior_nodes/actions.ron`) for what each does.
+`approach(range)`, `orbit(radius, dir)`, `kite(range)`, `face`, `flee`, `ram`, `hold`, `escort(distance)`, `scan`. See
+the vocabulary in the wiki (or `content/base/behavior_nodes/actions.ron`) for what each does.
+
+`ram` (added 18 Oct 2026, GDR-0103, the Grown's charge) flies straight at the target at top speed, nose first, and
+never brakes for it. A ship with only stern thrust cannot take out sideways speed while it does, so charge from a
+standstill relative to the target: `when target_in_range(45m) and cycle(10s) >= 7s -> ram` above `always ->
+approach(80%)`, as the Grown's rammers fly it.
 
 `scan` (added 16 Oct 2026, GDR-0093, GDR-0095) starts a scan with the ship's scanner when its conditions hold and the
 scanner is ready, then **steps aside**: the next rule that holds flies the ship (the debug view says `started a scan`
