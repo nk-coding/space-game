@@ -603,7 +603,7 @@ node listed twice in `requires`; no cycle in `requires` (each cycle is reported 
 entry that is not `locked` is a warning (a new game has it already), so is a node that unlocks nothing.
 
 Base nodes (`research/rim.ron`, the first playable loop's nine and the two jump calibrations, placeholders; costs about halved by the slice
-tuning, GDR-0073): `automaton_cannon` (kinetic 3), `composite_plating` (hull 8, unlocks composite), `beam_laser`
+tuning, GDR-0073): `automaton_cannon` (kinetic 3, unlocks `reverse_engineered_cannon`, the player's copy of the automatons' gun: rate and damage 1.1 against their 1.2, 18 Oct 2026, GDR-0100's status), `composite_plating` (hull 8, unlocks composite), `beam_laser`
 (energy 10), `fusion_reactor` (power 10), `torch_drive` (propulsion 10), `tamed_core` (logic 3 + programmable
 matter 1, unlocks the automaton core), `mind_expansion_1` (logic 10 + 3, needs `tamed_core`), `mind_expansion_2`
 (logic 16 + 5, needs `mind_expansion_1`), `cruiser_drydock` (hull 20, needs `composite_plating`, unlocks the cruiser

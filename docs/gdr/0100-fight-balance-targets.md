@@ -10,6 +10,11 @@
   brings the starter to 57 / 37 / 22 / 15 % and the Runner to 74 / 65 / 40 / 25 %; B1 met (each voyage harder than
   the last for every fleet, a Runner with an escort 42 % at the Warden, unchanged); Corran Reach gained a gunner pair
   (a count, B3).
+  2026-10-18 (`docs/results/slice-balance-2026-10-18.md`): Niklas had the player's cannon toned down. Research
+  `automaton_cannon` now unlocks the player's own copy, `reverse_engineered_cannon` (rate and damage 1.2 → 1.1, a
+  shot still 1 hit point); the automatons keep `automaton_cannon`, so no enemy fight changed. The cannon starter
+  clears 91 / 63 / 38 / 28 % (was 93 / 68 / 46 / 37), below a Runner with an escort at the Warden (42 %); no count
+  re-tuned.
 - Date: 2026-10-17
 - Decided by: Niklas (interactively, 17 Oct 2026; the recommended option on every question)
 - Related: [GDR-0073](0073-slice-tuning-v1.md), [GDR-0074](0074-test-range-waves-emergency-recall-cannon.md), [GDR-0061](0061-fight-balance-after-turning-v2.md), [GDR-0064](0064-lock-feed-forward-and-ai-flight-fixes.md), [GDR-0089](0089-play-test-15-oct-speed-salvage-waves-station.md), [GDR-0021](0021-shields.md), [GDR-0055](0055-slower-crisper-turning.md), [GDR-0058](0058-turning-v2-defaults.md), [GDR-0066](0066-phase-7-wave-1-defaults.md), [GDR-0099](0099-the-grown-and-the-outer-reach.md), `docs/results/slice-balance-2026-10-17.md`

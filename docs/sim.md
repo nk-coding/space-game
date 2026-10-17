@@ -444,6 +444,14 @@ fingerprint changed with the new parts, so earlier fight codes and lab runs are 
 (`--galaxy 20`, seeds 1–20) native = wasm, last line `997ed53d1b648abf44a63da6ac8e8194`; seed 1's skeleton
 `6c2845db355809ce` (the outer band's clusters changed).
 
+**The player's cannon** (GDR-0100's status of 18 Oct 2026, `docs/results/slice-balance-2026-10-18.md`, release
+builds): a new part, `reverse_engineered_cannon`, that nothing in a scenario flies; every stream byte-identical to
+the build before and native x86_64 = wasm32-wasip1: core, flight, assists, behavior, salvage, voyage and grown (seed
+42, 900 ticks) as above, voyage seeds 42 and 7 at 1800 ticks `e2404c9d5557eb3f` / `9be576eee0c5aa07`, grown seed 7,
+the probes, `runner_vs_raiders` `1bd3a842a2c5dfdd`, `--galaxy 20`; `--run mixed_trials` and `two_starts_locked`
+(seed 1) native = wasm, last lines `891760365f7ece43`, `5799a287e48aef13`. The content's fingerprint changed with the part, so earlier
+fight codes and lab runs are fought under other rules.
+
 Scenarios (`sim::voyage::scenario`); `core` and `flight` spawn two copies of every blueprint in the content:
 
 - `core`: raw throttles and fire flags (every second ship flat out), random hits, a blast every 75 ticks, a ram
