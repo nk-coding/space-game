@@ -16,6 +16,15 @@ your game's [galaxy](/mechanics/galaxy), around home: the bands from the rim inw
 core; only the rim is open to you at first), the clusters you have charted, the signals you have heard as gold areas,
 and your jump range as soft teal circles. The first four voyages of the rim sit on clusters near home.
 
+The map shows at a glance which bands are open to your jumps. An open band past your own carries a faint teal tint,
+and the edge you crossed to reach it is a solid teal line. The first sealed band lies behind a dashed coral edge
+and, like every band deeper in, under a darker veil. Zoomed out, locks sit along the band edges (open ones on an
+open gate's edge, shut ones on the sealed edge), and under each band's name is its state: CHARTED · OPEN for home's,
+UNCHARTED · OPEN for one a gate has opened, SEALED for the others. The first sealed band also says who keeps its
+gates: SEALED · BEAT THE WARDEN OR A GATE SENTINEL behind the rim (the [[encounter:the_warden]] and every
+[[encounter:gate_sentinel]] keep the rim's gates). The band name along the map's top past the gate says OPEN or
+SEALED too. Beat a gate's guardian and its band opens on the map at once (see [gates](/mechanics/galaxy)).
+
 You only see the voyages you know about. A voyage that is not open yet is not drawn at all. A known voyage has a
 marker and a label:
 

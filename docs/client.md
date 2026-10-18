@@ -1007,6 +1007,17 @@ first voyage, nothing else), `map-signals-found.png` (the first voyage cleared: 
 `map-1280.png`, `map-1600.png`, `map-1600-locked.png`, `map-wide.png` (3440 × 1305) and `map-tall.png` (900 × 1400)
 show the window sizes but still the chain and the locked voyages the map drew before GDR-0078.
 
+Which bands are open (18 Oct 2026, Niklas: the map should show which rings are unlocked; `known::Known::bands` from
+`Career::band_open`): an open band past home's has a faint teal tint and its gate edge is a solid teal line; the first
+sealed band lies behind a dashed coral edge, every sealed band under a darker veil with the fog and the coral tint
+(`galaxy::build`, rebuilt when a band opens). The far layer adds locks along the gate edges (open teal, shut coral,
+`galaxy::build_far`), each band's name has its state under it (`CHARTED · OPEN`, `UNCHARTED · OPEN`, `SEALED · BEAT
+THE WARDEN OR A GATE SENTINEL` with the guardians from the content, `SEALED`), and the next band's name along the top
+says `OPEN` or `SEALED`. The look is `map.bands.*` in `art/tokens.json` (`kit::style::BandStyle`). Screenshots
+(1280 × 720, a test save `?save=bandtest`): `docs/results/galaxy-map-bands-rim-open.png` (a new game, zoomed out),
+`galaxy-map-bands-outer-open.png` (the Warden beaten: the outer reach open) and `galaxy-map-bands-outer-open-near.png`
+(the same at the default view: the solid edge, the dashed one past it).
+
 | Keys | |
 |---|---|
 | Select a voyage | a click or a tap on its marker or its label; ← → (↑ ↓) step through the known ones |

@@ -10,6 +10,14 @@
   2026-10-18 (Niklas: the gold pulses stuttered at well over 120 fps): the signals' pulses, the areas' waves, a
   narrowed edge's fade and the warp's light ran in steps (15–30 a second) so the meshes were rebuilt only per step;
   their phases are continuous now (real time), the meshes rebuilt every frame while one runs.
+  2026-10-18 (Niklas: the map should show which rings are unlocked): the bands' state reads at a glance. An open
+  band past home's gets a faint teal tint and its gate edge a solid teal line; the first sealed band lies behind a
+  dashed coral edge, every sealed band under a darker veil (fog and the coral tint now only there). Zoomed out,
+  locks sit along the gate edges (open ones teal, shut ones coral) and each band's name has its state under it:
+  `CHARTED · OPEN`, `UNCHARTED · OPEN`, `SEALED · BEAT THE WARDEN OR A GATE SENTINEL` (the guardians from the
+  content: set pieces on the outer band's gates, then its gate trail's target), `SEALED`; the top line's next band
+  says `OPEN` or `SEALED`. The galaxy's mesh is rebuilt when a band opens. Colours, opacities and sizes are tokens
+  (`map.bands.*`). The flight minimap and the cluster map show one cluster and have no bands: unchanged.
 - Date: 2026-10-16
 - Decided by: lead session (defaults for Niklas to review, galaxy tracks E5 and E6)
 - Related: [GDR-0078](0078-galaxy-exploration-v1.md), [GDR-0080](0080-exploration-searching-and-story.md), [GDR-0091](0091-log-building-and-voyage-history.md), [GDR-0093](0093-galaxy-exploration-decisions-16-oct.md), [GDR-0095](0095-sensors-hidden-sites-and-scans.md), [GDR-0096](0096-career-galaxy-format-3.md), [GDR-0065](0065-phase-7-screens-and-escort-action.md), `docs/plans/galaxy-voyages.md` (E5, E6, 4.1–4.5), `docs/client.md` "Voyage map", "Voyages", "LOG"
