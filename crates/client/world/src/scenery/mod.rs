@@ -1,7 +1,8 @@
 //! What fills a cluster between its sites (GDR-0104), from the voyage's or the cluster type's `scenery`:
 //!
-//! * **Rocks** (`rocks.rs`): the sim's asteroid rocks (`Voyage::rocks`, real bodies), drawn as they spawn: a filled
-//!   outline in the kind's tone, facet lines and a lit edge.
+//! * **Rocks** (`rocks.rs`): the sim's asteroid rocks (`Voyage::rocks`, real bodies), drawn as they spawn along the
+//!   sim's own outline: soft bands towards the light (the sky's: its hot star, else its first planet's), craters, a
+//!   ridge, speckle and the kind's marks, one mitred edge line.
 //! * **Filler** (`filler.rs`, drawn only, never in the way): glints and motes on a near parallax layer, bits of hull
 //!   drifting about (thicker round the sites), derelict shells drifting slowly along the way a little below the play.
 //! * **Far things** (`far.rs`): landmarks far off on layers of their own (a derelict station, a beacon, a junk ring),
@@ -51,6 +52,8 @@ struct Scenery {
     key: Option<(String, u64)>,
     spec: Option<Spec>,
     rocks_drawn: usize,
+    /// Where the rocks' light comes from: the sky's.
+    light: rocks::Light,
 }
 
 /// What a voyage's scenery is drawn from.
@@ -188,12 +191,14 @@ fn sync(
         "scenery: {} glint tiles of {} motes, {} debris groups ({} bits), {} derelicts, {} landmarks{}",
         counts.tiles, counts.motes, counts.groups, counts.bits, counts.derelicts, far.landmarks, if far.corona { ", a corona" } else { "" }
     );
+    let mut planet_light = None;
     if let Some(sky) = &spec.sky {
         let star = spec.star.map(|s| s - spec.entry);
         let over = sky::Over { radius: spec.radius, entry: spec.entry };
         let s = sky::SkySpec { sky, seed: spec.sky_seed, star, planet: params.text("planet"), over: Some(over), strength: sky::STRENGTH };
         let start = bevy::platform::time::Instant::now();
         if let Some(c) = sky::spawn(cx, &s, &world.content) {
+            planet_light = c.light;
             let [planets, moons, nebula, galaxy] = c.vertices;
             info!(
                 "sky over {:.0} m: planets [{}] with moons [{}]; vertices: planets {planets}, moons {moons}, nebula {nebula} (at most {} blobs over a point), galaxy {galaxy}; built in {:.0} ms",
@@ -205,6 +210,7 @@ fn sync(
             );
         }
     }
+    state.light = rocks::Light::of_sky(spec.star, planet_light);
 }
 
 /// What spawning the scenery needs.

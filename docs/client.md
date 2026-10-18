@@ -731,12 +731,28 @@ off, the flash and its ring where it left), `voyage-warp-emergency.png` (the eme
   farther than the planet draws over it (the stars, points of light, stay behind the sky's bodies whatever their
   parallax).
   - **Rocks** (`rocks.rs`): the sim's rocks (`Voyage::rocks`) as they spawn, the rocks spawned together in one mesh
-    in world coordinates (z 3, under trails and ships). The collider stays the sim's coarse convex hull; the view
-    follows it finer (GDR-0107): the hull's corners cut a little twice, resampled to 32–96 points by size, roughened
-    along the normal by three smooth harmonics (at most about 5 % of the radius), each rock's look rolled from the
-    voyage's seed and its index. Filled in the kind's tone (`world.rock.*`, a fan from the centre), a lighter body
-    shifted towards the light (upper left) leaving a shadowed rim, 1–5 craters (dark bowls, the inner wall lit in
-    `world.rock_facet`), an edge line brighter on the sides facing the light.
+    in world coordinates (z 3, under trails and ships) and one small additive mesh (z 3.01, `Atlas::additive`: the
+    atlas material blending `src × alpha + dst`) for glints and embers; the log line `rocks: N drawn (V vertices, G
+    glowing)`. Since 18 Oct 2026 the backdrop study's approach C (Niklas; GDR-0104's status line of 18 Oct): the
+    outline is the sim's own (`sim::voyage::rocks::curve` through the rock's dented control points, 96 points,
+    star-shaped round the centre; the sim collides with the same curve, cut into convex pieces where it dents deeply),
+    turned by the rock's angle. On it: five nested bands from the tone's shadow to its lit colour, each the outline
+    scaled (1, 0.9, 0.74, 0.53, 0.3) towards a point 0.4 of the way out towards the light with a soft skirt over the
+    band below; a rim light on the shadow side (`world.rock_rim`, up to 0.32, fading 0.1 of the way in); a ridge (a
+    lit and a shadowed soft line, `look.ridge`); one crater per `look.crater_every` m of radius (1–7, a quarter large,
+    foreshortened towards the limb, a lip lit towards the light, a bowl dark on its near wall and lit on its far one,
+    a floor; none overlapping another's lip); speckle (3.5 a metre of radius, at most 70, 0.05–0.11 m); the kind's
+    marks: bright cracks (`world.rock_crack`), small pits, ember veins on the shadow side (`world.rock_ember`,
+    `rock_ember_core`, additive) and a metal glint on the lit side (`world.rock_glint`, additive); one edge line round
+    the outline as a single closed strip with mitred joins (0.08 m half width, brighter where it faces the light), so
+    no corner gaps or overlaps. Colours from `world.rock.<tone>` (`shadow`, `mid`, `lit`, `edge`). The light comes
+    from the sky (`rocks::Light`): towards the hot star from each rock in a scorched cluster, else from the sky's first
+    planet's light (`SkyCounts::light`, turned from the sky's y-down frame), else from the upper left. Each rock's marks
+    roll from the voyage's seed and its index. About 2–2.4 k vertices a rock (the bands and their skirts 1.25 k; the
+    study's count of about 1 k left the skirts out), a field of 22 rocks 46 k vertices in one static mesh. Screenshots
+    (headless, 1280 × 720): `docs/results/rocks-c-field.png` (a wreck drift's iron field at the starting zoom),
+    `rocks-c-iron.png`, `rocks-c-ice.png` (close-ups at 30 px/m, lit from the sky's planet),
+    `rocks-c-slag-scorched.png` (a scorched deep's slag, lit from the hot star on the left; its corona at the edge).
   - **Filler** (`filler.rs`, drawn only): glints and motes on a near layer (`p` 0.85, a 260 m tile repeated 3 × 3 round
     the view like the backdrop's dust, the glints twinkling as one; 130 motes and 12 glints at `dust` 1, 220 and 18
     until 18 Oct 2026), hull debris everywhere on a far tiled layer with the backdrop's far dust (`p` 0.3, a 400 m tile

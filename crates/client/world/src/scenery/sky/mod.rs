@@ -103,6 +103,8 @@ pub(super) struct SkyCounts {
     pub moons: Vec<String>,
     pub vertices: [usize; 4],
     pub nebula_peak: u8,
+    /// Where the first planet's light comes from (angle, design frame, y down): what lights the rocks.
+    pub light: Option<f32>,
 }
 
 /// The cluster a sky hangs over: its radius and where the fleet enters (m, round its centre).
@@ -165,7 +167,8 @@ pub(super) fn spawn(cx: &mut Build, s: &SkySpec, content: &data::Content) -> Opt
     let nebula = nebula::nebula(&mut Stream::new(s.seed, "nebula"), s.sky, night, hot.is_some());
     let galaxy = nebula::galaxy(&mut Stream::new(s.seed, "galaxy"), s.sky.galaxy);
 
-    let mut counts = SkyCounts { planets: Vec::new(), moons: Vec::new(), vertices: [0; 4], nebula_peak: nebula.peak };
+    let light = planets.first().map(|p| p.body.light);
+    let mut counts = SkyCounts { planets: Vec::new(), moons: Vec::new(), vertices: [0; 4], nebula_peak: nebula.peak, light };
     let put = |cx: &mut Build, g: paint::Geo, part: SkyPart, z: f32| -> usize {
         let n = g.len();
         cx.commands.spawn((SceneryPart, part, Mesh2d(cx.meshes.add(g.into_mesh())), MeshMaterial2d(cx.atlas.material.clone()), Transform::from_xyz(0.0, 0.0, z)));

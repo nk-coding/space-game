@@ -22,6 +22,11 @@ impl MeshBuf {
         self.idx.is_empty()
     }
 
+    /// How many vertices it holds.
+    pub fn len(&self) -> usize {
+        self.pos.len()
+    }
+
     pub fn set_z(&mut self, z: f32) {
         self.z = z;
     }
@@ -61,6 +66,41 @@ impl MeshBuf {
         let n = pts.len() as u32;
         for k in 0..n {
             self.idx.extend_from_slice(&[base, base + 1 + k, base + 1 + (k + 1) % n]);
+        }
+    }
+
+    /// A fan from `centre` (colour `cc`) to the star-shaped ring `pts`, a colour per point (`cols`), sampling a single
+    /// texel position: soft shading across a filled outline.
+    pub fn fan_shaded(&mut self, centre: Vec2, cc: [f32; 4], pts: &[Vec2], cols: &[[f32; 4]], uv: Vec2) {
+        if pts.len() < 3 {
+            return;
+        }
+        let base = self.vert(centre, uv, cc);
+        for (p, &c) in pts.iter().zip(cols) {
+            self.vert(*p, uv, c);
+        }
+        let n = pts.len() as u32;
+        for k in 0..n {
+            self.idx.extend_from_slice(&[base, base + 1 + k, base + 1 + (k + 1) % n]);
+        }
+    }
+
+    /// Quads between two rows of points of the same length (`a`, `b`), a colour per point (`ca`, `cb`), closed into a
+    /// ring or not, sampling a single texel position: a gradient band, a soft skirt or one side of a soft line.
+    pub fn band(&mut self, a: &[Vec2], ca: &[[f32; 4]], b: &[Vec2], cb: &[[f32; 4]], closed: bool, uv: Vec2) {
+        let n = a.len().min(b.len());
+        if n < 2 {
+            return;
+        }
+        let first = self.pos.len() as u32;
+        for k in 0..n {
+            self.vert(a[k], uv, ca[k]);
+            self.vert(b[k], uv, cb[k]);
+        }
+        let segs = if closed { n } else { n - 1 } as u32;
+        for s in 0..segs {
+            let (p, q) = (first + 2 * s, first + 2 * ((s + 1) % n as u32));
+            self.idx.extend_from_slice(&[p, q, q + 1, p, q + 1, p + 1]);
         }
     }
 

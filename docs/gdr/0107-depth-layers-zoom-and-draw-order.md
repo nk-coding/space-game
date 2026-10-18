@@ -52,6 +52,11 @@
   air is softer (the terminator's twilight about twice as wide, the night keeping 7 % + 10 % × the air of the
   surface's colour; airless bodies unchanged). Screenshots `docs/results/sky-spread-corran-start.png`,
   `sky-spread-corran-500m.png`, `sky-spread-3km-a.png`, `sky-spread-3km-b.png`.
+  2026-10-18, fifth (Niklas: approach C for rocks, light from the sky): the finer rock outline drawn over a coarse
+  collider is replaced: the sim's rocks have the drawn outline themselves (a spline through dented control points,
+  in two or three convex pieces where deeply dented), and the client shades it in soft bands lit from the sky's hot
+  star or first planet ([GDR-0104](0104-scenery-rocks-filler-landmarks.md)'s status line of 18 Oct 2026). Rocks stay
+  at z 3, their glints and embers at 3.01 in an additive mesh; ships keep their own light.
 - Date: 2026-10-17
 - Decided by: lead session (defaults for Niklas's play-test of 17 Oct 2026 of GDR-0104's scenery and GDR-0105's sky)
 - Related: [GDR-0104](0104-scenery-rocks-filler-landmarks.md), [GDR-0105](0105-cluster-sky-planets-nebula-galaxy.md), [GDR-0106](0106-flight-minimap.md), `docs/client.md` "Scenery"
