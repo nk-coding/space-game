@@ -33,7 +33,7 @@
     (
         id: "burst_laser",
         name: "Burst laser",
-        summary: "A pulse laser that fires faster and harder, but reaches less far and runs hot.",
+        summary: "A pulse laser that fires faster with lighter pulses, but reaches less far and runs hot.",
         family: "energy",
         kind: Variant,
         cost: (data: {"energy": 6}),

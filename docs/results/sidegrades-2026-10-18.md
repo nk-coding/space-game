@@ -53,3 +53,20 @@ ships), and the Grown voyages.
 - `sidegrades-research-1280.png`: the research screen with the new nodes (compact reactor, burst laser, long-barrel
   cannon, wide bubble selected, heat sink).
 - `sidegrades-ammo-feeder-card-1280.png`: the drydock's hover card of the ammo feeder (+15 %, at most two).
+
+## Burst laser follow-up (18 Oct 2026)
+
+The same voyage mode (`--seeds 1-240 --threads 4`, the skiff with both pulse lasers swapped, `--content` a copy of
+the pack with the range patched), the burst laser's range only (damage 1.3 per second at rate 7, a pulse 0.19 against
+the pulse laser's 0.25):
+
+| Range | Clear % (yard / halvex / corran / warden) | Lost (of 240, yard) |
+|---|---|---|
+| 40 (before) | 0 / 0 / 0 / 0 | |
+| 48 | 23 / 20 / 6 / 5 | 38 |
+| **52** (chosen) | 44 / 31 / 14 / 16 | 31 |
+| 55 | 50 / 35 / 19 / 16 | 13 |
+| rim_skiff (pulse, 60) | 56 / 31 / 18 / 15 | 32 |
+
+Now **range 52**: below the pulse laser on the easy voyages, level at the drift and the Warden (within ± 6), so it
+trades. At 55 it was level everywhere and lost far fewer ships, which is too close to strictly better.
