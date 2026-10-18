@@ -10,6 +10,8 @@
 //!   height ([`Frame::top_right`]).
 //! * **Plates over the view** ([`panel_node`], [`panel_colors`], [`panel_title`]): the flight menu, the controls
 //!   overlay, ABANDON VOYAGE?.
+//! * **A hover card and a stat block** ([`Frame::card`], [`Frame::stats`]): the part card beside a part list and the
+//!   two-column stat block in it and in the drydock's SELECTED PART (`world::part_card`).
 //! * **The flight HUD's type** ([`Frame::hud`]): one head, value and sub size for every group.
 
 use std::sync::OnceLock;
@@ -43,7 +45,34 @@ pub struct Frame {
     pub pill_text: f32,
     pub pill_gap: f32,
     pub panel: PanelLook,
+    pub card: CardLook,
+    pub stats: StatsLook,
     pub hud: HudType,
+}
+
+/// The hover card beside a part list (`card.*`; its fill and border are the plate's, [`PanelLook`]).
+#[derive(Clone, Debug)]
+pub struct CardLook {
+    pub width: f32,
+    pub pad: f32,
+    pub gap: f32,
+    pub icon: f32,
+    /// From the list's edge, and the least room to the window's edges.
+    pub offset: f32,
+    pub margin: f32,
+    /// Seconds the pointer rests on a row before the card shows.
+    pub delay: f32,
+}
+
+/// A part's stat block (`stats.*`): label and value sizes, the label's tracking (em), the gaps.
+#[derive(Clone, Debug)]
+pub struct StatsLook {
+    pub label: f32,
+    pub label_em: f32,
+    pub value: f32,
+    pub col_gap: f32,
+    pub row_gap: f32,
+    pub line_gap: f32,
 }
 
 /// A plate over the view (`panel.*`).
@@ -94,6 +123,23 @@ pub fn frame() -> &'static Frame {
                 pad_y: n("panel.pad_y"),
                 gap: n("panel.gap"),
                 title: n("panel.title"),
+            },
+            card: CardLook {
+                width: n("card.width"),
+                pad: n("card.pad"),
+                gap: n("card.gap"),
+                icon: n("card.icon"),
+                offset: n("card.offset"),
+                margin: n("card.margin"),
+                delay: n("card.delay"),
+            },
+            stats: StatsLook {
+                label: n("stats.label"),
+                label_em: n("stats.label_em"),
+                value: n("stats.value"),
+                col_gap: n("stats.col_gap"),
+                row_gap: n("stats.row_gap"),
+                line_gap: n("stats.line_gap"),
             },
             hud: HudType {
                 head: n("hud.head"),

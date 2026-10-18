@@ -42,6 +42,12 @@ use crate::view::{ViewScale, ViewSet};
 const Z_UI_ICON: f32 = 600.0;
 const Z_UI_SCRIM: f32 = 599.0;
 
+/// A layer of icons over the others (a hover card over a list): its scrim and its icons draw above every icon of a
+/// lower layer, `2 × layer` world units up (layer 0, no component: the screens' own icons). bevy_ui draws over all
+/// of them, so whatever floats over UI nodes must lie over parts of the screen that hold no text where its icons are.
+#[derive(Component, Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct UiIconLayer(pub u8);
+
 /// What a UI node shows.
 #[derive(Component, Clone, Debug, PartialEq)]
 pub enum UiIcon {
@@ -155,7 +161,7 @@ impl<S: IconShapes> Plugin for UiIconsPlugin<S> {
 fn draw_icons<S: IconShapes>(
     mut commands: Commands,
     mut state: ResMut<IconMeshes>,
-    nodes: Query<(Entity, &UiIcon, &ComputedNode, &UiGlobalTransform, &InheritedVisibility, Option<&CalculatedClip>)>,
+    nodes: Query<(Entity, &UiIcon, &ComputedNode, &UiGlobalTransform, &InheritedVisibility, Option<&CalculatedClip>, Option<&UiIconLayer>)>,
     mut placed: Query<(&mut Transform, &mut Visibility), With<UiIconMesh>>,
     mut removed: RemovedComponents<UiIcon>,
     mut meshes: ResMut<Assets<Mesh>>,
@@ -178,7 +184,7 @@ fn draw_icons<S: IconShapes>(
     }
     let scale = window.scale_factor();
     let mut px_per_cell = 0.0f32;
-    for (node_e, icon, node, tf, vis, clip) in &nodes {
+    for (node_e, icon, node, tf, vis, clip, layer) in &nodes {
         // A new icon's mesh is spawned now and placed by commands in this frame too (they apply before the transforms
         // propagate), so an icon that appears with its node draws in the same frame, not one later.
         let fresh = !state.0.contains_key(&node_e);
@@ -260,7 +266,7 @@ fn draw_icons<S: IconShapes>(
             }
             UiIcon::Glyph { .. } | UiIcon::Scrim { .. } | UiIcon::Sketch(_) => 1.0,
         };
-        let z = if matches!(icon, UiIcon::Scrim { .. } | UiIcon::Sketch(_)) { Z_UI_SCRIM } else { Z_UI_ICON };
+        let z = if matches!(icon, UiIcon::Scrim { .. } | UiIcon::Sketch(_)) { Z_UI_SCRIM } else { Z_UI_ICON } + layer.map_or(0.0, |l| 2.0 * f32::from(l.0));
         // Written only when it moves: a written transform is propagated again.
         let (at, k) = (view.screen_to_world(tf.translation / scale).extend(z), Vec3::new(px / view.zoom, px / view.zoom, 1.0));
         match (placed_mesh, fresh_material) {

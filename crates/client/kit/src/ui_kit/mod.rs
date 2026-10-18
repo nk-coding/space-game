@@ -25,8 +25,11 @@
 //!   past, and its smooth scrolling ([`SmoothScroll`]: the kit takes the wheel, a notch glides like Chrome's);
 //!   [`ScrollRows`] for a list that shows a pool of row nodes, scrolled by pixels too.
 //!
+//! * [`GroupedList`] (`list`): a search field, group chips and rows in sections under headings, in an area that
+//!   scrolls; the screen supplies the rows (the drydock's palette, the workshop's parts).
+//!
 //! Files: text helpers, the pointer and hit testing, the UI scale here; `widgets` (pills, rings, bars, brackets and
-//! their styling), `field` (the text field), `tip`, `fonts`, `frame`, `transition`, `scrollbar`.
+//! their styling), `field` (the text field), `tip`, `fonts`, `frame`, `transition`, `scrollbar`, `list`.
 
 use std::borrow::Cow;
 
@@ -40,6 +43,7 @@ use bevy::window::PrimaryWindow;
 mod field;
 mod fonts;
 mod frame;
+mod list;
 mod scrollbar;
 mod tip;
 mod transition;
@@ -48,7 +52,8 @@ mod widgets;
 pub use field::{Caret, FieldKey, TextField, TextFieldText, edit_line, field_text, name_in_place, selected_text};
 use field::{FieldSpan, field_parts, type_into_fields};
 pub use fonts::{BARLOW_REGULAR, HudFonts, load_fonts};
-pub use frame::{Frame, HudType, PanelLook, crumb, frame, panel_colors, panel_node, panel_title, spawn_back, spawn_close, spawn_head, title, top_pill};
+pub use frame::{CardLook, Frame, HudType, PanelLook, StatsLook, crumb, frame, panel_colors, panel_node, panel_title, spawn_back, spawn_close, spawn_head, title, top_pill};
+pub use list::{GroupedList, ListRow, ListSpec, fill_list, head_count, lit_group, row_shown, spawn_grouped_list};
 pub use scrollbar::{BAR_HIT, ScrollClipSet, ScrollRows, Scrollbar, SmoothScroll};
 pub use transition::{
     EXIT_SECONDS, Edge, IconMaterials, ScreenFx, ScreenPart, WorldCover, show_screen, snap_screen,
@@ -214,6 +219,7 @@ impl Plugin for UiKitPlugin {
             .add_systems(Update, (style_widgets, show_locks, show_tip).in_set(UiStyleSet));
         transition::plugin(app);
         scrollbar::plugin(app);
+        list::plugin(app);
     }
 }
 
