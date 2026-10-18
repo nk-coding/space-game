@@ -39,3 +39,11 @@ cleared and home) of 240 runs; ± is about 6 points (95 %).
 ## Not measured
 
 Player piloting, hot builds (beams, torch drives) where the venting chain should matter, and the Grown voyages.
+
+## Screenshots (19 Oct 2026, 1280 × 720, a test save `?save=refinetest` with Fin tuning I–II and Bubble recharge I)
+
+- `refinement-research-1280.png`: the research screen, Fin tuning III selected: every radiator's venting before » after.
+- `refinement-drydock-1280.png`: the drydock, the radiator's palette row (`VENTING 1.7`) and its hover card, the raised
+  number in teal in both.
+- `research-cost-lines-1280.png`: the lanes' cost lines after the row fix of 19 Oct (rows as tall as their card and
+  cost line; the Grown's and the last column's long lines wrap to a second line).
