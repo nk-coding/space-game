@@ -187,8 +187,8 @@ pub struct SimConfig {
 }
 
 impl SimConfig {
-    /// The config with every NaN or infinite number replaced by its default (a config comes from outside: the
-    /// tuning panel, URL parameters, a replay). `Sim::with_config` and `Sim::set_config` apply it, so no NaN
+    /// The config with every NaN or infinite number replaced by its default (a config may come from outside: a
+    /// test, a replay). `Sim::with_config` and `Sim::set_config` apply it, so no NaN
     /// reaches the ships or the physics.
     pub fn finite_or_default(mut self) -> SimConfig {
         let d = SimConfig::default();

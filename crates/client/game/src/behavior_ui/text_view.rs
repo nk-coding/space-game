@@ -1,8 +1,7 @@
 //! The TEXT view: the behavior, or on the PILOT ASSISTS tab the design's assists, as editable text
 //! (`docs/behavior-format.md`), one line per rule, with live errors.
 //!
-//! bevy_ui has no text input, so the editor is an egui multi-line `TextEdit` (egui is already in the build for
-//! the tuning panel), placed over the graph area's node and styled to the look: Barlow, no frame or box, the
+//! bevy_ui has no text input, so the editor is an egui multi-line `TextEdit`, placed over the graph area's node and styled to the look: Barlow, no frame or box, the
 //! names coloured like the graph (conditions violet, actions teal, Rhai gold, keywords grey), dim line numbers
 //! in a gutter, and every problem printed in coral after its line with the column underlined. Each change is
 //! parsed and checked at once ([`BehaviorDraft::set_text`]): a valid text becomes the program (the graph

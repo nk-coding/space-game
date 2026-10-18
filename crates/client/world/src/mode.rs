@@ -38,9 +38,8 @@ pub enum AppMode {
 impl AppMode {
     /// The mode the app starts in: home (`?scene=home`, and the default), the drydock (`?scene=drydock`), the
     /// BEHAVIOR screen (`?scene=behavior`), the research screen (`?scene=research`), the voyage map (`?scene=map`), or
-    /// flight for the flight scenes (`?scene=sandbox|showcase|watch|alongside|voyage|fight`) and for parameters that only mean
-    /// something in flight ([`Params::wants_flight`]: `?load=`,
-    /// `?fleet=`, `?hashlog=` ...). An unknown scene starts at home.
+    /// flight for the flight scenes (`?scene=sandbox|showcase|watch|alongside|voyage|fight`). An unknown scene starts at
+    /// home.
     pub fn at_start(params: &Params) -> Self {
         match params.text("scene") {
             Some("home") => AppMode::Home,
@@ -49,7 +48,6 @@ impl AppMode {
             Some("research") => AppMode::Research,
             Some("map") => AppMode::Map,
             Some("sandbox" | "showcase" | "watch" | "alongside" | "voyage" | "fight") => AppMode::Flight,
-            None if params.wants_flight() => AppMode::Flight,
             None => AppMode::Home,
             Some(other) => {
                 warn!("unknown scene `{other}`: starting at home");

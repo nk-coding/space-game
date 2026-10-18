@@ -13,7 +13,7 @@ must keep compiling (`cargo check -p game` natively). Written 11–13 Oct 2026; 
 | Optimised build into `crates/client/game/dist` + sizes | `scripts/web-build.sh` (cargo `release`, opt-level 3, wasm-opt -O3), then `scripts/web-serve-dist.sh` |
 | Atlas preview / timing | `cargo run --release -p art --example preview [-- <tier> <scratch.png>]` (the game rasterises its atlas at runtime; nothing raster is committed); the longest step and frame of a job as the game spends it: `... --example profile -- <tier> [runs]` |
 | Headless check | `node /home/devbox/workspace/tools/headless/shot.mjs <url> <png> <waitMs>` |
-| One bounded check (build, serve on a free port, headless shot, console, stop) | `scripts/web-check.sh [--release] [--params '?load=5'] [--wait MS] [--size WxH] [--out FILE]` |
+| One bounded check (build, serve on a free port, headless shot, console, stop) | `scripts/web-check.sh [--release] [--params '?scene=sandbox&load=5'] [--wait MS] [--size WxH] [--out FILE]` |
 | Native load test table | `scripts/load-test-native.sh [--ships 1,5,20] [--ticks 1800] [--seed 42]` |
 | Scripted input + screenshots | `node scripts/web-drive.mjs <url> <out-dir> "wait 20000; down KeyW; wait 3000; up KeyW; shot fly.png"` |
 
@@ -91,7 +91,7 @@ what fits the window, `kit::ui_kit::UiSize`, applied by every screen's UI scale)
 | `behavior=<id>` | the BEHAVIOR screen opens this content or saved behavior (e.g. `raider_basic`) instead of the design's |
 | `scene=showcase` | the player's design holding position, three raiders orbiting it, no combat |
 | `scene=showcase&twin=1` | the same with a second copy holding just under the design, its bubbles reaching the design's hull: for looking at whose shield bubbles show over whose hull ([Shield bubbles](#shield-bubbles)) |
-| `scene=showcase&fire=1` | the same, but the raiders (`raiders=N` of them, default 3) attack the design under their behavior: for looking at shield hits (add `zoom=70` for a close-up) |
+| `scene=showcase&fire=1` | the same, but the three raiders attack the design under their behavior: for looking at shield hits (add `zoom=70` for a close-up) |
 | `scene=watch&behavior=<id>` | TEST IN RANGE, watch: the player's design flies unpiloted on the behavior (a content or saved one; without `behavior` the design's own) against raider waves, the camera follows it; T returns to the drydock |
 | `scene=alongside&behavior=<id>` | TEST IN RANGE, fly alongside: you fly the design, a second copy is a wingman on the behavior |
 | `scene=voyage&voyage=<id>` | launch that voyage at once (without `voyage`: the one the voyage map selects when it opens), for development: recorded in the career when it may launch, else a practice run that is never saved ([Voyages](#voyages)) |
@@ -112,11 +112,10 @@ what fits the window, `kit::ui_kit::UiSize`, applied by every screen's UI scale)
 Natively the same `key=value&…` string comes from the `GAME_PARAMS` environment variable (`params.rs`). A bare
 key means 1; `0`, `false`, `off` and `no` turn a flag off.
 
-Where the game starts (`mode::AppMode::at_start`, since 13 Oct 2026, GDR-0062): `scene` decides when it is given
-(an unknown one starts at home). Without it, a parameter that only means something in flight starts the sandbox, as
-before home existed: `load`, `hashlog`, `hashticks`, `fleet`, `seed`, `zoom`, `fire`, `touch`
-(`params::FLIGHT_ONLY`; `raiders`, `mind` and `tuning` went with the tuning panel, 18 Oct 2026); so `?load=20`, `?hashlog=1&load=20` and `?fleet=3` fly as they did. Anything
-else (`/`, `?debug=1`, `?stats=1`) starts at home; the sandbox alone is `?scene=sandbox`.
+Where the game starts (`mode::AppMode::at_start`, since 13 Oct 2026, GDR-0062): `scene` decides (an unknown one, or
+none, starts at home). The flight parameters (`load`, `hashlog`, `hashticks`, `fleet`, `seed`, `zoom`, `fire`,
+`touch`) need their scene: `?scene=sandbox&load=20`, `?scene=sandbox&fleet=3` (since 18 Oct 2026 they no longer start
+the sandbox on their own).
 
 ## Scenes (`scene.rs`)
 
@@ -231,12 +230,12 @@ generation (its best child's hardest fight); paste one after `fight=`, e.g.
 
 ## Load test and determinism in the browser
 
-1. Open `http://10.77.9.2:8081/?load=20` (or 1, 5). The overlay shows frame and sim step times (mean, median,
+1. Open `http://10.77.9.2:8081/?scene=sandbox&load=20` (or 1, 5). The overlay shows frame and sim step times (mean, median,
    p95 over the last 600 frames / 900 ticks), ships, pieces and shots. Toggles 1/2/3 switch debug shapes, glow
    sprites and bloom; F frees the camera.
 2. After 60 s of wall time the console gets one line:
    `LOADTEST ships=20 seconds=60 ticks=... frame_ms mean=... median=... p95=... max=... sim_ms mean=... median=... p95=... max=... style=2a glow=true bloom=false window=WxH`.
-3. Determinism: `?hashlog=1&load=20&hashticks=600` prints `# ...` header, then `<tick> <hash>` lines (30 per
+3. Determinism: `?scene=sandbox&hashlog=1&load=20&hashticks=600` prints `# ...` header, then `<tick> <hash>` lines (30 per
    console call) and `# final=...`. Save them (strip any console prefixes) and compare with the native stream:
 
    ```
@@ -248,7 +247,7 @@ generation (its best child's hardest fight); paste one after `fight=`, e.g.
    60945ae): `load` 20 ships, seed 42, 600 ticks: **IDENTICAL** (final `86eb72a03591bff2`; also identical on the
    commit before the merge, final `9ea129f5b628badc`); seed 7, 1800 ticks (`&seed=7&hashticks=1800`):
    **IDENTICAL** (final `34fccbaae2c4e339`). Headless capture: `node scripts/web-drive.mjs
-   "<url>/?hashlog=1&load=20&debug=1&hud=0" <dir> "wait 120000" 480 270`, then keep the lines matching
+   "<url>/?scene=sandbox&hashlog=1&load=20&debug=1&hud=0" <dir> "wait 120000" 480 270`, then keep the lines matching
    `^[0-9]+ [0-9a-f]{16}$` and `^# ` (the console prints 30 lines per call).
 
 ## The web's storage

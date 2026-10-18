@@ -17,7 +17,7 @@
 //!   test return to where the test started (`mode::FlightExit`).
 //! * **showcase** (`?scene=showcase`): the design holds position, three raiders orbit it without firing; with
 //!   `&fire=1` they attack it under their content behavior instead (for looking at shield hits).
-//! * **load test** (`?load=1|5|20`): `sim::voyage::scenario::load_test(n, seed)`, no player, the camera frames the fight.
+//! * **load test** (`?scene=sandbox&load=1|5|20`): `sim::voyage::scenario::load_test(n, seed)`, no player, the camera frames the fight.
 //! * **fight viewer** (`?scene=fight&fight=<code>`, `replay.rs`, GDR-0092): a fight of the arena replayed from its
 //!   code, the world built by the arena; nobody pilots, the camera frames both sides or follows a clicked ship.
 //! * **voyage** (`voyage.rs` launches it: home's V, `?scene=voyage&voyage=<id>`): the sim gets the career's mind

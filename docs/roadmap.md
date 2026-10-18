@@ -61,7 +61,7 @@ Client leftovers:
 - Two non-focus ships still show each other's shield bubbles over their hulls (ADR-0029 note): halved 13 Oct (the
   higher ship's bubble still showed over the lower one's hull), fixed 17 Oct (two passes: over space and over the
   own hull only; `?scene=showcase&twin=1`).
-- Browser load-test numbers (`?load=1|5|20`) need Niklas's real browser (headless timings are meaningless).
+- Browser load-test numbers (`?scene=sandbox&load=1|5|20`) need Niklas's real browser (headless timings are meaningless).
 
 ## State at the end of the 12–13 Oct 2026 session (new VM)
 
@@ -582,6 +582,13 @@ Next session:
   galaxy. Screenshots `results/backdrop-*.png`.
 - Open: hull plating as stock, dismantling stock parts, installing salvage with a bonding cost, harvesting the ores,
   more workshop upgrades, the inflow tuned after play.
+
+### 18 Oct 2026: legacy cleanup
+
+- ([ADR-0044](adr/0044-no-save-compatibility-before-release.md), Niklas) No save compatibility before release: the
+  save migrations (formats 2 to 4, the older voyage roller), the parts' `replaces` refit, the first assist lists'
+  `target` and `face_target`, the evolution runs' old `fitness`, `start` and plain-number forms, and the flight
+  parameters that started the sandbox without `scene` are gone. An older save starts a new game (a log line, a note).
 
 ## Phase 4: measurement
 
