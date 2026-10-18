@@ -129,6 +129,12 @@ const GOAL_CHOICES: u32 = 8;
 /// PLAN_STREAM)`, derived like an RNG stream (`rng.rs`) with an id no stream has ("voyage" in ASCII). Part of the
 /// save format (`data::career::GENERATOR` 2): never change it.
 pub const PLAN_STREAM: u64 = 0x766f_7961_6765;
+/// The same for the group a site calls (GDR-0113), one generator per calling site: `Pcg32::new(splitmix64(seed ^
+/// splitmix64(CALL_STREAM ^ k)), CALL_STREAM)` for site `k` ("called" in ASCII), so a plan without one draws as
+/// before.
+pub const CALL_STREAM: u64 = 0x6361_6c6c_6564;
+/// A called group warps in this long after the call (s; PLACEHOLDER, GDR-0113).
+pub const CALL_SECONDS: u64 = 30;
 
 /// One site to roll (`VoyagePlan::roll_sites`): its encounter (none: a beacon alone), whether it is the goal,
 /// whether it is a signal's site, and the data core it holds.
@@ -167,6 +173,11 @@ pub struct SitePlan {
     pub wary: bool,
     pub ships: Vec<Spawn>,
     pub wrecks: Vec<Spawn>,
+    /// The site of the group it calls (GDR-0113: the encounter's `calls`), if any.
+    pub calls: Option<u32>,
+    /// A called group (GDR-0113): on the cluster's edge, never spawned by the fleet coming near, only when the site
+    /// that calls it calls.
+    pub called: bool,
 }
 
 /// A voyage rolled for one launch ([`VoyagePlan::roll`]): what [`Sim::start_voyage`] directs.
@@ -326,8 +337,8 @@ impl VoyagePlan {
             designs.insert(&bp.id, Arc::clone(&d));
             Ok(d)
         };
-        let mut sites = Vec::with_capacity(list.len());
-        for (k, &(e, goal, signal, core)) in list.iter().enumerate() {
+        // A site's ships and wrecks, laid out round `at`.
+        let mut roll = |rng: &mut Pcg32, e: Option<&data::Encounter>, at: Vec2| -> Result<(Vec<Spawn>, Vec<Spawn>), String> {
             let mut ships = Vec::new();
             for s in e.map_or(&[][..], |e| &e.ships) {
                 for _ in 0..roll_count(rng, s.count) {
@@ -340,11 +351,7 @@ impl VoyagePlan {
                     wrecks.push((design(&w.ship)?, w.damage));
                 }
             }
-            let bodies = layout(
-                rng,
-                pos[k],
-                ships.iter().chain(&wrecks).map(|(d, _)| hull_radius(d)),
-            );
+            let bodies = layout(rng, at, ships.iter().chain(&wrecks).map(|(d, _)| hull_radius(d)));
             let mut bodies = bodies.into_iter();
             let mut spawns = |list: Vec<(Arc<ShipDesign>, f32)>, rng: Option<&mut Pcg32>| -> Vec<Spawn> {
                 let mut rng = rng;
@@ -359,17 +366,36 @@ impl VoyagePlan {
             };
             let ships = spawns(ships, None);
             let wrecks = spawns(wrecks, Some(&mut *rng));
-            sites.push(SitePlan {
-                encounter: e.map(|e| e.id.clone()),
-                goal,
-                signal,
-                core,
-                pos: pos[k],
-                wake_radius: e.map_or(0.0, |e| e.wake_radius),
-                wary: e.is_some_and(|e| wary(content, e)),
-                ships,
-                wrecks,
-            });
+            Ok((ships, wrecks))
+        };
+        let site = |e: Option<&data::Encounter>, at: Vec2, (ships, wrecks): (Vec<Spawn>, Vec<Spawn>)| SitePlan {
+            encounter: e.map(|e| e.id.clone()),
+            goal: false,
+            signal: false,
+            core: None,
+            pos: at,
+            wake_radius: e.map_or(0.0, |e| e.wake_radius),
+            wary: e.is_some_and(|e| wary(content, e)),
+            ships,
+            wrecks,
+            calls: None,
+            called: false,
+        };
+        let mut sites = Vec::with_capacity(list.len());
+        for (k, &(e, goal, signal, core)) in list.iter().enumerate() {
+            let rolled = roll(rng, e, pos[k])?;
+            sites.push(SitePlan { goal, signal, core, ..site(e, pos[k], rolled) });
+        }
+        // The groups the sites call (GDR-0113), after them, each on its own generator: somewhere on the edge.
+        for (k, &(e, ..)) in list.iter().enumerate() {
+            let Some(id) = e.and_then(|e| e.calls.as_ref()) else { continue };
+            let g = content.encounters.get(id).ok_or_else(|| format!("unknown encounter `{id}`"))?;
+            let rng = &mut Pcg32::new(splitmix64(seed ^ splitmix64(CALL_STREAM ^ k as u64)), CALL_STREAM);
+            let a = rng.range_f32(-core::f32::consts::PI, core::f32::consts::PI);
+            let at = Vec2::new(cos(a), sin(a)) * radius;
+            let rolled = roll(rng, Some(g), at)?;
+            sites[k].calls = Some(sites.len() as u32);
+            sites.push(SitePlan { called: true, ..site(Some(g), at, rolled) });
         }
         Ok(VoyagePlan {
             voyage: id.to_string(),
@@ -571,6 +597,8 @@ pub struct Site {
     /// An enemy's scan called it since the last pass: where its ships rally (GDR-0111; scratch, always `None`
     /// between steps).
     rally: Option<Vec2>,
+    /// A called group on its way (GDR-0113): the tick it warps in and where its ships rally. Kept after it came.
+    due: Option<(u64, Vec2)>,
 }
 
 impl Site {
@@ -580,6 +608,10 @@ impl Site {
     }
     pub fn goal(&self) -> bool {
         self.plan.goal
+    }
+    /// A called group (GDR-0113): the tick it warps in (or came), once its site has called.
+    pub fn arrives(&self) -> Option<u64> {
+        self.due.map(|d| d.0)
     }
     /// A signal leads here ([`SitePlan::signal`]).
     pub fn signal(&self) -> bool {
@@ -751,6 +783,18 @@ impl StateHash for Site {
         if p.wary {
             h.u8(1);
         }
+        // Only for a calling site and its group, so plans without calls hash as before.
+        if let Some(g) = p.calls {
+            h.u8(2);
+            h.u32(g);
+        }
+        if p.called {
+            h.u8(3);
+        }
+        if let Some((tick, at)) = self.due {
+            h.u64(tick);
+            h.vec2(at);
+        }
         for list in [&p.ships, &p.wrecks] {
             h.u32(list.len() as u32);
             for s in list {
@@ -829,6 +873,7 @@ impl Sim {
                 known: false,
                 hit: false,
                 rally: None,
+                due: None,
             })
             .collect();
         self.voyage = Some(Box::new(Voyage {
@@ -944,7 +989,9 @@ impl Sim {
             }
         }
         for k in 0..v.sites.len() {
-            if v.sites[k].state == SiteState::Unspawned && v.near(v.sites[k].plan.pos, spawn_radius)
+            if v.sites[k].state == SiteState::Unspawned
+                && !v.sites[k].plan.called
+                && v.near(v.sites[k].plan.pos, spawn_radius)
             {
                 self.spawn_site(&mut v, k);
             }
@@ -967,6 +1014,7 @@ impl Sim {
         };
         let mut found = Vec::new();
         let mut calls = Vec::new();
+        let mut groups = Vec::new();
         for e in &self.events {
             if let &SimEvent::Scanned { ship, at, range, wake } = e
                 && let Some(s) = self.ship(ship)
@@ -983,6 +1031,14 @@ impl Sim {
                         .and_then(|t| t.control_piece().and_then(|c| t.piece(c)))
                         .map_or(at, |p| p.com_world());
                     calls.push((at, range, seen, Arc::clone(s.design())));
+                    // Its site's first call brings the group it calls (GDR-0113), once.
+                    if let Some(g) = v.site_of(ship).and_then(|k| v.sites[k].plan.calls)
+                        && let Some(group) = v.sites.get_mut(g as usize)
+                        && group.due.is_none()
+                    {
+                        group.due = Some((self.tick() + CALL_SECONDS * crate::TICK_HZ as u64, seen));
+                        groups.push(SimEvent::SiteCalled { site: g });
+                    }
                 }
             }
         }
@@ -997,6 +1053,18 @@ impl Sim {
                     site.hit = true;
                     site.rally = Some(seen);
                 }
+            }
+        }
+        self.events.extend(groups);
+        // Called groups due now warp in on the edge, awake, and rally where they were called to.
+        for k in 0..v.sites.len() {
+            if v.sites[k].state == SiteState::Unspawned
+                && let Some((tick, at)) = v.sites[k].due
+                && tick <= self.tick()
+            {
+                self.spawn_site(&mut v, k);
+                v.sites[k].hit = true;
+                v.sites[k].rally = Some(at);
             }
         }
         for (at, range, wake) in found {

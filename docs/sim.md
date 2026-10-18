@@ -3049,6 +3049,16 @@ Galaxy track E3, 16 Oct 2026 ([GDR-0093](gdr/0093-galaxy-exploration-decisions-1
   gives no bearings; it marks to wake every sleeping site within the scanner's `range` (not `wake`) that has a ship
   of the scanning ship's faction (`ShipDesign::faction` of a `SitePlan::ships` entry). Sites not spawned yet are
   not called. Cost: per enemy sweep one test per site. Test: `an_enemy_scan_calls_its_own_factions_sleeping_sites_within_range`.
+  The called ships rally (19 Oct 2026): `BehaviorState::rally`, where the scanner's behavior had its target (else
+  where it scanned); with no target in sight the ship flies `Maneuver::Hold` there, and its first target clears it.
+- **Called groups** (GDR-0113, 19 Oct 2026): an encounter's `calls` names another encounter. `roll`/`roll_interior`
+  roll it for each calling site after every other site, each on its own generator (`CALL_STREAM`, salted with the
+  site's index, so plans without one draw and hash as before), as a site on the cluster's edge at a rolled angle
+  (`SitePlan::called`; the calling site's `SitePlan::calls` holds its index). A called site never spawns by the
+  fleet coming near. The first enemy sweep by a ship of the calling site sets the group's `Site::due` (the tick
+  `CALL_SECONDS` later, the rally point) and sends `SimEvent::SiteCalled`; at that tick the group's site spawns, wakes
+  and rallies (`Site::arrives`, which the client's warp-in shows). Once per site. The runner skips a called site
+  until it has come. Test: `a_pickets_first_call_warps_its_group_in_thirty_seconds_later`.
 - **Generated clusters**: `VoyagePlan::roll_interior(content, id, &galaxy::Interior, &Leads, seed)` rolls an interior
   on the same generator and draw order as `roll` (no goal; a trail place in `leads.signals` is a signal's site, one in
   `leads.cores` holds its data core, `SitePlan::core`; one without an encounter, a beacon alone, rolls no ships or wrecks

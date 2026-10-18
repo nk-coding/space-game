@@ -221,6 +221,9 @@ pub enum SimEvent {
     /// A voyage site woke (`voyage/mod.rs`): its ships fly their behavior from now on. `site` indexes
     /// `Voyage::sites`.
     SiteWoke { site: u32 },
+    /// A site's ship called its group (GDR-0113): the group's site `site` warps in on the cluster's edge
+    /// [`crate::voyage::CALL_SECONDS`] later (`Site::arrives`), awake.
+    SiteCalled { site: u32 },
     /// A voyage site was cleared (GDR-0068): each of its ships is destroyed or disarmed, none is a vessel that is
     /// still armed (`Ship::is_armed`). `goal`: it was the voyage's goal, so the voyage is cleared too.
     SiteCleared { site: u32, goal: bool },

@@ -105,6 +105,11 @@ pub struct Encounter {
     /// (`sim::VoyagePlan::roll_interior`). Left out of the RON when false, so the content's fingerprint stays.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub near_star: bool,
+    /// The group (an encounter's id) that warps in when one of its ships calls (GDR-0113): the first enemy scan from
+    /// the site brings that encounter's ships, rolled with the site, in from the cluster's edge. Left out of the RON
+    /// when there is none, so the content's fingerprint stays.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub calls: Option<String>,
     #[serde(skip_deserializing)]
     pub source: Source,
 }

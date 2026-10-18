@@ -12,6 +12,8 @@
 //! * **Arrival** (a voyage's first [`ARRIVE_SECONDS`]): the reverse. The world comes up out of the dark while the HUD
 //!   slides in; each vessel streaks in from behind, settles onto its place with a flash and a ring, and its glow
 //!   fades; the camera eases back out.
+//! * **A called group** (GDR-0113, `sim::Site::arrives`): its ships warp in on the cluster's edge with the arrival's
+//!   look, in their own glow, over the first [`ARRIVE_SECONDS`] after they come.
 //! * **The hand-over** (every end of a voyage, and a lost test flight going back to the drydock or the BEHAVIOR
 //!   screen): over the last [`DIP_SECONDS`] the HUD closes with its screen transition (`ui_kit::ScreenFx`) and the
 //!   window dips to the backdrop's darkest colour; the next screen comes up out of it over [`LIFT_SECONDS`]. After a
@@ -312,6 +314,9 @@ struct Warped {
     tail: Vec2,
     look: Look,
     seed: u32,
+    /// Seconds into its warp, and whether it is leaving (a warp-out) rather than arriving.
+    s: f32,
+    out: bool,
 }
 
 /// The transitions' state (a resource).
@@ -440,29 +445,34 @@ fn pose(
         rig.warp_zoom = t.frame.zoom;
     }
 
-    // The fleet, the flagship first.
+    // The fleet, the flagship first; then the called groups warping in (GDR-0113).
     t.warped.clear();
     let before = std::mem::take(&mut t.touched);
-    if !matches!(now, Moment::Arriving(_) | Moment::WarpingOut(_)) {
-        give_back(&before, &mut views);
-        return;
+    let mut warping: Vec<(sim::ShipId, Look, f32, bool)> = Vec::new();
+    if let Moment::Arriving(s) | Moment::WarpingOut(s) = now {
+        let mut fleet: Vec<sim::ShipId> = world.sim.vessels(PLAYER).map(|v| v.ship).collect();
+        fleet.sort_by_key(|s| Some(*s) != focus.0);
+        let out = matches!(now, Moment::WarpingOut(_));
+        warping.extend(fleet.iter().enumerate().filter_map(|(k, id)| Some((*id, vessel_look(now, k)?, s, out))));
     }
-    let mut fleet: Vec<sim::ShipId> = world.sim.vessels(PLAYER).map(|v| v.ship).collect();
-    fleet.sort_by_key(|s| Some(*s) != focus.0);
-    let shake = t.emergency && matches!(now, Moment::WarpingOut(_));
-    let s = match now {
-        Moment::Arriving(s) | Moment::WarpingOut(s) => s,
-        _ => 0.0,
-    };
-    for (k, id) in fleet.iter().enumerate() {
-        let Some(look) = vessel_look(now, k) else { continue };
-        let Some(piece) = world.sim.ship(*id).and_then(|ship| ship.control_piece()) else { continue };
-        let Some(&e) = world.views.get(&(*id, piece)) else { continue };
+    if let Some(v) = world.sim.voyage() {
+        for site in v.sites() {
+            let Some(at) = site.arrives().filter(|&at| at <= tick) else { continue };
+            let s = ((tick - at) as f32 + fixed.overstep_fraction()) / TICK_HZ;
+            if s < ARRIVE_SECONDS {
+                warping.extend(site.ships().iter().map(|id| (*id, arrive(s), s, false)));
+            }
+        }
+    }
+    for (id, look, s, out) in warping {
+        let Some(piece) = world.sim.ship(id).and_then(|ship| ship.control_piece()) else { continue };
+        let Some(&e) = world.views.get(&(id, piece)) else { continue };
         let Ok((view, mut tf, mut vis)) = views.get_mut(e) else { continue };
         let rot = Mat2::from_angle(tf.rotation.to_euler(EulerRot::ZYX).0);
         let (fwd, side) = (rot * Vec2::Y, rot * Vec2::X);
         let centre = tf.translation.truncate() + rot * view.center;
         // The emergency's jump shakes sideways while it stretches.
+        let shake = out && t.emergency;
         let jitter = if shake && look.stretch > 1.0 { (noise((s * FLICKER_HZ) as u32 ^ id.0) - 0.5) * 0.25 * view.radius } else { 0.0 };
         let scale = Vec2::new(look.width(), look.stretch);
         // Stretched about its centre, then moved along its heading.
@@ -472,7 +482,7 @@ fn pose(
         vis.set_if_neq(if look.shown { Visibility::Inherited } else { Visibility::Hidden });
         let at = centre + fwd * look.shift * view.radius + side * jitter;
         let tail = centre + fwd * look.tail * view.radius;
-        t.warped.push(Warped { centre, radius: view.radius, glow: view.glow, at, tail, look, seed: id.0 });
+        t.warped.push(Warped { centre, radius: view.radius, glow: view.glow, at, tail, look, seed: id.0, s, out });
         t.touched.push(e);
     }
     let gone: Vec<Entity> = before.into_iter().filter(|e| !t.touched.contains(e)).collect();
@@ -494,14 +504,8 @@ fn draw(transit: Res<Transit>, regions: Res<FxRegions>, style: Res<Style>, toggl
     if toggles.debug_shapes {
         return;
     }
-    let (s, out) = match transit.now {
-        Moment::Arriving(s) => (s, false),
-        Moment::WarpingOut(s) => (s, true),
-        _ => return,
-    };
-    let emergency = out && transit.emergency;
     for v in &transit.warped {
-        draw_vessel(&mut queue, &regions, &style.ui, v, s, out, emergency);
+        draw_vessel(&mut queue, &regions, &style.ui, v, v.s, v.out, v.out && transit.emergency);
     }
 }
 

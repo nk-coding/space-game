@@ -18,8 +18,8 @@
 //!   first (as the strip order counts it), a point of value worth 50 m of the way; it gives up on a piece after 20 s
 //!   without a part.
 //! - **Fly** to the nearest site still to do (a site with ships until it is cleared, a wreck site until it has been
-//!   there), the goal last. A site whose ships sleep: it stops 40 m outside the wake radius, then creeps in at a
-//!   quarter of its top speed, so the pack wakes in front of a slow ship.
+//!   there; a called group once it has come), the goal last. A site whose ships sleep: it stops 40 m outside the
+//!   wake radius, then creeps in at a quarter of its top speed, so the pack wakes in front of a slow ship.
 //!
 //! Every move it makes bends round the asteroid rocks ahead (GDR-0104): its maneuvers as every maneuver does, its
 //! stick through `rocks::steer`; with a rock in its line of fire it holds fire and slides aside.
@@ -411,6 +411,8 @@ impl VoyageRunner {
         let done = |k: usize, s: &Site| match s.state() {
             SiteState::Cleared => true,
             SiteState::Quiet => pilot.visited.contains(&k),
+            // A called group not here (yet, GDR-0113): nothing to fly to.
+            SiteState::Unspawned => s.plan().called,
             _ => false,
         };
         let todo: Vec<(usize, Vec2, bool, SiteState)> = v

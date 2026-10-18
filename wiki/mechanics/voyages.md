@@ -153,7 +153,9 @@ only along their facing, so come at it from the side it is turning away from, or
 **Pickets** call the others. The [[ship:automaton_picket]] of a [[encounter:picket_post]] has no gun: when its site
 wakes it runs ([[behavior:picket]]), and once it is clear of your guns its scan wakes every sleeping automaton site
 within [[part:scanner.scan_range]] of it, not just those within [[part:scanner.scan_wake]]. Shoot it first, or stay
-on its tail so it never gets clear; if it gets away, the sites around you come for you together.
+on its tail so it never gets clear; if it gets away, the sites around you come for you together. Its first scan
+also calls a group from outside the cluster ([[encounter:picket_call]]): half a minute later it warps in on the
+cluster's edge and heads for where the picket saw you. A banner tells you when that happens.
 
 The cluster has an **edge**, [[sim:edge_margin]] outside its radius: fly past it and your ship is pushed back
 towards the centre.

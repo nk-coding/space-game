@@ -116,6 +116,8 @@ pub(super) fn grown_scenario(content: &Content, seed: u64) -> Result<Scenario, S
             wary: true,
             ships: vec![spawn(at(-10.0, -150.0, 0.0), 0.0, 0), spawn(at(10.0, -150.0, 0.5), 0.0, 0)],
             wrecks: vec![spawn(at(0.0, -180.0, 2.0), 0.3, seed ^ 0x6772_6f77)],
+            calls: None,
+            called: false,
         }],
         star: Some(crate::voyage::Star { pos: Vec2::new(1400.0, 0.0), heat: 0.4, reach: 1400.0 }),
         rocks: Vec::new(),

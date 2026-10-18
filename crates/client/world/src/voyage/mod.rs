@@ -509,8 +509,10 @@ pub fn left_behind(sim: &sim::Sim, owner: Owner) -> u32 {
 
 /// Sites done and sites in all (`SITES 2 / 5`): cleared ones, and wreck-only (quiet) ones once they have spawned.
 pub fn sites_done(voyage: &sim::Voyage) -> (u32, u32) {
-    let done = voyage.sites().iter().filter(|s| matches!(s.state(), SiteState::Cleared | SiteState::Quiet)).count();
-    (done as u32, voyage.sites().len() as u32)
+    // A called group counts once it has been called (GDR-0113).
+    let sites = || voyage.sites().iter().filter(|s| !s.plan().called || s.arrives().is_some());
+    let done = sites().filter(|s| matches!(s.state(), SiteState::Cleared | SiteState::Quiet)).count();
+    (done as u32, sites().count() as u32)
 }
 
 /// Sim ticks as `m:ss` (`7:05`).
@@ -558,6 +560,10 @@ pub fn seconds_left(at: u64, tick: u64) -> u64 {
 /// A site event as a banner: its title, the line under it and its tone.
 pub fn site_banner(content: &Content, voyage: &sim::Voyage, event: &SimEvent) -> Option<(String, String, Tone)> {
     let (site, cleared, goal) = match *event {
+        SimEvent::SiteCalled { .. } => {
+            let s = format!("THEY WARP IN IN {} S  ·  WHERE IT SAW YOU", sim::CALL_SECONDS);
+            return Some(("PICKET CALLED  ·  REINFORCEMENTS INBOUND".into(), s, Tone::Coral));
+        }
         SimEvent::SiteWoke { site } => (site, false, false),
         SimEvent::SiteCleared { site, goal } => (site, true, goal),
         _ => return None,

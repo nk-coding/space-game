@@ -181,7 +181,8 @@ fn sync(
             seed: v.seed(),
             radius: v.radius(),
             entry: v2(v.entry().pos),
-            sites: v.sites().iter().map(|s| v2(s.pos())).collect(),
+            // Not where a called group warps in (GDR-0113): nothing lies there.
+            sites: v.sites().iter().filter(|s| !s.plan().called).map(|s| v2(s.pos())).collect(),
             star: v.star().map(|s| v2(s.pos)),
             sky,
             sky_seed,

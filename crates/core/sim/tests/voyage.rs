@@ -646,6 +646,8 @@ fn one_site(ships: Vec<sim::Spawn>, wake_radius: f32) -> VoyagePlan {
             wary: false,
             ships,
             wrecks: Vec::new(),
+            calls: None,
+            called: false,
         }],
         star: None,
         rocks: Vec::new(),

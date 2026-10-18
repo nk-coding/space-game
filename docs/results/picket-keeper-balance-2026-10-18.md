@@ -74,6 +74,28 @@ so a call can only bring its fights forward, and its pilot fights ships that com
 into a sleeping site. A call that costs needs ships the fleet would not otherwise meet (reinforcements answering
 it), or a measure of the player's choices that the runner does not make. Open for Niklas.
 
+## Reinforcements, 19 Oct 2026 ([GDR-0113](../gdr/0113-a-call-brings-reinforcements.md))
+
+Niklas's answer to the above: the post's first call warps a group (`picket_call`) in on the cluster's edge 30 s
+later, heading where the picket saw the fleet. Clear % against the picket that never scans (no call, no group),
+seeds 1–120, then 1–240 for the chosen group; Runner (R), Runner + skiff (R+S):
+
+| `picket_call` | t_pick R | t_pick R+S | t_hpick R | t_hpick R+S |
+|---|---|---|---|---|
+| never calls (seeds 1–120) | 38 | 48 | 44 | 62 |
+| 2 raiders | 27 | 56 | 41 | 58 |
+| 1 raider, 1 hunter | 38 | 49 | 49 | 60 |
+| 2 hunters | 29 | 52 | 44 | 54 |
+| 2 raiders, 0–1 hunters | 22 | 43 | 38 | 49 |
+| 2–3 raiders | 26 | 44 | 39 | 54 |
+| 3 raiders | 21 | 38 | 34 | 48 |
+| 2 raiders, 1 hunter | 22 | 40 | 33 | 42 |
+| **2–3 raiders, seeds 1–240 (chosen)** | **23** | **42** | **38** | **52** |
+| never calls, seeds 1–240 | 36 | 51 | 48 | 65 |
+
+The chosen group costs 13, 9, 10 and 13 points (lost: 10, 10, 3, 8 % of runs against 7, 8, 8, 5 %; hull lost
+54, 51, 44, 47 % against 53, 46, 46, 38 %). It also brings salvage: 4.7–5.3 kills a run against 3.5–4.0.
+
 ## The Keeper (`automaton_keeper`, `keeper_gate`; [GDR-0112](../gdr/0112-the-keeper-guards-the-middle-bands-gates.md))
 
 | Test voyage | Sites (the last the goal), radius 1200 m, sites 450–800 m apart |

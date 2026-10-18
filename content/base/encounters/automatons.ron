@@ -81,13 +81,25 @@
         id: "picket_post",
         name: "Picket post",
         summary: "A raider pair on watch with a picket, an unarmed scout that runs and calls the others.",
-        description: "When the site wakes, the [[ship:automaton_picket]] runs, and once clear of your guns its scan wakes every automaton site within the scanner's range. Shoot it first, or keep on its tail.",
+        description: "When the site wakes, the [[ship:automaton_picket]] runs, and once clear of your guns its scan wakes every automaton site within the scanner's range, and its first scan calls a [[encounter:picket_call|group]] in from the cluster's edge. Shoot it first, or keep on its tail.",
         lore: "Something taught the automatons to keep a lookout. Nobody at the shipyard admits to it.",
         tags: ["raiders", "picket"],
         ships: [
             (ship: "automaton_picket", count: (1, 1)),
             (ship: "automaton_raider", count: (2, 2)),
         ],
+        wake_radius: 250,
+        calls: "picket_call",
+    ),
+    (
+        // GDR-0113: never placed in a cluster; it warps in on the edge `sim::CALL_SECONDS` after a picket post's
+        // first call. PLACEHOLDER counts (docs/results/picket-keeper-balance-2026-10-18.md).
+        id: "picket_call",
+        name: "Called group",
+        summary: "Automatons a picket called in: they warp in at the cluster's edge and head where it saw you.",
+        description: "When a [[encounter:picket_post]]'s [[ship:automaton_picket]] gets its first scan off, this group warps in at the cluster's edge half a minute later and flies to where the picket saw you. Their wrecks are salvage like any others.",
+        tags: ["raiders", "called"],
+        ships: [(ship: "automaton_raider", count: (2, 3))],
         wake_radius: 250,
     ),
     (

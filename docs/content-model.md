@@ -763,7 +763,9 @@ reach, `scorched_wrecks` (wrecks only, 2–3 `sample_mid`s and 1–2 hunters, `n
 wreck drift) and `outpost_garrison` (the outpost, a gunner, a hunter, 1–2 `sample_mid` wrecks, 0–1 per border drift;
 GDR-0110); the station flies `behaviors/outpost.ron`. Then `picket_post` (the unarmed `automaton_picket`, tagged
 `scout`, and a raider pair, 0–1 per wreck drift and hunting reach; it flies `behaviors/picket.ron`, and its scans
-call its faction's sites, GDR-0111) and `keeper_gate` (the `automaton_keeper`, tagged `middle`, and three hunters:
+call its faction's sites, GDR-0111; its `calls: "picket_call"`, two or three raiders, warp in from the edge after
+its first call, GDR-0113: an encounter's optional `calls` names the group, an encounter with ships that calls none
+itself, and needs a ship with a scanner) and `keeper_gate` (the `automaton_keeper`, tagged `middle`, and three hunters:
 the deeper gates' trail `deep_gate`, GDR-0112; `docs/results/picket-keeper-balance-2026-10-18.md`).
 
 ### Controls (`controls.ron`, added 15 Oct 2026, GDR-0090)

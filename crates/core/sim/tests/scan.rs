@@ -309,6 +309,8 @@ fn an_enemy_scan_calls_its_own_factions_sleeping_sites_within_range() {
         wary: false,
         ships: vec![sim::Spawn { design: design(&c, ship), body: Body::at(pos, 0.0), damage: 0.0, seed: 0 }],
         wrecks: Vec::new(),
+        calls: None,
+        called: false,
     };
     // The picket at the origin; the player 360-590 m from each site (all spawn, none wakes on sight).
     let me_at = Vec2::new(700.0, -300.0);
@@ -376,6 +378,8 @@ fn called_ships_out_of_sight_rally_where_the_scanner_saw_its_target() {
             wary: false,
             ships: vec![sim::Spawn { design: design(&c, "automaton_raider"), body: Body::at(site_at, 0.0), damage: 0.0, seed: 0 }],
             wrecks: Vec::new(),
+            calls: None,
+            called: false,
         }],
         star: None,
         rocks: Vec::new(),
@@ -401,4 +405,76 @@ fn called_ships_out_of_sight_rally_where_the_scanner_saw_its_target() {
     let at = s.piece(s.control_piece().unwrap()).unwrap().com_world();
     assert!((at - site_at).length() > 150.0, "it left its site: at {at:?}");
     assert!(at.x < site_at.x, "towards the call: at {at:?}");
+}
+
+/// A site's first call brings the group it calls (GDR-0113): 30 s after the picket's first sweep the group's site
+/// spawns on the edge, awake, and its ships head where the picket saw the player; a second sweep calls nobody new.
+#[test]
+fn a_pickets_first_call_warps_its_group_in_thirty_seconds_later() {
+    let c = content();
+    let spawn = |ship: &str, pos: Vec2| sim::Spawn { design: design(&c, ship), body: Body::at(pos, 0.0), damage: 0.0, seed: 0 };
+    let site = |ships: Vec<sim::Spawn>, pos: Vec2| sim::SitePlan {
+        encounter: Some("test".into()),
+        goal: false,
+        signal: false,
+        core: None,
+        pos,
+        wake_radius: 250.0,
+        wary: false,
+        ships,
+        wrecks: Vec::new(),
+        calls: None,
+        called: false,
+    };
+    let edge = Vec2::new(0.0, 2000.0);
+    let plan = VoyagePlan {
+        voyage: "test".into(),
+        seed: 1,
+        radius: 2000.0,
+        entry: Body::at(Vec2::new(0.0, -200.0), 0.0),
+        sites: vec![
+            sim::SitePlan { calls: Some(1), ..site(vec![spawn("automaton_picket", Vec2::ZERO)], Vec2::ZERO) },
+            sim::SitePlan { called: true, ..site(vec![spawn("automaton_raider", edge)], edge) },
+        ],
+        star: None,
+        rocks: Vec::new(),
+    };
+    let mut w = Sim::new(3);
+    w.set_behaviors(sim::BehaviorLibrary::new(&c).unwrap());
+    w.start_voyage(plan, Owner::PLAYER, ENEMY);
+    let me_at = Vec2::new(0.0, -200.0);
+    let me = w.spawn_ship(design(&c, "rim_skiff"), Owner::PLAYER, Body::at(me_at, 0.0));
+    step(&mut w);
+    let picket = w.voyage().unwrap().sites()[0].ships()[0];
+    let (mut called, mut swept, mut arrived) = (Vec::new(), 0, None);
+    for _ in 0..(90 * sim::TICK_HZ) {
+        // The picket stays 500 m off (clear of the guns: it scans whenever it can).
+        put(&mut w, me, me_at);
+        if w.ship(picket).is_some() {
+            put(&mut w, picket, me_at + Vec2::new(0.0, 500.0));
+        }
+        let events = step(&mut w);
+        swept += events.iter().filter(|e| matches!(e, SimEvent::Scanned { ship, .. } if *ship == picket)).count();
+        called.extend(events.iter().filter_map(|e| match e {
+            SimEvent::SiteCalled { site } => Some((*site, w.tick())),
+            _ => None,
+        }));
+        if arrived.is_none() && events.contains(&SimEvent::SiteWoke { site: 1 }) {
+            arrived = Some(w.tick());
+        }
+    }
+    assert!(swept >= 2, "the picket swept more than once: {swept}");
+    assert_eq!(called.len(), 1, "one call: {called:?}");
+    let (site, at) = called[0];
+    assert_eq!(site, 1);
+    let v = w.voyage().unwrap();
+    let due = v.sites()[1].arrives().expect("it was called");
+    assert!(due.abs_diff(at + sim::CALL_SECONDS * sim::TICK_HZ as u64) <= 1, "30 s after the call: {due} vs {at}");
+    let arrived = arrived.expect("the group came");
+    assert!(arrived.abs_diff(due) <= 1, "when due: {arrived} vs {due}");
+    assert_eq!(v.sites()[1].state(), SiteState::Awake);
+    let raider = v.sites()[1].ships()[0];
+    let s = w.ship(raider).unwrap();
+    let pos = s.piece(s.control_piece().unwrap()).unwrap().com_world();
+    assert!((pos - me_at).length() < (edge - me_at).length() - 300.0, "on its way to the fleet: {pos:?}");
 }

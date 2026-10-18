@@ -242,6 +242,27 @@ fn encounter_rules() {
 // ---------------------------------------------------------------------------------------------------------------
 // Voyages
 
+/// A called group (GDR-0113): a known encounter with ships that calls none itself, called by a site that scans.
+#[test]
+fn calls_name_a_group_and_need_a_scanner() {
+    let picket = r#"ships: [(ship: "automaton_picket", count: (1, 1))], wake_radius: 200"#;
+    let good = encounter("good", &format!(r#"{picket}, calls: "picket_call""#));
+    assert_clean(&problems_with(&[("encounters/good.ron", &good)]), "good");
+    let files = [
+        ("encounters/a.ron", encounter("a", &format!(r#"{picket}, calls: "nope""#))),
+        ("encounters/b.ron", encounter("b", &format!(r#"{picket}, calls: "picket_post""#))),
+        ("encounters/c.ron", encounter("c", &format!(r#"{picket}, calls: "quiet""#))),
+        ("encounters/d.ron", encounter("d", r#"ships: [(ship: "automaton_raider", count: (1, 1))], wake_radius: 200, calls: "picket_call""#)),
+        ("encounters/quiet.ron", encounter("quiet", r#"wrecks: [(ship: "sample_mid", count: (1, 1))], wake_radius: 200"#)),
+    ];
+    let files: Vec<(&str, &str)> = files.iter().map(|(f, s)| (*f, s.as_str())).collect();
+    let p = problems_with(&files);
+    assert_error(&p, "a", "calls", "unknown encounter `nope`");
+    assert_error(&p, "b", "calls", "calls a group itself");
+    assert_error(&p, "c", "calls", "may roll no ships");
+    assert_error(&p, "d", "calls", "has a scanner");
+}
+
 #[test]
 fn a_valid_voyage_is_clean() {
     let p = problems_with(&[("voyages/v.ron", &voyage("v", GOOD_VOYAGE))]);
@@ -511,16 +532,18 @@ fn base_voyages_form_the_slice_chain() {
         .map(|id| c.voyages.get(id).unwrap().site_count())
         .collect();
     assert_eq!(sites, [4, 4, 5, 3]);
-    // Every encounter is used by a voyage, a kind of cluster or a trail's end (galaxy plan E8; the raider pair and
-    // den only in clusters since GDR-0101), and the Warden waits at the end.
+    // Every encounter is used by a voyage, a kind of cluster, a trail's end or another encounter's call (galaxy plan
+    // E8; the raider pair and den only in clusters since GDR-0101; called groups, GDR-0113), and the Warden waits at
+    // the end.
     for e in c.encounters.iter() {
         assert!(
             c.voyages
                 .iter()
                 .any(|v| v.sites.iter().any(|s| s.encounter == e.id))
                 || c.cluster_types.iter().any(|t| t.sites.iter().any(|s| s.encounter == e.id))
-                || c.trails.iter().any(|t| t.target == e.id),
-            "{} is used by no voyage, no kind of cluster and no trail",
+                || c.trails.iter().any(|t| t.target == e.id)
+                || c.encounters.iter().any(|x| x.calls.as_ref() == Some(&e.id)),
+            "{} is used by no voyage, no kind of cluster, no trail and no call",
             e.id
         );
     }

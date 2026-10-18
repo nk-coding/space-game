@@ -24,10 +24,27 @@ impl<'a> Validator<'a> {
     }
 
     /// An encounter's ships must be able to fly (a logic core) and should fight (a behavior); its wrecks may be
-    /// any ship, with a share of their parts gone below 1.
+    /// any ship, with a share of their parts gone below 1. The group it calls is an encounter with ships that calls
+    /// none itself, and only a site with a ship that scans can call it.
     pub(super) fn encounter(&mut self, e: &'a Encounter) {
         let c = self.c;
         self.distance(e, "wake_radius", e.wake_radius);
+        if let Some(g) = &e.calls {
+            match c.encounters.get(g) {
+                None => self.err(e, "calls", format!("unknown encounter `{g}`")),
+                Some(g) if !g.always_has_ships() => self.err(e, "calls", format!("encounter `{}` may roll no ships", g.id)),
+                Some(g) if g.calls.is_some() => self.err(e, "calls", format!("encounter `{}` calls a group itself", g.id)),
+                Some(_) => {}
+            }
+            let scans = e
+                .ships
+                .iter()
+                .filter_map(|s| c.ships.get(&s.ship))
+                .any(|b| b.parts.iter().any(|p| c.parts.get(&p.part).is_some_and(|x| x.scanner.is_some())));
+            if !scans {
+                self.err(e, "calls", "none of its ships has a scanner, so nothing would ever call");
+            }
+        }
         if e.ships.is_empty() && e.wrecks.is_empty() {
             self.err(e, "ships", "an encounter needs ships or wrecks");
         }
