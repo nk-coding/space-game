@@ -598,6 +598,26 @@ fn clearing_a_voyage_opens_the_next() {
     assert!(!career.is_open(&modded, "elsewhere"));
 }
 
+/// A voyage's `gives` (the Warden's gate shard) comes with its first clear only, into store and the result's report.
+#[test]
+fn a_first_clear_gives_the_voyage_gift() {
+    let c = content();
+    let mut career = new_game(&c);
+    let shard = |career: &Career| career.materials().get("gate_shard").copied().unwrap_or(0);
+    let end = |career: &mut Career, cleared| {
+        career.voyage_launched(&c, "wardens_gate").unwrap();
+        let home = VoyageEnd::Recalled { haul: Haul::default(), cleared, ticks: 9000 };
+        career.voyage_ended(&c, "wardens_gate", home).unwrap().report.materials.get("gate_shard").copied()
+    };
+    for id in [FIRST, "halvex_drift", "corran_reach"] {
+        career.voyage_launched(&c, id).unwrap();
+        career.voyage_ended(&c, id, VoyageEnd::Recalled { haul: Haul::default(), cleared: true, ticks: 9000 }).unwrap();
+    }
+    assert_eq!((end(&mut career, false), shard(&career)), (None, 0));
+    assert_eq!((end(&mut career, true), shard(&career)), (Some(1), 1));
+    assert_eq!((end(&mut career, true), shard(&career)), (None, 1));
+}
+
 #[test]
 fn voyage_seeds_are_fixed() {
     // Values computed independently (FNV-1a 64 and SplitMix64 by their reference definitions); they are part of

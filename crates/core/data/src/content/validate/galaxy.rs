@@ -232,14 +232,7 @@ impl<'a> Validator<'a> {
         if t.hint.trim().is_empty() {
             self.err(t, "hint", "hint must not be empty");
         }
-        for (id, &x) in &t.gives.data {
-            let f = format!("gives.data.{id}");
-            if !c.families.contains(id) {
-                self.err(t, &f, format!("unknown research family `{id}`"));
-            }
-            self.research_data(t, &f, x, true);
-        }
-        self.material_amounts(t, "gives.materials", &t.gives.materials);
+        self.gives(t, &t.gives);
         let used = match t.reward {
             Reward::Gate => c.bands.iter().any(|b| b.gates.as_ref().is_some_and(|g| g.trail == t.id)),
             Reward::Lore => c.lore.iter().any(|l| l.trail == t.id),

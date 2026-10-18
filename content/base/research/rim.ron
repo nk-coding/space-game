@@ -1,9 +1,9 @@
 // Research nodes of the first playable loop (docs/plans/first-playable-loop.md 3.2). PLACEHOLDER NUMBERS (lead
 // defaults, 13 Oct 2026; costs about halved by the slice tuning of the same day, GDR-0073, to fit what the starter's
 // hold brings home: docs/results/slice-balance-2026-10-13.md): costs are research data per family (from salvage) and
-// materials, paid at once; a node unlocks the moment it is paid (GDR-0063). Reactive armour, the automaton plate and
-// the capital frame stay locked. The simulation vault opens the evolution lab (GDR-0092: in the logic family and
-// cheap, 3 logic data, PLACEHOLDER).
+// materials, paid at once; a node unlocks the moment it is paid (GDR-0063). The automaton plate stays locked;
+// reactive armour and the capital frame take gate shards (`shards.ron`, 18 Oct 2026). The simulation vault opens
+// the evolution lab (GDR-0092: in the logic family and cheap, 3 logic data, PLACEHOLDER).
 [
     (
         id: "automaton_cannon",

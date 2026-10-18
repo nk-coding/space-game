@@ -8,4 +8,13 @@
         description: "Fabricating a [[part:logic_core|logic core]] takes some (it hosts a copy of you). Research spends it too, such as each [[research:mind_expansion_1|mind expansion]] that lets the mind run one more core at once. Dismantled cores give part of it back, [[part:automaton_core|automaton cores]] the most, and destroyed cores leave a small fragment of it.",
         icon: "programmable-matter",
     ),
+    // Gate shards (GDR-0031's precursor materials, 18 Oct 2026): one from each gate's guardian beaten, the Warden's
+    // first clear included, so the rim gives three, the outer reach three more. Only research spends them.
+    (
+        id: "gate_shard",
+        name: "Gate shard",
+        summary: "A shard of precursor gate lattice, left by a gate's guardian when it falls.",
+        description: "Each gate's guardian gives one when it is beaten: the [[voyage:wardens_gate|Warden]] the first time its gate is cleared, a [[encounter:gate_sentinel|gate sentinel]] or a [[encounter:bastion_gate|bastion]] at the end of its gate's trail. Research spends them to open what the shipyard could not work out alone: [[research:reactive_plating|reactive plating]], the [[research:automaton_forge|automaton forge]] and the [[research:capital_drydock|capital drydock]].",
+        icon: "gate-shard",
+    ),
 ]

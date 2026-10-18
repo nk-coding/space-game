@@ -703,8 +703,25 @@ fn base_research_nodes() {
             "mind_expansion_2",
             "simulation_vault",
             "cruiser_drydock",
+            "reactive_plating",
+            "automaton_forge",
+            "capital_drydock",
         ]
     );
+    // The gate shards open the rim's three dead ends (GDR-0031): only the automaton plate stays the automatons' own.
+    let unlocked = |u: Unlock| c.research.iter().any(|n| n.unlocks.contains(&u));
+    for m in c.materials.iter().filter(|m| m.locked && m.id != "automaton_plate") {
+        assert!(unlocked(Unlock::Material(m.id.clone())), "{}", m.id);
+    }
+    for f in c.frames.iter().filter(|f| f.locked) {
+        assert!(unlocked(Unlock::Frame(f.id.clone())), "{}", f.id);
+    }
+    for f in c.facilities.iter().filter(|f| f.locked) {
+        assert!(unlocked(Unlock::Facility(f.id.clone())), "{}", f.id);
+    }
+    for id in ["reactive_plating", "automaton_forge", "capital_drydock"] {
+        assert!(c.research.get(id).unwrap().cost.materials.contains_key("gate_shard"), "{id}");
+    }
     // Every unlock target is locked in content, so every node changes something.
     for n in c.research.iter() {
         for u in &n.unlocks {

@@ -121,6 +121,7 @@ impl<'a> Validator<'a> {
             self.err(v, "minutes", "at least 1 minute");
         }
         self.count_range(v, "minutes", v.minutes, MAX_VOYAGE_MINUTES);
+        self.gives(v, &v.gives);
         if v.sites.is_empty() {
             self.err(v, "sites", "a voyage needs at least one site");
             return;

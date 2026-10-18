@@ -107,6 +107,10 @@ impl Wiki<'_> {
         if let Some(g) = v.goal() {
             facts.push(("Goal".into(), self.a(root, Kind::Encounter, &g.encounter)));
         }
+        let gives = self.cost_items(root, &v.gives);
+        if !gives.is_empty() {
+            facts.push(("First clear gives".into(), gives.join(", ")));
+        }
         let starts = crate::starts_opening(self.c, &v.id);
         if let Some(l) = self.links(root, starts.iter().map(|s| (Kind::Start, s.id.clone()))) {
             facts.push(("Open at the start of".into(), l));

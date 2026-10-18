@@ -36,7 +36,8 @@ impl Career {
     }
 
     /// Ends the voyage underway. Recalled: the haul is unloaded ([`unload`]) into the stores, and a cleared goal
-    /// marks the voyage cleared (and its best time). Lost: the haul is gone and the goal does not count. Either way
+    /// marks the voyage cleared (and its best time); the first clear also gives the voyage's `gives` (in store and in
+    /// the result's report). Lost: the haul is gone and the goal does not count. Either way
     /// its result joins the history, new (the oldest goes past [`MAX_HISTORY`]), and is returned.
     pub fn voyage_ended(
         &mut self,
@@ -55,11 +56,24 @@ impl Career {
                 ticks,
             } => {
                 let record = self.voyages.entry(voyage.to_string()).or_default();
+                let first = cleared && !record.cleared;
                 if cleared {
                     record.cleared = true;
                     record.best_ticks = Some(record.best_ticks.map_or(ticks, |b| b.min(ticks)));
                 }
-                self.recalled(content, &haul, ticks, cleared)
+                let mut last = self.recalled(content, &haul, ticks, cleared);
+                // The first clear's gift (the Warden's gate shard) goes into store and into the result's report.
+                if let Some(gives) = content.voyages.get(voyage).map(|v| &v.gives).filter(|_| first) {
+                    let gift = HaulReport { data: gives.data.clone(), materials: gives.materials.clone(), ..Default::default() };
+                    self.credit(&gift);
+                    for (family, &x) in &gift.data {
+                        add_data(&mut last.report.data, family, x);
+                    }
+                    for (material, &n) in &gift.materials {
+                        add_materials(&mut last.report.materials, material, n);
+                    }
+                }
+                last
             }
             VoyageEnd::Lost { ticks } => self.lost(ticks),
         };

@@ -33,8 +33,8 @@
     (
         id: "automaton_forge",
         name: "Automaton forge",
-        summary: "A workshop upgrade that would forge the automatons' own cores and cannons.",
-        description: "No research installs it yet: until then the automatons' parts come only from intact salvage.",
+        summary: "A workshop upgrade that forges the automatons' own cores.",
+        description: "Researching the [[research:automaton_forge]] installs it in the [[facility:workshop]] (it takes a [[material:gate_shard]]). Until then the automatons' parts come only from intact salvage.",
         locked: true,
         within: "workshop",
     ),

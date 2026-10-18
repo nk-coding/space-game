@@ -55,6 +55,13 @@ pub struct ResearchCost {
     pub materials: BTreeMap<String, u32>,
 }
 
+impl ResearchCost {
+    /// No data and no materials.
+    pub fn is_empty(&self) -> bool {
+        self.data.is_empty() && self.materials.is_empty()
+    }
+}
+
 /// What a research node unlocks for the player who researched it.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum Unlock {

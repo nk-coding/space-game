@@ -806,14 +806,20 @@ fn parts_materials_and_frames_show_salvage_and_unlocks() {
     );
     has(
         "materials/reactive.html",
+        "<h2>Unlocked by</h2>\n<table class=\"list\">\n<tr><td class=\"name\"><a href=\"../research/reactive_plating.html\">",
+    );
+    has(
+        "materials/automaton_plate.html",
         "<h2>Unlocked by</h2>\n<p class=\"none\">No research unlocks it yet.</p>",
     );
+    // The gate shard (GDR-0031): the research that spends it.
+    has("materials/gate_shard.html", "href=\"../research/capital_drydock.html\"");
     lacks("materials/steel.html", "<h2>Unlocked by</h2>");
     has(
         "frames/cruiser.html",
         "<h2>Unlocked by</h2>\n<table class=\"list\">\n<tr><td class=\"name\"><a href=\"../research/cruiser_drydock.html\">",
     );
-    has("frames/capital.html", "No research unlocks it yet.");
+    has("frames/capital.html", "href=\"../research/capital_drydock.html\"");
     lacks("frames/frigate.html", "<h2>Unlocked by</h2>");
     // An armour material's salvage per cell; programmable matter: the parts that give it and the research
     // that costs it.

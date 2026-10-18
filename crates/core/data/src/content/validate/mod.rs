@@ -540,6 +540,18 @@ impl<'a> Validator<'a> {
         }
     }
 
+    /// What a trail's end or a voyage's first clear `gives`: known families and materials, amounts in range.
+    fn gives<T: Entry>(&mut self, e: &T, gives: &ResearchCost) {
+        for (id, &x) in &gives.data {
+            let f = format!("gives.data.{id}");
+            if !self.c.families.contains(id) {
+                self.err(e, &f, format!("unknown research family `{id}`"));
+            }
+            self.research_data(e, &f, x, true);
+        }
+        self.material_amounts(e, "gives.materials", &gives.materials);
+    }
+
     /// Material amounts: known materials, each 1 to [`MAX_MATERIAL_AMOUNT`].
     fn material_amounts<T: Entry>(&mut self, e: &T, field: &str, amounts: &BTreeMap<String, u32>) {
         for (id, &n) in amounts {

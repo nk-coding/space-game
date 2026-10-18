@@ -89,6 +89,15 @@ it is dismantled, and a core destroyed in a fight leaves a small fragment of it 
 core is usually what you destroy to stop it, so look for intact cores in wrecks, such as the
 [[encounter:core_graveyard]].
 
+### Gate shards
+
+A [[material:gate_shard]] is a shard of precursor gate lattice. Each gate's guardian gives one when it is beaten: the
+Warden the first time you clear [[voyage:wardens_gate]], every other guardian at the end of its gate's trail (a
+[[encounter:gate_sentinel]] at the rim, a [[encounter:bastion_gate|bastion]] in the outer reach). Nothing else gives
+them, so the rim holds three and the outer reach three more. Only research spends them:
+[[research:reactive_plating]] and the [[research:automaton_forge]] take one each, the [[research:capital_drydock]]
+three.
+
 ## Research nodes
 
 Open the lab from home ([[control:open_research.keys]], or a click on the lab with the two dishes). The screen shows
@@ -139,6 +148,9 @@ once. There is no research time. The line above the button says what happened, o
 | [[research:mind_expansion_1]] | [[research:mind_expansion_1.cost]] | [[research:mind_expansion_1.requires]] | [[research:mind_expansion_1.unlocks]] |
 | [[research:mind_expansion_2]] | [[research:mind_expansion_2.cost]] | [[research:mind_expansion_2.requires]] | [[research:mind_expansion_2.unlocks]] |
 | [[research:simulation_vault]] | [[research:simulation_vault.cost]] | [[research:simulation_vault.requires]] | [[research:simulation_vault.unlocks]] |
+| [[research:reactive_plating]] | [[research:reactive_plating.cost]] | [[research:reactive_plating.requires]] | [[research:reactive_plating.unlocks]] |
+| [[research:automaton_forge]] | [[research:automaton_forge.cost]] | [[research:automaton_forge.requires]] | [[research:automaton_forge.unlocks]] |
+| [[research:capital_drydock]] | [[research:capital_drydock.cost]] | [[research:capital_drydock.requires]] | [[research:capital_drydock.unlocks]] |
 
 A node unlocks one or more of six things: a part, an armour material, a drydock frame, more mind capacity, a
 building of the shipyard (the [evolution lab](/mechanics/evolution-lab)), or a longer **jump range** (the

@@ -38,6 +38,10 @@ pub struct Voyage {
     /// empty, so voyages without it keep the content's fingerprint.
     #[serde(default, skip_serializing_if = "Scenery::is_empty")]
     pub scenery: Scenery,
+    /// What clearing its goal the first time gives besides the haul (research data and materials into store, such
+    /// as the Warden's gate shard, GDR-0031). Left out of the serde form when empty, like `scenery`.
+    #[serde(default, skip_serializing_if = "ResearchCost::is_empty")]
+    pub gives: ResearchCost,
     #[serde(skip_deserializing)]
     pub source: Source,
 }

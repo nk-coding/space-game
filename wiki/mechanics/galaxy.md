@@ -84,10 +84,10 @@ the next place of the trail; the last place holds the reward:
 
 | Trail | Signals | Leads to |
 |---|---|---|
-| [[trail:rim_gate]] | [[trail:rim_gate.length]] | a gate and its guardian, a [[encounter:gate_sentinel]]: beaten, the gate opens |
+| [[trail:rim_gate]] | [[trail:rim_gate.length]] | a gate and its guardian, a [[encounter:gate_sentinel]]: beaten, the gate opens and a [[material:gate_shard]] goes into store |
 | [[trail:precursor_cache]] | [[trail:precursor_cache.length]] | a [[encounter:sealed_cache]]: beat its keepers and research data and programmable matter go straight into store, beside rich wrecks |
 | [[trail:graveyard]] | [[trail:graveyard.length]] | a [[encounter:deep_graveyard]] with far more salvage than usual |
-| [[trail:outer_gate]] | [[trail:outer_gate.length]] | an outer gate and its guardian, a [[encounter:bastion_gate]]: beaten, the gate opens |
+| [[trail:outer_gate]] | [[trail:outer_gate.length]] | an outer gate and its guardian, a [[encounter:bastion_gate]]: beaten, the gate opens and a [[material:gate_shard]] goes into store |
 | [[trail:elder_grove]] | [[trail:elder_grove.length]] | an [[encounter:elder_grove]]: a [[ship:grown_elder]] at rest, rich salvage if it can be beaten |
 | [[trail:memory]] | [[trail:memory.length]] | a [[encounter:memory_wreck]]: see it and its fragment of what happened joins the memory log |
 

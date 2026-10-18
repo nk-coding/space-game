@@ -16,6 +16,7 @@
         target: "gate_sentinel",
         sources: ["hauler_log", "precursor_log", "old_beacon"],
         hint: "A gate",
+        gives: (materials: {"gate_shard": 1}), // the guardian's gate shard (GDR-0031, 18 Oct 2026)
     ),
     (
         id: "deep_gate",
@@ -27,6 +28,7 @@
         target: "the_warden",
         sources: ["hauler_log", "precursor_log", "old_beacon"],
         hint: "A gate",
+        gives: (materials: {"gate_shard": 1}), // the guardian's gate shard (GDR-0031, 18 Oct 2026)
     ),
     (
         id: "outer_gate",
@@ -37,6 +39,7 @@
         target: "bastion_gate",
         sources: ["hauler_log", "precursor_log", "old_beacon"],
         hint: "A gate",
+        gives: (materials: {"gate_shard": 1}), // the guardian's gate shard (GDR-0031, 18 Oct 2026)
     ),
     (
         id: "elder_grove",

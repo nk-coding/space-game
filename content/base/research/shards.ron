@@ -1,0 +1,39 @@
+// Research that spends gate shards (GDR-0031, 18 Oct 2026): the three locks the rim's research left without a way
+// in. A gate's guardian gives one shard (materials/precursor.ron), so the rim's three gates pay for reactive plating
+// and the automaton forge, and the capital drydock waits for the outer reach's gates. PLACEHOLDER NUMBERS (lead
+// defaults): the data costs sit between the rim's cruiser drydock and the Grown's heart.
+[
+    (
+        id: "reactive_plating",
+        name: "Reactive plating",
+        summary: "Heavy plating that breaks up incoming hits and blasts.",
+        description: "Unlocks [[material:reactive]] for every hull part: the toughest armour, heavy and dear in build points, and it lets only a quarter of a blast through. The shard holds the lattice that makes it react.",
+        family: "hull",
+        kind: Variant,
+        cost: (data: {"hull": 14}, materials: {"gate_shard": 1}),
+        requires: ["composite_plating"],
+        unlocks: [Material("reactive")],
+    ),
+    (
+        id: "automaton_forge",
+        name: "Automaton forge",
+        summary: "Wakes the precursor forge the automatons were built in.",
+        description: "Installs the [[facility:automaton_forge]] in the [[facility:workshop]], so it fabricates [[part:automaton_core|automaton cores]] instead of waiting for intact salvage.",
+        family: "logic",
+        kind: Facility,
+        cost: (data: {"logic": 6, "kinetic": 4}, materials: {"gate_shard": 1}),
+        requires: ["tamed_core"],
+        unlocks: [Facility("automaton_forge")],
+    ),
+    (
+        id: "capital_drydock",
+        name: "Capital drydock",
+        summary: "Expand the drydock to its full size, for capital ships.",
+        description: "Unlocks the [[frame:capital]] frame. Three shards hold the drydock's largest field steady: more than the rim's gates give.",
+        family: "hull",
+        kind: SizeClass,
+        cost: (data: {"hull": 36}, materials: {"gate_shard": 3}),
+        requires: ["cruiser_drydock"],
+        unlocks: [Frame("capital")],
+    ),
+]

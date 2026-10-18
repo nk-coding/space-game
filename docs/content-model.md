@@ -693,6 +693,7 @@ GDR-0098); its `map` place (0 to 1) went on 16 Oct 2026 with the galaxy's map (G
 | `spacing` | `(min, max)` m, `0 < min ≤ max`, `min ≤ 2 × radius`: no two sites (and no site and the entry) closer than `min`; each site within `max` of an earlier one or the entry |
 | `minutes` | `(min, max)`, `1 ≤ min ≤ max ≤ 600` |
 | `cleared` | optional text (a text key `voyage.<id>.cleared`): the debrief's line the first time the goal falls |
+| `gives` | optional (added 18 Oct 2026, GDR-0031), as a trail's: `(data: {family: amount}, materials: {material: amount})`, known ids, amounts in range. The first time the goal is cleared and the fleet comes home, it goes into store and into that result's report, so the debrief lists it (base: the Warden's gate shard on `wardens_gate`). Left out of the serde form when empty |
 | `sites` | at least one; `encounter` a known encounter, `count` (default 1) at least 1, at most 64 sites in all (`MAX_VOYAGE_SITES`). Exactly one entry is the goal (`goal: true`), with count 1 and an encounter whose ships' minimum counts are not all 0 (a goal must always have ships to clear), one of them armed (`Content::ship_armed`: a weapon and power on its main piece; GDR-0068) |
 
 Base voyages (placeholders, `../space-game-archive/plans/slice-content.md` 3.3), in one file in chain order: `yard_approach` (open at
