@@ -283,7 +283,7 @@ A). Screenshots: `docs/results/drydock-v2-1280x720.png`, `-1280x720-more.png` (t
   the section; the chip of the section at the top of the list is lit, the clicked one while the list glides there and
   while its heading is in view, and the lit chip glides into view); then **every part in
   sections** (`state::palette_sections`): a heading per category with its count (`WEAPONS 1 · 2 LOCKED`), the
-  unlocked parts, then the locked ones. Rows: icon, name, footprint and key stat, the NEW tag, and how many are left
+  unlocked parts, then the locked ones. Rows: icon, name, footprint and key stat (with the career's part-stat steps, the line teal when they raised it, like the hover card; 19 Oct 2026), the NEW tag, and how many are left
   (`∞`, a number once counts exist, coral at 0). The wheel scrolls the list smoothly by pixels (14 Oct 2026; until
   then it scrolled by whole entries, headings and rows, so icons were never cut; now a row cut at an edge hides its
   icon until it is whole, under the edge's fade). See [client](client.md) "Smooth scrolling". The search filters the whole list; empty sections and their chips go. The list, the swatches and

@@ -230,7 +230,7 @@ pub(super) enum PanelText {
 
 #[cfg(test)]
 mod tests {
-    use super::sync::shorten;
+    use super::sync::{key_stat, shorten};
 
     /// A status line too long for its room drops whole parts from the end, else is cut, always ending in `…`.
     #[test]
@@ -242,4 +242,18 @@ mod tests {
         assert!(shorten(line, 0.0).ends_with('…'));
     }
 
+    /// A palette row's key stat carries the career's part-stat steps, like the hover card: the raised number, marked
+    /// as raised; without steps the content's.
+    #[test]
+    fn the_key_stat_follows_the_upgrades() {
+        let content = data::base_content();
+        let rad = content.parts.get("radiator").unwrap();
+        let upgrades = data::Upgrades::of_research(&content, ["radiator_vent_1", "radiator_vent_2"]);
+        let (plain, plain_up) = key_stat(&content, rad, "", &data::Upgrades::NONE).unwrap();
+        let (raised, raised_up) = key_stat(&content, rad, "", &upgrades).unwrap();
+        assert_eq!((plain_up, raised_up), (false, true));
+        assert_ne!(plain, raised);
+        let vent = content.stats.get("heat_vent").unwrap().name.to_uppercase();
+        assert!(raised.starts_with(&vent), "{raised}");
+    }
 }

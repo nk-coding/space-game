@@ -136,16 +136,19 @@ pub(in crate::drydock) fn sync_rows(
                 if open(id) { Tone::Number } else { Tone::Dim }
             }
             RowText::Sub(_) => {
+                let mut upgraded = false;
                 if open(id) {
                     s.push_str(&footprint(p));
-                    if let Some(stat) = key_stat(content, p, &ui.material) {
+                    if let Some((stat, raised)) = key_stat(content, p, &ui.material, &granted.upgrades) {
                         s.push_str(" · ");
                         s.push_str(&stat);
+                        upgraded = raised;
                     }
                 } else {
                     s.push_str(&locked_sub(content, p));
                 }
-                sub_tone(ui.picked.as_deref() == Some(id.as_str()))
+                // A stat the career's steps raised reads in teal, like the hover card's.
+                if upgraded { Tone::Teal } else { sub_tone(ui.picked.as_deref() == Some(id.as_str())) }
             }
             // The workshop's stock less what the design holds (GDR-0108): coral when the design is short of it, dim
             // when none is left; hull plating is not counted.
@@ -402,16 +405,17 @@ pub(super) fn set_display(n: &mut Node, show: bool) {
 }
 
 /// The one stat a palette row shows: the part's first own stat after the common ones (build points, control,
-/// mass, hit points, power draw, heat), else the bonus it gives, else its hit points.
-pub(super) fn key_stat(content: &Content, part: &Part, material: &str) -> Option<String> {
+/// mass, hit points, power draw, heat), else the bonus it gives, else its hit points; with the career's part-stat
+/// steps (as the hover card shows it) and whether they raised it.
+pub(super) fn key_stat(content: &Content, part: &Part, material: &str, upgrades: &data::Upgrades) -> Option<(String, bool)> {
     const COMMON: [&str; 8] = ["build_points", "control_cost", "mass", "hp", "power_draw", "power_min_level", "heat_output", "heat_limit"];
-    let lines = content.part_stats(part, content.materials.get(material).filter(|_| part.hull));
+    let lines = content.part_stats_upgraded(part, content.materials.get(material).filter(|_| part.hull), upgrades);
     let pick = lines
         .iter()
         .find(|l| l.bonus.is_none() && !COMMON.contains(&l.stat.as_str()))
         .or_else(|| lines.iter().find(|l| l.bonus.is_some()))
         .or_else(|| lines.iter().find(|l| l.stat == "hp"))?;
-    Some(format!("{} {}", pick.label, pick.text).to_uppercase())
+    Some((format!("{} {}", pick.label, pick.text).to_uppercase(), pick.upgraded_from.is_some()))
 }
 
 pub(super) fn footprint(part: &Part) -> String {
