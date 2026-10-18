@@ -1,12 +1,10 @@
-//! The nebula and the far galaxy (GDR-0105), rolled and meshed in the design frame (px of a 1600 × 900 view, y
+//! The nebula (GDR-0105), rolled and meshed in the design frame (px of a 1600 × 900 view, y
 //! down, origin at the view's top left).
 //!
 //! The nebula is soft blobs strung along a curve across the view: wide washes in its two colours, a few brighter
 //! cores with stars in them, thin faint dust lanes; each blob a fan whose alpha falls from its middle to its wobbly
 //! edge. No point of the view lies under more than [`STACK`] blobs (checked on a coarse grid; one less beside a hot
-//! star), the overdraw cap. The
-//! galaxy is a soft glowing spiral (Niklas, 18 Oct 2026: it read as a cloud of dots): a smooth warm core, a soft
-//! glow along each arm, fine faint dots over the glow, a faint halo.
+//! star), the overdraw cap.
 
 use std::f32::consts::TAU;
 
@@ -18,8 +16,6 @@ use super::{H, W};
 
 /// The most blobs over any point (one less beside a hot star, whose glow is a large translucent layer too).
 const STACK: u8 = 3;
-/// Sprites along each of the galaxy's arms for its glow.
-const GLOW_STEPS: usize = 36;
 /// The coverage grid.
 const GX: usize = 64;
 const GY: usize = 36;
@@ -191,113 +187,6 @@ pub(super) fn nebula_mesh(n: &Nebula, white: Vec2, dot: [Vec2; 4], strength: f32
         g.sprite(p, Vec2::splat(s * 3.0), dot, vc(*c, 0.85 * strength));
         g.sprite(p, Vec2::new(10.0, 0.9), dot, vc(*c, 0.35 * strength));
         g.sprite(p, Vec2::new(0.9, 10.0), dot, vc(*c, 0.35 * strength));
-    }
-    g
-}
-
-/// The far galaxy: where (design frame), its radius, flattening and turn, and its dots (offset, size, colour,
-/// alpha) in its own frame.
-pub(super) struct Galaxy {
-    pub at: Vec2,
-    pub rg: f32,
-    k: f32,
-    rot: f32,
-    dots: Vec<(Vec2, f32, Rgb, f32)>,
-    strength: f32,
-}
-
-/// Rolls the galaxy clear of the view's middle (the planets pass over it).
-pub(super) fn galaxy(r: &mut Stream, strength: f32) -> Galaxy {
-    let rg = r.range(70.0, 140.0);
-    let mut best = (Vec2::ZERO, f32::MIN);
-    for _ in 0..40 {
-        let at = Vec2::new(r.range(rg + 30.0, W - rg - 30.0), r.range(rg * 0.6 + 30.0, H - rg * 0.6 - 30.0));
-        // the first place clear of the middle, else the clearest
-        let score = (at.distance(Vec2::new(W, H) / 2.0) - 260.0 - rg).min(0.0);
-        if score > best.1 {
-            best = (at, score);
-        }
-    }
-    let k = r.range(0.28, 0.68);
-    let rot = r.range(0.0, std::f32::consts::PI);
-    let arms = *r.pick(&[2, 2, 3, 4]);
-    let b = r.range(0.22, 0.36);
-    let turns = r.range(1.1, 1.7);
-    let dir = if r.chance(0.5) { 1.0 } else { -1.0 };
-    let warm = Vec3::new(1.0, 0.925, 0.784);
-    let blue = Vec3::new(0.667, 0.769, 1.0);
-    let pink = Vec3::new(1.0, 0.627, 0.784);
-    let th_max = turns * TAU;
-    let a0 = rg / (b * th_max).exp();
-    let mut dots = Vec::new();
-    // The arms' glow first (under the dots): wide soft sprites strung along each spiral, overlapping into a ribbon
-    // that fades outwards. No draws: the spiral alone places them.
-    for arm in 0..arms {
-        for j in 0..GLOW_STEPS {
-            let t = (j as f32 + 0.5) / GLOW_STEPS as f32;
-            let th = t.powf(0.75) * th_max;
-            let rr = a0 * (b * th).exp();
-            let ang = dir * th + arm as f32 * TAU / arms as f32;
-            let size = rg * (0.05 + 0.05 * t);
-            dots.push((Vec2::from_angle(ang) * rr, size, mix(warm, blue, (t * 1.3).min(1.0)), 0.16 * (1.0 - 0.7 * t)));
-        }
-    }
-    for _ in 0..500 {
-        let rr = r.gauss().abs() * rg * 0.12;
-        let th = r.range(0.0, TAU);
-        dots.push((Vec2::from_angle(th) * rr, r.range(0.4, 0.8), warm, r.range(0.15, 0.4)));
-    }
-    for i in 0..2200 {
-        let arm = (i % arms) as f32;
-        let t = r.next().powf(0.75);
-        let th = t * th_max;
-        let rr = a0 * (b * th).exp() + r.gauss() * rg * (0.02 + 0.045 * t);
-        let ang = dir * th + arm * TAU / arms as f32 + r.gauss() * 0.08;
-        let knot = r.chance(0.03);
-        let (size, col, a) = if knot { (1.0, pink, 0.45) } else { (r.range(0.35, 0.7), mix(warm, blue, (t * 1.4).min(1.0)), r.range(0.1, 0.32)) };
-        dots.push((Vec2::from_angle(ang) * rr, size, col, a * (1.0 - 0.5 * t)));
-    }
-    Galaxy { at: best.0, rg, k, rot, dots, strength }
-}
-
-/// The galaxy's mesh (origin at its centre), at the backdrop's `strength`.
-pub(super) fn galaxy_mesh(gx: &Galaxy, white: Vec2, dot: [Vec2; 4], strength: f32) -> Geo {
-    let mut g = Geo::new(white);
-    let a = gx.strength * strength;
-    let place = |p: Vec2| Vec2::from_angle(gx.rot).rotate(Vec2::new(p.x, p.y * gx.k));
-    // the halo: a faint flattened disc
-    let halo = Vec3::new(0.78, 0.82, 1.0);
-    let mid = g.v(Vec2::ZERO, vc(halo, 0.09 * a));
-    let first = g.len() as u32;
-    let segs = 40;
-    for i in 0..segs {
-        g.v(place(Vec2::from_angle(i as f32 / segs as f32 * TAU) * gx.rg * 1.1), vc(halo, 0.0));
-    }
-    for i in 0..segs {
-        g.tri(mid, first + i, first + (i + 1) % segs);
-    }
-    for (p, s, c, al) in &gx.dots {
-        // soft dots a little larger than the study's squares, as faint, so sub-pixel ones still show smoothly
-        g.sprite(place(*p), Vec2::new(s * 2.2, s * 2.2 * gx.k.max(0.6)), dot, vc(*c, al * a * 0.6));
-    }
-    // The core: a bright middle falling off smoothly through rings to nothing.
-    let warm = Vec3::new(1.0, 0.925, 0.784);
-    let core = Vec3::new(1.0, 0.965, 0.88);
-    let mid = g.v(Vec2::ZERO, vc(core, 0.6 * a));
-    let first = g.len() as u32;
-    let rings = [(0.03, 0.45), (0.07, 0.27), (0.13, 0.14), (0.21, 0.06), (0.32, 0.0)];
-    for (s, al) in rings {
-        for i in 0..segs {
-            g.v(place(Vec2::from_angle(i as f32 / segs as f32 * TAU) * gx.rg * s), vc(warm, al * a));
-        }
-    }
-    for i in 0..segs {
-        let j = (i + 1) % segs;
-        g.tri(mid, first + i, first + j);
-        for k in 0..rings.len() as u32 - 1 {
-            let (o, n) = (first + k * segs, first + (k + 1) * segs);
-            g.quad(o + i, n + i, n + j, o + j);
-        }
     }
     g
 }

@@ -10,8 +10,8 @@
 //! switches the materials to it once all of it is on the GPU ([`rasterise_step`]). Region UVs are normalised
 //! and identical at every tier, so meshes never need rebuilding. Every atlas mesh draws with [`AtlasMaterial`]
 //! (`atlas.wesl`: texture × vertex colour, sampled with a mip LOD bias so the icons stay as sharp as the
-//! geometry): alpha-blended, opaque with depth writes for the lit ship tiles ([`Atlas::opaque`]), or additive
-//! ([`Atlas::additive`]).
+//! geometry): alpha-blended, opaque with depth writes for the lit ship tiles ([`Atlas::opaque`]), additive
+//! ([`Atlas::additive`]) or premultiplied ([`Atlas::premultiplied`]).
 //! [`AtlasStatus`] reports what happens (the debug overlay).
 
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
@@ -84,6 +84,9 @@ pub struct Atlas {
     pub opaque: Handle<AtlasMaterial>,
     /// The same, added onto what lies below (glints and embers on the rocks, `scenery::rocks`).
     pub additive: Handle<AtlasMaterial>,
+    /// The same with premultiplied vertex colours: what lies below is dimmed by the alpha and the colour added, so
+    /// one mesh both veils and glows (the sky's galaxy, `scenery::sky::galaxy`).
+    pub premultiplied: Handle<AtlasMaterial>,
     regions: HashMap<String, Region>,
     tokens: art::Tokens,
     layout: Arc<art::Layout>,
@@ -115,8 +118,9 @@ pub fn parse_hex(s: &str) -> Option<Color> {
 }
 
 /// The material of every atlas mesh: the atlas × the vertex colour, like Bevy's `ColorMaterial` but sampled with
-/// a mip LOD bias of −0.5 (`atlas.wesl` says why). Alpha-blended, opaque (no blending, writes depth) or additive
-/// (the colour times its alpha added onto what lies below).
+/// a mip LOD bias of −0.5 (`atlas.wesl` says why). Alpha-blended, opaque (no blending, writes depth), additive
+/// (the colour times its alpha added onto what lies below) or premultiplied (the colour added onto what lies below
+/// dimmed by the alpha; `tint` fades only its alpha, so it is drawn at full tint).
 ///
 /// `tint`'s alpha fades everything drawn with it: a group of meshes that fades as one (a screen's world-space
 /// elements, its UI icons, the shipyard while a screen covers it) shares a material of its own
@@ -141,18 +145,29 @@ pub struct AtlasMaterial {
     #[uniform(4)]
     clip: Vec4,
     opaque: bool,
-    additive: bool,
+    blend: Blend,
 }
 
-/// What an atlas material's pipeline is specialised by: additive blending.
+/// How a blended atlas material lays its colour over what lies below.
+#[derive(Eq, PartialEq, Hash, Copy, Clone, Debug)]
+enum Blend {
+    /// Over it by the alpha.
+    Alpha,
+    /// Added onto it (the colour times its alpha).
+    Additive,
+    /// The colour (premultiplied) added onto it dimmed by the alpha.
+    Premultiplied,
+}
+
+/// What an atlas material's pipeline is specialised by: its blending.
 #[derive(Eq, PartialEq, Hash, Copy, Clone)]
 pub struct AtlasKey {
-    additive: bool,
+    blend: Blend,
 }
 
 impl From<&AtlasMaterial> for AtlasKey {
     fn from(m: &AtlasMaterial) -> Self {
-        AtlasKey { additive: m.additive }
+        AtlasKey { blend: m.blend }
     }
 }
 
@@ -161,7 +176,7 @@ impl Atlas {
     /// group of meshes that fades as one ([`set_alpha`]).
     pub fn group_material(&self, materials: &mut Assets<AtlasMaterial>) -> Handle<AtlasMaterial> {
         let texture = materials.get(&self.material).map(|m| m.texture.clone()).unwrap_or_default();
-        materials.add(AtlasMaterial { texture, tint: Vec4::ONE, aperture: Vec4::ZERO, clip: Vec4::ZERO, opaque: false, additive: false })
+        materials.add(AtlasMaterial { texture, tint: Vec4::ONE, aperture: Vec4::ZERO, clip: Vec4::ZERO, opaque: false, blend: Blend::Alpha })
     }
 }
 
@@ -224,12 +239,17 @@ impl Material2d for AtlasMaterial {
         _: &MeshVertexBufferLayoutRef,
         key: Material2dKey<Self>,
     ) -> Result<(), SpecializedMeshPipelineError> {
-        if key.bind_group_data.additive
-            && let Some(fragment) = descriptor.fragment.as_mut()
-        {
-            let add = |src_factor| BlendComponent { src_factor, dst_factor: BlendFactor::One, operation: BlendOperation::Add };
+        let src = match key.bind_group_data.blend {
+            Blend::Alpha => return Ok(()),
+            Blend::Additive => BlendFactor::SrcAlpha,
+            Blend::Premultiplied => BlendFactor::One,
+        };
+        let dst = if key.bind_group_data.blend == Blend::Additive { BlendFactor::One } else { BlendFactor::OneMinusSrcAlpha };
+        if let Some(fragment) = descriptor.fragment.as_mut() {
+            let color = BlendComponent { src_factor: src, dst_factor: dst, operation: BlendOperation::Add };
+            let alpha = BlendComponent { src_factor: BlendFactor::Zero, dst_factor: BlendFactor::One, operation: BlendOperation::Add };
             for target in fragment.targets.iter_mut().flatten() {
-                target.blend = Some(BlendState { color: add(BlendFactor::SrcAlpha), alpha: add(BlendFactor::Zero) });
+                target.blend = Some(BlendState { color, alpha });
             }
         }
         Ok(())
@@ -370,11 +390,12 @@ impl Plugin for AtlasPlugin {
         let world = app.world_mut();
         let image = world.resource_mut::<Assets<Image>>().add(image);
         let mut materials = world.resource_mut::<Assets<AtlasMaterial>>();
-        let base = AtlasMaterial { texture: image, tint: Vec4::ONE, aperture: Vec4::ZERO, clip: Vec4::ZERO, opaque: false, additive: false };
+        let base = AtlasMaterial { texture: image, tint: Vec4::ONE, aperture: Vec4::ZERO, clip: Vec4::ZERO, opaque: false, blend: Blend::Alpha };
         let material = materials.add(base.clone());
         let opaque = materials.add(AtlasMaterial { opaque: true, ..base.clone() });
-        let additive = materials.add(AtlasMaterial { additive: true, ..base });
-        let atlas = Atlas { material, opaque, additive, regions, tokens: art::tokens(), layout, tier };
+        let additive = materials.add(AtlasMaterial { blend: Blend::Additive, ..base.clone() });
+        let premultiplied = materials.add(AtlasMaterial { blend: Blend::Premultiplied, ..base });
+        let atlas = Atlas { material, opaque, additive, premultiplied, regions, tokens: art::tokens(), layout, tier };
         world.insert_resource(crate::style::Style::from_atlas(&atlas));
         world.insert_resource(atlas);
         let uploads = Uploads::default();

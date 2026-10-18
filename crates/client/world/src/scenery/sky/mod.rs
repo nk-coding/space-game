@@ -15,6 +15,7 @@
 //! ([`clear`]), so mostly exactly one planet is in view ([`anchor_planets`]). The planets and moons draw by their parallax, the nearer over the
 //! farther. Everything is drawn at [`STRENGTH`] (veiled towards the sky's dark), so it stays quiet behind a fight.
 
+mod galaxy;
 mod kinds;
 mod nebula;
 mod paint;
@@ -24,6 +25,7 @@ use std::f32::consts::{PI, TAU};
 
 use bevy::prelude::*;
 use data::{BodyClass, PlanetKind, Sky};
+use kit::atlas::AtlasMaterial;
 use kit::params::RenderToggles;
 
 use super::{Build, SceneryPart};
@@ -68,7 +70,7 @@ const LARGE: (f32, f32) = (0.10, 0.12);
 const CAMERA_REACH: f32 = 1.15;
 const SCALES: [f32; 3] = [0.8, 1.0, 1.25];
 const GAP: f32 = 24.0;
-/// Draw order: the galaxy over the gradient, the far stars (−893, `backdrop.rs`), the nebula, then the planets and
+/// Draw order: the galaxy over the gradient (its field, dust and glow, a hundredth apart), the far stars (−893, `backdrop.rs`), the nebula, then the planets and
 /// moons by their parallax (`Z_BODIES + parallax · DEPTH_Z`, −885 to −884), a planet's rings' back half just under
 /// it and the front half just over it. The hot star's glow (−889), its corona and the landmarks (−888.5) lie between
 /// the nebula and the planets: nothing farther off draws over a planet (GDR-0107).
@@ -103,6 +105,8 @@ pub(super) struct SkyCounts {
     pub moons: Vec<String>,
     pub vertices: [usize; 4],
     pub nebula_peak: u8,
+    /// The galaxy's kind.
+    pub galaxy: &'static str,
     /// Where the first planet's light comes from (angle, design frame, y down): what lights the rocks.
     pub light: Option<f32>,
 }
@@ -165,14 +169,18 @@ pub(super) fn spawn(cx: &mut Build, s: &SkySpec, content: &data::Content) -> Opt
         None => (Vec::new(), Vec::new()),
     };
     let nebula = nebula::nebula(&mut Stream::new(s.seed, "nebula"), s.sky, night, hot.is_some());
-    let galaxy = nebula::galaxy(&mut Stream::new(s.seed, "galaxy"), s.sky.galaxy);
+    let galaxy = galaxy::galaxy(&mut Stream::new(s.seed, "galaxy"), s.sky.galaxy);
 
     let light = planets.first().map(|p| p.body.light);
-    let mut counts = SkyCounts { planets: Vec::new(), moons: Vec::new(), vertices: [0; 4], nebula_peak: nebula.peak, light };
-    let put = |cx: &mut Build, g: paint::Geo, part: SkyPart, z: f32| -> usize {
+    let mut counts = SkyCounts { planets: Vec::new(), moons: Vec::new(), vertices: [0; 4], nebula_peak: nebula.peak, galaxy: galaxy.kind.name(), light };
+    let put_in = |cx: &mut Build, g: paint::Geo, material: Handle<AtlasMaterial>, part: SkyPart, z: f32| -> usize {
         let n = g.len();
-        cx.commands.spawn((SceneryPart, part, Mesh2d(cx.meshes.add(g.into_mesh())), MeshMaterial2d(cx.atlas.material.clone()), Transform::from_xyz(0.0, 0.0, z)));
+        cx.commands.spawn((SceneryPart, part, Mesh2d(cx.meshes.add(g.into_mesh())), MeshMaterial2d(material), Transform::from_xyz(0.0, 0.0, z)));
         n
+    };
+    let put = |cx: &mut Build, g: paint::Geo, part: SkyPart, z: f32| -> usize {
+        let material = cx.atlas.material.clone();
+        put_in(cx, g, material, part, z)
     };
     for (i, p) in planets.iter().enumerate() {
         let painted = paint::paint(&p.body, &paint, white);
@@ -197,9 +205,13 @@ pub(super) fn spawn(cx: &mut Build, s: &SkySpec, content: &data::Content) -> Opt
     let neb = nebula::nebula_mesh(&nebula, white, dot, s.strength);
     let anchor = s.over.map_or(Vec2::ZERO, |o| o.entry);
     counts.vertices[2] = put(cx, neb, SkyPart { at: Vec2::new(W, H) / 2.0, edge: Edge::Stretch, anchor, parallax: PARALLAX_NEBULA }, Z_NEBULA);
-    let gal = nebula::galaxy_mesh(&galaxy, white, dot, s.strength);
+    let gal = galaxy.meshes(white, s.strength);
     let edge = if galaxy.at.x > W / 2.0 { Edge::Right } else { Edge::Left };
-    counts.vertices[3] = put(cx, gal, SkyPart { at: galaxy.at, edge, anchor: Vec2::ZERO, parallax: 0.0 }, Z_GALAXY);
+    let part = || SkyPart { at: galaxy.at, edge, anchor: Vec2::ZERO, parallax: 0.0 };
+    let (field, glow) = (cx.atlas.premultiplied.clone(), cx.atlas.additive.clone());
+    counts.vertices[3] = put_in(cx, gal.field, field, part(), Z_GALAXY)
+        + put(cx, gal.dust, part(), Z_GALAXY + 0.01)
+        + put_in(cx, gal.glow, glow, part(), Z_GALAXY + 0.02);
     Some(counts)
 }
 

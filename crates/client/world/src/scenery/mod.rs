@@ -151,7 +151,7 @@ fn sync(
         let s = sky::SkySpec { sky, seed: HOME_SKY_SEED, star: None, planet: None, over: None, strength: HOME_SKY_STRENGTH };
         if let Some(c) = sky::spawn(cx, &s, packs) {
             let [_, _, nebula, galaxy] = c.vertices;
-            info!("sky at home: vertices nebula {nebula}, galaxy {galaxy}");
+            info!("sky at home: vertices nebula {nebula}, galaxy {galaxy} ({})", c.galaxy);
         }
         state.spec = None;
         return;
@@ -201,11 +201,12 @@ fn sync(
             planet_light = c.light;
             let [planets, moons, nebula, galaxy] = c.vertices;
             info!(
-                "sky over {:.0} m: planets [{}] with moons [{}]; vertices: planets {planets}, moons {moons}, nebula {nebula} (at most {} blobs over a point), galaxy {galaxy}; built in {:.0} ms",
+                "sky over {:.0} m: planets [{}] with moons [{}]; vertices: planets {planets}, moons {moons}, nebula {nebula} (at most {} blobs over a point), galaxy {galaxy} ({}); built in {:.0} ms",
                 spec.radius,
                 c.planets.join(", "),
                 c.moons.join(", "),
                 c.nebula_peak,
+                c.galaxy,
                 start.elapsed().as_secs_f32() * 1000.0
             );
         }

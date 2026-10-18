@@ -57,6 +57,14 @@
   in two or three convex pieces where deeply dented), and the client shades it in soft bands lit from the sky's hot
   star or first planet ([GDR-0104](0104-scenery-rocks-filler-landmarks.md)'s status line of 18 Oct 2026). Rocks stay
   at z 3, their glints and embers at 3.01 in an additive mesh; ships keep their own light.
+  2026-10-18, sixth (Niklas approved the backdrop study's version 8, galaxy variant H): the galaxy is three static
+  meshes built once per voyage at parallax 0, at −897, −896.99 and −896.98 (still over the gradient, under the far
+  stars): a premultiplied field (a 31 × 128 polar grid sampling light and dust; an edge-on disc's 110 × 25), a small
+  alpha dust mesh and an additive glow. Its kind is rolled per sky: a spiral 60 % (variant H, flocculent like M74: a
+  cream-pink core, 38 short wound arm segments of small blue-violet clumps, magenta knots, thin dust filaments, a
+  violet haze; about 17 k vertices), an elliptical 12 %, an edge-on disc 16 % or an irregular 12 % (variant D, a soft
+  field with splats; 3.5–6 k). Home's sky uses it too (a spiral). Screenshots `docs/results/sky-galaxy-spiral.png`,
+  `home-sky.png`.
 - Date: 2026-10-17
 - Decided by: lead session (defaults for Niklas's play-test of 17 Oct 2026 of GDR-0104's scenery and GDR-0105's sky)
 - Related: [GDR-0104](0104-scenery-rocks-filler-landmarks.md), [GDR-0105](0105-cluster-sky-planets-nebula-galaxy.md), [GDR-0106](0106-flight-minimap.md), `docs/client.md` "Scenery"
