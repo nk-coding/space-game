@@ -13,8 +13,8 @@ use bevy::platform::collections::HashMap;
 use bevy::prelude::*;
 
 /// Parameters that only mean something in flight (the load test, the hash log, wingmen, the sim seed, the flight
-/// zoom, the showcase's attackers, raiders per wave, the mind capacity, the tuning panel, the touch widgets).
-pub const FLIGHT_ONLY: [&str; 11] = ["load", "hashlog", "hashticks", "fleet", "seed", "zoom", "fire", "raiders", "mind", "tuning", "touch"];
+/// zoom, the showcase's attackers, the touch widgets).
+pub const FLIGHT_ONLY: [&str; 8] = ["load", "hashlog", "hashticks", "fleet", "seed", "zoom", "fire", "touch"];
 
 #[derive(Resource, Default, Debug, Clone)]
 pub struct Params(HashMap<String, String>);

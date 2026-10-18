@@ -7,7 +7,12 @@ description: "Every action and its default inputs, what you can rebind in SETTIN
 
 Everything you do with a key or a mouse button is a named **action**: [[control:thrust_forward]],
 [[control:fire_group_2]], [[control:lock_next]], [[control:undo]]. Each action has up to two inputs, and you can change them in SETTINGS. The game's tooltips, key
-badges and the flight help line always show what you have bound, not the defaults.
+badges and the flight's controls list always show what you have bound, not the defaults.
+
+In flight, the **?** ring under the home ring top left, or [[control:controls_help]]
+([[control:controls_help.keys]]), lays the controls of where you are over the view: the test range's keys in the
+test range, a voyage's on a voyage, the fight viewer's in a replay, each with what you have bound. Press it again,
+or Esc, to close it; the flight goes on underneath.
 
 ## Flying
 
@@ -79,7 +84,8 @@ your best other vessel by yourself.
 
 The camera follows your ship. The wheel zooms (so do [[control:zoom_in.keys]] and [[control:zoom_out.keys]]);
 dragging with the middle button pans and frees the camera; [[control:camera_follow.keys]] switches between follow
-and free. While a target is locked, the camera zooms out enough to keep it in view, and it widens a little as you
+and free. While the camera is panned away, **BACK TO SHIP** shows at the bottom of the view: click it (or press
+[[control:camera_follow.keys]]) and the camera follows your ship again. While a target is locked, the camera zooms out enough to keep it in view, and it widens a little as you
 go faster.
 
 ## Touch
@@ -96,7 +102,7 @@ The touch controls appear after your first touch.
 
 A few inputs are fixed:
 
-- **Esc** goes back or closes. In flight it closes the flight menu if it is open; otherwise it unlocks your target;
+- **Esc** goes back or closes. In flight it closes the controls list or the flight menu if one is open; otherwise it unlocks your target;
   with nothing locked it opens the flight menu. While the ABANDON VOYAGE? panel is open, Esc closes the panel.
 - **Enter** confirms.
 - **The left mouse button** is the pointer: it clicks, locks, selects and drags. It can't be bound to an action.

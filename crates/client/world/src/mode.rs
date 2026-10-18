@@ -137,7 +137,7 @@ mod tests {
         for q in ["?scene=sandbox", "?scene=showcase&fire=1", "?scene=watch&behavior=raider_basic", "?scene=alongside", "?scene=voyage&voyage=yard_approach", "?scene=fight&fight=SGF1:x"] {
             assert_eq!(start(q), AppMode::Flight, "{q}");
         }
-        for q in ["?load=20", "?hashlog=1&hashticks=600", "?fleet=3&mind=4", "?zoom=70", "?seed=7", "?tuning=1"] {
+        for q in ["?load=20", "?hashlog=1&hashticks=600", "?fleet=3", "?zoom=70", "?seed=7"] {
             assert_eq!(start(q), AppMode::Flight, "{q}");
         }
         assert_eq!(start("?scene=drydock&zoom=40"), AppMode::Drydock);

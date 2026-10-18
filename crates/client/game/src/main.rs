@@ -73,7 +73,6 @@ fn run() {
         .insert_resource(params)
         .add_plugins((
             kit::atlas::AtlasPlugin,
-            world::tuning::TuningPlugin,
             world::mode::ModePlugin,
             (world::scene::ScenePlugin, world::replay::ReplayPlugin, world::test_range::TestRangePlugin, world::voyage::VoyagePlugin),
             world::sim_bridge::SimBridgePlugin,

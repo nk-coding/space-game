@@ -88,7 +88,7 @@
     // Debug and display.
     (id: "hide_hud", name: "Hide the HUD", summary: "Hides and shows the flight HUD.", section: debug, contexts: [flight], inputs: ["KeyH"]),
     (id: "pause", name: "Pause", summary: "Pauses the test range (voyages never pause).", section: debug, contexts: [flight], inputs: ["KeyP"]),
-    (id: "tuning", name: "Tuning panel", summary: "Opens the tuning panel (flight feel and wave size).", section: debug, contexts: [flight], inputs: ["KeyU"]),
+    (id: "controls_help", name: "Controls", summary: "Lays this list of the controls over the view (the ? ring top left does the same); again, or Esc, to close it.", section: debug, contexts: [flight, replay], inputs: ["Slash"]),
     (id: "debug_overlay", name: "Debug overlay", summary: "Shows frame times and counts.", section: debug, contexts: [any], inputs: ["F8"]),
     (id: "debug_shapes", name: "Debug shapes", summary: "Draws ships as plain coloured cells.", section: debug, contexts: [flight], inputs: ["F5"]),
     (id: "glow_toggle", name: "Glow", summary: "Turns the glow layers off and on.", section: debug, contexts: [flight], inputs: ["F6"]),

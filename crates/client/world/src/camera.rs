@@ -171,6 +171,17 @@ pub fn smootherstep(t: f32) -> f32 {
 }
 
 impl CameraRig {
+    /// Panned away from what the camera follows or frames (F, or the HUD's BACK TO SHIP, brings it back).
+    pub fn detached(&self) -> bool {
+        self.mode == CamMode::Free && self.auto_mode != CamMode::Free
+    }
+
+    /// Back to following or framing, at the chosen zoom's framing again.
+    pub fn reattach(&mut self) {
+        self.mode = self.auto_mode;
+        self.user_zoom = false;
+    }
+
     /// The focus moved to a vessel at `f`: the follow point snaps there, the camera eases from where it is.
     fn start_glide(&mut self, f: Vec2) {
         let offset = self.pos - f;
@@ -392,8 +403,12 @@ fn wheel_and_drag(
         zoom_by(&mut rig, 0.8, None);
     }
     if act.just_pressed(Action::CameraFollow) {
-        rig.mode = if rig.mode == CamMode::Free { rig.auto_mode } else { CamMode::Free };
-        rig.user_zoom = false;
+        if rig.mode == CamMode::Free {
+            rig.reattach();
+        } else {
+            rig.mode = CamMode::Free;
+            rig.user_zoom = false;
+        }
     }
     // Drag to pan: middle button always; left button only without a ship to fly (load test, showcase).
     let drag_button = buttons.pressed(MouseButton::Middle)

@@ -97,7 +97,7 @@ impl HashLog {
 }
 
 /// The loaded content packs (the base pack today), parsed once at start. The drydock, the UI icons and new
-/// scenes read it; [`SimWorld::content`] is the copy a running scene compiles from (tuning scales applied).
+/// scenes read it; [`SimWorld::content`] is the copy a running scene compiles from (with the player's saved behaviors).
 #[derive(Resource)]
 pub struct GameContent(pub Content);
 
@@ -112,11 +112,11 @@ type VisualKey = (usize, Option<Look>);
 #[derive(Resource)]
 pub struct SimWorld {
     pub sim: SimT,
-    /// Content the player's designs are compiled from (weapon scales from the tuning panel applied); the HUD
+    /// Content the player's designs are compiled from (the packs' and the player's saved behaviors); the HUD
     /// and the visuals read it too.
     pub content: Content,
-    /// Content every other owner's designs are compiled from, when it differs (the tuning's damage scale is the
-    /// player's only).
+    /// Content every other owner's designs are compiled from, when it differs (the packs' alone, without the
+    /// player's behaviors).
     others: Option<Content>,
     /// Compiled content designs by id: the player's, every other owner's.
     designs: [BTreeMap<String, Arc<ShipDesign>>; 2],

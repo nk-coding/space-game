@@ -243,10 +243,15 @@ fn keyboard(
             world.inputs.commands.push((me, ShipCommand::SwitchAssists(switch)));
         }
     }
-    // Esc (fixed, GDR-0090): closes the menu; else unlocks; else opens the menu. The input runs before
+    if act.just_pressed(Action::ControlsHelp) {
+        menu.help = !menu.help;
+    }
+    // Esc (fixed, GDR-0090): closes the controls overlay or the menu; else unlocks; else opens the menu. The input runs before
     // `voyage_keys` in the frame: an Esc that closes the ABANDON VOYAGE? panel does neither.
     if keys.just_pressed(KeyCode::Escape) && !run.asking {
-        if menu.open {
+        if menu.help {
+            menu.help = false;
+        } else if menu.open {
             menu.open = false;
         } else if input.lock.is_some() {
             input.lock = None;

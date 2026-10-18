@@ -167,7 +167,7 @@ actions! {
     ReplayRestart = "replay_restart",
     HideHud = "hide_hud",
     Pause = "pause",
-    Tuning = "tuning",
+    ControlsHelp = "controls_help",
     DebugOverlay = "debug_overlay",
     DebugShapes = "debug_shapes",
     GlowToggle = "glow_toggle",

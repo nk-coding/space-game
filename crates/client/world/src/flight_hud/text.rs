@@ -1,5 +1,5 @@
 //! The HUD's texts, rebuilt at 8 Hz and laid out again only when they change: hull, hold, speed, the target, the
-//! title and subtitle, banners, warnings, the help line.
+//! title and subtitle, banners, warnings.
 
 use super::*;
 use crate::settings::Controls;
@@ -270,82 +270,6 @@ pub(super) fn update_text(
                 if let (Some(ship), Some(p)) = (player, control) {
                     warnings(s, ship, p, labels);
                 }
-            }
-            HudText::Help => {
-                // The bound inputs (the first of each), GDR-0090; the weapon groups' triggers as one entry.
-                let k = |a: Action| controls.0.inputs(a).next().map_or_else(|| "—".to_string(), |c| c.label());
-                let fly = format!(
-                    "{}/{} TURN · {}/{} THRUST · {}/{} STRAFE · CLICK LOCK · {} FIRE · {}/{}/{} GROUPS · {} TARGET · {} SCAN · {} DRIFT · {} VESSEL",
-                    k(Action::TurnLeft),
-                    k(Action::TurnRight),
-                    k(Action::ThrustForward),
-                    k(Action::ThrustBack),
-                    k(Action::StrafeLeft),
-                    k(Action::StrafeRight),
-                    k(Action::Fire),
-                    k(Action::FireGroup1),
-                    k(Action::FireGroup2),
-                    k(Action::FireGroup3),
-                    k(Action::LockNext),
-                    k(Action::Scan),
-                    k(Action::Drift),
-                    k(Action::FocusNext),
-                );
-                let line = match scene.kind {
-                    SceneKind::Sandbox if scene.watched().is_some() => format!(
-                        "NOBODY PILOTS · DRAG PAN · {} FOLLOW / FREE · WHEEL ZOOM · {} WAVES · {} RULES · {} BACK · {} HOME · {} HIDE",
-                        k(Action::CameraFollow),
-                        k(Action::Waves),
-                        k(Action::DebugOverlay),
-                        k(Action::TestReturn),
-                        k(Action::Leave),
-                        k(Action::HideHud),
-                    ),
-                    SceneKind::Sandbox if input.touch_ui => "STICK FLY  ·  TAP SHIP LOCK  ·  FIRE BUTTON  ·  PINCH ZOOM".into(),
-                    SceneKind::Sandbox => format!(
-                        "{fly} · {} WAVES · {} DRYDOCK · {} HOME · ESC MENU · {} TUNING · {} DEBUG · {} HIDE",
-                        k(Action::Waves),
-                        k(Action::TestReturn),
-                        k(Action::Leave),
-                        k(Action::Tuning),
-                        k(Action::DebugOverlay),
-                        k(Action::HideHud),
-                    ),
-                    SceneKind::Voyage(_) if input.touch_ui => "STICK FLY  ·  TAP SHIP LOCK  ·  FIRE BUTTON  ·  PINCH ZOOM  ·  RECALL".into(),
-                    SceneKind::Fight => format!(
-                        "YOU WATCH · {} PAUSE · {} {} SPEED · {} {} 1 S · {} FROM THE START · CLICK A SHIP FOLLOW · {} FRAME / FREE · DRAG PAN · WHEEL ZOOM · {} HOME · {} HIDE",
-                        k(Action::ReplayPause),
-                        k(Action::ReplaySlower),
-                        k(Action::ReplayFaster),
-                        k(Action::ReplayBack),
-                        k(Action::ReplayForward),
-                        k(Action::ReplayRestart),
-                        k(Action::CameraFollow),
-                        k(Action::Leave),
-                        k(Action::HideHud),
-                    ),
-                    SceneKind::Voyage(_) => format!(
-                        "{fly} · {} MAP · {} RECALL · {} ABANDON · ESC MENU · {} TUNING · {} DEBUG · {} HIDE",
-                        k(Action::ClusterMap),
-                        k(Action::Recall),
-                        k(Action::Leave),
-                        k(Action::Tuning),
-                        k(Action::DebugOverlay),
-                        k(Action::HideHud),
-                    ),
-                    _ => format!(
-                        "DRAG PAN  ·  WHEEL ZOOM  ·  {} FRAME / FREE  ·  {} DEBUG SHAPES  ·  {} GLOW  ·  {} BLOOM  ·  {} STATS  ·  {} HIDE  ·  {} DRYDOCK  ·  {} HOME",
-                        k(Action::CameraFollow),
-                        k(Action::DebugShapes),
-                        k(Action::GlowToggle),
-                        k(Action::BloomToggle),
-                        k(Action::DebugOverlay),
-                        k(Action::HideHud),
-                        k(Action::TestReturn),
-                        k(Action::Leave),
-                    ),
-                };
-                s.push_str(&line);
             }
         }
         set_text(&mut text, scratch);

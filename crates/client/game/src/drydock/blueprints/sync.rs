@@ -237,7 +237,7 @@ pub(super) fn row_tag(e: &Entry, docked: bool, dirty: bool) -> (String, Tone) {
 }
 
 /// The preview follows the hovered row: built once per entry (the ship and its numbers, from a `sim::design_report`
-/// made with the drydock's content and config, about 25 µs; an evolved design's ORIGIN), gone when the pointer
+/// made with the content, about 25 µs; an evolved design's ORIGIN), gone when the pointer
 /// leaves the row (it stays over the gap to the next row, so moving down the list doesn't flash it, and over the
 /// card and the way to it, so its ORIGIN can be clicked), and kept level with the row inside its column. The card is
 /// as tall as [`PREVIEW_CARD_H`] (and [`PREVIEW_ORIGIN_H`] with an ORIGIN) and the rows' places are laid out already,
@@ -249,7 +249,6 @@ pub(super) fn sync_preview(
     shelf: Res<Shelf>,
     storage: Res<Storage>,
     content: Res<GameContent>,
-    report: Res<DrydockReport>,
     mut lab: ResMut<Lab>,
     (behaviors, working): (Res<PlayerBehaviors>, Res<PlayerDesign>),
     window: Single<&Window, With<PrimaryWindow>>,
@@ -286,7 +285,7 @@ pub(super) fn sync_preview(
         },
     };
     if card.shown != pick {
-        let shown = pick.as_ref().and_then(|p| preview_of(&content.0, &storage, &report, p));
+        let shown = pick.as_ref().and_then(|p| preview_of(&content.0, &storage, p));
         let display = if shown.is_some() { Display::Flex } else { Display::None };
         let evolved = shown.as_ref().and_then(|(bp, _)| bp.origin.clone());
         match shown {
@@ -381,7 +380,7 @@ pub(super) fn open_origin(mut clicks: MessageReader<UiClick>, links: Query<(&Ori
 /// What the preview shows of an entry: its blueprint and the values of its numbers (the size class: the frame a
 /// saved design is in, the first one a template fits, as OPEN opens it; mass, top speed and weapons from the
 /// design report, dashes when it doesn't compile). `None` when a saved design can't be read.
-fn preview_of(content: &Content, storage: &Storage, report: &DrydockReport, pick: &Pick) -> Option<(Blueprint, [String; 4])> {
+fn preview_of(content: &Content, storage: &Storage, pick: &Pick) -> Option<(Blueprint, [String; 4])> {
     let (bp, frame) = match pick {
         Pick::Design(id) => {
             let bp = storage.read::<DesignDoc>(id).ok()??.doc.0;
@@ -396,7 +395,7 @@ fn preview_of(content: &Content, storage: &Storage, report: &DrydockReport, pick
     };
     let class = content.frames.iter().find(|f| f.size == frame).map_or_else(|| format!("{}×{}", frame.0, frame.1), |f| f.name.clone());
     let dash = || "—".to_string();
-    let [mass, speed, guns] = match sim::design_report(report.content().unwrap_or(content), &bp, report.config()) {
+    let [mass, speed, guns] = match sim::design_report(content, &bp, &sim::SimConfig::default()) {
         Ok(r) => {
             let f = &r.flight;
             let moves = f.thrust.iter().any(|&t| t > 0.0);

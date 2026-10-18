@@ -430,7 +430,7 @@ their limit, gold marks), `drydock-stats-overlays.png` (the first five overlays)
 2026: the BLAST overlay on the starter at 1280 × 720 and 2560 × 1440, and fission reactors being placed beside its
 hull, `-place`),
 `drydock-stats-grounded.png`
-(`?scene=drydock&thrust=0`: the tuning's thrust scale 0 grounds it, `CAN'T FLY · NO THRUST`, TEST-FLY disabled;
+(`?scene=drydock&thrust=0`, before 18 Oct 2026: the tuning's thrust scale 0 grounded it, `CAN'T FLY · NO THRUST`, TEST-FLY disabled;
 bonus and shields).
 
 ### Stats grid

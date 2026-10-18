@@ -51,7 +51,6 @@ use world::storage::{Storage, now_unix};
 
 use super::actions::{DrydockAction, Rare};
 use super::panels::{PanelText, UnderShelf};
-use super::report::DrydockReport;
 use super::share;
 use super::state::DrydockStatus;
 use super::view::DockCamera;
@@ -512,7 +511,6 @@ mod tests {
     #[test]
     fn the_preview_shows_the_hovered_entry_and_goes_on_leave() {
         let mut world = world();
-        world.init_resource::<DrydockReport>();
         world.init_resource::<Lab>();
         {
             let mut shelf = world.resource_mut::<Shelf>();

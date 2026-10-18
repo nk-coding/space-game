@@ -4,7 +4,7 @@
 //!   the Halvex Runner, then the autosaved working design) as the focus; waves of enemies (the content ships tagged
 //!   `enemy`) under their content behavior (`raider_basic`), a new wave a few seconds after the last enemy goes dark
 //!   (C turns the waves off and on), each wave as big as the flown design calls for, the biggest enemies first
-//!   (`sim::voyage::waves`, GDR-0074, GDR-0089, shared with the lab's TEST-RANGE WAVES) unless the tuning panel sets a number of raiders by hand; the player's other vessels (`?fleet=N` more of the design, their leader the player's ship, and pieces that split off with a
+//!   (`sim::voyage::waves`, GDR-0074, GDR-0089, shared with the lab's TEST-RANGE WAVES) ; the player's other vessels (`?fleet=N` more of the design, their leader the player's ship, and pieces that split off with a
 //!   logic core) fly the behavior the design names (default: its faction's, `skirmisher`; the player's saved
 //!   behaviors are in the flight's library, `drydock::behaviors`); wrecks and salvage drift away and are cleaned up
 //!   far from the player, loose items after 60 s ([`SANDBOX_LOOSE_TICKS`]); when the player has no vessel left, a
@@ -58,7 +58,6 @@ use crate::mode::{AppMode, FlightExit};
 use crate::shield::ShieldBubbles;
 use crate::sim_bridge::{GameContent, HashLog, PilotFocus, SimSet, SimWorld, console_out, despawn_all_views, sv, v2};
 use crate::test_range::{self, BehaviorTest, TestMode};
-use crate::tuning::Tuning;
 use crate::voyage::VoyageRun;
 
 /// The player's owner in the sim, and the raiders'.
@@ -71,8 +70,7 @@ pub const ENEMY: Owner = Owner(1);
 /// clean-up.
 const SANDBOX_LOOSE_TICKS: u32 = 1800;
 
-/// Every enemy design (the content ships tagged `enemy`, [`waves::ENEMY_TAG`]), compiled for [`ENEMY`] (with the
-/// tuning panel's scales), smallest (by build points) first: what the waves draw from; the showcase's attackers fly
+/// Every enemy design (the content ships tagged `enemy`, [`waves::ENEMY_TAG`]), compiled for [`ENEMY`], smallest (by build points) first: what the waves draw from; the showcase's attackers fly
 /// the smallest (the base pack's `automaton_raider`).
 fn enemy_designs(world: &mut SimWorld) -> Vec<Arc<ShipDesign>> {
     let content = &world.content;
@@ -86,13 +84,9 @@ fn enemy_designs(world: &mut SimWorld) -> Vec<Arc<ShipDesign>> {
 }
 
 /// The next wave's ships in the order they come in: as big as the flown design calls for, the biggest first
-/// (`sim::voyage::waves::wave`, GDR-0074, GDR-0089: the rule the lab's TEST-RANGE WAVES use too), or a number of the
-/// smallest set by hand in the tuning panel.
-fn next_wave(designs: &[Arc<ShipDesign>], flown: f32, by_hand: Option<u32>) -> Vec<Arc<ShipDesign>> {
-    match by_hand {
-        Some(n) => designs.first().map_or_else(Vec::new, |d| vec![d.clone(); n.max(1) as usize]),
-        None => waves::wave(flown, &designs.iter().map(|d| (d.clone(), waves::build_points(d))).collect::<Vec<_>>()),
-    }
+/// (`sim::voyage::waves::wave`, GDR-0074, GDR-0089: the rule the lab's TEST-RANGE WAVES use too).
+fn next_wave(designs: &[Arc<ShipDesign>], flown: f32) -> Vec<Arc<ShipDesign>> {
+    waves::wave(flown, &designs.iter().map(|d| (d.clone(), waves::build_points(d))).collect::<Vec<_>>())
 }
 
 /// Is this ship a vessel of the player?
@@ -250,7 +244,7 @@ impl Scene {
     }
 }
 
-/// Set to rebuild the scene from scratch (tuning changes that need fresh designs).
+/// Set to rebuild the scene from scratch (the reset key, a behavior test's restart).
 #[derive(Resource, Default)]
 pub struct ResetRequest(pub bool);
 
@@ -295,7 +289,6 @@ impl Plugin for ScenePlugin {
 /// What a new scene is built from.
 #[derive(SystemParam)]
 pub(crate) struct SceneInputs<'w> {
-    tuning: Res<'w, Tuning>,
     params: Res<'w, Params>,
     content: Res<'w, GameContent>,
     design: Res<'w, PlayerDesign>,
@@ -325,7 +318,7 @@ fn empty_world(scene: &Scene) -> SimWorld {
 
 /// Creates the sim world for the current scene kind.
 fn build_world(scene: &mut Scene, focus: &mut PilotFocus, inputs: &mut SceneInputs, rig: &mut CameraRig) -> SimWorld {
-    let (tuning, params, base) = (&*inputs.tuning, &*inputs.params, &inputs.content.0);
+    let (params, base) = (&*inputs.params, &inputs.content.0);
     *scene = scene.restart();
     focus.0 = None;
     match scene.kind.clone() {
@@ -354,13 +347,12 @@ fn build_world(scene: &mut Scene, focus: &mut PilotFocus, inputs: &mut SceneInpu
             world
         }
         SceneKind::Sandbox | SceneKind::Showcase => {
-            // The tuning's damage scale is the player's only: other sides compile from their own content. The
-            // player's saved behaviors join the player's content (after the content's, in id order), so the
-            // library has them and a design naming one compiles with it.
-            let mut content = tuning.scaled_content(base, true);
+            // The player's saved behaviors join the player's content (after the content's, in id order), so the
+            // library has them and a design naming one compiles with it; other sides compile from the content alone.
+            let mut content = base.clone();
             inputs.behaviors.add_to(&mut content);
-            let others = tuning.scaled_content(base, false);
-            let mut config = tuning.config();
+            let others = base.clone();
+            let mut config = sim::SimConfig::default();
             config.salvage.fragment_ticks = Some(SANDBOX_LOOSE_TICKS);
             let mut sim = sim::Sim::with_config(scene.seed, config);
             match BehaviorLibrary::new(&content) {
@@ -406,10 +398,10 @@ fn build_world(scene: &mut Scene, focus: &mut PilotFocus, inputs: &mut SceneInpu
             rig.pos = Vec2::ZERO;
             if scene.kind == SceneKind::Showcase {
                 world.sim.command(me, ShipCommand::Maneuver { maneuver: Maneuver::Hold { at: sim::Vec2::ZERO }, fire: false });
-                // Attacking raiders (as many as the tuning's raiders per wave) start where their behavior fights
-                // from (about 45-50 m), so hits come at once.
+                // Three raiders: attacking ones start where their behavior fights from (about 45-50 m), so hits
+                // come at once.
                 let attack = params.flag("fire").unwrap_or(false);
-                let (n, dist) = if attack { (tuning.raiders_per_wave.unwrap_or(3).max(1), 46.0) } else { (3, 16.0) };
+                let (n, dist) = (3, if attack { 46.0 } else { 16.0 });
                 if let Some(raider) = enemy_designs(&mut world).into_iter().next() {
                     for k in 0..n {
                         let a = k as f32 * std::f32::consts::TAU / n as f32 + 0.4;
@@ -449,7 +441,7 @@ fn build_world(scene: &mut Scene, focus: &mut PilotFocus, inputs: &mut SceneInpu
 /// plan rolled from the content the enemies fly with and started, the fleet at the entry. Without a launch (or
 /// content that can't roll it) the world stays empty and says why.
 fn build_voyage(scene: &mut Scene, focus: &mut PilotFocus, inputs: &SceneInputs, rig: &mut CameraRig, id: &str) -> SimWorld {
-    let (tuning, base) = (&*inputs.tuning, &inputs.content.0);
+    let base = &inputs.content.0;
     scene.waves = false;
     rig.mode = CamMode::Follow;
     rig.auto_mode = CamMode::Follow;
@@ -457,10 +449,10 @@ fn build_voyage(scene: &mut Scene, focus: &mut PilotFocus, inputs: &SceneInputs,
         error!("voyage {id}: not launched");
         return empty_world(scene);
     };
-    let mut content = tuning.scaled_content(base, true);
+    let mut content = base.clone();
     inputs.behaviors.add_to(&mut content);
-    let others = tuning.scaled_content(base, false);
-    let mut config = tuning.config();
+    let others = base.clone();
+    let mut config = sim::SimConfig::default();
     config.mind_capacity[PLAYER.0 as usize] = launched.mind;
     let mut sim = sim::Sim::with_config(launched.seed, config);
     match BehaviorLibrary::new(&content) {
@@ -659,7 +651,6 @@ pub(crate) fn tick_lock(world: &SimWorld, ship: &sim::Ship, held: Option<Target>
 fn scene_tick(
     mut scene: ResMut<Scene>,
     mut world: ResMut<SimWorld>,
-    tuning: Res<Tuning>,
     mut player_input: ResMut<PlayerInput>,
     mut focus: ResMut<PilotFocus>,
     exit: Res<FlightExit>,
@@ -784,7 +775,7 @@ fn scene_tick(
             .unwrap_or(Vec2::ZERO);
         let designs = enemy_designs(world);
         let flown = scene.player_design.as_deref().map_or(0.0, waves::build_points);
-        let wave = next_wave(&designs, flown, tuning.raiders_per_wave);
+        let wave = next_wave(&designs, flown);
         let n = wave.len();
         let bodies = waves::wave_bodies(sv(centre), n, |lo, hi| scene.rng.range(lo, hi));
         for (design, body) in wave.iter().zip(bodies) {
@@ -829,7 +820,7 @@ fn scene_tick(
     }
 }
 
-/// Rebuilds the whole scene (tuning changes that need fresh designs, or the reset key). A test flight stays a
+/// Rebuilds the whole scene (the reset key, a behavior test's restart). A test flight stays a
 /// test flight; the waves keep their setting.
 #[allow(clippy::too_many_arguments)]
 fn reset(
@@ -874,7 +865,7 @@ mod tests {
     use crate::test_range::{StartTest, TestProgram, TestRangePlugin};
 
     /// The test range's waves moved into `sim::voyage::waves` (GDR-0092 step 5) and stayed as they were: the same
-    /// ships in the same order for the flown design (or the tuning panel's number of the smallest), coming in where
+    /// ships in the same order for the flown design, coming in where
     /// they came in before for the scene's generator (the numbers were taken from the code before the move; the
     /// shared code's software trigonometry differs from std's by far less than a millimetre).
     #[test]
@@ -886,14 +877,13 @@ mod tests {
         let ids = |wave: Vec<Arc<ShipDesign>>| wave.iter().map(|d| d.id.clone()).collect::<Vec<_>>();
         let (raider, hunter, warden) = ("automaton_raider", "automaton_hunter", "automaton_warden");
         assert_eq!(ids(designs.clone()), [raider, "automaton_gunner", hunter, warden], "smallest first");
-        assert_eq!(ids(next_wave(&designs, bp("rim_skiff"), None)), [hunter], "the starter meets a hunter");
-        assert_eq!(ids(next_wave(&designs, bp("halvex_runner"), None)), [hunter, hunter, raider], "biggest first");
-        assert_eq!(ids(next_wave(&designs, 300.0, None)), [warden, warden]);
-        assert_eq!(ids(next_wave(&designs, 40.0, None)), [raider], "20 points: a raider and a little left over");
-        assert_eq!(ids(next_wave(&designs, 0.0, None)), [raider], "at least one ship");
-        assert_eq!(next_wave(&designs, 100_000.0, None).len(), waves::WAVE_CAP as usize);
-        assert_eq!(ids(next_wave(&designs, bp("halvex_runner"), Some(3))), [raider; 3], "set by hand: the smallest");
-        assert!(next_wave(&[], 100.0, None).is_empty() && next_wave(&[], 100.0, Some(2)).is_empty());
+        assert_eq!(ids(next_wave(&designs, bp("rim_skiff"))), [hunter], "the starter meets a hunter");
+        assert_eq!(ids(next_wave(&designs, bp("halvex_runner"))), [hunter, hunter, raider], "biggest first");
+        assert_eq!(ids(next_wave(&designs, 300.0)), [warden, warden]);
+        assert_eq!(ids(next_wave(&designs, 40.0)), [raider], "20 points: a raider and a little left over");
+        assert_eq!(ids(next_wave(&designs, 0.0)), [raider], "at least one ship");
+        assert_eq!(next_wave(&designs, 100_000.0).len(), waves::WAVE_CAP as usize);
+        assert!(next_wave(&[], 100.0).is_empty());
         // Where they come in: (seed, ships) → each ship's position, heading and velocity, around (10, -20).
         type Came = ((f32, f32), f32, (f32, f32));
         let before: [(u64, &[Came]); 3] = [

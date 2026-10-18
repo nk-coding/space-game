@@ -27,7 +27,6 @@ use world::player::PlayerDesign;
 use world::ship_model::design_visual;
 use world::ship_view::{ShipVisual, build_body};
 use world::sim_bridge::GameContent;
-use world::tuning::Tuning;
 
 use super::overlays::BlastMarks;
 use super::report::DrydockReport;
@@ -164,7 +163,6 @@ pub(super) fn update(
     g: Res<DrydockGesture>,
     sel: Res<Selection>,
     report: Res<DrydockReport>,
-    tuning: Res<Tuning>,
     mut view: ResMut<GhostView>,
 ) {
     if !(design.is_changed() || ui.is_changed() || cursor.is_changed() || g.is_changed() || sel.is_changed() || report.is_changed()) {
@@ -212,7 +210,7 @@ pub(super) fn update(
                         if (part.shield.is_some() || part.explosion.is_some())
                             && let Ok(after) = &preview
                         {
-                            (v.bubbles, v.blasts) = marks_after(report.content().unwrap_or(content), &tuning.config(), &design, after);
+                            (v.bubbles, v.blasts) = marks_after(content, &design, after);
                         }
                         v.show(content, &design, preview, Some(p.clone()), None, Some(&part.id));
                     }
@@ -247,8 +245,8 @@ pub(super) fn update(
 /// The bubbles a shield part placed as `after` previews would make (and its twin), with the radius after bonuses, and
 /// the blasts of an exploding part with what they would take: the report of the design as the edit would leave it
 /// (one `sim::design_report`, made only when the ghost changes; tens of microseconds for a frigate) with the content
-/// and config the drydock's report uses. If that design can't be compiled, the part's own radii at its centre.
-fn marks_after(content: &Content, config: &sim::SimConfig, design: &PlayerDesign, after: &Preview) -> (Vec<Bubble>, Vec<BlastMarks>) {
+/// the drydock's report uses. If that design can't be compiled, the part's own radii at its centre.
+fn marks_after(content: &Content, design: &PlayerDesign, after: &Preview) -> (Vec<Bubble>, Vec<BlastMarks>) {
     let bp = design.blueprint();
     let mut parts: Vec<Placement> = bp.parts.iter().enumerate().filter(|(i, _)| after.removed.binary_search(i).is_err()).map(|(_, p)| p.clone()).collect();
     let first = parts.len();
@@ -269,7 +267,7 @@ fn marks_after(content: &Content, config: &sim::SimConfig, design: &PlayerDesign
         .collect();
     let shapes: Option<Vec<PlacedShape>> = parts.iter().map(|p| content.placed_shape(p)).collect();
     let what_if = Blueprint { parts, ..header(bp) };
-    match (sim::design_report(content, &what_if, config), shapes) {
+    match (sim::design_report(content, &what_if, &sim::SimConfig::default()), shapes) {
         (Ok(r), Some(shapes)) => (
             r.shields.iter().filter(|s| new.contains(&(s.part as usize))).map(|s| (s.centre, s.radius)).collect(),
             r.blasts.iter().filter(|b| new.contains(&(b.part as usize))).map(|b| BlastMarks::of(&r, b, &shapes)).collect(),
@@ -530,14 +528,14 @@ mod tests {
         let radius = content.parts.get("shield_emitter").unwrap().shield.as_ref().unwrap().radius;
         let p = Placement { part: "shield_emitter".into(), x: 2, y: 2, rot: 0, flip: false, material: None, power: None, group: None };
         let after = design.dock().preview_place(&p).unwrap();
-        let bubbles = marks_after(&content, &sim::SimConfig::default(), &design, &after).0;
+        let bubbles = marks_after(&content, &design, &after).0;
         assert_eq!(bubbles.len(), 2);
         let centre = content.placed_shape(&p).unwrap().center();
         assert_eq!(bubbles[0].0, centre);
         assert!(bubbles.iter().all(|b| b.1 >= radius * 0.999), "{bubbles:?}");
         let empty = PlayerDesign::open(&content, &data::Blueprint { parts: Vec::new(), ..design.blueprint().clone() }, (10, 10)).unwrap();
         let after = empty.dock().preview_place(&p).unwrap();
-        let alone = marks_after(&content, &sim::SimConfig::default(), &empty, &after).0;
+        let alone = marks_after(&content, &empty, &after).0;
         assert_eq!(alone.len(), 1);
         assert!((alone[0].1 - radius).abs() < 1e-4);
     }
@@ -557,13 +555,13 @@ mod tests {
             .filter(|&(x, y)| design.dock().part_at((x, y)).is_none() && design.dock().part_at((x + 1, y)).is_some())
             .find_map(|(x, y)| design.dock().preview_place(&at(x, y)).ok().filter(|a| a.removed.is_empty()).map(|a| (at(x, y), a)))
             .unwrap();
-        let (_, blasts) = marks_after(&content, &sim::SimConfig::default(), &design, &after);
+        let (_, blasts) = marks_after(&content, &design, &after);
         assert!(!blasts.is_empty());
         assert_eq!((blasts[0].centre, blasts[0].radius), (content.placed_shape(&p).unwrap().center(), radius));
         assert!(blasts[0].takes.len() + blasts[0].destroys.len() + blasts[0].survives.len() > 0, "it reaches the part beside it");
         let empty = PlayerDesign::open(&content, &data::Blueprint { parts: Vec::new(), ..design.blueprint().clone() }, (10, 10)).unwrap();
         let after = empty.dock().preview_place(&Placement { x: 2, y: 2, ..p }).unwrap();
-        let (_, alone) = marks_after(&content, &sim::SimConfig::default(), &empty, &after);
+        let (_, alone) = marks_after(&content, &empty, &after);
         assert_eq!(alone.len(), 1);
         assert!(alone[0].takes.is_empty() && alone[0].destroys.is_empty() && alone[0].survives.is_empty());
     }

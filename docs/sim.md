@@ -1051,7 +1051,7 @@ lines at the end of `flight::execute`.
 | `position_gain` | 1.2 /s | linear zone of position → velocity |
 | `stick_deadzone` | 0.05 | shorter sticks count as released |
 | `keep_heading_fraction` | 0.5 | `Auto` keeps the heading if this share of the best axis pushes the right way |
-| `key_turn_rate` | 1.5 rad/s (13 Oct 2026, GDR-0055, GDR-0058) | keyboard rotation at the end of the ramp (or slower if the ship could not stop from it within about a quarter turn); tuning panel "key turn rate (A/D)", `?keyturn=` |
+| `key_turn_rate` | 1.5 rad/s (13 Oct 2026, GDR-0055, GDR-0058) | keyboard rotation at the end of the ramp (or slower if the ship could not stop from it within about a quarter turn) |
 | `assist_after` | 6 ticks (13 Oct 2026, GDR-0055, GDR-0058) | ticks in a row the first line must miss torque before the last resort (gimbals, differential thrust) helps |
 
 `SimConfig::thrust_scale`, `torque_scale` and `speed_scale` (default 1) scale the content's thrust, torque and
@@ -1268,8 +1268,8 @@ farther than 45 m, drift on). "After contact" = after the first raider shot; hp 
   within one or two seconds each. At 64 m they shoot from just outside the pulse lasers and come into their
   reach while circling at 50 m (just outside the 45 m beams).
 - The balance is on a knife's edge around the beam range: orbiting at 70% (52.5 m) instead of 67% the raiders
-  won most waves against both stand-ins; at 63% or less they died as fast as before. Placeholders: Niklas tunes
-  with the tuning panel, U (weapon range scales every reach, so the reach-relative distances keep their geometry).
+  won most waves against both stand-ins; at 63% or less they died as fast as before. Placeholders (Niklas tuned them with the tuning panel, U, removed 18 Oct 2026: weapon range scaled every reach, so
+  the reach-relative distances kept their geometry).
 - On the way in, two raiders of the pack bump each other at 20–30 m/s closing speed in nearly every wave
   (160–310 kN·s, 3–6 hp to the touching part of each, often a cannon): same-team ram damage changes fights
   noticeably (rows "ram damage off").

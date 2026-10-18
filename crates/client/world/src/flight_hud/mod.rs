@@ -10,13 +10,14 @@
 //!   for a ship with a scanner, the SCAN pill with what the scanner does and its charge or cooldown (`scan.rs`);
 //! * top centre: scene / wave line and whether raider waves come, centre: banners (wave cleared, ship lost,
 //!   `PAUSED`);
-//! * bottom centre: heat and power warnings ("PULSE LASER 2 · HEAT 96 %"); bottom: the controls help line;
+//! * bottom centre: heat and power warnings ("PULSE LASER 2 · HEAT 96 %"); bottom: BACK TO SHIP while the camera is
+//!   panned away (`camera.rs`); under the home ring the `?` ring that lays the controls over the view (`help.rs`);
 //! * in the world: a dotted lock ring around the target, off-screen markers for enemies (also in watch mode; kept
 //!   clear of the HUD's texts and widgets; in a replayed fight for every ship, in its side's colour); scans charging
 //!   and sweeping, bearings, and the sites found (`scan.rs`).
 //! * **a replayed fight** (`replay.rs`): the title names both sides and the seed, the subtitle the time, speed and
 //!   build points left; the banner says whether the rules changed and, at the end, whether it ended as recorded;
-//!   the help line lists the replay keys.
+//!   the controls overlay lists the replay keys.
 //! * **voyages** (GDR-0065): the title is the voyage and its band, the
 //!   subtitle `SITES 2 / 5 · 7:05`; under the hull the cargo block (`SALVAGE`, `5 / 8` with one pip per cargo unit,
 //!   the hold's name) and right under it the RECALL pill (R; enabled only while the sim allows the recall) with
@@ -32,6 +33,7 @@
 
 mod assists;
 mod chart;
+mod help;
 mod markers;
 mod menu;
 mod minimap;
@@ -85,7 +87,6 @@ enum HudText {
     Banner,
     BannerSub,
     Warnings,
-    Help,
     /// Voyages: the cargo block's number and the hold's name (or what became of the cargo).
     SalvageValue,
     SalvageSub,
@@ -156,6 +157,11 @@ struct HullCell(u32);
 /// The ring top left that goes home (what M does), for touch.
 #[derive(Component)]
 struct HomeRing;
+
+/// BACK TO SHIP (FRAME THE FIGHT in a framed replay): shown while the camera is panned away
+/// ([`CameraRig::detached`]); a click does what F does then.
+#[derive(Component)]
+struct CameraBack;
 
 /// A flight widget that takes clicks and taps (the home ring): they never reach the world (`controls`).
 #[derive(Component)]
@@ -228,11 +234,11 @@ impl Plugin for FlightHudPlugin {
             scratch: String::with_capacity(256),
         })
         .init_resource::<FlightMenu>()
-        .add_systems(Startup, (spawn_hud, spawn_abandon_panel, menu::spawn_menu).chain().after(load_fonts))
-        .add_systems(Update, menu::flight_menu.after(UiInputSet).before(UiStyleSet).run_if(in_state(AppMode::Flight)))
+        .add_systems(Startup, (spawn_hud, spawn_abandon_panel, menu::spawn_menu, help::spawn_overlay).chain().after(load_fonts))
+        .add_systems(Update, (menu::flight_menu, help::update).chain().after(UiInputSet).before(UiStyleSet).run_if(in_state(AppMode::Flight)))
         .add_systems(OnExit(AppMode::Flight), menu::close_menu)
         .add_systems(Update, (update_text, update_hull_map, assists::update).chain().run_if(in_state(AppMode::Flight)))
-        .add_systems(Update, (go_home, recall_click).after(UiInputSet).run_if(in_state(AppMode::Flight)))
+        .add_systems(Update, (go_home, recall_click, camera_back).after(UiInputSet).run_if(in_state(AppMode::Flight)))
         .add_systems(Update, abandon_panel.after(UiInputSet).before(UiStyleSet).run_if(in_state(AppMode::Flight)))
         .add_systems(Update, voyage_widgets.after(UiInputSet).before(UiStyleSet).run_if(in_state(AppMode::Flight)))
         .add_systems(OnExit(AppMode::Flight), forget_ship)
@@ -283,6 +289,7 @@ pub fn spawn_hud(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>
                     r.spawn((UiIcon::Glyph { glyph: Glyph::Menu, color: ui.violet }, Node { width: px(19), height: px(19), ..default() }));
                 });
             });
+            help::spawn_ring(root, &fonts, &style);
             root.spawn((ScreenPart::new(Edge::Left, 0), abs(Some(68.0), None, Some(18.0), None))).with_children(|c| {
                 c.spawn(label(&fonts, "HULL", 13.0, grey));
                 c.spawn(Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(18), ..default() })
@@ -373,12 +380,13 @@ pub fn spawn_hud(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>
                     l.spawn((SiteLabelText(k, 1), label(&fonts, "", 9.0, dim)));
                 });
             }
-            // Bottom centre: warnings, then help.
+            // Bottom centre: warnings, then BACK TO SHIP.
             root.spawn((ScreenPart::new(Edge::Bottom, 1), Node { position_type: PositionType::Absolute, bottom: px(14), width: percent(100), flex_direction: FlexDirection::Column, align_items: AlignItems::Center, row_gap: px(8), ..default() }))
                 .with_children(|c| {
                     c.spawn((HudText::Warnings, label(&fonts, "", 14.0, coral)));
-                    // Centred and kept off the window's edges when it wraps (a narrow window).
-                    c.spawn((HudText::Help, tracked(&fonts, "", 10.0, dim, 0.2), TextLayout::justify(bevy::text::Justify::Center), Node { margin: UiRect::horizontal(px(20)), ..default() }));
+                    c.spawn(Node { min_height: px(30), ..default() }).with_children(|r| {
+                        spawn_pill(r, &fonts, "BACK TO SHIP", 11.0, 30.0, None, Pill::new(Tone::Teal), (CameraBack, HudButton, HudZone, Visibility::Hidden, Tip::new("CAMERA BACK"), ActionTip(Action::CameraFollow)));
+                    });
                 });
         });
 }
@@ -466,6 +474,28 @@ fn abandon_panel(
 fn go_home(mut clicks: MessageReader<UiClick>, ring: Query<(), With<HomeRing>>, scene: Res<Scene>, mut next: ResMut<NextState<AppMode>>) {
     if clicks.read().any(|c| ring.contains(c.0)) && scene.voyage().is_none() {
         next.set(AppMode::Home);
+    }
+}
+
+/// BACK TO SHIP: shown while the camera is detached, a click brings it back.
+fn camera_back(
+    mut clicks: MessageReader<UiClick>,
+    mut rig: ResMut<CameraRig>,
+    mut pill: Single<(Entity, &mut Visibility), With<CameraBack>>,
+    mut pill_text: Query<(&ChildOf, &mut Text), With<PillText>>,
+) {
+    if clicks.read().any(|c| c.0 == pill.0) && rig.detached() {
+        rig.reattach();
+    }
+    let want = if rig.detached() { Visibility::Inherited } else { Visibility::Hidden };
+    if *pill.1 != want {
+        *pill.1 = want;
+    }
+    let words = if rig.auto_mode == crate::camera::CamMode::Frame { "FRAME THE FIGHT" } else { "BACK TO SHIP" };
+    for (parent, mut text) in &mut pill_text {
+        if parent.parent() == pill.0 {
+            set_text(&mut text, words);
+        }
     }
 }
 

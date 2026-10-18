@@ -31,32 +31,32 @@ the stick ([GDR-0009](gdr/0009-stick-and-lock-controls.md)). **Every key and mou
 left button as the pointer, middle-drag and the wheel is an action of the action map** ([GDR-0090](gdr/0090-action-map-settings-and-pause-menu.md);
 `data::input`, defaults in `content/base/controls.ron`, the player's changes in `settings/controls`): the table names
 the defaults, SETTINGS rebinds them, and the screens read them through `world::settings::Act` (tooltips with an
-`ActionTip`, key badges with an `ActionLabel` and the flight help line show the bound inputs). The A/D rotation ramp is integrated by the scene once
+`ActionTip`, key badges with an `ActionLabel` and the flight's controls overlay show the bound inputs). The A/D rotation ramp is integrated by the scene once
 per sim tick with `sim::flight::turn_ramp_step` (like the lock's nudge with `nudge_step`) and sent as
 `PilotAxes::turn`; see `docs/sim.md` "Keyboard rotation".
 
 | | PC | Touch (landscape) |
 |---|---|---|
 | Fly | A/D rotate (GDR-0055, numbers in GDR-0058: a tap nudges the nose a little, holding ramps up to the key turn rate, 1.5 rad/s, in 0.8 s; never faster than the ship's gyros, cores and RCS can stop), W/S thrust along the nose, Q/E strafe (arrows: rotate + thrust). The flight computer cancels sideways drift while keys are held; released keys coast, nose kept (GDR-0086) | virtual stick bottom left: "fly that way", push = speed |
-| Drift toggle (pure momentum while keys are held: no drift cancelling; a release coasts either way, GDR-0086; also the tuning panel's checkbox and `?drift=1`) | X | – (drift changes only the keys; the stick always flies where it points) |
+| Drift toggle (pure momentum while keys are held: no drift cancelling; a release coasts either way, GDR-0086) | X | – (drift changes only the keys; the stick always flies where it points) |
 | Lock a target | left-click a ship (or a salvage piece) | tap it |
 | While locked | the ship turns its strongest working guns onto the target (lead point for projectiles); A/D nudge the aim and it springs back; W/S and Q/E still thrust and strafe | the stick strafes |
 | Unlock | click empty space, or Esc (with nothing locked Esc opens the flight menu: RESUME, SETTINGS, SHIPYARD or ABANDON VOYAGE…; it pauses the test range, never a voyage; Esc closes it, GDR-0090) | tap empty space |
 | LOCK TARGET (`lock_next`, GDR-0088): the first press locks the nearest enemy, each next press the next one by distance, round to the nearest again; the order is the sim's (`sim::flight::next_lock`: from the flown ship's position, ties by id), the lock the one a click sets (`PlayerInput::lock`) | Tab | – |
 | Auto-lock (the `auto_lock` pilot assist): while nothing is locked, the ship it asks for (`AssistState::auto_lock`) becomes the lock at the scene's tick (`scene::tick_lock`), the same lock as a click's (HUD, target panel, lock ring, sim). Esc or a click on empty space drops it and pauses auto-lock until you lock again or switch it (`AUTO-LOCK · PAUSED` in the HUD) | – | – |
-| Fire (by weapon group, GDR-0088: each gun's group is set in the drydock, a gun without one is group 1) | Space: every group; 1 / 2 / 3: that group; hold the left button on empty space: group 1; hold the right button: group 2. The held triggers OR into the pilot's fire mask (`PlayerInput::fire`, `sim::PilotInput::fire`); the help line shows `SPACE FIRE · 1/2/3 GROUPS` from the bindings | fire button bottom right: every group |
+| Fire (by weapon group, GDR-0088: each gun's group is set in the drydock, a gun without one is group 1) | Space: every group; 1 / 2 / 3: that group; hold the left button on empty space: group 1; hold the right button: group 2. The held triggers OR into the pilot's fire mask (`PlayerInput::fire`, `sim::PilotInput::fire`); the controls overlay shows each from the bindings | fire button bottom right: every group |
 | Pilot assists (GDR-0088; the design's PILOT ASSISTS, set on the BEHAVIOR screen): switch the assists on toggle 1–4 on and off for the mission / switch every assist off and back on (as the toggles left them). Each switch is a `ShipCommand::SwitchAssists` for the flown ship; the banner says what changed (`BRAKE ON · AUTO-FIRE 2 OFF`, `ALL ASSISTS OFF`, `F3 · NO ASSIST ON TOGGLE 3`) | F1–F4 / Z | – |
 | Switch vessel (the focus) | V / Shift+V (the sim's vessel list, ascending ship id), click a friendly vessel, or click its chip in the fleet bar | tap a friendly vessel or its chip |
 | Wake a dormant vessel (swap) | click its chip in the fleet bar | tap its chip |
 | Zoom (3–160 px per metre; while a target is locked the camera zooms out enough to keep it in view, and it widens up to 1.4 × at top speed: "Lock framing" and "Speed widening" under [Structure](#structure)) | wheel, + / − | pinch |
-| Camera | F: follow (load test: frame) ↔ free; drag with the middle button (the left button too while nobody is piloted: showcase, load test, watch) | – |
+| Camera | F: follow (load test: frame) ↔ free; drag with the middle button (the left button too while nobody is piloted: showcase, load test, watch). Panned away (free while the scene follows or frames, `CameraRig::detached`), the BACK TO SHIP pill (FRAME THE FIGHT in a framed replay) shows at the bottom centre: a click, or F, brings the camera back (18 Oct 2026) | – |
 | Drydock (back to the ship editor; the design is untouched); in TEST IN RANGE back to where the test started; nothing in a voyage | T | – |
 | Home (the shipyard; the flight ends); in a voyage M opens the ABANDON VOYAGE? panel instead (GDR-0077: Enter abandons the voyage, lost; Esc or M again close it) | M, or the ring top left (not in a voyage) | the ring top left |
 | Recall home from a voyage (when no armed awake enemy is within 200 m, or the fleet has no working gun left: the emergency recall; a 3 s warp-out) | R, or the RECALL pill | the RECALL pill |
 | The cluster map on a voyage: the whole cluster laid over the view (galaxy plan E6) | N | — |
 | The minimap on a voyage ([GDR-0106](gdr/0106-flight-minimap.md)): steps its range 1 km → 2.5 km → hidden → 1 km | B | – (always 1 km) |
 | Raider waves off / on (sandbox; off removes the raiders) | C | – |
-| Tuning panel (flight only; it was T until 12 Oct 2026) | U | – |
+| The controls (18 Oct 2026, in place of the help line along the bottom): lays this scene's controls over the view, a column per SETTINGS group with the bound inputs and a line for the mouse (`flight_hud/help.rs`); the flight goes on under it; again or Esc closes it | / (also ? with Shift), or the ? ring under the home ring | the ? ring |
 | Debug overlay (fps, frame and sim times, the focus ship's heading, turn rate, speed and whether the last resort turns it, the locked ship's active behavior rule; in TEST IN RANGE every rule of the tested behavior with why) | F8 (F3 until 15 Oct 2026: the assist toggles took F1–F4) | – |
 | Render toggles | F5 debug shapes, F6 glow sprites, F7 bloom (1, 2 and 3 until GDR-0090: they are the fire groups' keys now) | – |
 | Hide HUD / pause (`PAUSED · P` shows) / reset scene (not in a voyage) | H / P / Shift+R | – |
@@ -103,10 +103,7 @@ what fits the window, `kit::ui_kit::UiSize`, applied by every screen's UI scale)
 | `load=1\|5\|20` | browser load test: `sim::voyage::scenario::load_test(n, seed)`, camera frames the fight, stats overlay on |
 | `seed=N` | sim seed (default 42; a whole number, exact up to 2^64) |
 | `hashlog=1`, `hashticks=N` | log the per-tick state hash of the load scenario (20 ships unless `load=` is given) to the console, `N` ticks (default 600, at least 1) |
-| `thrust`, `torque`, `speed`, `turn`, `keyturn`, `range`, `damage`, `raiders`, `drift`, `link` | tuning values (the panel prints them, `link` aside; `keyturn` is the A/D key turn rate, default 1.5 rad/s; `speed` replaced `top` on 12 Oct 2026). `range` scales every side's weapons, `damage` only the player's (the raiders keep their content damage, 12 Oct 2026). `raiders=N` sets every wave's size by hand; without it waves follow the flown design (GDR-0074) |
-| `mind=N` | the player's mind capacity in logic cores (default 24; a runner has 2): `?fleet=3&mind=4` leaves two runners dormant, for trying the fleet bar's swap |
 | `fleet=N` | N extra copies (at most 8; none in TEST IN RANGE) of the player's design fly with you under the behavior the design names (default its faction's, `skirmisher`), following your lock (`target locked`); switch with V or the fleet bar |
-| `tuning=1` | open the tuning panel at start |
 | `debug=1`, `glow=0`, `bloom=1`, `hud=0`, `stats=1` | render toggles, HUD, debug overlay |
 | `zoom=N` | start zoom in px per metre (3–160) |
 | `touch=1` | show the touch widgets without a touch first |
@@ -117,8 +114,8 @@ key means 1; `0`, `false`, `off` and `no` turn a flag off.
 
 Where the game starts (`mode::AppMode::at_start`, since 13 Oct 2026, GDR-0062): `scene` decides when it is given
 (an unknown one starts at home). Without it, a parameter that only means something in flight starts the sandbox, as
-before home existed: `load`, `hashlog`, `hashticks`, `fleet`, `seed`, `zoom`, `fire`, `raiders`, `mind`, `tuning`,
-`touch` (`params::FLIGHT_ONLY`); so `?load=20`, `?hashlog=1&load=20` and `?fleet=3&mind=4` fly as they did. Anything
+before home existed: `load`, `hashlog`, `hashticks`, `fleet`, `seed`, `zoom`, `fire`, `touch`
+(`params::FLIGHT_ONLY`; `raiders`, `mind` and `tuning` went with the tuning panel, 18 Oct 2026); so `?load=20`, `?hashlog=1&load=20` and `?fleet=3` fly as they did. Anything
 else (`/`, `?debug=1`, `?stats=1`) starts at home; the sandbox alone is `?scene=sandbox`.
 
 ## Scenes (`scene.rs`)
@@ -131,10 +128,9 @@ else (`/`, `?debug=1`, `?stats=1`) starts at home; the sandbox alone is `?scene=
   of the smallest if at least half of it is left; at least 1 ship, at most 8 (`WAVE_CAP`). The starter `rim_skiff` (59 build points) meets a hunter
   (23.6), the Halvex Runner (132.5) two hunters and a raider (15.8), a 300-point design two wardens (75) (Niklas, 15 Oct 2026: a single ship
   against a swarm of small ones felt wrong; until then a wave was only raiders, 2 and 4 of them, each a wave a pilot stand-in won about nine times in ten,
-  `docs/results/slice-balance-2026-10-13.md`); the
-  tuning panel's "follow the flown ship" box (or `raiders=N`) sets the size by hand. C turns the waves off (every raider vessel
+  `docs/results/slice-balance-2026-10-13.md`). C turns the waves off (every raider vessel
   is removed at once, their wrecks stay, no new wave comes) and on again (a wave 2 s later); the subtitle says
-  `WAVES ON` / `WAVES OFF` (C turns them on, the help line says so), Shift+R keeps the setting. Wrecks and salvage drift away and are removed when
+  `WAVES ON` / `WAVES OFF` (C turns them on, the controls overlay says so), Shift+R keeps the setting. Wrecks and salvage drift away and are removed when
   they are more than 320 m from the player or dark for 75 s (the player's vessels, dark or dormant, stay). When
   the focus loses its last logic core the sim moves the focus to another vessel of the player (a split-off half
   too); when the player has no vessel left, a new one re-forms after 3 s (its wreck, with whatever its hold
@@ -145,7 +141,7 @@ else (`/`, `?debug=1`, `?stats=1`) starts at home; the sandbox alone is `?scene=
   m/s before), and one part every 1/3 s goes into the hold, best first (`docs/sim.md` "Salvage"). The HUD shows
   `CARGO n / m` under the hull; nothing is done with the haul yet. Loose items (core fragments, spilled cargo) last
   60 s here (`scene::SANDBOX_LOOSE_TICKS`; the sim's default keeps them until it ends, as in a voyage, but the
-  sandbox's waves never end, so they would pile up); the tuning panel keeps the scene's salvage settings.
+  sandbox's waves never end, so they would pile up).
 - **Test flight**: the sandbox launched from the drydock (T or TEST-FLY), waves on, title `TEST FLIGHT`. Losing
   every vessel returns to the drydock after the same 3 s (`SHIP LOST · BACK TO THE DRYDOCK`) instead of
   re-forming; T returns at any time. Shift+R restarts the test flight.
@@ -160,8 +156,7 @@ else (`/`, `?debug=1`, `?stats=1`) starts at home; the sandbox alone is `?scene=
   `behavior_ui/live.rs`), the debug overlay (F8) every rule with why.
 - Every sandbox flight flies the **player's saved behaviors**: they join the player's content, so the library has
   them and a design naming one flies it (`player::behaviors`).
-- **Showcase**: no combat, free camera; for looking at the renderer. With `fire=1` the raiders (the tuning's
-  raiders per wave set by hand, `raiders=N`, else 3) start 46 m out and attack the design, which holds still and doesn't fire back:
+- **Showcase**: no combat, free camera; for looking at the renderer. With `fire=1` three raiders start 46 m out and attack the design, which holds still and doesn't fire back:
   its bubbles take hits at once. Cannon shots pass half their damage to the hull, so the Runner breaks up after
   about half a minute (Shift+R starts over), and with the base numbers (regen 1.5/s against about 0.4 per
   hit) the bubbles rarely empty; collapses need concentrated fire.
@@ -177,10 +172,9 @@ view, as a spectator. `arena fight` prints a code for every fight after its tabl
 generation (its best child's hardest fight); paste one after `fight=`, e.g.
 `http://10.77.9.2:8080/?scene=fight&fight=SGF1:eNp1…` (base64url needs no escaping in a URL).
 
-- **The world** is the arena's (`arena::FightSetup`): the packs' content only (no tuning scales, no player
+- **The world** is the arena's (`arena::FightSetup`): the packs' content only (no player
   behaviors), owners 1 and 2, every core running. The scene (`SceneKind::Fight`) steps it with no inputs: what the
-  controls and the fleet bar queue for a tick is dropped (`replay::drop_inputs`), and the tuning panel doesn't touch
-  it. After every tick the fight's `arena::Referee` looks, as `arena::Fight` does, so the replay ends on the tick the
+  controls and the fleet bar queue for a tick is dropped (`replay::drop_inputs`). After every tick the fight's `arena::Referee` looks, as `arena::Fight` does, so the replay ends on the tick the
   record does; then the world holds (`SimWorld::hold`: no more steps or events) and the clock pauses.
 - **Looks**: side 0 is drawn teal and side 1 coral whatever their designs' faction (`SimWorld::looks`, an owner →
   `ship_model::Look` map; elsewhere a ship looks as its faction does), so an automaton against an automaton shows
@@ -208,7 +202,7 @@ generation (its best child's hardest fight); paste one after `fight=`, e.g.
   viewer plays it unchanged; the subtitle adds `· FLOWN BY STAND-IN · CASUAL` (the pilot's `lab.ron` name).
 - **HUD**: title `REPLAY · HALVEX RUNNER VS 3 × AUTOMATON RAIDER · SEED 3`; subtitle `0:23 / 1:30 · 2× · BUILD POINTS
   120 / 132 VS 12 / 47`; a timeline under the view (how far the fight is in teal, how far it has been simulated in
-  grey, a mark per vessel lost: teal side 0's, coral side 1's, at most 24); the help line (`YOU WATCH · …`) lists the
+  grey, a mark per vessel lost: teal side 0's, coral side 1's, at most 24); the controls overlay (/ or the ? ring) lists the
   replay keys.
 - **Checks**: today's rules fingerprint is computed once (`arena::rules_fingerprint`, about 5 ms natively); a code
   fought under other rules shows `THE RULES HAVE CHANGED SINCE THIS FIGHT` for its first 6 s and plays anyway. At the
@@ -249,8 +243,6 @@ generation (its best child's hardest fight); paste one after `fight=`, e.g.
    cargo run --release -p sim --example determinism -- --scenario load --ships 20 --ticks 600 --seed 42 > native.txt
    scripts/determinism-check.sh --compare native.txt browser.txt
    ```
-
-   Changing tuning values during a hash run changes the hash (the config is part of the state).
 
    Result 12 Oct 2026 (dev wasm build in headless Chromium vs native release x86_64, `dev` after the plume merge
    60945ae): `load` 20 ships, seed 42, 600 ticks: **IDENTICAL** (final `86eb72a03591bff2`; also identical on the
@@ -311,7 +303,7 @@ names in this document are found in the crate that holds them:
 | Crate | Modules |
 |---|---|
 | `crates/client/kit` (the toolkit: knows nothing about ships or the sim) | `atlas` (+ `atlas.wesl`), `style`, `meshbuf`, `ui_kit` (+ `widgets`, `field`, `tip`, `fonts`, `transition`, `scrollbar`), `ui_icons`, `clipboard`, `params` (+ `RenderToggles`), `view` (`ViewScale`: the camera's zoom and place as the atlas and the icons read them, written by `world::camera`), `rng`; the fonts in `assets/fonts` |
-| `crates/client/world` (the running game) | `sim_bridge` (+ `PilotFocus`), `scene`, `ship_model`, `ship_view`, `part_icons` (part and ship icons: `ui_icons::IconShapes` for the content), `fx` (+ `blast`), `shield` (+ `shield.wesl`), `backdrop`, `camera` (+ `spawn_camera`), `controls`, `hud`, `flight_hud` (+ `text`, `markers`), `fleet_bar`, `test_range`, `tuning`, `mode`, `voyage` (+ `debrief`: the debrief's data), `warp_fx`, `storage`, `career`, `player` (`design`, `behaviors`, `library`: what the player owns) |
+| `crates/client/world` (the running game) | `sim_bridge` (+ `PilotFocus`), `scene`, `ship_model`, `ship_view`, `part_icons` (part and ship icons: `ui_icons::IconShapes` for the content), `fx` (+ `blast`), `shield` (+ `shield.wesl`), `backdrop`, `camera` (+ `spawn_camera`), `controls`, `hud`, `flight_hud` (+ `text`, `markers`, `help`), `fleet_bar`, `test_range`, `mode`, `voyage` (+ `debrief`: the debrief's data), `warp_fx`, `storage`, `career`, `player` (`design`, `behaviors`, `library`: what the player owns) |
 | `crates/client/game` (the screens and `main.rs`) | `home`, `shipyard` (+ `gate`: the ring after a recall), `fleet`, `voyage_log` (the LOG), `settings`, `research`, `map`, `debrief` (the panel), `drydock` (`panels/`: `spawn`, `sync`; `blueprints/`: `autosave`, `title`, `screens`, `handlers`, `sync`), `behavior_ui`; `index.html` and `Trunk.toml` for the web build |
 
 ```
@@ -321,7 +313,7 @@ FixedUpdate (30 Hz)   scene::scene_tick (pilot input, waves)  →  sim_bridge::s
   (flight only)                                                   (Sim::step, timing,       (views: spawn / rebuild /
                                                                    hash log)                 despawn; effects from events)
 Update                ui_kit (hit testing, text fields) → flight: camera input, HUD text and the home ring, fleet bar,
-                      touch widgets, tuning panel (egui) | drydock: DockSet::Input →
+                      touch widgets, the controls overlay | drydock: DockSet::Input →
                       Apply → Show → ui_kit styles | behavior: BehaviorSet::Input → Apply → Show → ui_kit styles;
                       the TEXT view's editor in egui's pass | home: clicks and keys (not while FLEET is open) →
                       the camera's flight → apply → labels → shipyard (layout, meshes, rigging; also in the
@@ -474,12 +466,15 @@ PostUpdate            ship_view::sync_piece_views (render_pose(alpha) → Transf
   FX (the markers in watch mode too). A marker sits where the ray to its ship meets the view's edge, moved in along the ray until it is clear of
   every HUD text and widget (`HudZone`: hull map, fleet bar, home ring, touch widgets). HUD colours are the
   `ui.*` tokens. Debug overlay and toggles: `hud.rs`.
-- **Tuning** (`tuning.rs`, bevy_egui 0.43.1): thrust / torque scale (separate or linked), speed scale (every
-  engine's and RCS pod's rated speed, so every top speed; `SimConfig::speed_scale`, replaced the soft top speed
-  factor on 12 Oct 2026), max turn rate, key turn rate (A/D held, `keyturn=`, GDR-0055) and the mind capacity (`mind=`) apply live
-  (`Sim::set_config`); raiders per wave (follow the flown ship, the default, or a number by hand) apply to the
-  next wave; drift at once; weapon range and damage scale
-  rewrite the content the designs compile from, so they apply with "Apply & reset".
+- **The controls overlay** (`flight_hud/help.rs`, 18 Oct 2026; the help line along the bottom and the live tuning
+  panel, U, are gone, Niklas: "I will just tell you when I am unhappy"): the ? ring under the home ring (or /, the
+  `controls_help` action) opens a dark plate over the view with this scene's actions, a column per SETTINGS group
+  (FLIGHT or THE FIGHT VIEWER, MISSIONS, CAMERA AND VIEWS, DEBUG AND DISPLAY) with their bound inputs, and a line for
+  the mouse; the test range's keys only there, a voyage's only there, the fight viewer's in a replay. Again, Esc or
+  the ring closes it, and the flight menu takes its place. `FlightMenu::help` holds whether it is open.
+- **BACK TO SHIP** (`flight_hud/mod.rs`, 18 Oct 2026): a pill at the bottom centre while the camera is panned away
+  from what it follows or frames (`CameraRig::detached`: free while the scene's own mode is follow or frame; FRAME
+  THE FIGHT in a framed replay); a click does what F does then (`CameraRig::reattach`).
 - **Smaller modules**: `params.rs` (launch parameters: the page URL's query, natively `GAME_PARAMS`;
   `Params::flag` / `f32` / `text`), `controls.rs` (keyboard, mouse and touch → `PlayerInput`: stick, A/D ramp and
   nudge, lock, fire, drift, V / Tab / Esc; the touch widgets), `backdrop.rs` (the radial gradient, two parallax dust
@@ -680,9 +675,8 @@ off, the flash and its ring where it left), `voyage-warp-emergency.png` (the eme
   fleet not ready by the career's own unlocks, so also anything `?unlock=all` alone allows) flies as a **practice
   run**: rolled from the seed the next launch would get, `PRACTICE, NOT SAVED` in the subtitle, never written.
 - **The world** (`scene::build_voyage`): `SimConfig::mind_capacity` of the player is the career's mind capacity
-  (the tuning panel's other values apply as in the sandbox), the sim is seeded with the voyage's seed, the plan is
-  rolled from the content the enemies fly with (`VoyagePlan::roll(others, voyage, seed)`, the tuning's damage scale
-  is the player's only) and started (`Sim::start_voyage(plan, PLAYER, ENEMY)`). The flagship (the drydock's working
+  (the rest of `SimConfig` its defaults), the sim is seeded with the voyage's seed, the plan is
+  rolled from the content the enemies fly with (`VoyagePlan::roll(others, voyage, seed)`: the packs' content without the player's behaviors) and started (`Sim::start_voyage(plan, PLAYER, ENEMY)`). The flagship (the drydock's working
   design) enters at the plan's entry as the focus; the FLEET escorts take `?fleet=` wingman slots behind it (turned
   with the entry), fly the behavior their design names and follow the flagship (`Leader`). No raider waves (C does
   nothing), no re-form, no wreck clean-up; Shift+R and T do nothing, M asks in a panel whether to abandon the voyage.
@@ -697,7 +691,7 @@ off, the flash and its ring where it left), `voyage-warp-emergency.png` (the eme
   only gold, the goal brighter (`· GOAL`, a glow), cleared ones dim (`· CLEARED`); a sleeping site's ships get no
   enemy marker of their own. Banners (with a line under them): `RAIDER PAIR · AWAKE` (coral), `SITE CLEARED ·
   RAIDER PACK` / `SITES 2 / 4 · THE WRECKS ARE YOURS` (teal), `GOAL CLEARED · RAIDER PACK` / `… · RECALL WHEN CLEAR
-  · R` (gold). The home ring top left is hidden. The help line names R RECALL and M ABANDON.
+  · R` (gold). The home ring top left is hidden (the ? ring stays). The controls overlay names R RECALL and M ABANDON.
 - **Scanning** (galaxy track E3, 16 Oct 2026, [GDR-0095](gdr/0095-sensors-hidden-sites-and-scans.md);
   `flight_hud/scan.rs`, in every flight scene): under the target panel the SCAN pill (violet; G, the SCAN action, or a
   click sends `ShipCommand::Scan` for the flown ship) with a bar and a line: `READY · G · 1.2 KM`, `CHARGING · 45 %`,
@@ -905,7 +899,7 @@ off, the flash and its ring where it left), `voyage-warp-emergency.png` (the eme
 - **Lost**: when the player has no vessel left, `SHIP LOST` / `RECALLED HOME` / `THE HAUL STAYS IN THE WRECK · 5
   PARTS LOST · YOUR SHIPS RE-FORM AT HOME` with a 3 s countdown (`voyage-hud-lost.png`), the cargo block says
   `LEFT IN THE WRECK`; then `VoyageEnd::Lost { ticks }`, the save, home. **Abandoning** (GDR-0077): M opens the ABANDON
-  VOYAGE? panel (`flight_hud/`; centred low over the help line, so the ship stays in sight; it slides up from
+  VOYAGE? panel (`flight_hud/`; centred low over the bottom, so the ship stays in sight; it slides up from
   the bottom and back): `THE HAUL IS LOST · 5 PARTS STAY BEHIND` (every hold's items), `The voyage counts as lost.
   Your ships re-form at home.`, `THE FLIGHT GOES ON WHILE YOU DECIDE`, and the pills ABANDON VOYAGE (coral, tooltip
   `ENTER`) and KEEP FLYING (tooltip `ESC / M`). The sim keeps running while it is open (a real-time sim, co-op
@@ -1601,7 +1595,7 @@ the sides, a taller one above and below (`ui_kit::ui_scale`, tested for every pl
   frame it fits (`frames.ron`: the 24 × 24 frigate), mirror on, named "Rim skiff copy"; a new game saves the last
   design's unsaved changes first. It flies under the id `player:design` (content ids are snake_case, so it never clashes). The player, the
   `?fleet=` wingmen, re-forms and test flights fly it; raiders stay content ships.
-- **Report** (`report.rs`): `DrydockReport`, the design's `sim::report`, recomputed once per revision or tuning
+- **Report** (`report.rs`): `DrydockReport`, the design's `sim::report`, recomputed once per revision or content
   change (during a paint or erase drag at most every 0.1 s, and once when it ends: a full 64 × 64 frame takes about
   5 ms). The BEHAVIOR screen reads the same report (the weapon reach, whether TEST IN RANGE can fly the design). **Panels** (`panels/`): the screen's nodes, spawned once and updated in place from the resources (the
   palette list and its key stat). **Behaviors** (`player/behaviors.rs`): `PlayerBehaviors`, the player's saved behaviors
@@ -1755,7 +1749,7 @@ the sides, a taller one above and below (`ui_kit::ui_scale`, tested for every pl
   ARMOR pills `1`–`9`, the search `/`, FLIP, DELETE, the rotate rings; the BEHAVIOR screen's TEST IN RANGE, DRYDOCK,
   SAVE, undo / redo, search; CLOSE on FLEET, BLUEPRINTS and BEHAVIORS; DISMISS; RECALL, ABANDON VOYAGE and KEEP FLYING; the home rings; home's
   places); the keys work as before. Screens added later give their controls a `Tip` instead of a key in the label.
-  Banners and help lines that tell what a key does (`PAUSED · P`, the flight help line) stay: they are not
+  Banners that tell what a key does (`PAUSED · P`) and the flight's controls overlay stay: they are not
   controls.
 - **Icons in the UI** (`ui_icons.rs`): a `UiIcon` on a node (a part, a whole design for FLEET, or a glyph Barlow
   lacks: undo, redo, play, search, menu, diamond, lock; home's grid, tree, orbit, arrow, target, formation) is drawn
@@ -1882,8 +1876,7 @@ target and auto-fire in the graph and as text; checked at 1280 × 720 and 2560 �
   reach below 200 %; 5 % for percentages; ½ s below 10 s; whole counts); the slider runs over the node's content
   range (`min`–`max`; 0–1000 % for a share of the reach), soft-logarithmic for distances and times, linear for
   percentages and counts, and snaps to the step; a drag is one undo step. Distances switch between metres and a
-  share of the weapon reach (`M` / `% REACH`): with the design's reach (its longest clear gun on the main piece, with
-  the tuning's range) the distance stays the same, else the number stays. `DEFAULT` marks a value the rule leaves
+  share of the weapon reach (`M` / `% REACH`): with the design's reach (its longest clear gun on the main piece) the distance stays the same, else the number stays. `DEFAULT` marks a value the rule leaves
   out; RESET writes the default back (and drops it when it is the last value). A threshold's slider runs 0–100 %
   for percentages, 0 to the node's own period for times (`cycle(9s) >= 5s`), 0–20 for counts.
 - **Choices** as pills, the chosen one teal (a click picks one), with RESET when written.

@@ -22,6 +22,8 @@ use crate::voyage::VoyageRun;
 #[derive(Resource, Debug, Default)]
 pub struct FlightMenu {
     pub open: bool,
+    /// The controls overlay is open (`help.rs`).
+    pub help: bool,
     paused: bool,
 }
 

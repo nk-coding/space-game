@@ -24,8 +24,8 @@
 //! - `shield`: shield bubbles (one batched mesh, each quad at its ship's depth against the opaque ship tiles,
 //!   procedural shader `shield.wesl`).
 //! - `controls`, `camera`: keyboard / mouse / touch input, follow / frame / free camera.
-//! - `flight_hud`, `fleet_bar`, `hud`, `tuning`: flight HUD, fleet bar (the player's vessels), debug overlay and
-//!   toggles, live tuning panel (egui).
+//! - `flight_hud`, `fleet_bar`, `hud`: flight HUD, fleet bar (the player's vessels), debug overlay and
+//!   toggles.
 //! - `backdrop`: gradient, parallax dust, range rings.
 //! - `scenery`: what fills a cluster between its sites (GDR-0104): the sim's asteroid rocks, glints, drifting debris
 //!   and derelicts, landmarks far off, a hot star's corona.
@@ -55,6 +55,5 @@ pub mod ship_view;
 pub mod sim_bridge;
 pub mod storage;
 pub mod test_range;
-pub mod tuning;
 pub mod voyage;
 pub mod warp_fx;

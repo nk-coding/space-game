@@ -2,6 +2,10 @@
 
 - Status: Accepted (provisional, lead); the palette rule is superseded by [GDR-0054](0054-drydock-locked-parts-tools-saving-sharing.md), which also confirms fill and bevel; the frame sizes confirmed by Niklas in [GDR-0079](0079-review-of-lead-defaults-14-oct.md); bevel (now after the stroke, fill too) and parts refused over other parts (now replaced) superseded by [GDR-0081](0081-drydock-editing-bevel-rotate-replace.md).
   2026-10-17: Accepted (Niklas, 17 Oct 2026).
+  2026-10-18 (Niklas: "I will just tell you when I am unhappy"): the live tuning panel (U, `world::tuning`) is
+  removed with its action and its URL values (`thrust`, `torque`, `speed`, `turn`, `keyturn`, `range`, `damage`,
+  `raiders`, `mind`, `drift`, `link`, `tuning`): flights, the drydock's report and the waves use `SimConfig`'s
+  defaults and the packs' content. The drydock never had a tuning of its own (it read the panel's scales).
 - Date: 2026-10-13
 - Decided by: lead session (defaults for Niklas to review); details by the wave-1 drydock agents
 - Related: [GDR-0051](0051-drydock-v1.md), [GDR-0052](0052-drydock-stats-full-use.md), [GDR-0006](0006-ship-scale-no-fixed-cap.md) (frames), [GDR-0008](0008-ui-ship-mind-interface.md), [ADR-0030](../adr/0030-drydock-architecture.md), `docs/drydock.md`, `docs/client.md` "Drydock", `docs/sim.md` "Design report (drydock)"

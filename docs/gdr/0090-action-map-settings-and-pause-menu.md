@@ -1,6 +1,12 @@
 # GDR-0090: The action map, the SETTINGS layer (controls and display), the flight menu, assist toggle slots
 
 - Status: Accepted
+  2026-10-18 (Niklas): the flight's help line along the bottom is gone. In its place the ? ring under the home ring
+  (and the `controls_help` action, /, Shift+/ is ? too) lays this scene's controls over the view, a column per
+  SETTINGS group with the bound inputs (`flight_hud/help.rs`); Esc closes it first. Panned away from the ship, a BACK
+  TO SHIP pill at the bottom centre brings the camera back (as F does). The tuning panel's action (`tuning`, U) went
+  with the panel ([GDR-0053](0053-drydock-v1-lead-defaults.md)'s status). Screenshots
+  `docs/results/flight-controls-overlay.png`, `flight-back-to-ship.png`.
 - Date: 2026-10-15
 - Decided by: Niklas (Esc, pausing, where settings opens, its scope, toggle slots: interactively); lead session (the
   action list, the matching rules, the layout; defaults for Niklas to review)
