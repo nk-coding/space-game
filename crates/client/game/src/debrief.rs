@@ -10,6 +10,10 @@
 //! TIME 7:42   SITES 4 / 4   KILLS 9   SHIPS LOST 0
 //! 14 PARTS DISMANTLED
 //!   Automaton cannon ×6              KINETIC WEAPONS +18
+//!   Thruster, intact ×2                       SORT BELOW
+//! INTACT  ·  KEEP OR DISMANTLE
+//!   Thruster ×2   KEEP 1 · DISMANTLE 1          [KEEP] [DISMANTLE]
+//!   [SORT AS SUGGESTED]
 //! RESEARCH DATA
 //!   • KINETIC WEAPONS                  +18   IN STORE 18
 //! ◆ PROGRAMMABLE MATTER +1
@@ -31,20 +35,30 @@
 //!   (`map::OpenMap`), where the map selects the new signal. A voyage into a cluster of the galaxy lists what it found
 //!   there the same way (galaxy plan E6): `CHARTED · VARDIS`, the signals heard and how far each came, in gold
 //!   (`SIGNAL NARROWED · A GATE`), the logs to decode at the LOG; VOYAGE MAP shows for anything on the map.
+//! * The haul's intact parts are sorted here (Niklas, 18 Oct 2026: take and dismantle "belong in the return-report
+//!   sidebar", not in the workshop's main area): under the rows, a line per part with the suggestion, KEEP (into
+//!   stock) and DISMANTLE (research data and a share of its recipe) for all of it, and SORT AS SUGGESTED; it is
+//!   refilled whenever the career changes. What the panel leaves is kept (`Career::keep_intake`) when it is dismissed,
+//!   and at any time at home without an open report (a save from before, a report never seen).
 
 use bevy::prelude::*;
 use data::career::Outcome;
 use kit::style::{Style, ui_color};
 use kit::ui_kit::{
-    HudFonts, Edge, Hot, Pill, ScreenFx, ScreenPart, Scrollbar, Tip, Tone, show_screen, UiBlock, UiClick, UiInputSet, UiPointer, UiStyleSet, label, number, prose, spawn_pill,
+    HudFonts, Edge, Hot, Pill, ScreenFx, ScreenPart, Scrollbar, Tip, Tone, show_screen, UiBlock, UiClick, UiInputSet, UiPointer, UiStyleSet, label, number, prose, spawn_pill, tracked,
 };
+use world::career::{EscortDesigns, Note, PlayerCareer};
 use world::mode::AppMode;
+use world::player::PlayerDesign;
 use world::settings::SettingsLayer;
+use world::sim_bridge::GameContent;
+use world::storage::Storage;
 use world::voyage::clock;
 use world::voyage::debrief::{Debrief, DebriefData, amount};
 
 use crate::fleet::Fleet;
 use crate::voyage_log::VoyageLog;
+use crate::workshop::{fleet_need, gave_words, refusal_words, sort_rows};
 
 /// Rows of parts shown (the rest are counted in one line).
 const MAX_ROWS: usize = 6;
@@ -64,13 +78,30 @@ struct DismissButton;
 #[derive(Component)]
 struct MapButton;
 
+/// The haul's intact parts to sort, under the rows (refilled when the career changes).
+#[derive(Component)]
+struct IntakeBox;
+
+/// KEEP or DISMANTLE all of one intact part, or SORT AS SUGGESTED.
+#[derive(Component, Clone, Debug, PartialEq)]
+enum SortButton {
+    Keep(String),
+    Dismantle(String),
+    All,
+}
+
+/// What the last sort said (cleared with a new report).
+#[derive(Resource, Default)]
+struct Sorted(Option<(String, Tone)>);
+
 pub struct DebriefPlugin;
 
 impl Plugin for DebriefPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<Debrief>()
+            .init_resource::<Sorted>()
             .add_systems(Startup, spawn.after(world::flight_hud::spawn_hud))
-            .add_systems(Update, (dismiss, rebuild, show).chain().after(UiInputSet).before(UiStyleSet));
+            .add_systems(Update, (dismiss, sort, settle, rebuild, fill_intake, show).chain().after(UiInputSet).before(UiStyleSet));
     }
 }
 
@@ -154,10 +185,12 @@ fn rebuild(
     fonts: Res<HudFonts>,
     style: Res<Style>,
     panel: Single<Entity, With<PanelRoot>>,
+    mut sorted: ResMut<Sorted>,
 ) {
     if !debrief.is_changed() {
         return;
     }
+    sorted.0 = None;
     let Some(d) = &debrief.data else { return };
     commands.entity(*panel).despawn_children();
     commands.entity(*panel).with_children(|p| {
@@ -290,6 +323,7 @@ fn fill(p: &mut ChildSpawnerCommands, fonts: &HudFonts, style: &Style, d: &Debri
             let more: u32 = d.rows[MAX_ROWS..].iter().map(|r| r.count).sum();
             p.spawn(label(fonts, &format!("+ {more} MORE"), 9.0, c(Tone::Dim)));
         }
+        p.spawn((IntakeBox, Node { flex_direction: FlexDirection::Column, row_gap: px(8), flex_shrink: 0.0, ..default() }));
         if !d.families.is_empty() || !d.materials.is_empty() {
             rule(p);
             p.spawn(label(fonts, "RESEARCH DATA", 9.5, c(Tone::Label)));
@@ -334,6 +368,106 @@ fn fill(p: &mut ChildSpawnerCommands, fonts: &HudFonts, style: &Style, d: &Debri
     if let Some(why) = &d.practice {
         p.spawn(label(fonts, why, 9.0, c(Tone::Gold)));
     }
+}
+
+/// KEEP, DISMANTLE and SORT AS SUGGESTED: the career sorts the intake and writes the save; the box says what it gave.
+#[allow(clippy::too_many_arguments)]
+fn sort(
+    mut clicks: MessageReader<UiClick>,
+    buttons: Query<&SortButton>,
+    mut career: ResMut<PlayerCareer>,
+    mut storage: ResMut<Storage>,
+    content: Res<GameContent>,
+    (design, escorts): (Res<PlayerDesign>, Res<EscortDesigns>),
+    mut sorted: ResMut<Sorted>,
+) {
+    let Some(b) = clicks.read().find_map(|c| buttons.get(c.0).ok()).cloned() else { return };
+    let c = &content.0;
+    let need = fleet_need(c, &design, &escorts);
+    let name = |p: &str| c.parts.get(p).map_or_else(|| p.to_uppercase(), |x| x.name.to_uppercase());
+    let (said, written) = career.update(&mut storage, |career| {
+        let n = |p: &str| career.intake().get(p).copied().unwrap_or(0);
+        match &b {
+            SortButton::Keep(p) => {
+                let k = n(p);
+                career.keep(p, k).map(|()| (format!("KEPT {k} {}  ·  IN STOCK", name(p)), Tone::Teal))
+            }
+            SortButton::Dismantle(p) => {
+                let k = n(p);
+                career.dismantle(c, p, k).map(|got| (format!("DISMANTLED {k} {}  ·  {}", name(p), gave_words(c, &got)), Tone::Gold))
+            }
+            SortButton::All => {
+                let kept: u32 = career.suggested(c, &need).values().map(|s| s.keep).sum();
+                career.sort_suggested(c, &need).map(|got| (format!("SORTED  ·  KEPT {kept}  ·  {}", gave_words(c, &got)), Tone::Gold))
+            }
+        }
+    });
+    sorted.0 = Some(said.unwrap_or_else(|r| (refusal_words(c, &r), Tone::Coral)));
+    if let Err(e) = written {
+        warn!("debrief: not saved: {e}");
+        career.notes.push(Note::new("NOT SAVED", e, Tone::Coral));
+    }
+}
+
+/// At home without an open report, the intake goes to the stock: what a dismissed report left unsorted, a save from
+/// before this rule, a report never seen.
+fn settle(mode: Res<State<AppMode>>, debrief: Res<Debrief>, mut career: ResMut<PlayerCareer>, mut storage: ResMut<Storage>) {
+    if *mode.get() != AppMode::Home || (debrief.open && debrief.data.is_some()) || career.career().intake().is_empty() {
+        return;
+    }
+    let (kept, written) = career.update(&mut storage, |c| c.keep_intake());
+    info!("debrief: {kept} intact parts left unsorted went to the stock");
+    if let Err(e) = written {
+        warn!("debrief: not saved: {e}");
+        career.notes.push(Note::new("NOT SAVED", e, Tone::Coral));
+    }
+}
+
+/// The intact parts' box, anew when it is spawned, the career changes or a sort said something.
+#[allow(clippy::too_many_arguments)]
+fn fill_intake(
+    mut commands: Commands,
+    boxes: Query<(Entity, Ref<IntakeBox>)>,
+    career: Res<PlayerCareer>,
+    content: Res<GameContent>,
+    (design, escorts): (Res<PlayerDesign>, Res<EscortDesigns>),
+    sorted: Res<Sorted>,
+    fonts: Res<HudFonts>,
+    style: Res<Style>,
+) {
+    let Ok((entity, added)) = boxes.single() else { return };
+    if !(added.is_added() || career.is_changed() || sorted.is_changed()) {
+        return;
+    }
+    let (content, ui) = (&content.0, style.ui);
+    let c = |tone: Tone| ui_color(tone.color(&ui), 1.0);
+    let rows = sort_rows(content, career.career(), &fleet_need(content, &design, &escorts));
+    commands.entity(entity).despawn_children();
+    commands.entity(entity).with_children(|p| {
+        if !rows.is_empty() {
+            p.spawn((Node { height: px(1), flex_shrink: 0.0, ..default() }, BackgroundColor(ui_color(ui.dim, 0.35))));
+            p.spawn(label(&fonts, "INTACT  ·  KEEP OR DISMANTLE", 9.5, c(Tone::Gold)));
+        }
+        for r in &rows {
+            p.spawn(Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(8), flex_shrink: 0.0, ..default() }).with_children(|line| {
+                line.spawn(Node { flex_direction: FlexDirection::Column, row_gap: px(3), flex_grow: 1.0, ..default() }).with_children(|col| {
+                    col.spawn(prose(&fonts, &format!("{} ×{}", r.name, r.count), 14.0, c(Tone::Number)));
+                    col.spawn(label(&fonts, &format!("IN STOCK {}  ·  SUGGESTED KEEP {} · DISMANTLE {}", r.stock, r.keep, r.dismantle), 8.0, c(Tone::Dim)));
+                });
+                spawn_pill(line, &fonts, "KEEP", 9.0, 26.0, None, Pill::new(Tone::Teal), (SortButton::Keep(r.part.clone()), Tip::new(format!("ALL {} INTO STOCK", r.count))));
+                spawn_pill(line, &fonts, "DISMANTLE", 9.0, 26.0, None, Pill::new(Tone::Gold), (SortButton::Dismantle(r.part.clone()), Tip::new(format!("ALL {}  ·  DATA AND MATERIALS", r.count))));
+            });
+        }
+        if !rows.is_empty() {
+            p.spawn(Node { flex_direction: FlexDirection::Row, flex_shrink: 0.0, ..default() }).with_children(|b| {
+                spawn_pill(b, &fonts, "SORT AS SUGGESTED", 9.0, 28.0, None, Pill { primary: true, ..Pill::new(Tone::Teal) }, (SortButton::All, Tip::new("KEEP AND DISMANTLE AS SUGGESTED")));
+            });
+            p.spawn(prose(&fonts, "What you leave goes to the workshop's stock when you dismiss the report.", 11.5, c(Tone::Dim)));
+        }
+        if let Some((words, tone)) = &sorted.0 {
+            p.spawn(tracked(&fonts, words, 8.5, c(*tone), 0.16));
+        }
+    });
 }
 
 /// VOYAGE MAP (after a voyage that found a signal) and DISMISS, at the panel's bottom.

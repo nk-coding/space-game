@@ -131,10 +131,11 @@ When the haul comes home (VOYAGE HOME · HAUL UNLOADED on the debrief, and the L
   [[material:steel.salvage_data]] per cell), and [[facility:workshop.broken]] of a unit of its armour per cell.
 - A **fragment** gives its materials: [[part:logic_core.fragment]] from a logic core, [[part:automaton_core.fragment]]
   from an automaton core.
-- An **intact part** waits in the [[facility:workshop]]. There you keep it (it goes into stock, and your ships can
-  carry it) or dismantle it for its research data and [[facility:workshop.dismantle]] of its recipe's materials. The
-  workshop suggests a sort: keep while fewer than [[facility:workshop.keep]] are in stock or your fleet needs more,
-  dismantle the rest; SORT AS SUGGESTED does it in one click.
+- An **intact part** is sorted in the voyage's report, under what came home: KEEP puts it into the
+  [[facility:workshop]]'s stock (your ships can carry it), DISMANTLE takes it apart for its research data and
+  [[facility:workshop.dismantle]] of its recipe's materials. The report suggests a sort: keep while fewer than
+  [[facility:workshop.keep]] are in stock or your fleet needs more, dismantle the rest; SORT AS SUGGESTED does it in
+  one click. Whatever you leave unsorted goes into the stock when you dismiss the report.
 
 Shares are summed over the haul (or over the parts dismantled together) and rounded to whole units. Each part's page
 lists what it gives under Salvage and what it is made of under Recipe. Research data and materials pay for research:
@@ -156,6 +157,9 @@ bonded parts re-form at home with it. Only the haul is at stake.
 
 Parts in stock that your fleet does not carry can be dismantled again for [[facility:workshop.dismantle]] of their
 recipe's materials, like an intact part from a haul but without research data: the workshop learns nothing from
-its own parts. It never dismantles below what your fleet carries. For MAKE and DISMANTLE (and KEEP or DISMANTLE of
-several hauled parts of one kind) you choose how many with − and + (shift-click: five at a time) or MAX, and the
-workshop shows what it costs or gives in all before you confirm.
+its own parts. It never dismantles below what your fleet carries. For MAKE and DISMANTLE you choose how many with − and +
+(shift-click: five at a time) or MAX, and the workshop shows what it costs or gives in all before you confirm.
+
+The workshop shows the parts list on the left (every part you can make or have in stock, what your fleet is short
+of first, with FABRICATE MISSING for those) and the materials in store on the right; point at a part and the
+materials it needs light up beside the store, coral where you have too little.

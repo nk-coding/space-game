@@ -29,7 +29,7 @@ The save holds only what you did:
 - the start your game began from;
 - the research nodes you have researched;
 - the research data in store, per family, and the materials in store;
-- the workshop's stock of parts, and the hauled parts still waiting there to be sorted;
+- the workshop's stock of parts, and the hauled parts still waiting in the last voyage's report to be sorted;
 - your escorts;
 - which NEW parts you have already seen;
 - for every voyage: how often you launched it, whether you cleared it, and your best time;
@@ -52,8 +52,8 @@ BLUEPRINTS first, and the drydock starts again with a copy of the start's ship.
 ## Research data
 
 Research is paid with **research data**, and data comes only from salvage. What your fleet brings home is
-**dismantled**: broken parts and hull the moment you arrive, intact parts when you dismantle them in the
-[[facility:workshop]] instead of keeping them ([salvage and cargo](/mechanics/salvage-and-cargo)). Each part gives
+**dismantled**: broken parts and hull the moment you arrive, intact parts when you dismantle them in the voyage's
+report instead of keeping them for the [[facility:workshop]] ([salvage and cargo](/mechanics/salvage-and-cargo)). Each part gives
 research data to one **research family**:
 
 [[family:hull]], [[family:power]], [[family:energy]], [[family:kinetic]], [[family:shields]],

@@ -168,7 +168,7 @@ so a content rebalance (a node's cost, a part's unlock) applies to old saves wit
 | `data` | research data in store per family (f32, only amounts above 0) |
 | `materials` | materials in store (whole numbers, only amounts above 0) |
 | `stock` | the workshop's parts by id (GDR-0108, format 5): what a fleet is fitted from; only counts above 0, never hull; left out when empty |
-| `intake` | intact hauled parts waiting in the workshop to be kept or dismantled (format 5); left out when empty |
+| `intake` | intact hauled parts waiting to be kept or dismantled (format 5; in the voyage's report since 18 Oct 2026, the rest kept when it is dismissed); left out when empty |
 | `escorts` | saved design ids (`designs/`) flown as escorts; the flagship is the drydock's working design |
 | `seen` | parts research unlocked that the player has since picked or selected in the drydock; left out when empty (added 13 Oct 2026, track 7F: no new format, it has a default) |
 | `voyages` | per voyage ever launched: `launched` (count), `cleared` (the goal was cleared on a voyage that came home), `best_ticks` (the quickest such voyage, sim ticks at 30 per second) |
@@ -258,7 +258,9 @@ GDR-0108 (18 Oct 2026), `career/workshop.rs`. The content's workshop is the firs
   and `dismantle` × its recipe (rounded to the nearest unit over the `n`; `dismantle_yield` is the same, pure) and
   returns it; both refuse with `NotInIntake` for more than wait. `suggested(&content, &need)` per intake part: keep
   until the stock holds the rules' `keep` or what `need` (the fleet's parts, `fleet_parts`) asks for, dismantle the
-  rest; `sort_suggested` does it for every part and returns what the dismantled ones gave.
+  rest; `sort_suggested` does it for every part and returns what the dismantled ones gave. `keep_intake` keeps the
+  whole intake and returns how many (18 Oct 2026: the voyage's report sorts the intake, and the game keeps what it
+  leaves when it is dismissed, or at home without an open report).
 - **Fabricating**: `can_fabricate(&content, part, n)` / `fabricate`: refused in this order with `UnknownPart`,
   `LockedPart` (not unlocked), `NoRecipe` (salvage only), `NeedsFacility(upgrade)` (the recipe's `needs` not open),
   `CannotPay(shortfalls)` (every material short, in id order); else the recipe × `n` leaves the store and `n` go into

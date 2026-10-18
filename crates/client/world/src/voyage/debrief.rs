@@ -142,7 +142,7 @@ impl DebriefData {
                 };
                 let mut gives: Vec<String> = data.iter().map(|(f, x)| format!("{} +{}", upper(family(f).map_or(f, |f| &f.name)), amount(*x))).collect();
                 if kept == Kept::Workshop {
-                    gives.push("TO THE WORKSHOP".into());
+                    gives.push("SORT BELOW".into());
                 }
                 gives.extend(materials.iter().map(|(m, x)| format!("{} +{x}", upper(content.materials.get(m).map_or(m, |m| &m.name)))));
                 let color = data.keys().next().and_then(|f| family(f)).and_then(|f| f.color.clone());
@@ -324,7 +324,7 @@ mod tests {
         assert!(cannon.gives.starts_with("KINETIC WEAPONS +"), "{}", cannon.gives);
         // Intact parts go to the workshop to be sorted (GDR-0108).
         let thruster = d.rows.iter().find(|r| r.name == "Thruster, intact").unwrap();
-        assert_eq!((thruster.count, thruster.gives.as_str()), (3, "TO THE WORKSHOP"));
+        assert_eq!((thruster.count, thruster.gives.as_str()), (3, "SORT BELOW"));
         let fragment = d.rows.iter().find(|r| r.name.ends_with("fragment")).unwrap();
         assert!(fragment.gives.contains("PROGRAMMABLE MATTER +1"), "{}", fragment.gives);
         let kinetic = d.families.iter().find(|f| f.name == "KINETIC WEAPONS").unwrap();

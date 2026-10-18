@@ -11,6 +11,15 @@
   of an intake part held more than once) choose a count in a strip under the row: − n + (shift: five), MAX, the
   total cost or return, then confirm or cancel; it opens at the suggestion, the fleet's shortfall or one.
   Screenshots `docs/results/workshop-count-make.png`, `workshop-count-dismantle.png`.
+  2026-10-18, third (Niklas: parts made go straight into the parts list; take and dismantle of returned salvage
+  belong in the return report, if needed at all; left the parts, right the materials, a part's materials on hover):
+  the WORKSHOP shows the parts list on the left (what the fleet is short of with FABRICATE MISSING, then every part
+  to make or in stock: stock, MAKE, DISMANTLE) and the materials in store on the right, a row each; the part under
+  the pointer shows what it needs beside them, coral where the store is short. The intake is sorted in the voyage's
+  report (KEEP and DISMANTLE per part, SORT AS SUGGESTED), and what it leaves goes to the stock when it is dismissed
+  (`Career::keep_intake`; also at home with no report open, e.g. an older save). *Lead*: the per-part pills act on
+  all of that part (the count strip stays in the workshop for MAKE and DISMANTLE). Screenshot
+  `docs/results/workshop-columns.png`.
 - Date: 2026-10-18
 - Decided by: Niklas (the five decisions); lead session (names, numbers, the rules marked *lead*)
 - Related: [GDR-0029](0029-mild-death-bonded-matter.md), [GDR-0031](0031-materials-and-fabrication.md), [GDR-0063](0063-salvage-and-research-v1.md), [GDR-0071](0071-shipyard-home-long-u.md), [GDR-0082](0082-drydock-layout-v2-and-part-availability.md), [GDR-0089](0089-play-test-15-oct-speed-salvage-waves-station.md), [GDR-0098](0098-slice-in-the-galaxy-and-rim-rewards.md), [GDR-0104](0104-scenery-rocks-filler-landmarks.md), `docs/career.md` "The workshop", `docs/results/materials-inflow-2026-10-18.md`

@@ -86,7 +86,7 @@ Hover a place to highlight it; its tooltip names the key.
 | Tower and target lane | under the bottom wall | the TEST RANGE | [[control:open_test_range.keys]] |
 | Moorings | on the truss bridges left of the mind | FLEET | [[control:open_fleet.keys]] |
 | Records mast | on the tip of the top arm, by the gate | the LOG | [[control:open_log.keys]] |
-| Workshop | on the top wall, right of research | the [[facility:workshop]]: sort the haul, fabricate parts | [[control:open_workshop.keys]] |
+| Workshop | on the top wall, right of research | the [[facility:workshop]]: your parts and materials, fabricate parts | [[control:open_workshop.keys]] |
 | Gear ring | top right of the screen | SETTINGS: controls and display | [[control:open_settings.keys]] |
 
 The compute stack above the mind, the EVOLUTION lab ([[control:open_evolution.keys]]), stays dark until its research
@@ -96,11 +96,12 @@ designs against enemies and keeps the best of each kind, every fight to watch ag
 The labels on the yard tell you the state of things at a glance. The building area shows the frame and its grid
 size. FLEET counts the cores your fleet uses against your mind (coral when it is over). RESEARCH says how many
 nodes you can pay for now, or NO DATA YET. VOYAGES names the voyage the map will select, and the LOG says NEW in
-gold while a voyage result waits for you there. The WORKSHOP says how many hauled parts wait to be sorted. The lab lights up once you can pay for a node (and stays lit after your first research), and the records
+gold while a voyage result waits for you there. The WORKSHOP says how many parts your stock holds, or how many your fleet is short of. The lab lights up once you can pay for a node (and stays lit after your first research), and the records
 mast glows gold while it holds a result you haven't read.
 
-To come back from a screen, use the ring button at its top left (or Esc on most screens). In flight, the ring at
-the top left of the HUD or [[control:leave.keys]] brings you back from the test range.
+To come back from a screen, use the ring button at its top left, at the same place on every screen (or Esc on most
+screens). In flight, the ring at the top left of the HUD or [[control:leave.keys]] brings you back from the test
+range.
 
 <ControlsTable section="shipyard" />
 

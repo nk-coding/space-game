@@ -1311,6 +1311,12 @@ fn the_workshop_sorts_the_intake() {
     assert_eq!(got.materials, map(&[("ceramic", 2), ("copper", 2), ("steel", 6)]));
     assert_eq!(got.data["propulsion"], 3.0 * 3.0 + 4.0);
     assert_eq!(career.keep("thruster", 1), Err(Refusal::NotInIntake("thruster".into())));
+    // What the report leaves unsorted is kept.
+    bring_home(&mut career, &c, &[(intact("thruster"), 2), (intact("gyro"), 1)]);
+    assert_eq!(career.keep_intake(), 3);
+    assert!(career.intake().is_empty());
+    assert_eq!((career.stock()["thruster"], career.stock()["gyro"]), (6, 3));
+    assert_eq!(career.keep_intake(), 0);
     // Reading back keeps the stock; unknown or hull parts are dropped with a note.
     let text = career.to_ron().replace("stock: {", "stock: {\"warp_core\": 2, \"armor_block\": 1, ");
     let mut loaded = Career::from_ron(&text).unwrap();

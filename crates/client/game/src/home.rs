@@ -46,7 +46,7 @@ use bevy::state::state::StateTransitionEvent;
 use bevy::ui::{ComputedNode, UiGlobalTransform, UiScale, UiTransform, Val2};
 use bevy::window::PrimaryWindow;
 use kit::style::{Style, ui_color};
-use kit::ui_kit::{HudFonts, EXIT_SECONDS, Hot, ScreenFx, Tip, Tone, UiClick, show_screen, UiInputSet, UiPointer, UiSize, UiStyleSet, label, prose, set_color, set_text, ui_scale_for};
+use kit::ui_kit::{HudFonts, EXIT_SECONDS, Hot, ScreenFx, Tip, Tone, UiClick, show_screen, UiInputSet, UiPointer, UiSize, UiStyleSet, crumb, frame, label, prose, title, set_color, set_text, ui_scale_for};
 use data::input::Action;
 use world::camera::{CamMode, CameraRig, CameraSet};
 use world::settings::{Act, ActionTip};
@@ -299,22 +299,24 @@ fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>) {
     // Home's words and the labels fade in when the camera comes to rest on the yard, and out when it leaves
     // (`ui_kit::ScreenFx`).
     commands.spawn((HomeRoot, ScreenFx::closed(), full.clone(), Visibility::Hidden)).with_children(|root| {
-        // Top left: where we are and the docked design's name.
-        root.spawn(Node { position_type: PositionType::Absolute, left: px(28), top: px(22), flex_direction: FlexDirection::Column, row_gap: px(6), ..default() })
-            .with_children(|tl| {
-                tl.spawn(label(fonts, "THE SHIPYARD  ·  RIM", 11.0, c(Tone::Label, 1.0)));
-                tl.spawn((DesignName, prose(fonts, "", 20.0, c(Tone::Number, 1.0))));
+        // Top left (the frame's corner; the shipyard has no way back): where we are and the docked design's name.
+        let f = frame();
+        root.spawn(f.top_left()).with_children(|tl| {
+            tl.spawn(f.heading()).with_children(|col| {
+                col.spawn(crumb(fonts, "THE SHIPYARD  ·  RIM", &ui));
+                col.spawn((DesignName, title(fonts, "", &ui)));
             });
+        });
         // Top right: the EVOLVING chip while a run computes, SETTINGS (GDR-0090).
-        root.spawn(Node { position_type: PositionType::Absolute, right: px(22), top: px(18), align_items: AlignItems::Center, column_gap: px(10), ..default() }).with_children(|tr| {
+        root.spawn(f.top_right()).with_children(|tr| {
             evolution::spawn_chip(tr, fonts);
             crate::settings::spawn_ring(tr);
         });
         // Bottom right: the career's notes.
         root.spawn(Node {
             position_type: PositionType::Absolute,
-            right: px(28),
-            bottom: px(22),
+            right: px(f.edge),
+            bottom: px(f.top),
             width: px(300),
             flex_direction: FlexDirection::Column,
             row_gap: px(5),
@@ -864,13 +866,10 @@ fn sync_titles(
             Place::Evolution => evolution::building_line(&lab),
             Place::Workshop => {
                 let c = career.career();
-                let sort: u32 = c.intake().values().sum();
                 let need = data::career::fleet_parts(&content.0, std::iter::once(design.blueprint()).chain(&escorts.0));
-                let short: u32 = workshop_layer::missing(c, &need).iter().map(|(_, n, have)| n - have).sum();
-                match (sort, short) {
-                    (0, 0) => (format!("STOCK  ·  {} PARTS", c.stock().values().sum::<u32>()), Tone::Label),
-                    (0, n) => (format!("FLEET SHORT OF {n}"), Tone::Coral),
-                    (n, _) => (format!("{n} TO SORT"), Tone::Gold),
+                match workshop_layer::missing(c, &need).iter().map(|(_, n, have)| n - have).sum::<u32>() {
+                    0 => (format!("STOCK  ·  {} PARTS", c.stock().values().sum::<u32>()), Tone::Label),
+                    n => (format!("FLEET SHORT OF {n}"), Tone::Coral),
                 }
             }
         };

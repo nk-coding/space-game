@@ -1,5 +1,6 @@
 //! The workshop in the career (GDR-0108): the parts in stock that ships are fitted from, the haul's intact parts that
-//! wait to be kept or dismantled, fabricating parts from materials, and stocking an older save's designs.
+//! wait to be kept or dismantled (in the voyage's report; what it leaves is kept when it is dismissed), fabricating
+//! parts from materials, and stocking an older save's designs.
 //!
 //! Fitting takes nothing: a fleet launches when the stock holds every part its ships carry ([`voyage_ready`]), the
 //! parts come back to stock when a ship comes home, and a lost ship's bonded parts re-form at home (GDR-0029). So the
@@ -72,6 +73,17 @@ impl Career {
         self.take_intake(part, n)?;
         add_materials(&mut self.stock, part, n);
         Ok(())
+    }
+
+    /// Keeps the whole intake (into stock) and returns how many parts that was: what the voyage's report leaves
+    /// unsorted when it is dismissed goes to the parts list (Niklas, 18 Oct 2026).
+    pub fn keep_intake(&mut self) -> u32 {
+        let mut kept = 0u32;
+        for (part, n) in std::mem::take(&mut self.intake) {
+            add_materials(&mut self.stock, &part, n);
+            kept = kept.saturating_add(n);
+        }
+        kept
     }
 
     /// Dismantles `n` of the intake's `part` into research data and the workshop's `dismantle` share of its
