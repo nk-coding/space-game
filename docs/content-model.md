@@ -397,11 +397,8 @@ ship flies when nobody pilots it; default: its faction's (`Content::ship_behavio
 step 3, 15 Oct 2026; `AssistList`) holds the design's **pilot assists**: rules in the behavior format that help the
 player fly it, `rules` (one line each), checked as an assist list (`data::behavior::check_assists`; errors at
 `assists.rules[i]`), e.g. `assists: (rules: ["when idle(thrust) >= 1s -> brake(toggle2)", "always -> auto_lock(nearest,
-toggle1)"])`. An assist list has no target: its assists act on the pilot's lock (GDR-0088, dated line of 15 Oct 2026).
-Older lists (step 3, the same day) had a `target` field (a target line without its keyword) and could hold
-`face_target` rules: reading leaves both out (`AssistList` reads through `AssistListText`, which still refuses any
-other unknown field) and the writer never writes them, so those designs load and are saved back without them; the
-blueprint format keeps its version, as the new text reads in older builds. None (the
+toggle1)"])`. An assist list has no target: its assists act on the pilot's lock (GDR-0088, dated line of 15 Oct 2026);
+unknown fields (the `target` of the first lists, step 3) are refused. None (the
 default) is no assists: the ship coasts when let go. The drydock writes it with the design; the BEHAVIOR screen's
 PILOT ASSISTS tab edits it (its graph, or its TEXT view in exactly this rule text) (`docs/behavior-format.md` "Pilot assists").
 

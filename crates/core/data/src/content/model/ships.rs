@@ -42,37 +42,10 @@ pub const MAX_ASSIST_TOGGLES: u8 = 4;
 /// that help the player fly the ship; they run only while it is the focus. `rules` are lines as in a content
 /// behavior. A list has no target line: the assists act on the pilot's lock (an `auto_lock` rule sets one).
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
-#[serde(from = "AssistListText")]
+#[serde(deny_unknown_fields)]
 pub struct AssistList {
     /// The assist rules, one line each (`"when idle(thrust) >= 1s -> brake(toggle2)"`).
     pub rules: Vec<String>,
-}
-
-/// What a blueprint's `assists` reads. The first lists (GDR-0088 step 3, 15 Oct 2026) had a target line and could
-/// hold `face_target`: both are read and left out, so those designs still load and are written back without them.
-/// No format version changes: what is written now reads in the builds before.
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct AssistListText {
-    /// The old target line (the assists picked a target of their own while nothing was locked): ignored.
-    #[serde(default, rename = "target")]
-    _target: Option<serde::de::IgnoredAny>,
-    #[serde(default)]
-    rules: Vec<String>,
-}
-
-/// Assists that are gone, whose rules old lists may hold: `face_target` turned the guns onto the target, which
-/// the lock it now needs already does by itself.
-const RETIRED_ASSISTS: &[&str] = &["face_target"];
-
-impl From<AssistListText> for AssistList {
-    fn from(t: AssistListText) -> Self {
-        let retired = |r: &String| {
-            crate::behavior::Program::from_parts(None, std::slice::from_ref(r))
-                .is_ok_and(|p| p.rules.iter().any(|rule| RETIRED_ASSISTS.contains(&rule.action.name.as_str())))
-        };
-        AssistList { rules: t.rules.into_iter().filter(|r| !retired(r)).collect() }
-    }
 }
 
 impl AssistList {

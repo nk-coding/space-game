@@ -174,9 +174,7 @@ always -> hold_station(ally, toggle2)                  # else keep my place besi
   behavior condition works too, and two new ones work in both lists: `speed` (a share of the top speed) and
   `can_stop_straight` (thrusters already push against the motion, so the ship can stop without turning).
 - **Stored** in the design's blueprint, beside the behavior it names: `assists: (rules: [...])`
-  (`docs/content-model.md`). Lists written before 15 Oct 2026's change had a `target` and could hold `face_target`
-  rules: both are read and left out, and the list is written back without them. Checked with
-  `data::behavior::check_assists`; the vocabulary marks the assists' nodes `pilot: true`.
+  (`docs/content-model.md`). Checked with `data::behavior::check_assists`; the vocabulary marks the assists' nodes `pilot: true`.
 
 ## Grammar
 

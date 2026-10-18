@@ -30,6 +30,7 @@
     TARGET).
   - 2026-10-17: Accepted (Niklas, 17 Oct 2026): the assists and the lead defaults above are kept.
   2026-10-17: `avoid_collisions` sidesteps asteroid rocks too (an anchored circle on the same course test, [GDR-0104](0104-scenery-rocks-filler-landmarks.md)); behaviors' and maneuvers' goals now bend round rocks (not round ships: the rule above stands for them).
+  2026-10-18: assist lists with the old `target` line or `face_target` rules are no longer read ([ADR-0044](../adr/0044-no-save-compatibility-before-release.md)): such a design fails to load.
 - Date: 2026-10-14
 - Decided by: Niklas (assist model, scope, first actions, override, default, weapon groups, fire keys, bindings);
   lead defaults where marked

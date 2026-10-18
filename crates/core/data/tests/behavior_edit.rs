@@ -1051,25 +1051,3 @@ fn blueprint_assists_round_trip_and_validate() {
     let problems = data::validate_ship(&c, &bp);
     assert!(problems.iter().any(|p| p.is_error() && p.field.as_deref() == Some("assists.rules[0]")), "{problems:?}");
 }
-
-/// A blueprint from GDR-0088 step 3 (15 Oct 2026) whose assists had a target line and a `face_target` rule still
-/// loads: both are read and left out (the assists act on the lock, which aims the ship by itself), and the blueprint
-/// is written back without them.
-#[test]
-fn old_assists_with_a_target_line_and_face_target_load_and_are_written_without() {
-    let c = content();
-    let mut text = data::blueprint_to_ron(c.ships.get("halvex_runner").unwrap());
-    let old = "    assists: (\n        target: \"weakest(engines)\",\n        rules: [\n            \"when idle(thrust) >= 1s -> brake(toggle2)\",\n            \"always -> face_target(toggle1)\",\n            \"when lock_held -> auto_fire(2)\",\n        ],\n    ),\n";
-    let at = text.find("    size:").unwrap();
-    text.insert_str(at, old);
-    let bp = data::parse_blueprint(&text).unwrap();
-    let rules = ["when idle(thrust) >= 1s -> brake(toggle2)", "when lock_held -> auto_fire(2)"];
-    assert_eq!(bp.assists, Some(data::AssistList { rules: rules.iter().map(|r| r.to_string()).collect() }));
-    assert!(data::validate_ship(&c, &bp).iter().all(|p| !p.is_error()));
-    let written = data::blueprint_to_ron(&bp);
-    assert!(!written.contains("target:") && !written.contains("face_target"), "{written}");
-    assert!(written.contains("    assists: (\n        rules: [\n            \"when idle(thrust) >= 1s -> brake(toggle2)\",\n            \"when lock_held -> auto_fire(2)\",\n        ],\n    ),\n"), "{written}");
-    // Anything else unknown in `assists` is still refused.
-    let typo = text.replace("        target: ", "        targte: ");
-    assert!(data::parse_blueprint(&typo).is_err());
-}
