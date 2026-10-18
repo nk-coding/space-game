@@ -602,7 +602,7 @@ pub fn preview(content: &Content, style: &Style, node: &ResearchNode, now: tree:
             for part in content.parts.iter().filter(|p| p.matches(target)) {
                 let (b, a) = (content.part_stats_upgraded(part, None, &before), content.part_stats_upgraded(part, None, &after));
                 for (b, a) in b.iter().zip(&a).filter(|(b, _)| b.bonus.is_none() && data::design::upgrades::shows_on(stat, &b.stat)) {
-                    stats.push(Stat { label: format!("{} {}", part.name, b.label).to_uppercase(), value: format!("{} » {}", b.text, a.text) });
+                    stats.push(Stat { label: format!("{} {}", part.name, b.label).to_uppercase(), value: content.before_after(b, a) });
                 }
             }
             let label = content.stats.get(stat).map_or_else(|| stat.to_uppercase(), |d| d.name.to_uppercase());

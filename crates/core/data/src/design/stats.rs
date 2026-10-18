@@ -181,7 +181,24 @@ pub fn with_unit(number: &str, unit: &str) -> String {
     }
 }
 
+/// The most decimals [`Content::before_after`] goes to.
+const MAX_DECIMALS: u8 = 4;
+
 impl Content {
+    /// A stat before and after a change, `0.2 » 0.22/s`: each with the stat's decimals, or with as many more as it
+    /// takes (up to [`MAX_DECIMALS`]) for two different values to read differently.
+    pub fn before_after(&self, before: &StatLine, after: &StatLine) -> String {
+        let more = || {
+            let from = self.stats.get(&before.stat)?.decimals + 1;
+            let text = |v: f32, d: u8| with_unit(&format_number(v, d), &before.unit);
+            (from..=MAX_DECIMALS).map(|d| (text(before.value, d), text(after.value, d))).find(|(b, a)| b != a)
+        };
+        match (before.text == after.text && before.value != after.value).then(more).flatten() {
+            Some((b, a)) => format!("{b} » {a}"),
+            None => format!("{} » {}", before.text, after.text),
+        }
+    }
+
     /// One value of a stat as a line: label, unit, precision and better-direction from `stats.ron` (part
     /// stats, material stats and the ship-level [`SHIP_STATS`] alike). `None` if `stats.ron` lacks the stat.
     pub fn stat_line(&self, stat: &str, value: f32) -> Option<StatLine> {
@@ -458,5 +475,15 @@ mod tests {
         assert_eq!(with_unit("10", "MW"), "10 MW");
         assert_eq!(with_unit("2.6", "/s"), "2.6/s");
         assert_eq!(with_unit("4", ""), "4");
+    }
+
+    #[test]
+    fn before_and_after_always_read_differently() {
+        let c = crate::base_content();
+        let line = |v: f32| c.stat_line("shield_regen", v).unwrap();
+        // One decimal reads 0.2 both times: two then.
+        assert_eq!(c.before_after(&line(0.2), &line(0.216)), "0.2 HP/s » 0.22 HP/s");
+        assert_eq!(c.before_after(&line(0.2), &line(0.5)), "0.2 HP/s » 0.5 HP/s");
+        assert_eq!(c.before_after(&line(0.2), &line(0.2)), "0.2 HP/s » 0.2 HP/s");
     }
 }
