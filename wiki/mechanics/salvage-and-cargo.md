@@ -148,7 +148,8 @@ new parts, armour, frames and more mind capacity, such as [[research:tamed_core]
 ## Fabricating and the stock
 
 Your ships are fitted from the workshop's stock: a fleet launches only when the stock holds every part its ships
-carry (hull plating is not counted). The drydock shows each part's stock and what the design is short of. The
+carry (hull plating is not counted). The workshop lists its parts like the drydock: a search, a section per category
+(the parts your fleet is short of first) and a part's card when you rest the pointer on its row. The drydock shows each part's stock and what the design is short of. The
 workshop fabricates parts from materials: an unlocked part with a recipe, such as a [[part:pulse_laser]] from
 [[part:pulse_laser.recipe]]. Some recipes need a workshop upgrade: the [[facility:fusion_workshop]] for the
 [[part:fusion_reactor]] and the [[part:torch_drive]], the [[facility:grown_vat]] for the Grown's parts. The

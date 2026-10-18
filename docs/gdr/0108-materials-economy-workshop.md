@@ -26,6 +26,11 @@
   column (a long name wraps, never pushes the value out), an empty column left out (the other takes the width), TOTAL
   only under two lines or more; the dismantled parts as compact tiles with a larger icon and the count, the name in
   the tooltip. `?debrief=sample|short` (with `newgame=1`) shows a sample report.
+  2026-10-18, evening (Niklas: the workshop's parts list wants the drydock's search and grouping): the list is the
+  drydock palette's grouped list (one component): the search, a chip and a section per category, in each section the
+  parts the fleet lacks first; the rows keep their stock, MAKE, DISMANTLE and the needs in the materials column. The
+  pointer resting on a row shows the part's hover card (the drydock's) between the two columns. `docs/client.md`
+  "Workshop".
 - Date: 2026-10-18
 - Decided by: Niklas (the five decisions); lead session (names, numbers, the rules marked *lead*)
 - Related: [GDR-0029](0029-mild-death-bonded-matter.md), [GDR-0031](0031-materials-and-fabrication.md), [GDR-0063](0063-salvage-and-research-v1.md), [GDR-0071](0071-shipyard-home-long-u.md), [GDR-0082](0082-drydock-layout-v2-and-part-availability.md), [GDR-0089](0089-play-test-15-oct-speed-salvage-waves-station.md), [GDR-0098](0098-slice-in-the-galaxy-and-rim-rewards.md), [GDR-0104](0104-scenery-rocks-filler-landmarks.md), `docs/career.md` "The workshop", `docs/results/materials-inflow-2026-10-18.md`

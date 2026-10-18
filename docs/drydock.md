@@ -288,7 +288,14 @@ A). Screenshots: `docs/results/drydock-v2-1280x720.png`, `-1280x720-more.png` (t
   then it scrolled by whole entries, headings and rows, so icons were never cut; now a row cut at an edge hides its
   icon until it is whole, under the edge's fade). See [client](client.md) "Smooth scrolling". The search filters the whole list; empty sections and their chips go. The list, the swatches and
   the chips have the kit's overlay scrollbars (draggable; the strips' under them), and a lit row's, chip's or
-  swatch's glow fades out past their edges (`ui_kit::Scrollbar`, [client](client.md)).
+  swatch's glow fades out past their edges (`ui_kit::Scrollbar`, [client](client.md)). Since 18 Oct 2026 (evening)
+  the column is the kit's grouped list (`kit::ui_kit::GroupedList`, the workshop's parts list too; [client](client.md)
+  "Part lists and the hover card"): the rows are real nodes (no longer a pool of slots), filled when the unlocks
+  change (`panels::fill_palette`) and kept up in place (`panels::sync_rows`); the pointer resting on a row shows the
+  part's hover card beside the column over the grid (`world::part_card`).
+- **SELECTED PART**'s stats are the shared stat block (`world::part_card::StatBlock`, the hover card's too; 18 Oct
+  2026, Niklas: "the power output looks shit", the label wrapped over its value in a three-column grid): two columns,
+  a label over its value, the label on one line, RECIPE and IN STOCK across both.
 - **Top bar**: the breadcrumb and name left, the OVERLAY pills right (the armour moved to the left column).
 - **Bottom bar**: undo and redo; PAINT, FILL, ERASE, SELECT, ROTATE; MIRROR and BEVEL; the status line over the
   voyage-ready line; SAVE, BLUEPRINTS, EXPORT and ⋯ as icon rings (tooltips with name and key); BEHAVIOR and

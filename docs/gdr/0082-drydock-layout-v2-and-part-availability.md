@@ -2,6 +2,12 @@
 
 - Status: Accepted
   2026-10-18: the career fills no counts in the editing model ([GDR-0108](0108-materials-economy-workshop.md)): designs are not limited by the workshop's stock (they plan ahead); the launch is, and the palette rows show the stock less what the design holds. The counts stay for the lab's runs.
+  2026-10-18, evening (Niklas: "the power output looks shit"; a part in the list should tell about itself on hover):
+  SELECTED PART's stats are a two-column stat block, a label over its value on one line (never wrapping into it),
+  RECIPE and IN STOCK across both columns; the pointer resting on a palette row shows a hover card beside the column
+  (icon, name, size and category, the same stat block with the recipe, the bonuses). The left column is the kit's
+  grouped list, shared with the workshop (search, chips, sections unchanged). `docs/client.md` "Part lists and the
+  hover card".
 - Date: 2026-10-14
 - Decided by: Niklas (in chat and interactively, with the draft `docs/plans/mockups/drydock-left-column.html`)
 - Related: [GDR-0051](0051-drydock-v1.md), [GDR-0053](0053-drydock-v1-lead-defaults.md), [GDR-0063](0063-salvage-and-research-v1.md), [GDR-0029](0029-mild-death-bonded-matter.md), [GDR-0031](0031-materials-and-fabrication.md), [GDR-0081](0081-drydock-editing-bevel-rotate-replace.md), `docs/drydock.md`

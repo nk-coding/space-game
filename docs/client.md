@@ -302,8 +302,8 @@ names in this document are found in the crate that holds them:
 
 | Crate | Modules |
 |---|---|
-| `crates/client/kit` (the toolkit: knows nothing about ships or the sim) | `atlas` (+ `atlas.wesl`), `style`, `meshbuf`, `ui_kit` (+ `widgets`, `field`, `tip`, `fonts`, `frame`, `transition`, `scrollbar`), `ui_icons`, `clipboard`, `params` (+ `RenderToggles`), `view` (`ViewScale`: the camera's zoom and place as the atlas and the icons read them, written by `world::camera`), `rng`; the fonts in `assets/fonts` |
-| `crates/client/world` (the running game) | `sim_bridge` (+ `PilotFocus`), `scene`, `ship_model`, `ship_view`, `part_icons` (part and ship icons: `ui_icons::IconShapes` for the content), `fx` (+ `blast`), `shield` (+ `shield.wesl`), `backdrop`, `camera` (+ `spawn_camera`), `controls`, `hud`, `flight_hud` (+ `text`, `markers`, `help`), `fleet_bar`, `test_range`, `mode`, `voyage` (+ `debrief`: the debrief's data), `warp_fx`, `storage`, `career`, `player` (`design`, `behaviors`, `library`: what the player owns) |
+| `crates/client/kit` (the toolkit: knows nothing about ships or the sim) | `atlas` (+ `atlas.wesl`), `style`, `meshbuf`, `ui_kit` (+ `widgets`, `field`, `tip`, `fonts`, `frame`, `transition`, `scrollbar`, `list`: the grouped list), `ui_icons`, `clipboard`, `params` (+ `RenderToggles`), `view` (`ViewScale`: the camera's zoom and place as the atlas and the icons read them, written by `world::camera`), `rng`; the fonts in `assets/fonts` |
+| `crates/client/world` (the running game) | `sim_bridge` (+ `PilotFocus`), `scene`, `ship_model`, `ship_view`, `part_icons` (part and ship icons: `ui_icons::IconShapes` for the content), `part_card` (a part's information, its stat block and the hover card beside a part list), `fx` (+ `blast`), `shield` (+ `shield.wesl`), `backdrop`, `camera` (+ `spawn_camera`), `controls`, `hud`, `flight_hud` (+ `text`, `markers`, `help`), `fleet_bar`, `test_range`, `mode`, `voyage` (+ `debrief`: the debrief's data), `warp_fx`, `storage`, `career`, `player` (`design`, `behaviors`, `library`: what the player owns) |
 | `crates/client/game` (the screens and `main.rs`) | `home`, `shipyard` (+ `gate`: the ring after a recall), `fleet`, `voyage_log` (the LOG), `settings`, `research`, `map`, `debrief` (the panel), `drydock` (`panels/`: `spawn`, `sync`; `blueprints/`: `autosave`, `title`, `screens`, `handlers`, `sync`), `behavior_ui`; `index.html` and `Trunk.toml` for the web build |
 
 ```
@@ -1174,7 +1174,13 @@ layer); under them the total (`choice_words`: `COSTS COPPER 6 · LATTICE CRYSTAL
 DATA`). It opens at the fleet's shortfall (MAKE) or one (`first_count`); one strip at a time, any action closes it.
 Top right CLOSE; bottom left what the last action did (`FABRICATED 2 PULSE LASER · IN STOCK`, a refusal in coral).
 Every action is the career's and writes the save. Every row leads with the part's icon as the drydock's palette
-draws it (`drydock::panels::part_icon`, hull parts in the first armour; Niklas, 18 Oct 2026).
+draws it (`drydock::panels::part_icon`, hull parts in the first armour; Niklas, 18 Oct 2026). Since the evening of
+18 Oct 2026 (Niklas: the workshop's list wants the drydock's search and grouping) the parts list is the kit's
+grouped list like the palette ("Part lists and the hover card"): the search, a chip per category, a section per
+category (the parts the fleet lacks first in each), the rows as before; what the fleet is short of and FABRICATE
+MISSING sit over it. The parts column is 640 px wide, the materials column 280 px at x 960 (a material's name on one
+line), and the room between
+them is where the hover card shows (`docs/results/workshop-list-card.png`).
 Screenshots: `docs/results/workshop-layer.png`, `workshop-home.png`, `workshop-drydock.png`; with the icons
 `workshop-icons.png`, and the redrawn cargo icons in the palette `drydock-cargo-icons.png` (the cargo bay, 1 × 1, a
 single crate, was a 2 × 2 grid of boxes; the cargo hold, 2 × 2, four crates, was a 3 × 3 grid; the other part icons
@@ -1467,6 +1473,43 @@ these:
 
 Screenshots (1280 × 720): `docs/results/ui-frame-research.png`, `ui-frame-fleet.png`, `flight-hud-frame.png`,
 `flight-menu-controls.png`, `flight-controls-from-menu.png`.
+
+## Part lists and the hover card
+
+Niklas, 18 Oct 2026: the drydock's SELECTED PART stats looked broken (POWER OUTPUT wrapped over its `12 MW` in a third
+of the column), a part in the list should tell about itself on hover, and the workshop's parts list wants the
+palette's search and grouping, from one component.
+
+- **`kit::ui_kit::GroupedList`** (`ui_kit/list.rs`): `spawn_grouped_list(column, fonts, ui, ListSpec, search_bundle,
+  between)` spawns the search field (the screen's components on it), what the screen puts between it and the chips
+  (the drydock's ARMOR swatches), one line of group chips and the scrolling area, and returns the area;
+  `fill_list(commands, area, fonts, ui, rows, |parent, row| -> Entity)` spawns the rows anew, a heading before each
+  group's first row, each row as the screen's closure spawns it (the kit puts the `ListRow` on it: key, group, the
+  lowercase text the search looks in, `aside` for rows counted apart, the drydock's LOCKED). The kit filters by the
+  search (display only, no respawn; another search starts at the top), counts the headings (`4  ·  2 LOCKED`), shows
+  a chip while its group has rows, glides the list to a clicked chip's heading and lights the chip of the section in
+  view (`lit_group`), and scrolls the chips' line by wheel and drag. Rows that change keep their nodes: the drydock
+  writes its rows' texts and icons in place (`panels::sync_rows`) and fills the list again only when the unlocks
+  change; the workshop fills it after every action. Icons in the rows are cut where the area cuts them (`ui_icons`).
+- **`world::part_card`**: `part_info` is a part's information from content (name, `2×1  ·  WEAPONS`, or `LOCKED  ·
+  <node>`, its stat lines, RECIPE and IN STOCK against what the design holds or the fleet carries, its bonuses), one
+  source for the drydock's SELECTED PART (a palette part) and the hover card. `StatBlock` with `spawn_stat_block` is
+  the one stat block both show: two columns (`stats.*` in `art/tokens.json`), each line a label over its value, the
+  label on one line (no wrap, cut at the cell's edge, so it can never run into its value) and every value at the same
+  height in its row; RECIPE and IN STOCK span both columns (`StatLine::wide`). A test estimates every part's labels
+  at Barlow's widest capitals against the card's narrower column.
+- **The hover card**: a row with a `PartHover` (its part, its armour, what its stock counts against) shows the card
+  after the pointer rests on it for `card.delay` (0.3 s; from a shown card's row to the next at once), beside the row
+  (`card.offset` right of it, left when the window has no room; level with it, inside the window and up and down the
+  row's list, so it never reaches the bars under or over the list, `card_position`). Icon in brackets, name, subtitle, the stat block, the gold bonus lines; a plate like `panel.*`
+  (`card.*` in the tokens). **Layering**: part icons are world meshes under bevy_ui, so the card's backing is a world
+  mesh too (a filled `UiIcon::Scrim`) one icon layer up (`ui_icons::UiIconLayer(1)`: 2 world units over the screens'
+  icons and scrims), its icon on the same layer, its words bevy_ui. It covers the icons under it and shows its own;
+  since bevy_ui draws over every icon, the card lies beside the list over the world (the drydock's grid, the
+  workshop's room between its columns), never over a list's text.
+
+Screenshots (1280 × 720): `docs/results/drydock-stat-block.png` (SELECTED PART, a reactor's POWER OUTPUT and BLAST
+DAMAGE), `drydock-hover-card.png`, `workshop-list-card.png` (a search, the sections and a card).
 
 ## Screen transitions
 

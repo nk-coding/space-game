@@ -58,6 +58,10 @@ The left column lists every part in sections, one per part category ([[category:
 are locked (`WEAPONS n · n LOCKED`). Each row shows the part's icon, name, footprint and one key stat, and how many
 you have left (`∞`: parts are unlimited).
 
+Rest the pointer on a row and a card opens beside the list: the part's icon, name, size and category, all its
+stats, what the workshop makes it from and how many are in stock, and the bonuses it gives its neighbours. Moving to
+another row moves the card along. The workshop's parts list has the same search, sections and card.
+
 - Click a row to pick the part. It becomes your brush; if the select or erase tool was on, the paint tool takes
   over.
 - Click on the grid to put it down. The part is centred on the cell under the pointer.
@@ -222,7 +226,7 @@ With the select tool, click a placed part to see it in the right column: its nam
 (INSTALLED, or IDLE when it is over the control capacity, or FALLS OFF when it is not on the main piece). Below
 that: its heat at full load against its limit, its power level, and its stats after bonuses (boosted values in
 gold), with one gold line for each bonus it gets or gives. With nothing selected, the block shows the part picked
-in the list.
+in the list, as its card in the list does. The stats stand in two columns, each name over its value.
 
 Its controls:
 
