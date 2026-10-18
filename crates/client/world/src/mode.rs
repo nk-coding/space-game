@@ -125,9 +125,9 @@ mod tests {
         AppMode::at_start(&Params::parse(q))
     }
 
-    /// Home is the start; every scene of before keeps its mode; flight-only parameters still fly.
+    /// Home is the start; every scene keeps its mode; flight parameters need their scene.
     #[test]
-    fn the_game_starts_at_home_unless_a_scene_or_a_flight_parameter_says_otherwise() {
+    fn the_game_starts_at_home_unless_a_scene_says_otherwise() {
         assert_eq!(start(""), AppMode::Home);
         assert_eq!(start("?scene=home&zoom=60"), AppMode::Home);
         assert_eq!(start("?debug=1&hud=0&stats=1"), AppMode::Home);
@@ -136,7 +136,8 @@ mod tests {
             assert_eq!(start(q), AppMode::Flight, "{q}");
         }
         for q in ["?load=20", "?hashlog=1&hashticks=600", "?fleet=3", "?zoom=70", "?seed=7"] {
-            assert_eq!(start(q), AppMode::Flight, "{q}");
+            assert_eq!(start(q), AppMode::Home, "{q}");
+            assert_eq!(start(&format!("?scene=sandbox&{}", &q[1..])), AppMode::Flight, "{q}");
         }
         assert_eq!(start("?scene=drydock&zoom=40"), AppMode::Drydock);
         assert_eq!(start("?scene=behavior&behavior=raider_basic"), AppMode::Behavior);
