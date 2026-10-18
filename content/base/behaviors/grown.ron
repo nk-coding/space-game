@@ -3,8 +3,8 @@
 // relative to the target (`ram` flies nose first: out of an orbit it slid past), so the rammers close in to thorn
 // range facing the target and charge from within 45 m; the first charge comes 7 s after the target is picked, so
 // the thorns cover the approach (a charge at once crushed a Runner with an escort: a grove cleared about a third).
-// A thornback circles and shoots like a raider pack, closer in; a grove guardian charges less often. Each fits the
-// ganglion's three rule slots. PLACEHOLDER (lead defaults, 18 Oct 2026; docs/results/outer-balance-2026-10-18.md).
+// A seedling has no guns, so it closes in nearer and charges for longer. A thornback circles and shoots like a
+// raider pack, closer in; a grove guardian charges less often. Each fits the ganglion's three rule slots. PLACEHOLDER (lead defaults, 18 Oct 2026; docs/results/outer-balance-2026-10-18.md).
 [
     (
         id: "grown_rammer",
@@ -16,6 +16,18 @@
         rules: [
             "when target_in_range(45m) and cycle(10s) >= 7s -> ram",
             "always -> approach(80%)",
+        ],
+    ),
+    (
+        id: "grown_seedling",
+        name: "Grown seedling",
+        summary: "Close in to ramming distance, then charge prow first, again and again.",
+        description: "Picks the nearest enemy and closes in to 30 m with its nose on the target. For the last four seconds of every six, within 60 m, it rams, flying on through the target, then comes round and closes in again. Seedlings have no guns, so the charge is all they do.",
+        tags: ["grown", "attack"],
+        target: "nearest",
+        rules: [
+            "when target_in_range(60m) and cycle(6s) >= 2s -> ram",
+            "always -> approach(30m)",
         ],
     ),
     (

@@ -14,6 +14,7 @@
             (encounter: "grove", count: (1, 2)),
             (encounter: "grove_pair", count: (0, 1)),
             (encounter: "guarded_grove", count: (0, 1)),
+            (encounter: "seedling_shoal", count: (0, 1)),
             (encounter: "grown_dead", count: (1, 1)),
         ],
         scenery: (

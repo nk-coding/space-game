@@ -320,6 +320,41 @@ fn a_grown_rammer_rams_with_its_prow() {
     assert!(w.ship(me).unwrap().parts().iter().any(|p| !p.alive), "the ram broke nothing");
 }
 
+/// GDR-0109: a seedling has no gun, but its ram prow and its engine keep it armed (a site of them does not clear
+/// at once); under the rammer's behavior it charges a ship that sits still; with its engine gone it is disarmed.
+#[test]
+fn a_seedling_is_armed_by_its_prow_and_rams() {
+    let c = content();
+    let seedling = design(&c, "grown_seedling");
+    let runner = design(&c, "halvex_runner");
+    let mut w = Sim::new(1);
+    let me = w.spawn_ship(runner, Owner::PLAYER, Body::at(Vec2::ZERO, 0.0));
+    let s = w.spawn_ship(seedling.clone(), Owner(1), Body::at(Vec2::new(0.0, -70.0), 0.0));
+    fight(&mut w, &c, s);
+    step(&mut w);
+    assert!(w.ship(s).unwrap().is_armed(), "a prow and an engine arm it");
+    let prow = find(&seedling, "ram_prow", 0, 0);
+    let hull = |w: &Sim, s: ShipId| w.ship(s).unwrap().parts().iter().map(|p| p.hp).sum::<f32>();
+    let hull0 = hull(&w, me);
+    let mut by_prow = 0.0;
+    for _ in 0..30 * 60 {
+        step(&mut w);
+        for e in w.events() {
+            if let SimEvent::Impact(i) = e {
+                let mine = if i.a.ship == s { i.part_a } else if i.b.ship == s { i.part_b } else { None };
+                if mine == Some(prow) && i.damage > 0.0 {
+                    by_prow += i.damage;
+                }
+            }
+        }
+    }
+    assert!(by_prow > 0.0, "the seedling never rammed with its prow");
+    assert!(hull(&w, me) < hull0, "the ram hurt nothing");
+    kill(&mut w, s, &[find(&seedling, "thruster", 1, 1)]);
+    step(&mut w);
+    assert!(!w.ship(s).unwrap().is_armed(), "a prow without an engine is no weapon");
+}
+
 /// A shield emitter open on its top and right side beside a core and a reactor over steel; with `radiator`, a
 /// radiator right of the emitter.
 fn emitter_ship(c: &data::Content, radiator: bool) -> std::sync::Arc<sim::ShipDesign> {

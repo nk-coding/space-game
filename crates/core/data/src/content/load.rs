@@ -799,12 +799,14 @@ impl Content {
             })
     }
 
-    /// Is an intact ship armed (GDR-0068, the sim's `Ship::is_armed` at spawn)? Its main piece has a part with a
-    /// `weapon` and a part that makes power. A voyage site clears once none of its ships is armed, so a goal
-    /// encounter must always roll an armed ship. False for a ship whose grid does not build.
+    /// Is an intact ship armed (GDR-0068, the sim's `Ship::is_armed` at spawn)? Its main piece has a part that
+    /// makes power and a part with a `weapon`, or a ram prow (a part dealing more in a ram than it takes) and an
+    /// engine (GDR-0109). A voyage site clears once none of its ships is armed, so a goal encounter must always roll
+    /// an armed ship. False for a ship whose grid does not build.
     pub fn ship_armed(&self, ship: &Blueprint) -> bool {
         let main = self.main_piece_parts(ship);
-        main.iter().any(|p| p.weapon.is_some())
+        (main.iter().any(|p| p.weapon.is_some())
+            || (main.iter().any(|p| p.ram.as_ref().is_some_and(|r| r.dealt > 1.0)) && main.iter().any(|p| p.engine.is_some())))
             && main
                 .iter()
                 .any(|p| p.power.as_ref().is_some_and(|x| x.output > 0.0))

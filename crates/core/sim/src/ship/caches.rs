@@ -257,6 +257,7 @@ impl Ship {
         // Thruster table (engines, then RCS nozzles) and gun mounts.
         piece.thrusters.clear();
         piece.guns.clear();
+        piece.rams = false;
         let com = piece.mass.com;
         let row = |slot: u32,
                    part: PartIdx,
@@ -291,6 +292,7 @@ impl Ship {
             let spec = &d.parts[p as usize];
             let st = &self.stats[p as usize];
             let clear = self.parts[p as usize].clear;
+            piece.rams |= spec.ram[0] > 1.0;
             if spec.is_engine && slot != NO_SLOT {
                 let e = &d.engines[slot as usize];
                 let deg = st.get(Stat::Gimbal).clamp(0.0, 89.0);

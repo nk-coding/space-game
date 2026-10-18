@@ -2368,9 +2368,10 @@ behavior library (`set_behaviors`) and spawns the fleet at `plan.entry`. From th
    Clearing is final, so the passing states don't count: a dark or dormant enemy that is armed keeps its site open
    (13 Oct 2026 review). A quiet site is never cleared.
 
-**Armed** (`Ship::is_armed`, GDR-0068; the rule is a *lead default*): the controlling piece still has a gun and a
-power source, both alive parts (`Piece::guns` and the piece's reactors, rebuilt on every breakage, so the check is
-one look-up). Only losses that never come back disarm: a gun that overheats, idles (control capacity), browns out
+**Armed** (`Ship::is_armed`, GDR-0068; the rule is a *lead default*): the controlling piece still has a power
+source and a gun, or a ram prow and a working engine (GDR-0109, 18 Oct 2026: a part with `ram.dealt > 1` and a
+thruster that is not an RCS nozzle), all alive parts (`Piece::guns`, `Piece::rams`, `Piece::thrusters` and the
+piece's reactors, rebuilt on every breakage, so the check is one look-up). Only losses that never come back disarm: a gun that overheats, idles (control capacity), browns out
 or has its line of fire blocked by its own hull still counts (the blocker can be shot off); a piece without a
 reactor never fires again. `Sim::awake_enemy(owner, ship)`: a running vessel of another owner that is not one of a
 sleeping site's ships (`Voyage::asleep`); `Sim::armed_enemy(owner, ship)`: an awake enemy that is armed. The

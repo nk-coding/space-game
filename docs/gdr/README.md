@@ -117,6 +117,7 @@ overview and links to both series. Format and status rules: `CLAUDE.md`, section
 | [0106](0106-flight-minimap.md) | A minimap in flight: an always-on disc bottom right on a voyage, north up round the flown ship, 1 km (B: 2.5 km, then off), only what the sensors and scans revealed, drawn by the cluster map's painter | Accepted (provisional, lead) | 2026-10-17 |
 | [0107](0107-depth-layers-zoom-and-draw-order.md) | Depth layers: a layer of parallax p moves p of the camera's motion and scales with the zoom to the power p, draws by its depth (nothing farther than the planet over it), stars in three layers, no distant fights, finer rocks | Accepted (provisional, lead) | 2026-10-17 |
 | [0108](0108-materials-economy-workshop.md) | The materials economy: one WORKSHOP (the fabricator and the salvage bay merged), parts cost materials (recipes, workshop upgrades) and fit a fleet from its stock (nothing consumed; lost parts re-form), hauled intact parts kept or dismantled, most stripped parts break, dismantling returns 40 % (broken 25 %) | Accepted (Niklas; numbers provisional, lead)
+| [0109](0109-a-ram-prow-and-an-engine-arm-a-ship.md) | A ram prow and a working engine arm a ship: a rammer without guns keeps its site from clearing and blocks the recall | Accepted (provisional, lead) | 2026-10-18 |
 <!-- index:end -->
 
 ## How to add, supersede and deprecate

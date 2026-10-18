@@ -171,7 +171,7 @@ impl<'a> Validator<'a> {
                         v,
                         format!("{f}.encounter"),
                         format!(
-                            "encounter `{}` may roll no armed ship (a weapon and power on its main piece): a site \
+                            "encounter `{}` may roll no armed ship (power and a weapon, or a ram prow and an engine, on its main piece): a site \
                              clears once its enemies are destroyed or disarmed (GDR-0068), so the goal would clear \
                              the moment it wakes",
                             e.id

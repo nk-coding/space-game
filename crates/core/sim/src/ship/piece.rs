@@ -233,6 +233,9 @@ pub struct Piece {
     /// row the first line has been at its limit. Kept by the flight computer.
     pub assist: crate::flight::TurnAssist,
     pub guns: Vec<GunMount>,
+    /// Has an alive part that deals more in a ram than it takes (a ram prow): with an engine and power it keeps the
+    /// ship armed (GDR-0109).
+    pub rams: bool,
     /// This tick's actuator commands (written by the flight computer or from raw controls).
     pub act: Actuation,
     /// Share of each thruster row's force left at this tick's velocity (rated-speed falloff, 0..1; 1 for
@@ -309,6 +312,7 @@ impl Piece {
             authority: ThrustAuthority::default(),
             assist: crate::flight::TurnAssist::default(),
             guns: Vec::new(),
+            rams: false,
             act: Actuation::default(),
             falloff: Vec::new(),
             output: Vec::new(),

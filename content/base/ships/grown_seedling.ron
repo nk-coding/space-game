@@ -1,0 +1,21 @@
+// Grown seedling: the smallest of the Grown, swarming in shoals (GDR-0027: the Grown "love ramming"). A ram prow
+// across the front, the ganglion and one thruster behind it; no heart and no guns: its prow and engine keep it
+// armed (GDR-0109), it heals only as its prow and ganglion do, and with its thruster shot off it is disarmed. The
+// ganglion's gyro holds the nose against the one thruster's off-centre push. PLACEHOLDER layout
+// (content batch of 18 Oct 2026, tuned with the headless voyage runner, docs/results/encounters-balance-2026-10-18.md).
+(
+    id: "grown_seedling",
+    name: "Grown seedling",
+    summary: "A 2×2 living ship that is all prow: it charges in shoals of five or six.",
+    description: "Seedlings never shoot: they close in and charge prow first like a [[ship:grown_rammer]], from every side at once. Each one breaks quickly, but its [[part:ram_prow|prow]] and [[part:grown_ganglion|ganglion]] heal if you leave it, so finish one before turning to the next.",
+    lore: "Somewhere in every grove there is a shoal of them, too young to keep still.",
+    tags: ["enemy", "outer"],
+    faction: "grown",
+    behavior: "grown_seedling",
+    size: (2, 2),
+    parts: [
+        (part: "ram_prow", x: 0, y: 0),
+        (part: "grown_ganglion", x: 0, y: 1),
+        (part: "thruster", x: 1, y: 1),
+    ],
+)

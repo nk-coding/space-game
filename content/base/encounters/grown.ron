@@ -55,6 +55,16 @@
         wake_radius: 200,
     ),
     (
+        id: "seedling_shoal",
+        name: "Seedling shoal",
+        summary: "Five or six of the Grown's smallest, drifting in a shoal: calm until provoked, then they charge from every side.",
+        description: "Each [[ship:grown_seedling]] breaks quickly but heals if you leave it: turn fast, and finish one before the next.",
+        lore: "They wheel round together like fish, and scatter the same way.",
+        tags: ["grown", "swarm"],
+        ships: [(ship: "grown_seedling", count: (5, 6))],
+        wake_radius: 250,
+    ),
+    (
         id: "rim_stragglers",
         name: "Rim stragglers",
         summary: "Automatons that wandered past the rim's gates, waking when a ship comes near.",

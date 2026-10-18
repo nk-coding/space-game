@@ -322,7 +322,8 @@ fn exactly_one_goal_that_can_be_cleared() {
     )]);
     assert_error(&p, "v", "sites[0].encounter", "may roll no ships");
     // GDR-0068: a site clears once its enemies are destroyed or disarmed, so the goal must always roll an armed
-    // ship: a weapon and power on its main piece. A gun without a reactor is not armed, nor is a ship without guns.
+    // ship: power and a weapon (or a ram prow and an engine, GDR-0109) on its main piece. A gun without a reactor
+    // is not armed, nor is a ship without guns or a prow.
     let ship = |id: &str, parts: &str| {
         format!(
             r#"(id: "{id}", name: "S", summary: "S.", faction: "automatons", size: (3, 3), parts: [{parts}])"#
@@ -381,6 +382,8 @@ fn exactly_one_goal_that_can_be_cleared() {
     let c = data::base_content();
     assert!(c.ship_armed(c.ships.get("automaton_warden").unwrap()));
     assert!(c.ship_armed(c.ships.get("rim_skiff").unwrap()));
+    // GDR-0109: a ram prow and an engine arm a ship without guns.
+    assert!(c.ship_armed(c.ships.get("grown_seedling").unwrap()));
 }
 
 #[test]

@@ -64,8 +64,12 @@ through every side open to space; see [power, heat and control](/mechanics/power
 
 ## The Grown's ships
 
-Every Grown ship carries a [[part:grown_heart]] right beside its [[part:grown_ganglion]], the knot of nerves that
-thinks for it and feeds it power, in a hide of [[material:grown_tissue]]:
+Every Grown ship but the smallest carries a [[part:grown_heart]] right beside its [[part:grown_ganglion]], the knot
+of nerves that thinks for it and feeds it power, in a hide of [[material:grown_tissue]]:
+
+- the [[ship:grown_seedling]] is only a prow, a ganglion and a thruster, with no heart and no guns: seedlings swarm
+  in a [[encounter:seedling_shoal]] of five or six and charge from every side ([[behavior:grown_seedling]]). One
+  breaks fast, and once its thruster is gone it can't charge any more;
 
 - the [[ship:grown_rammer]] charges prow first ([[behavior:grown_rammer]]): it flies the
   [[behavior_node:ram]] action, nose straight at you at top speed, and circles at thorn range between charges;

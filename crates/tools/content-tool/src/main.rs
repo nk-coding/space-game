@@ -972,7 +972,7 @@ mod tests {
         assert_eq!(find("families", "grown")["salvaged_from_materials"], json!(["grown_tissue"]));
         assert_eq!(
             find("families", "grown")["research"],
-            json!(["regrowing_tissue", "living_weapons", "grown_heart"])
+            json!(["regrowing_tissue", "living_weapons", "grown_heart", "spore_lining"])
         );
         let node = find("research", "mind_expansion_1");
         assert_eq!(node["kind"], json!("Refinement"));
@@ -1073,13 +1073,13 @@ mod tests {
         assert_eq!(find("ships", "rim_skiff")["in_encounters"], json!([]));
         // The raider is almost everywhere in the rim: fighting in every encounter but the hunters' den, the gate
         // sentinel, the memory wreck and the gunners' pair and den, lying as a wreck in some; in the outer reach
-        // only among the stragglers (the five and the outer reach's six without it: Grown sites and the bastion's).
+        // only among the stragglers (the five and the outer reach's seven without it: Grown sites and the bastion's).
         assert_eq!(
             find("ships", "automaton_raider")["in_encounters"]
                 .as_array()
                 .unwrap()
                 .len(),
-            c.encounters.len() - 11
+            c.encounters.len() - 12
         );
         assert_eq!(
             find("ships", "automaton_gunner")["in_encounters"],

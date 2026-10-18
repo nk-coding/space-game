@@ -113,7 +113,8 @@ brighter for the goal (`· GOAL`), dim once cleared (`· CLEARED`). Found sites 
    only when you provoke it ([living parts](/mechanics/living-parts#calm-until-provoked)). Then all of its ships wake
    together and fly their behavior. A banner says `<ENCOUNTER> · AWAKE`, and under it THEY ARE COMING.
 4. **It is cleared** when none of its ships is still an armed vessel: each one is destroyed, has lost its logic
-   cores, or has no working gun left. Clearing is final. A banner says `SITE CLEARED · … · THE WRECKS ARE YOURS`, or for the goal
+   cores, or has no working gun left (a ship with a [[part:ram_prow]] counts as armed while it has a working
+   engine to charge with). Clearing is final. A banner says `SITE CLEARED · … · THE WRECKS ARE YOURS`, or for the goal
    `GOAL CLEARED · … · RECALL WHEN CLEAR`.
 
 A site where no ships were rolled holds only wrecks and has nothing to wake; it counts as done once it has spawned. The voyage HUD's subtitle counts
@@ -133,6 +134,7 @@ the sites done of all (`SITES n / m`) and the time since you arrived.
 | [[encounter:precursor_wrecks]] | [[encounter:precursor_wrecks.wake_radius]] |
 | [[encounter:core_graveyard]] | [[encounter:core_graveyard.wake_radius]] |
 | [[encounter:the_warden]] | [[encounter:the_warden.wake_radius]] |
+| [[encounter:seedling_shoal]] | [[encounter:seedling_shoal.wake_radius]] (wary: only a scan) |
 
 ::: tip Pick your fights
 Sleeping ships wait. Come in from one side, shoot first, and you fight one site at a time. Fly past a site too

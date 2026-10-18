@@ -1,6 +1,7 @@
 # GDR-0068: A voyage site clears when its enemies are destroyed or disarmed; only armed enemies block recall
 
 - Status: Accepted
+  2026-10-18: a ram prow and a working engine arm a ship like a gun ([GDR-0109](0109-a-ram-prow-and-an-engine-arm-a-ship.md)).
 - Date: 2026-10-13
 - Decided by: Niklas (the clearing rule, interactively); lead session (the director's other defaults, for review)
 - Related: [GDR-0062](0062-first-playable-loop.md), [GDR-0013](0013-vessels-and-piloting.md), [ADR-0033](../adr/0033-career-model-save-and-voyage-director.md), `docs/sim.md` "Voyages", `docs/plans/slice-content.md`
