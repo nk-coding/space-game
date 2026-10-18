@@ -584,7 +584,12 @@ and log the same `<tick> <hash>` lines to the console; capture them with `tools/
 part's polygon centroid and inertia, base stats (`power_output/draw`, `heat_output/limit`, `heat_vent`,
 `damage`, `fire_rate`, `thrust`, `gimbal`, `rcs_thrust`, `torque`, `shield_radius`, `rated_speed`,
 `rcs_rated_speed`), its consumer kind, and
-static topology:
+static topology (below). `ShipDesign::compile_upgraded(content, blueprint, &upgrades)` (18 Oct 2026, GDR-0024's refinement)
+first applies a player's researched part-stat steps (`data::Upgrades`: `(base + adds) × (1 + percents / 100)` on each
+step's stat of the parts its selector picks) to those base stats, so the bonuses land on top; `compile` is it with
+`Upgrades::NONE`, what every other owner's ship is built with. The steps come in with the call (the career's through
+the scene's `SimWorld::with_upgrades`, a spec's in the arena), never from a global; `design_report_upgraded` is the
+design report of such a design. The topology:
 
 - **links**: every pair of linked parts with the number of shared cell edges (heat conducts through each);
 - **neighbours** per part (CSR lists);

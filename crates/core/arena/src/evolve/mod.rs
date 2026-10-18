@@ -551,7 +551,7 @@ fn resolve_start(content: &Content, start: &Start) -> Result<StartText, String> 
             behavior,
             locks,
         } => {
-            let (bp, _) = resolve_design(content, design, behavior.as_ref()).map_err(|p| match p {
+            let (bp, _) = resolve_design(content, design, behavior.as_ref(), &data::Upgrades::NONE).map_err(|p| match p {
                 crate::fight::DesignProblem::UnknownShip(id) => format!("no ship `{id}` in the content"),
                 crate::fight::DesignProblem::Blueprint(ps) => ps.join("; "),
             })?;
@@ -794,6 +794,7 @@ impl Run {
             .collect::<Result<Vec<_>, _>>()
             .map_err(RunError::Start)?;
         let mut kit = Kit::new(content, &config.limits);
+        kit.upgrades = config.upgrades.clone();
         let (mut headers, starts) = open_starts(content, &mut kit, texts, &config.limits, Camp::Yours, &mut rng)?;
         // THE ENEMY: its starts numbered after yours, built with the parts and armour its starts use and its palette.
         let enemy = match &config.enemy {
@@ -1354,8 +1355,8 @@ impl Run {
         let (_, kind) = &self.trials[self.coevolution()?.0];
         let one = |id: u32| self.contestants(&[id]).and_then(|v| v.into_iter().next());
         let theirs = self.contestants(&c.their_champions)?;
-        let mut jobs = kind.jobs(&one(c.yours)?, &GenCtx { starts: &self.start_entries, hall: &[], enemies: &theirs, fresh: None });
-        let ctx = GenCtx { starts: &self.start_entries, hall: &[], enemies: &[], fresh: None };
+        let mut jobs = kind.jobs(&one(c.yours)?, &GenCtx { starts: &self.start_entries, hall: &[], enemies: &theirs, fresh: None, upgrades: &self.config.upgrades });
+        let ctx = GenCtx { starts: &self.start_entries, hall: &[], enemies: &[], fresh: None, upgrades: &self.config.upgrades };
         jobs.extend(kind.enemy_jobs(&one(c.theirs)?, &self.contestants(&c.your_champions)?, &ctx));
         Some(jobs)
     }
@@ -1468,7 +1469,7 @@ impl Run {
             let root = &self.kit.roots[g.root as usize];
             let cheap = cheapness(stats.build_points, root.build_points.unwrap_or(root.start_bp));
             let me = Contestant { entry: genome_entry(&g, 1), build_points: stats.build_points };
-            let ctx = GenCtx { starts: &self.start_entries, hall: &hall, enemies: &foes, fresh: Some(seeds) };
+            let ctx = GenCtx { starts: &self.start_entries, hall: &hall, enemies: &foes, fresh: Some(seeds), upgrades: &self.config.upgrades };
             let k = v.genomes.len();
             let mut tags = Vec::new();
             for (t, (_, kind)) in self.trials.iter().enumerate().filter(|(_, (spec, _))| spec.weight != 0.0) {
@@ -1550,7 +1551,7 @@ impl Run {
     /// genome's.
     fn jobs_of(&self, g: &Genome, build_points: f32, hall: &[Entry], foes: &[Contestant]) -> Vec<(u32, Job)> {
         let me = Contestant { entry: genome_entry(g, 1), build_points };
-        let ctx = GenCtx { starts: &self.start_entries, hall, enemies: foes, fresh: None };
+        let ctx = GenCtx { starts: &self.start_entries, hall, enemies: foes, fresh: None, upgrades: &self.config.upgrades };
         let mut jobs = Vec::new();
         // A trial of weight 0 counts nothing, so it is not fought.
         for (k, (_, t)) in self.trials.iter().enumerate().filter(|(_, (spec, _))| spec.weight != 0.0) {
@@ -1564,7 +1565,7 @@ impl Run {
     fn enemy_jobs_of(&self, g: &Genome, build_points: f32, rivals: &[Contestant]) -> Vec<(u32, Job)> {
         let Some((k, _)) = self.coevolution() else { return Vec::new() };
         let me = Contestant { entry: genome_entry(g, 1), build_points };
-        let ctx = GenCtx { starts: &self.start_entries, hall: &[], enemies: &[], fresh: None };
+        let ctx = GenCtx { starts: &self.start_entries, hall: &[], enemies: &[], fresh: None, upgrades: &self.config.upgrades };
         self.trials[k].1.enemy_jobs(&me, rivals, &ctx).into_iter().map(|j| (k as u32, j)).collect()
     }
 

@@ -239,6 +239,7 @@ fn the_spec_reads_back_from_its_text() {
                     },
                     Entry::ship("halvex_runner"),
                 ],
+                upgrades: data::Upgrades::NONE,
             },
             arena::Side {
                 entries: vec![Entry {
@@ -246,11 +247,12 @@ fn the_spec_reads_back_from_its_text() {
                     count: 4,
                     ..Entry::ship("automaton_raider")
                 }],
+                upgrades: data::Upgrades::NONE,
             },
         ],
         start_distance: 120.5,
         time_limit: 45.0,
-        waves: vec![arena::Side { entries: vec![Entry::ship("automaton_hunter")] }],
+        waves: vec![arena::Side::new(vec![Entry::ship("automaton_hunter")])],
     };
     let text = spec.to_ron();
     assert_eq!(FightSpec::from_ron(&text).unwrap(), spec, "{text}");

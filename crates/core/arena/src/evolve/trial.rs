@@ -16,7 +16,7 @@
 
 use std::collections::BTreeSet;
 
-use data::Content;
+use data::{Content, Upgrades};
 use serde::{Deserialize, Serialize};
 
 use crate::spec::{BehaviorRef, DEFAULT_START_DISTANCE, DEFAULT_TIME_LIMIT, DesignRef, Entry, FightSpec, Formation, Pilot, Side};
@@ -238,6 +238,9 @@ pub struct GenCtx<'a> {
     /// VALIDATE: this many new seeds, the ones after each trial's own (`Some(20)`: seeds n + 1 to n + 20 of a trial
     /// of n); `None`: the trial's own seeds 1 to n, as a run fights them.
     pub fresh: Option<u32>,
+    /// The run's part-stat steps ([`super::RunConfig::upgrades`]): every fight's side 0 and voyage's fleet, and side 1
+    /// when it is yours (your starts, hall of fame, fleet and champions).
+    pub upgrades: &'a Upgrades,
 }
 
 /// The seeds a trial of `own` seeds fights in `ctx`.
@@ -286,18 +289,25 @@ struct Fights {
 impl Fights {
     /// The fights of `me` against one opponent (and its waves, a gauntlet), one per seed, each flown as `flown_by`
     /// says.
-    fn against(&self, me: &Contestant, ctx: &GenCtx, side: &[Entry], waves: &[Side], jobs: &mut Vec<Job>) {
-        self.fight(me, ctx, side, waves, 0, jobs);
+    /// `yours`: the opponent is one of your designs (built with the run's upgrades too).
+    fn against(&self, me: &Contestant, ctx: &GenCtx, side: &[Entry], waves: &[Side], yours: bool, jobs: &mut Vec<Job>) {
+        self.fight(me, ctx, (side, yours), waves, 0, jobs);
     }
 
-    /// The fights of `ours` (side 0, with the escorts beside it) against `theirs`, one per seed; the candidate is side
-    /// `candidate` (1: an enemy of the arms race, scored as side 1).
-    fn fight(&self, ours: &Contestant, ctx: &GenCtx, theirs: &[Entry], waves: &[Side], candidate: u32, jobs: &mut Vec<Job>) {
+    /// The fights of `ours` (side 0, with the escorts beside it, built with the run's upgrades) against `theirs` (with
+    /// them when it is yours), one per seed; the candidate is side `candidate` (1: an enemy of the arms race, scored
+    /// as side 1).
+    fn fight(&self, ours: &Contestant, ctx: &GenCtx, theirs: (&[Entry], bool), waves: &[Side], candidate: u32, jobs: &mut Vec<Job>) {
+        let (theirs, yours) = theirs;
         let mut side = vec![Entry { count: self.count, ..ours.entry.clone() }];
         side.extend(self.escorts.iter().cloned());
         for seed in seeds(self.seeds, ctx) {
             side[0].pilot = self.flown_by.on(seed).cloned();
             let mut spec = FightSpec::new(seed, side.clone(), theirs.to_vec());
+            spec.sides[0].upgrades = ctx.upgrades.clone();
+            if yours {
+                spec.sides[1].upgrades = ctx.upgrades.clone();
+            }
             spec.start_distance = self.start_distance;
             spec.time_limit = self.time_limit;
             spec.waves = waves.to_vec();
@@ -316,6 +326,8 @@ impl Fights {
 struct Opponents {
     fights: Fights,
     sides: Vec<(Vec<Entry>, Vec<Side>)>,
+    /// The sides are your designs (YOUR FLEET, CHAMPIONS).
+    yours: bool,
     hall_of_fame: u32,
 }
 
@@ -323,10 +335,10 @@ impl TrialKind for Opponents {
     fn jobs(&self, me: &Contestant, ctx: &GenCtx) -> Vec<Job> {
         let mut jobs = Vec::new();
         for (side, waves) in &self.sides {
-            self.fights.against(me, ctx, side, waves, &mut jobs);
+            self.fights.against(me, ctx, side, waves, self.yours, &mut jobs);
         }
         for o in ctx.hall.iter().take(self.hall_of_fame as usize) {
-            self.fights.against(me, ctx, std::slice::from_ref(o), &[], &mut jobs);
+            self.fights.against(me, ctx, std::slice::from_ref(o), &[], true, &mut jobs);
         }
         jobs
     }
@@ -355,9 +367,9 @@ impl TrialKind for Waves {
                 _ => entries.push(Entry::ship(&id)),
             }
         }
-        let rest = vec![Side { entries: entries.clone() }; self.target.saturating_sub(1) as usize];
+        let rest = vec![Side::new(entries.clone()); self.target.saturating_sub(1) as usize];
         let mut jobs = Vec::new();
-        self.fights.against(me, ctx, &entries, &rest, &mut jobs);
+        self.fights.against(me, ctx, &entries, &rest, false, &mut jobs);
         jobs
     }
 }
@@ -371,7 +383,7 @@ impl TrialKind for Starts {
     fn jobs(&self, me: &Contestant, ctx: &GenCtx) -> Vec<Job> {
         let mut jobs = Vec::new();
         for s in ctx.starts {
-            self.fights.against(me, ctx, std::slice::from_ref(s), &[], &mut jobs);
+            self.fights.against(me, ctx, std::slice::from_ref(s), &[], true, &mut jobs);
         }
         jobs
     }
@@ -387,7 +399,7 @@ impl TrialKind for Hall {
     fn jobs(&self, me: &Contestant, ctx: &GenCtx) -> Vec<Job> {
         let mut jobs = Vec::new();
         for o in ctx.hall.iter().take(self.count as usize) {
-            self.fights.against(me, ctx, std::slice::from_ref(o), &[], &mut jobs);
+            self.fights.against(me, ctx, std::slice::from_ref(o), &[], true, &mut jobs);
         }
         jobs
     }
@@ -406,7 +418,7 @@ impl TrialKind for CoEvolution {
     fn jobs(&self, me: &Contestant, ctx: &GenCtx) -> Vec<Job> {
         let mut jobs = Vec::new();
         for e in ctx.enemies {
-            self.fights.against(me, ctx, &[self.fights.pack_of(me, e)], &[], &mut jobs);
+            self.fights.against(me, ctx, &[self.fights.pack_of(me, e)], &[], false, &mut jobs);
         }
         jobs
     }
@@ -414,7 +426,7 @@ impl TrialKind for CoEvolution {
     fn enemy_jobs(&self, enemy: &Contestant, rivals: &[Contestant], ctx: &GenCtx) -> Vec<Job> {
         let mut jobs = Vec::new();
         for r in rivals {
-            self.fights.fight(r, ctx, &[self.fights.pack_of(r, enemy)], &[], 1, &mut jobs);
+            self.fights.fight(r, ctx, (&[self.fights.pack_of(r, enemy)], false), &[], 1, &mut jobs);
         }
         jobs
     }
@@ -445,6 +457,7 @@ impl TrialKind for Voyages {
                     behavior: behavior.clone(),
                     minutes: self.minutes,
                     escorts: self.escorts.clone(),
+                    upgrades: ctx.upgrades.clone(),
                 };
                 jobs.push(Job::Voyage { candidate: 0, spec });
             }
@@ -514,21 +527,21 @@ impl TrialSpec {
         let each = |list: &[Entry]| list.iter().map(|e| (vec![e.clone()], Vec::new())).collect::<Vec<_>>();
         Ok(match &self.kind {
             Trial::EnemyShips { opponents, hall_of_fame } => {
-                Box::new(Opponents { fights, sides: each(opponents), hall_of_fame: *hall_of_fame })
+                Box::new(Opponents { fights, sides: each(opponents), yours: false, hall_of_fame: *hall_of_fame })
             }
             Trial::Fleet { designs } | Trial::Champions { designs } => {
-                Box::new(Opponents { fights, sides: each(designs), hall_of_fame: 0 })
+                Box::new(Opponents { fights, sides: each(designs), yours: true, hall_of_fame: 0 })
             }
             Trial::Encounters { voyages } => {
                 let sides = encounters(content, voyages).map_err(bad)?;
-                Box::new(Opponents { fights, sides: sides.into_iter().map(|(_, s)| (s, Vec::new())).collect(), hall_of_fame: 0 })
+                Box::new(Opponents { fights, sides: sides.into_iter().map(|(_, s)| (s, Vec::new())).collect(), yours: false, hall_of_fame: 0 })
             }
             Trial::Ladder { rungs } => {
-                Box::new(Opponents { fights, sides: rungs.iter().map(|r| (r.clone(), Vec::new())).collect(), hall_of_fame: 0 })
+                Box::new(Opponents { fights, sides: rungs.iter().map(|r| (r.clone(), Vec::new())).collect(), yours: false, hall_of_fame: 0 })
             }
             Trial::Gauntlet { waves } => {
-                let rest = waves[1..].iter().map(|w| Side { entries: w.clone() }).collect();
-                Box::new(Opponents { fights, sides: vec![(waves[0].clone(), rest)], hall_of_fame: 0 })
+                let rest = waves[1..].iter().map(|w| Side::new(w.clone())).collect();
+                Box::new(Opponents { fights, sides: vec![(waves[0].clone(), rest)], yours: false, hall_of_fame: 0 })
             }
             Trial::Waves { target } => {
                 let enemies = sim::voyage::waves::wave_enemies(content);

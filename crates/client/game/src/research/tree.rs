@@ -302,6 +302,16 @@ impl Now {
     }
 }
 
+/// A part-stat step in words: `Shield regen +8% on every shield part`, `Rated speed +5% on the thruster`.
+pub fn step_words(content: &Content, target: &data::Selector, stat: &str, step: data::Effect) -> String {
+    let label = content.stats.get(stat).map_or(stat, |d| d.name.as_str());
+    let who = match target {
+        data::Selector::Tag(t) => format!("every {t} part"),
+        s => format!("the {}", content.selector_label(s).to_lowercase()),
+    };
+    format!("{label} {} on {who}", content.effect_text(stat, step).1)
+}
+
 /// A jump range in words, with the content's unit and decimals (`stats.ron`'s `jump_range`): `3.25 S`.
 pub fn range_text(content: &Content, s: f32) -> String {
     let (decimals, unit) = content.stats.get("jump_range").map_or((2, "S"), |d| (d.decimals, d.unit.as_str()));
@@ -310,7 +320,7 @@ pub fn range_text(content: &Content, s: f32) -> String {
 
 /// What a node's unlocks give, in words: `Beam laser in the drydock, unlimited`, `Composite armour in the
 /// drydock`, `The cruiser frame in the drydock`, `One more logic core in the mind (runs 3)`, `Evolution opens at
-/// home`, `Jumps reach 0.75 S further (3.25 S)`; joined by `; `.
+/// home`, `Jumps reach 0.75 S further (3.25 S)`, `Shield regen +8% on every shield part`; joined by `; `.
 pub fn gives(content: &Content, node: &ResearchNode, now: Now) -> String {
     let (mut capacity, mut range) = (now.mind, now.range);
     node.unlocks
@@ -329,13 +339,15 @@ pub fn gives(content: &Content, node: &ResearchNode, now: Now) -> String {
                 format!("Jumps reach {} further ({})", range_text(content, *s), range_text(content, range))
             }
             Unlock::Facility(f) => format!("{} opens at home", content.facilities.get(f).map_or(f.as_str(), |f| f.name.as_str())),
+            Unlock::PartStat { target, stat, step } => step_words(content, target, stat, *step),
         })
         .collect::<Vec<_>>()
         .join("; ")
 }
 
 /// The line after an UNLOCK: `BEAM LASER · NOW IN THE DRYDOCK`, `MIND EXPANSION I · YOUR MIND RUNS 3 CORES`,
-/// `SIMULATION VAULT · OPEN AT HOME`, `JUMP CALIBRATION I · JUMPS REACH 3.25 S` (`now`: the career after it).
+/// `SIMULATION VAULT · OPEN AT HOME`, `JUMP CALIBRATION I · JUMPS REACH 3.25 S`, `SHIELD REGEN I · IN EVERY DESIGN
+/// NOW` (`now`: the career after it).
 pub fn unlocked_words(content: &Content, node: &ResearchNode, now: Now) -> String {
     let name = node.name.to_uppercase();
     if node.unlocks.iter().any(|u| matches!(u, Unlock::Part(_) | Unlock::Material(_) | Unlock::Frame(_))) {
@@ -344,6 +356,8 @@ pub fn unlocked_words(content: &Content, node: &ResearchNode, now: Now) -> Strin
         format!("{name}  ·  OPEN AT HOME")
     } else if node.unlocks.iter().any(|u| matches!(u, Unlock::JumpRange(_))) {
         format!("{name}  ·  JUMPS REACH {}", range_text(content, now.range).to_uppercase())
+    } else if node.unlocks.iter().any(|u| matches!(u, Unlock::PartStat { .. })) {
+        format!("{name}  ·  IN EVERY DESIGN NOW")
     } else {
         format!("{name}  ·  YOUR MIND RUNS {} CORES", now.mind)
     }
@@ -414,7 +428,7 @@ mod tests {
     /// The base pack's nodes: a lane per family with nodes (all ten, content order), three columns (the mind
     /// expansions' chain, the Grown's, the drydock's), connectors along the chains; the simulation vault under the
     /// tamed core and the first jump calibration under the torch drive (both need nothing), the sidegrades under the
-    /// parts they vary.
+    /// parts they vary, the refinement chains under them.
     #[test]
     fn lanes_follow_the_families_and_columns_the_requirement_depth() {
         let content = data::base_content();
@@ -452,11 +466,26 @@ mod tests {
                 link("composite_plating", "reactive_plating"),
                 link("tamed_core", "automaton_forge"),
                 link("cruiser_drydock", "capital_drydock"),
-                link("automaton_cannon", "long_cannon")
+                link("automaton_cannon", "long_cannon"),
+                link("shield_regen_1", "shield_regen_2"),
+                link("shield_regen_2", "shield_regen_3"),
+                link("radiator_vent_1", "radiator_vent_2"),
+                link("radiator_vent_2", "radiator_vent_3"),
+                link("thruster_speed_1", "thruster_speed_2"),
+                link("thruster_speed_2", "thruster_speed_3"),
+                link("pulse_rate_1", "pulse_rate_2"),
+                link("pulse_rate_2", "pulse_rate_3")
             ]
         );
-        let one_row = ["kinetic", "shields", "thermal", "utility"];
-        assert!(tree.lanes.iter().all(|l| l.rows == if one_row.contains(&l.family.as_str()) { 1 } else { 2 }));
+        // The refinement chains (GDR-0024) run under the parts and sidegrades of their lanes.
+        assert_eq!(at(&tree, "pulse_rate_1"), ("energy".into(), 2, 0));
+        assert_eq!(at(&tree, "thruster_speed_3"), ("propulsion".into(), 0, 2));
+        let rows = |f: &str| match f {
+            "kinetic" | "utility" => 1,
+            "energy" | "propulsion" => 3,
+            _ => 2,
+        };
+        assert!(tree.lanes.iter().all(|l| l.rows == rows(&l.family)), "{:?}", tree.lanes.iter().map(|l| (&l.family, l.rows)).collect::<Vec<_>>());
     }
 
     /// Nodes of one lane in one column stack in rows; a requirement in another lane still sets the column; the
@@ -472,10 +501,10 @@ mod tests {
         twin.id = "beam_twin".into();
         content.research.upsert(twin);
         let tree = Tree::new(&content);
-        assert_eq!(at(&tree, "beam_twin"), ("energy".into(), 2, 0), "another root of the lane goes under the others");
-        assert_eq!(at(&tree, "beam_focus"), ("energy".into(), 0, 2), "one past the deepest requirement (mind expansion I)");
+        assert_eq!(at(&tree, "beam_twin"), ("energy".into(), 3, 0), "another root of the lane goes under the others");
+        assert_eq!(at(&tree, "beam_focus"), ("energy".into(), 1, 2), "one past the deepest requirement (mind expansion I), under pulse cycling III");
         let energy = tree.lanes.iter().find(|l| l.family == "energy").unwrap();
-        assert_eq!(energy.rows, 3);
+        assert_eq!(energy.rows, 4);
         let into = |to: &str| tree.links.iter().filter(|l| l.to == tree.card_of(to).unwrap()).count();
         assert_eq!(into("beam_focus"), 2);
     }
@@ -502,9 +531,9 @@ mod tests {
             placed.links[k].clone()
         };
         assert_eq!(link("composite_plating", "cruiser_drydock"), [Vec2::new(350.0, 120.0), Vec2::new(400.0, 120.0)]);
-        // Power (lane 1) to energy (lane 2): across, down halfway in the gap, across.
+        // Power (lane 1) to energy (lane 2, under pulse cycling II): across, down halfway in the gap, across.
         let elbow = link("fusion_reactor", "beam_focus");
-        assert_eq!(elbow, [Vec2::new(350.0, 300.0), Vec2::new(375.0, 300.0), Vec2::new(375.0, 480.0), Vec2::new(400.0, 480.0)]);
+        assert_eq!(elbow, [Vec2::new(350.0, 300.0), Vec2::new(375.0, 300.0), Vec2::new(375.0, 570.0), Vec2::new(400.0, 570.0)]);
     }
 
     /// Card states follow the model: done, ready, locked by requirements, short of data (with what is held).
@@ -556,6 +585,11 @@ mod tests {
         assert_eq!(gives(&content, jump, now(2)), "Jumps reach 0.75 S further (3.25 S)");
         assert_eq!(unlocked_words(&content, jump, Now { mind: 2, range: 3.25 }), "JUMP CALIBRATION I  ·  JUMPS REACH 3.25 S");
         assert_eq!(refusal_words(&content, &c.research(&content, "tamed_core").unwrap_err()), "ALREADY RESEARCHED");
+        // A refinement step (GDR-0024): the stat, the step and whom it picks.
+        let regen = content.research.get("shield_regen_1").unwrap();
+        assert_eq!(gives(&content, regen, now(2)), "Shield regen +8% on every shield part");
+        assert_eq!(gives(&content, content.research.get("thruster_speed_1").unwrap(), now(2)), "Rated speed +4% on the thruster");
+        assert_eq!(unlocked_words(&content, regen, now(2)), "BUBBLE RECHARGE I  ·  IN EVERY DESIGN NOW");
     }
 
     /// Amounts never round up to a cost they don't pay.

@@ -1,0 +1,129 @@
+// Refinement chains (GDR-0024's "refinement": a short chain of small stat steps, 18 Oct 2026): I–III on one stat of
+// the parts a selector picks, for the player's own designs only (`PartStat`; enemies keep the content's numbers).
+// The steps of a chain add up (three of +8 % are +24 %). PLACEHOLDER NUMBERS (lead defaults): costs about one, one and
+// a half, then two voyages' salvage of the family each, plus a little material; checked on the rim voyages
+// (docs/results/refinement-2026-10-18.md: a full chain is worth a few points, not a new part). After
+// the sidegrades in content order, so each chain sits under the parts of its lane on the research screen.
+[
+    // Shields: the bubble refills faster.
+    (
+        id: "shield_regen_1",
+        name: "Bubble recharge I",
+        summary: "Every shield emitter refills its bubbles a little faster.",
+        family: "shields",
+        kind: Refinement,
+        cost: (data: {"shields": 4}, materials: {"crystal": 2}),
+        unlocks: [PartStat(target: Tag("shield"), stat: "shield_regen", step: Percent(8))],
+    ),
+    (
+        id: "shield_regen_2",
+        name: "Bubble recharge II",
+        summary: "Every shield emitter refills its bubbles a little faster again.",
+        family: "shields",
+        kind: Refinement,
+        cost: (data: {"shields": 6}, materials: {"crystal": 3}),
+        requires: ["shield_regen_1"],
+        unlocks: [PartStat(target: Tag("shield"), stat: "shield_regen", step: Percent(8))],
+    ),
+    (
+        id: "shield_regen_3",
+        name: "Bubble recharge III",
+        summary: "The last step: every shield emitter refills its bubbles faster still.",
+        family: "shields",
+        kind: Refinement,
+        cost: (data: {"shields": 9}, materials: {"crystal": 4}),
+        requires: ["shield_regen_2"],
+        unlocks: [PartStat(target: Tag("shield"), stat: "shield_regen", step: Percent(8))],
+    ),
+    // Thermal: every radiator sheds more heat per open side.
+    (
+        id: "radiator_vent_1",
+        name: "Fin tuning I",
+        summary: "Every radiator sheds a little more heat.",
+        family: "thermal",
+        kind: Refinement,
+        cost: (data: {"thermal": 3}, materials: {"copper": 2}),
+        unlocks: [PartStat(target: Tag("radiator"), stat: "heat_vent", step: Percent(8))],
+    ),
+    (
+        id: "radiator_vent_2",
+        name: "Fin tuning II",
+        summary: "Every radiator sheds a little more heat again.",
+        family: "thermal",
+        kind: Refinement,
+        cost: (data: {"thermal": 5}, materials: {"copper": 3}),
+        requires: ["radiator_vent_1"],
+        unlocks: [PartStat(target: Tag("radiator"), stat: "heat_vent", step: Percent(8))],
+    ),
+    (
+        id: "radiator_vent_3",
+        name: "Fin tuning III",
+        summary: "The last step: every radiator sheds more heat still.",
+        family: "thermal",
+        kind: Refinement,
+        cost: (data: {"thermal": 7}, materials: {"copper": 4}),
+        requires: ["radiator_vent_2"],
+        unlocks: [PartStat(target: Tag("radiator"), stat: "heat_vent", step: Percent(8))],
+    ),
+    // Propulsion: the thruster keeps pushing to a higher speed (the ship's top speed with it).
+    (
+        id: "thruster_speed_1",
+        name: "Nozzle tuning I",
+        summary: "The thruster keeps its push to a little higher speed.",
+        family: "propulsion",
+        kind: Refinement,
+        cost: (data: {"propulsion": 4}, materials: {"steel": 2}),
+        unlocks: [PartStat(target: Part("thruster"), stat: "rated_speed", step: Percent(4))],
+    ),
+    (
+        id: "thruster_speed_2",
+        name: "Nozzle tuning II",
+        summary: "The thruster keeps its push to a little higher speed again.",
+        family: "propulsion",
+        kind: Refinement,
+        cost: (data: {"propulsion": 6}, materials: {"steel": 3}),
+        requires: ["thruster_speed_1"],
+        unlocks: [PartStat(target: Part("thruster"), stat: "rated_speed", step: Percent(4))],
+    ),
+    (
+        id: "thruster_speed_3",
+        name: "Nozzle tuning III",
+        summary: "The last step: the thruster keeps its push to a higher speed still.",
+        family: "propulsion",
+        kind: Refinement,
+        cost: (data: {"propulsion": 9}, materials: {"steel": 4}),
+        requires: ["thruster_speed_2"],
+        unlocks: [PartStat(target: Part("thruster"), stat: "rated_speed", step: Percent(4))],
+    ),
+    // Energy weapons: the pulse laser fires a little faster (more damage per second). 3 % a step: at 5 % the chain was
+    // worth 12 to 18 points on the skiff, more than a new part.
+    (
+        id: "pulse_rate_1",
+        name: "Pulse cycling I",
+        summary: "The pulse laser fires a little faster.",
+        family: "energy",
+        kind: Refinement,
+        cost: (data: {"energy": 4}, materials: {"crystal": 2}),
+        unlocks: [PartStat(target: Part("pulse_laser"), stat: "fire_rate", step: Percent(3))],
+    ),
+    (
+        id: "pulse_rate_2",
+        name: "Pulse cycling II",
+        summary: "The pulse laser fires a little faster again.",
+        family: "energy",
+        kind: Refinement,
+        cost: (data: {"energy": 6}, materials: {"crystal": 3}),
+        requires: ["pulse_rate_1"],
+        unlocks: [PartStat(target: Part("pulse_laser"), stat: "fire_rate", step: Percent(3))],
+    ),
+    (
+        id: "pulse_rate_3",
+        name: "Pulse cycling III",
+        summary: "The last step: the pulse laser fires faster still.",
+        family: "energy",
+        kind: Refinement,
+        cost: (data: {"energy": 9}, materials: {"crystal": 4}),
+        requires: ["pulse_rate_2"],
+        unlocks: [PartStat(target: Part("pulse_laser"), stat: "fire_rate", step: Percent(3))],
+    ),
+]

@@ -9,7 +9,7 @@
 use std::collections::BTreeMap;
 
 use data::{
-    Blueprint, Content, Delivery, Dir, Effect, PlacedShape, Selector, ShipGrid, WeaponFamily,
+    Blueprint, Content, Delivery, Dir, Effect, PlacedShape, Selector, ShipGrid, Upgrades, WeaponFamily,
 };
 
 /// Number of weapon families.
@@ -380,6 +380,13 @@ pub const HEAT_CAPACITY_PER_CELL: f32 = 1.0;
 impl ShipDesign {
     /// Compiles a blueprint. Fails on unknown parts or materials (impossible for validated content).
     pub fn compile(content: &Content, ship: &Blueprint) -> Result<ShipDesign, String> {
+        Self::compile_upgraded(content, ship, &Upgrades::NONE)
+    }
+
+    /// Compiles the player's blueprint with their researched part-stat steps (GDR-0024's refinement): each step
+    /// changes its parts' base stats before the adjacency bonuses. The steps come in with the call (the career's,
+    /// a lab run's, a spec's), so every place that builds the design gets the same numbers.
+    pub fn compile_upgraded(content: &Content, ship: &Blueprint, upgrades: &Upgrades) -> Result<ShipDesign, String> {
         let grid = content.ship_grid(ship)?;
         let n = ship.parts.len();
         if n >= u32::MAX as usize / 2 {
@@ -453,6 +460,13 @@ impl ShipDesign {
                 Stat::RcsRatedSpeed,
                 def.rcs.as_ref().map_or(0.0, |r| r.rated_speed),
             );
+            if !upgrades.is_empty() {
+                for id in data::design::stats::BONUS_STATS {
+                    if let Some(stat) = Stat::from_id(id) {
+                        base.set(stat, upgrades.apply(def, id, base.get(stat)));
+                    }
+                }
+            }
             let consumer = (power.draw > 0.0).then(|| {
                 if def.logic.is_some() {
                     ConsumerKind::Logic

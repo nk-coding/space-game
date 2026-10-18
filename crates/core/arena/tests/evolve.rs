@@ -222,6 +222,7 @@ fn voyage_fitness_scores_a_run() {
         behavior: None,
         minutes: 4.0,
         escorts: Vec::new(),
+        upgrades: data::Upgrades::NONE,
     };
     let run = arena::run_voyage(&c, &spec).unwrap();
     assert!(run.ticks <= spec.limit_ticks());
@@ -303,7 +304,7 @@ fn every_childs_fights_are_kept_and_jobs_are_data() {
     }
     round_trip(&Job::Voyage {
         candidate: 3,
-        spec: VoyageSpec { voyage: "yard_approach".into(), seed: 2, design: DesignRef::Ship("rim_skiff".into()), behavior: None, minutes: 5.0, escorts: Vec::new() },
+        spec: VoyageSpec { voyage: "yard_approach".into(), seed: 2, design: DesignRef::Ship("rim_skiff".into()), behavior: None, minutes: 5.0, escorts: Vec::new(), upgrades: data::Upgrades::NONE },
     });
 }
 

@@ -617,7 +617,7 @@ nodes a player has researched lives in the save, never in content (`docs/career.
 | `kind` | `NewPart`, `Variant`, `SizeClass`, `Refinement`, `Alien` (GDR-0024) or `Facility` (16 Oct 2026, GDR-0092): how the research screen draws it |
 | `cost` | required: `data` (family id → amount, each above 0, at most 10000) and `materials` (id → whole amount, 1 to 10000); both may be left out (`cost: ()`) |
 | `requires` | optional: node ids (any family) that must be researched first |
-| `unlocks` | required list of `Part(id)`, `Material(id)`, `Frame(id)`, `Facility(id)` (clears that entry's `locked` for the player), `MindCapacity(n)` (n more logic cores the mind runs at once, 1 to 100) and `JumpRange(s)` (16 Oct 2026, galaxy track E4, GDR-0093: every jump reaches s S further, above 0 and at most 100; the career adds them to the galaxy's `jump_range`) |
+| `unlocks` | required list of `Part(id)`, `Material(id)`, `Frame(id)`, `Facility(id)` (clears that entry's `locked` for the player), `MindCapacity(n)` (n more logic cores the mind runs at once, 1 to 100), `JumpRange(s)` (16 Oct 2026, galaxy track E4, GDR-0093: every jump reaches s S further, above 0 and at most 100; the career adds them to the galaxy's `jump_range`) and `PartStat(target: Tag("shield"), stat: "shield_regen", step: Percent(8))` (18 Oct 2026, GDR-0024's refinement: a step on an adjacency-bonus stat of every part the selector picks, checked like a bonus, for the player's own designs; a `fire_rate` step shows on the damage and shot rate lines; a step no picked part has a line for is an error) |
 
 Validation: the family, every cost family and material, every `requires` node and every unlock target exist; no
 node listed twice in `requires`; no cycle in `requires` (each cycle is reported once, with its path); unlocking an
@@ -632,6 +632,11 @@ frame), `simulation_vault` (logic 3, kind `Facility`, unlocks the facility `evol
 `jump_calibration_1` (propulsion 8, `JumpRange(0.75)`) and `jump_calibration_2` (propulsion 16 + programmable matter 3,
 needs `jump_calibration_1`, `JumpRange(0.75)`; both `Refinement`, 16 Oct 2026, GDR-0096: 2.5 → 3.25 → 4 S).
 Reactive armour, Automaton plate and the capital frame stay locked.
+Refinement chains (`research/tuning.ron`, 18 Oct 2026, placeholders, docs/results/refinement-2026-10-18.md):
+`shield_regen_1..3` (shields 4 / 6 / 9 + crystal 2 / 3 / 4, +8 % shield regen on `shield` parts each),
+`radiator_vent_1..3` (thermal 3 / 5 / 7 + copper, +8 % venting on `radiator` parts), `thruster_speed_1..3`
+(propulsion 4 / 6 / 9 + steel, +4 % rated speed on the thruster) and `pulse_rate_1..3` (energy 4 / 6 / 9 + crystal,
++3 % fire rate on the pulse laser), each needing the one before.
 
 ### Starts (`starts.ron`, added 13 Oct 2026)
 

@@ -57,6 +57,25 @@ impl Wiki<'_> {
             Unlock::Facility(id) => self.a_badged(root, Kind::Facility, id),
             Unlock::MindCapacity(x) => format!("Mind capacity&nbsp;+{x}"),
             Unlock::JumpRange(x) => format!("Jump range&nbsp;+{}", self.value("jump_range", *x).replace(' ', "&nbsp;")),
+            Unlock::PartStat { stat, step, .. } => self.step_name(stat, *step).replace(' ', "&nbsp;"),
+        }
+    }
+
+    /// A part-stat step's name: `Shield regen +8%`.
+    fn step_name(&self, stat: &str, step: data::Effect) -> String {
+        let label = self.c.stats.get(stat).map_or(stat, |d| d.name.as_str());
+        format!("{label} {}", self.c.effect_text(stat, step).1)
+    }
+
+    /// Whom a part-stat step picks, with links: a part, `every shield part` (each linked), a category.
+    fn step_target(&self, root: &str, target: &data::Selector) -> String {
+        match target {
+            data::Selector::Part(id) => self.a_badged(root, Kind::Part, id),
+            data::Selector::Tag(t) => {
+                let parts: Vec<String> = self.c.parts.iter().filter(|p| p.has_tag(t)).map(|p| self.a_badged(root, Kind::Part, &p.id)).collect();
+                format!("every {t} part ({})", parts.join(", "))
+            }
+            data::Selector::Category(_) => format!("every part in {}", self.c.selector_label(target).to_lowercase()),
         }
     }
 
@@ -104,6 +123,18 @@ impl Wiki<'_> {
             self.research_table(UP, &nodes)
         };
         Some(("Unlocked by".into(), html))
+    }
+
+    /// "Refined by" on a part page: the research nodes whose part-stat steps pick it (GDR-0024's refinement), in
+    /// content order; none: no section.
+    pub(crate) fn refined_by(&self, p: &Part) -> Option<(String, String)> {
+        let nodes: Vec<&ResearchNode> = self
+            .c
+            .research
+            .iter()
+            .filter(|n| n.unlocks.iter().any(|u| matches!(u, Unlock::PartStat { target, .. } if p.matches(target))))
+            .collect();
+        (!nodes.is_empty()).then(|| ("Refined by".into(), self.research_table(UP, &nodes)))
     }
 
     /// "Salvage" on a part page: what it gives when the haul is dismantled at home (GDR-0063, GDR-0108). Hull parts
@@ -335,6 +366,11 @@ impl Wiki<'_> {
                         "Every jump, from home or a charted cluster, reaches {} further on the galaxy map.",
                         self.value("jump_range", *x)
                     ),
+                ),
+                Unlock::PartStat { target, stat, step } => (
+                    self.c.parts.iter().find(|p| !p.hull && p.matches(target)).map_or_else(String::new, |p| self.chip(p, None)),
+                    self.step_name(stat, *step),
+                    format!("On {} in your own designs (enemies keep the numbers on their pages).", self.step_target(root, target)),
                 ),
             };
             writeln!(

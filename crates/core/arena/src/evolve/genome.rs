@@ -388,6 +388,8 @@ pub(crate) struct Kit {
     /// genome table, GDR-0092 "Co-evolution").
     pub roots: Vec<Root>,
     pub first: u32,
+    /// The part-stat steps its designs are measured with (the run's for yours, none for THE ENEMY).
+    pub upgrades: data::Upgrades,
 }
 
 fn pick<'a, T>(rng: &mut Pcg32, items: &'a [T]) -> Option<&'a T> {
@@ -487,6 +489,7 @@ impl Kit {
             assist_conditions: palette(NodeRole::Condition, ListKind::Assists),
             roots: Vec::new(),
             first: 0,
+            upgrades: data::Upgrades::NONE,
         }
     }
 
@@ -1176,7 +1179,7 @@ impl Kit {
         if !errors.is_empty() {
             return Err(errors.join("; "));
         }
-        let report = sim::design_report(content, bp, &SimConfig::default())?;
+        let report = sim::design_report_upgraded(content, bp, &SimConfig::default(), &self.upgrades)?;
         if !report.flight_ready() {
             return Err("it cannot fly (no powered logic core, or no thrust)".into());
         }

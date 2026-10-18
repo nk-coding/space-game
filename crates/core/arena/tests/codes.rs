@@ -141,7 +141,7 @@ fn the_setup_and_referee_give_the_fights_result() {
 #[test]
 fn a_voyage_code_round_trips_and_flies_as_recorded() {
     let content = data::base_content();
-    let spec = arena::VoyageSpec { voyage: "yard_approach".into(), seed: 3, design: DesignRef::Ship("rim_skiff".into()), behavior: None, minutes: 5.0, escorts: Vec::new() };
+    let spec = arena::VoyageSpec { voyage: "yard_approach".into(), seed: 3, design: DesignRef::Ship("rim_skiff".into()), behavior: None, minutes: 5.0, escorts: Vec::new(), upgrades: data::Upgrades::NONE };
     let mut runner = arena::start_voyage(&content, &spec).unwrap();
     let ticks = runner.step(u64::MAX).unwrap().ticks;
     let code = arena::VoyageCode::new(&content, rules_fingerprint(&content), spec.clone(), ticks, runner.sim().state_hash());

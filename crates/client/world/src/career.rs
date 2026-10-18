@@ -245,7 +245,8 @@ impl PlayerCareer {
     pub fn granted(&self, content: &Content) -> Granted {
         let (unlocks, fresh) = if self.free { (Unlocks::all(content), BTreeSet::new()) } else { (self.career.unlocks(content), self.career.fresh_parts(content)) };
         let stock = self.career.stock().clone();
-        Granted { unlocks, fresh, stock, mind_capacity: self.career.mind_capacity(content), free: self.free }
+        let upgrades = if self.free { data::Upgrades::NONE } else { self.career.upgrades(content) };
+        Granted { unlocks, fresh, stock, mind_capacity: self.career.mind_capacity(content), upgrades, free: self.free }
     }
 
     /// Changes the career and writes the save; `Err` says why it was not written (the change stays for this
@@ -274,6 +275,9 @@ pub struct Granted {
     pub stock: BTreeMap<String, u32>,
     /// Logic cores the ship-mind runs at once.
     pub mind_capacity: u32,
+    /// The researched part-stat steps (GDR-0024's refinement) the player's designs are built with: in the drydock's
+    /// numbers, the voyages, the sandbox and the lab's runs (none in free mode: the content's numbers).
+    pub upgrades: data::Upgrades,
     /// `?unlock=all`.
     pub free: bool,
 }

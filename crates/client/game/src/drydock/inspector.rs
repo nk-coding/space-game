@@ -98,9 +98,10 @@ pub(super) fn update(
     }
     let content = &content.0;
     // Only a report of this revision: another design's part numbers must not show on this one's parts.
+    let upgrades = &report.upgrades;
     let report = report.get().filter(|_| report.revision == Some(design.revision()));
     let want = match sel.part(&design) {
-        Some(i) => placed(content, &design, report, i),
+        Some(i) => placed(content, upgrades, &design, report, i),
         None => {
             let held = design.dock().parts().iter().filter(|p| ui.picked.as_ref() == Some(&p.part)).count() as u32;
             picked(content, &ui, &granted, held)
@@ -132,8 +133,9 @@ fn picked(content: &Content, ui: &DrydockUi, granted: &Granted, held: u32) -> In
     }
 }
 
-/// Placed part `i` of the design, with the report's numbers (content values while the design doesn't compile).
-fn placed(content: &Content, design: &PlayerDesign, report: Option<&DesignReport>, i: usize) -> Inspector {
+/// Placed part `i` of the design, with the report's numbers (content values while the design doesn't compile): a
+/// number the career's part-stat steps raise in teal, one the bonuses change on top in gold.
+fn placed(content: &Content, upgrades: &data::Upgrades, design: &PlayerDesign, report: Option<&DesignReport>, i: usize) -> Inspector {
     let p = &design.dock().parts()[i];
     let Some(part) = content.parts.get(&p.part) else { return Inspector::default() };
     let pr = report.and_then(|r| r.parts.get(i));
@@ -162,13 +164,15 @@ fn placed(content: &Content, design: &PlayerDesign, report: Option<&DesignReport
             stats.push(StatLine::new("POWER LEVEL", value, tone));
         }
     }
-    for l in content.part_stats(part, material) {
+    for l in content.part_stats_upgraded(part, material, upgrades) {
         if l.bonus.is_some() || DESIGN_TIME.contains(&l.stat.as_str()) {
             continue;
         }
-        let now = pr.and_then(|r| after_bonuses(&l.stat, l.value, &r.stats));
+        // The report's stats hold the steps and the bonuses; a shot rate scales its content value.
+        let now = pr.and_then(|r| after_bonuses(&l.stat, l.upgraded_from.unwrap_or(l.value), &r.stats));
         let (value, tone) = match now.filter(|v| (v - l.value).abs() > 1e-4 * l.value.abs().max(1.0)) {
             Some(v) => (content.stat_line(&l.stat, v).map_or(l.text.clone(), |s| s.text), Tone::Gold),
+            None if l.upgraded_from.is_some() => (l.text.clone(), Tone::Teal),
             None => (l.text.clone(), Tone::Number),
         };
         stats.push(StatLine::new(l.label.to_uppercase(), value, tone));
@@ -358,7 +362,7 @@ mod tests {
         let report = sim::design_report(&content, d.blueprint(), &sim::SimConfig::default()).unwrap();
         // A beam laser next to capacitors fires faster: its bonuses arrive from them, in gold numbers.
         let beam = index_of(&d, "beam_laser");
-        let insp = placed(&content, &d, Some(&report), beam);
+        let insp = placed(&content, &data::Upgrades::NONE, &d, Some(&report), beam);
         assert_eq!(insp.name, content.parts.get("beam_laser").unwrap().name);
         assert!(insp.sub.contains("INSTALLED") && insp.sub.contains("CELL"), "{}", insp.sub);
         assert!(insp.stats.iter().any(|l| l.label == "PEAK HEAT" && l.value.contains(" / ")), "{:?}", insp.stats);
@@ -375,12 +379,12 @@ mod tests {
         assert!(insp.installed.as_ref().is_some_and(|i| i.power.is_some() && i.material.is_none() && i.group == Some(1)));
         // A hull part: its material, no power, no weapon group.
         let block = index_of(&d, "armor_block");
-        let insp = placed(&content, &d, Some(&report), block);
+        let insp = placed(&content, &data::Upgrades::NONE, &d, Some(&report), block);
         let inst = insp.installed.unwrap();
         assert!(inst.material.is_some() && inst.power.is_none() && inst.group.is_none());
         // A source names its targets.
         if let Some(b) = report.bonuses.first() {
-            let insp = placed(&content, &d, Some(&report), b.source as usize);
+            let insp = placed(&content, &data::Upgrades::NONE, &d, Some(&report), b.source as usize);
             assert!(insp.bonuses.iter().any(|l| l.contains(" TO ")), "{:?}", insp.bonuses);
         }
     }

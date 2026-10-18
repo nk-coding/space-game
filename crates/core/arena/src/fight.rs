@@ -171,7 +171,7 @@ impl FightSetup {
         for (side, s) in spec.sides.iter().chain(&spec.waves).enumerate() {
             let mut list = Vec::new();
             for (entry, e) in s.entries.iter().enumerate() {
-                let (blueprint, design) = match resolve_design(content, &e.design, e.behavior.as_ref()) {
+                let (blueprint, design) = match resolve_design(content, &e.design, e.behavior.as_ref(), &s.upgrades) {
                     Ok((bp, d)) => (bp, Arc::new(d)),
                     Err(DesignProblem::UnknownShip(id)) => {
                         return Err(ArenaError::UnknownShip { side, entry, id });
@@ -217,7 +217,7 @@ impl FightSetup {
                             })?),
                             None => None,
                         };
-                        let report = sim::design_report(content, &blueprint, &SimConfig::default())
+                        let report = sim::design_report_upgraded(content, &blueprint, &SimConfig::default(), &s.upgrades)
                             .map_err(|e| ArenaError::Blueprint { side, entry, problems: vec![e] })?;
                         let reach = report.guns.iter().map(|g| g.range).fold(0.0, f32::max);
                         Some((p.flies.clone(), assists, reach))
@@ -531,6 +531,7 @@ pub(crate) fn resolve_design(
     content: &Content,
     r: &DesignRef,
     flies: Option<&BehaviorRef>,
+    upgrades: &data::Upgrades,
 ) -> Result<(Blueprint, ShipDesign), DesignProblem> {
     let bad = DesignProblem::Blueprint;
     let bp = match r {
@@ -563,7 +564,7 @@ pub(crate) fn resolve_design(
             bp
         }
     };
-    let design = ShipDesign::compile(content, &bp).map_err(|e| bad(vec![e]))?;
+    let design = ShipDesign::compile_upgraded(content, &bp, upgrades).map_err(|e| bad(vec![e]))?;
     Ok((bp, design))
 }
 

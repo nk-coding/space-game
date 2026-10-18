@@ -742,7 +742,7 @@ mod tests {
     #[test]
     fn a_voyage_replay_ends_as_recorded() {
         let content = data::base_content();
-        let spec = arena::VoyageSpec { voyage: "yard_approach".into(), seed: 2, design: arena::DesignRef::Ship("rim_skiff".into()), behavior: None, minutes: 5.0, escorts: Vec::new() };
+        let spec = arena::VoyageSpec { voyage: "yard_approach".into(), seed: 2, design: arena::DesignRef::Ship("rim_skiff".into()), behavior: None, minutes: 5.0, escorts: Vec::new(), upgrades: data::Upgrades::NONE };
         let mut runner = arena::start_voyage(&content, &spec).unwrap();
         let ticks = runner.step(u64::MAX).unwrap().ticks;
         let code = VoyageCode::new(&content, rules_fingerprint(&content), spec, ticks, runner.sim().state_hash());

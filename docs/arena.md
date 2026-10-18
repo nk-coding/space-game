@@ -305,7 +305,12 @@ the game share one pilot.
 - `VoyageSpec { voyage, seed, design, behavior, minutes }`: a content voyage id, the seed (the voyage's roll and the
   world), a `DesignRef` (content ship or blueprint text, checked like a fight's), a `BehaviorRef` the ship flies in
   fights (`None`: the runner's scripted *closing* pilot) and the time limit (`DEFAULT_VOYAGE_MINUTES` = 10,
-  placeholder; the scripted runs take 2.5–3.5 minutes).
+  placeholder; the scripted runs take 2.5–3.5 minutes). Optional `escorts`, and `upgrades` (18 Oct 2026, GDR-0024's
+  refinement): the career's part-stat steps the fleet is built with (`ShipDesign::compile_upgraded`), written only
+  when there are any. A fight spec's `Side` carries its own `upgrades` the same way; a run's `RunConfig::upgrades`
+  goes on side 0 of every fight (and side 1 when it is yours: your starts, hall of fame, fleet and champions, never
+  the content's enemies or THE ENEMY), on every voyage and into the measures. THE LADDER rates a design without them,
+  so ratings compare between careers. Specs, codes and runs without steps read and hash as before.
 - `start_voyage(&content, &spec)` builds a steppable `sim::VoyageRunner`; `run_voyage` runs it to the end and gives
   the `VoyageRun` (outcome, goal, ticks, hull lost, sites cleared of those with ships, kills, haul).
 - `voyage_score(&run, limit_ticks)`, *placeholder* weights:

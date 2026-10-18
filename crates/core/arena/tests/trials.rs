@@ -154,7 +154,7 @@ fn a_gauntlets_waves_come_in_one_after_the_other() {
     let c = data::base_content();
     let mut spec = FightSpec::new(4, vec![Entry::ship("halvex_runner")], vec![Entry::ship("automaton_raider")]);
     spec.time_limit = 120.0;
-    spec.waves = vec![Side { entries: vec![Entry::ship("automaton_raider")] }, Side { entries: vec![Entry { count: 2, ..Entry::ship("automaton_raider") }] }];
+    spec.waves = vec![Side::new(vec![Entry::ship("automaton_raider")]), Side::new(vec![Entry { count: 2, ..Entry::ship("automaton_raider") }])];
     let r = run_fight(&c, &spec).unwrap();
     let mut setup = arena::FightSetup::build(&c, &spec).unwrap();
     assert_eq!(setup.designs[1].len(), 3, "the waves' designs come with side 1's, for drawing");
@@ -181,7 +181,7 @@ fn a_gauntlets_waves_come_in_one_after_the_other() {
     let plain = FightSpec::new(1, vec![Entry::ship("rim_skiff")], vec![Entry::ship("automaton_raider")]);
     assert!(!plain.to_ron().contains("waves"));
     // An empty wave is refused, named as a wave.
-    spec.waves.push(Side { entries: Vec::new() });
+    spec.waves.push(Side::new(Vec::new()));
     let e = run_fight(&c, &spec).unwrap_err().to_string();
     assert!(e.contains("reinforcement wave 3"), "{e}");
 }

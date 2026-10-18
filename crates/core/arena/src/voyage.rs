@@ -1,7 +1,7 @@
 //! Voyage fitness (track L2 of the evolution lab): a design (and a behavior) flown through the slice's voyages by
 //! the headless voyage runner (`sim::voyage::runner`), scored 0..1 by the goal cleared, the time and the hull lost.
 
-use data::Content;
+use data::{Content, Upgrades};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
@@ -33,6 +33,10 @@ pub struct VoyageSpec {
     /// when there are any.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub escorts: Vec<DesignRef>,
+    /// The researched part-stat steps the fleet is built with (GDR-0024's refinement: the career's); written only
+    /// when there are any.
+    #[serde(default, skip_serializing_if = "Upgrades::is_empty")]
+    pub upgrades: Upgrades,
 }
 
 impl VoyageSpec {
@@ -71,13 +75,15 @@ impl VoyageSetup {
                 problems.join("; ")
             )),
         };
-        let (bp, design) = resolve_design(content, &spec.design, spec.behavior.as_ref()).map_err(unusable)?;
+        spec.upgrades.check().map_err(|e| ArenaError::Voyage(format!("the upgrades: {e}")))?;
+        let up = &spec.upgrades;
+        let (bp, design) = resolve_design(content, &spec.design, spec.behavior.as_ref(), up).map_err(unusable)?;
         let escorts = spec
             .escorts
             .iter()
-            .map(|d| resolve_design(content, d, None).map(|(bp, d)| (bp, Arc::new(d))).map_err(unusable))
+            .map(|d| resolve_design(content, d, None, up).map(|(bp, d)| (bp, Arc::new(d))).map_err(unusable))
             .collect::<Result<Vec<_>, _>>()?;
-        let report = sim::design_report(content, &bp, &SimConfig::default()).map_err(ArenaError::Voyage)?;
+        let report = sim::design_report_upgraded(content, &bp, &SimConfig::default(), up).map_err(ArenaError::Voyage)?;
         let mut lib = BehaviorLibrary::new(content).map_err(|p| {
             ArenaError::Content(
                 p.iter()

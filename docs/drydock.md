@@ -369,7 +369,8 @@ for 3 s, and the pan help gives way to it.
 `2×2 · CELL 5,2 · INSTALLED` (`IDLE` when it is over the control capacity, `FALLS OFF` when it is not on the main
 piece, both coral), its peak heat at full use as `T / limit` (teal up to the limit, gold up to 120 %, coral above:
 GDR-0052) and its power level at full use (`100 %`, a partial level in gold, `OFF`, `IDLE`), then its stat lines from
-`Content::part_stats` with the values after bonuses from `DesignReport::parts` (boosted values in gold; damage per
+`Content::part_stats_upgraded` (the career's part-stat steps, in teal; 18 Oct 2026) with the values after bonuses from
+`DesignReport::parts` (boosted values in gold; damage per
 second and shots per second include the fire-rate multiplier, as the sim's guns do; build points, control cost and
 minimum power stay with the palette part), and one gold line per bonus it receives or gives, grouped by stat,
 amount and part (`◆ +15% FIRE RATE FROM CAPACITOR`, `◆ +2 MW POWER OUTPUT TO FISSION REACTOR ×2`). Below: the armor

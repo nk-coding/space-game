@@ -568,7 +568,7 @@ impl Career {
                 Unlock::Material(id) => u.materials.insert(id.clone()),
                 Unlock::Frame(id) => u.frames.insert(id.clone()),
                 Unlock::Facility(id) => u.facilities.insert(id.clone()),
-                Unlock::MindCapacity(_) | Unlock::JumpRange(_) => false,
+                Unlock::MindCapacity(_) | Unlock::JumpRange(_) | Unlock::PartStat { .. } => false,
             };
         }
         u
@@ -582,6 +582,12 @@ impl Career {
     /// Intact hauled parts waiting in the workshop to be kept or dismantled, by part id.
     pub fn intake(&self) -> &BTreeMap<String, u32> {
         &self.intake
+    }
+
+    /// The part-stat steps of the researched nodes ([`Unlock::PartStat`], GDR-0024's refinement), in content order:
+    /// what the player's designs are built with.
+    pub fn upgrades(&self, content: &Content) -> crate::Upgrades {
+        crate::Upgrades::of_research(content, self.researched.iter().map(String::as_str))
     }
 
     /// How many logic cores the ship-mind runs at once: the start's mind capacity plus every

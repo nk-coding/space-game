@@ -1,6 +1,7 @@
 //! The fight spec: what fights whom, from where, for how long. Plain data with a RON text form, so a spec can be
 //! written by hand, stored next to a result and later passed around as a fight code (`docs/arena.md`).
 
+use data::Upgrades;
 use serde::{Deserialize, Serialize};
 
 use crate::error::ArenaError;
@@ -44,6 +45,17 @@ pub struct FightSpec {
 #[serde(deny_unknown_fields)]
 pub struct Side {
     pub entries: Vec<Entry>,
+    /// The researched part-stat steps its ships are built with (GDR-0024's refinement: a career's, for the player's
+    /// side); left out (written only when there are any): the content's numbers.
+    #[serde(default, skip_serializing_if = "Upgrades::is_empty")]
+    pub upgrades: Upgrades,
+}
+
+impl Side {
+    /// A side of these entries with the content's numbers.
+    pub fn new(entries: Vec<Entry>) -> Side {
+        Side { entries, upgrades: Upgrades::NONE }
+    }
 }
 
 /// `count` ships of one design under one behavior, in a formation.
@@ -145,7 +157,7 @@ impl FightSpec {
     pub fn new(seed: u64, a: Vec<Entry>, b: Vec<Entry>) -> FightSpec {
         FightSpec {
             seed,
-            sides: [Side { entries: a }, Side { entries: b }],
+            sides: [Side::new(a), Side::new(b)],
             start_distance: DEFAULT_START_DISTANCE,
             time_limit: DEFAULT_TIME_LIMIT,
             waves: Vec::new(),
@@ -186,6 +198,7 @@ impl FightSpec {
             if s.entries.is_empty() {
                 return Err(ArenaError::EmptySide { side });
             }
+            s.upgrades.check().map_err(|problem| ArenaError::Upgrades { side, problem })?;
             let mut ships = 0u32;
             let mut piloted = false;
             for (entry, e) in s.entries.iter().enumerate() {

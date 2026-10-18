@@ -129,7 +129,7 @@ once. There is no research time. The line above the button says what happened, o
 | NEW PART | a new part with its own shape and role (or a new armour) |
 | VARIANT | a sidegrade of a part you have, with a trade-off |
 | SIZE CLASS | a bigger frame for bigger hulls |
-| REFINEMENT | a small step in a chain, such as more mind capacity or a longer jump |
+| REFINEMENT | a small step in a chain, such as more mind capacity, a longer jump or a part stat |
 | ALIEN TECH | needs reverse-engineered alien technology |
 | FACILITY | opens a building of the shipyard |
 
@@ -153,11 +153,29 @@ once. There is no research time. The line above the button says what happened, o
 | [[research:automaton_forge]] | [[research:automaton_forge.cost]] | [[research:automaton_forge.requires]] | [[research:automaton_forge.unlocks]] |
 | [[research:capital_drydock]] | [[research:capital_drydock.cost]] | [[research:capital_drydock.requires]] | [[research:capital_drydock.unlocks]] |
 
-A node unlocks one or more of six things: a part, an armour material, a drydock frame, more mind capacity, a
-building of the shipyard (the [evolution lab](/mechanics/evolution-lab)), or a longer **jump range** (the
+A node unlocks one or more of seven things: a part, an armour material, a drydock frame, more mind capacity, a
+building of the shipyard (the [evolution lab](/mechanics/evolution-lab)), a longer **jump range** (the
 [galaxy](/mechanics/galaxy#home-and-the-jump-range)'s reach from home and every charted cluster; the research screen
-shows it before and after).
+shows it before and after), or a **step on a part stat** (below).
 Unlocks are for good. A newly unlocked part shows a gold NEW tag in the drydock until you pick it.
+
+### Refinement chains
+
+Short chains of three nodes, each a small step on one stat of some parts: every step adds to the ones before it.
+They change your own ships only, in every design at once (the ones you fly, your escorts, the
+[evolution lab](/mechanics/evolution-lab)'s runs); enemies and wrecks keep the numbers on their pages. A full chain is
+worth a little, never a new part.
+
+| Chain | First step | Then |
+|---|---|---|
+| [[research:shield_regen_1]] | [[research:shield_regen_1.unlocks]] | [[research:shield_regen_2]], [[research:shield_regen_3]] |
+| [[research:radiator_vent_1]] | [[research:radiator_vent_1.unlocks]] | [[research:radiator_vent_2]], [[research:radiator_vent_3]] |
+| [[research:thruster_speed_1]] | [[research:thruster_speed_1.unlocks]] | [[research:thruster_speed_2]], [[research:thruster_speed_3]] |
+| [[research:pulse_rate_1]] | [[research:pulse_rate_1.unlocks]] | [[research:pulse_rate_2]], [[research:pulse_rate_3]] |
+
+The research screen shows each part's number before and after the step. In the drydock a number your steps raised
+reads in teal, in a part's card and under SELECTED PART; a part's own page lists the chains that refine it. The
+[ladder](/mechanics/evolution-lab#the-ladder) rates a design without them, so ratings compare between games.
 
 ## Locked content
 

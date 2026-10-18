@@ -41,6 +41,7 @@ pub use design::geometry::{
     Bounds, Cell, Dir, Footprint, GridPoint, HullLoop, HullSegment, Pieces, PlacedShape, ShipGrid,
 };
 pub use design::stats::{BonusInfo, ShipTotals, StatLine};
+pub use design::upgrades::{StatStep, Upgrades};
 
 #[cfg(feature = "embed")]
 mod embedded {

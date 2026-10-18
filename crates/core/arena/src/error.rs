@@ -58,6 +58,11 @@ pub enum ArenaError {
         side: usize,
         entry: usize,
     },
+    /// A side's part-stat steps are not usable (`data::Upgrades::check`).
+    Upgrades {
+        side: usize,
+        problem: String,
+    },
     /// The content's own behaviors do not compile.
     Content(String),
     /// No voyage of this id in the content.
@@ -77,6 +82,7 @@ impl fmt::Display for ArenaError {
                 write!(f, "`{field}` is {value}; it must be above 0 and at most {max}")
             }
             ArenaError::EmptySide { side } => write!(f, "{} has no entries", who(*side)),
+            ArenaError::Upgrades { side, problem } => write!(f, "{}'s upgrades: {problem}", who(*side)),
             ArenaError::ZeroCount { side, entry } => {
                 at(f, side, entry)?;
                 f.write_str("`count` is 0")

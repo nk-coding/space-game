@@ -474,8 +474,19 @@ pub fn design_report(
     blueprint: &Blueprint,
     config: &SimConfig,
 ) -> Result<DesignReport, String> {
+    design_report_upgraded(content, blueprint, config, &data::Upgrades::NONE)
+}
+
+/// [`design_report`] of the player's design built with their researched part-stat steps
+/// ([`ShipDesign::compile_upgraded`]).
+pub fn design_report_upgraded(
+    content: &Content,
+    blueprint: &Blueprint,
+    config: &SimConfig,
+    upgrades: &data::Upgrades,
+) -> Result<DesignReport, String> {
     let config = &config.finite_or_default();
-    let design = Arc::new(ShipDesign::compile(content, blueprint)?);
+    let design = Arc::new(ShipDesign::compile_upgraded(content, blueprint, upgrades)?);
     let mut ship = Ship::new(
         ShipId(0),
         Arc::clone(&design),

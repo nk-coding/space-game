@@ -722,6 +722,18 @@ fn base_research_nodes() {
             "burst_laser",
             "long_cannon",
             "compact_reactor",
+            "shield_regen_1",
+            "shield_regen_2",
+            "shield_regen_3",
+            "radiator_vent_1",
+            "radiator_vent_2",
+            "radiator_vent_3",
+            "thruster_speed_1",
+            "thruster_speed_2",
+            "thruster_speed_3",
+            "pulse_rate_1",
+            "pulse_rate_2",
+            "pulse_rate_3",
         ]
     );
     // The gate shards open the rim's three dead ends (GDR-0031): only the automaton plate stays the automatons' own.
@@ -753,6 +765,7 @@ fn base_research_nodes() {
                 Unlock::Facility(id) => c.facilities.get(id).unwrap().locked,
                 Unlock::MindCapacity(n) => *n > 0,
                 Unlock::JumpRange(s) => *s > 0.0,
+                Unlock::PartStat { step: data::Effect::Add(x) | data::Effect::Percent(x), .. } => *x > 0.0,
             };
             assert!(locked, "{}: {u:?}", n.id);
         }
@@ -802,4 +815,52 @@ fn base_start() {
     assert_eq!((totals.logic_cores, totals.cargo_capacity), (2, 4.0));
     assert!(skiff.parts.iter().filter(|p| p.part == "gyro").count() == 2);
     assert!(skiff.parts.iter().filter(|p| p.part == "scanner").count() == 1);
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// Refinement: part-stat steps (GDR-0024)
+
+#[test]
+fn part_stat_steps_validate_like_bonuses() {
+    let node = |id: &str, unlock: &str| {
+        format!(r#"(id: "{id}", name: "X", summary: "X.", family: "power", kind: Refinement, cost: (), unlocks: [{unlock}])"#)
+    };
+    let nodes = [
+        node("good", r#"PartStat(target: Tag("radiator"), stat: "heat_vent", step: Percent(5))"#),
+        node("not_bonus", r#"PartStat(target: Part("thruster"), stat: "mass", step: Add(1))"#),
+        node("no_part", r#"PartStat(target: Part("warp_core"), stat: "thrust", step: Percent(5))"#),
+        node("lands_nowhere", r#"PartStat(target: Tag("radiator"), stat: "shield_regen", step: Percent(5))"#),
+        node("too_big", r#"PartStat(target: Part("thruster"), stat: "thrust", step: Percent(-100))"#),
+    ];
+    let p = problems_with(&[("research.ron", &format!("[{}]", nodes.join(",")))]);
+    assert_clean(&p, "good");
+    assert_error(&p, "not_bonus", "unlocks[0].stat", "research steps cannot change `mass`");
+    assert_error(&p, "no_part", "unlocks[0].target", "unknown part `warp_core`");
+    assert_error(&p, "lands_nowhere", "unlocks[0]", "would change nothing");
+    assert_error(&p, "too_big", "unlocks[0].step", "above -100");
+}
+
+#[test]
+fn a_careers_steps_change_its_stat_lines() {
+    let c = data::base_content();
+    // Content order, whatever order the nodes were researched in; unknown ids are skipped.
+    let up = data::Upgrades::of_research(&c, ["pulse_rate_2", "nonsense", "radiator_vent_1", "pulse_rate_1"]);
+    let stats: Vec<&str> = up.0.iter().map(|s| s.stat.as_str()).collect();
+    assert_eq!(stats, ["heat_vent", "fire_rate", "fire_rate"]);
+    let line = |part: &str, stat: &str, up: &data::Upgrades| {
+        let p = c.parts.get(part).unwrap();
+        c.part_stats_upgraded(p, None, up).into_iter().find(|l| l.stat == stat && l.bonus.is_none()).unwrap()
+    };
+    let rad = line("radiator", "heat_vent", &up);
+    let base = rad.upgraded_from.unwrap();
+    assert!((rad.value - base * 1.08).abs() < 1e-5, "{rad:?}");
+    // A fire-rate step shows on the shot rate and the damage per second; untouched lines stay as they are.
+    let rate = line("pulse_laser", "shot_rate", &up);
+    assert!((rate.value - rate.upgraded_from.unwrap() * 1.06).abs() < 1e-5, "{rate:?}");
+    assert!(line("pulse_laser", "damage", &up).upgraded_from.is_some());
+    assert_eq!(line("pulse_laser", "range", &up).upgraded_from, None);
+    assert_eq!(line("burst_laser", "shot_rate", &up).upgraded_from, None);
+    // No steps: the content's lines.
+    let p = c.parts.get("radiator").unwrap();
+    assert_eq!(c.part_stats_upgraded(p, None, &data::Upgrades::NONE), c.part_stats(p, None));
 }

@@ -118,6 +118,9 @@ pub struct SimWorld {
     /// Content every other owner's designs are compiled from, when it differs (the packs' alone, without the
     /// player's behaviors).
     others: Option<Content>,
+    /// The researched part-stat steps the player's designs from memory are built with ([`SimWorld::design_from`]):
+    /// the career's, passed in by the scene.
+    upgrades: data::Upgrades,
     /// Compiled content designs by id: the player's, every other owner's.
     designs: [BTreeMap<String, Arc<ShipDesign>>; 2],
     /// The blueprints of designs compiled from memory ([`SimWorld::design_from`]), by design identity.
@@ -148,6 +151,7 @@ impl SimWorld {
             sim,
             content,
             others: None,
+            upgrades: data::Upgrades::NONE,
             designs: Default::default(),
             blueprints: BTreeMap::new(),
             visuals: BTreeMap::new(),
@@ -165,6 +169,12 @@ impl SimWorld {
     /// Content for every owner but the player (see [`SimWorld::others`]).
     pub fn with_others(mut self, others: Content) -> Self {
         self.others = Some(others);
+        self
+    }
+
+    /// The career's part-stat steps for the player's designs (see [`SimWorld::upgrades`]).
+    pub fn with_upgrades(mut self, upgrades: data::Upgrades) -> Self {
+        self.upgrades = upgrades;
         self
     }
 
@@ -189,11 +199,13 @@ impl SimWorld {
         }
     }
 
-    /// Compiles an in-memory blueprint (the player's design) for ships of `owner`. Not cached by id: every
-    /// call compiles afresh, so an edited blueprint under the same id is never confused with an older one.
+    /// Compiles an in-memory blueprint (the player's design) for ships of `owner`, the player's with the career's
+    /// part-stat steps. Not cached by id: every call compiles afresh, so an edited blueprint under the same id is
+    /// never confused with an older one.
     pub fn design_from(&mut self, bp: &Blueprint, owner: Owner) -> Option<Arc<ShipDesign>> {
         let content = if owner != Owner::PLAYER && self.others.is_some() { self.others.as_ref()? } else { &self.content };
-        match ShipDesign::compile(content, bp) {
+        let upgrades = if owner == Owner::PLAYER { &self.upgrades } else { &data::Upgrades::NONE };
+        match ShipDesign::compile_upgraded(content, bp, upgrades) {
             Ok(d) => {
                 let d = Arc::new(d);
                 self.blueprints.insert(Arc::as_ptr(&d) as usize, (d.clone(), bp.clone()));

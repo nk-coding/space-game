@@ -497,8 +497,9 @@ impl Setup {
         self.size.generations as f64 * (self.size.population as f64 * (child + breed) + enemy)
     }
 
-    /// The run's configuration with these starts (resolved, in order), under the career's limits: only the parts,
-    /// materials and counts it has (`?unlock=all` lifts them), and with VOYAGE-READY at most `free_cores` cores; the
+    /// The run's configuration with these starts (resolved, in order), under the career's limits and with its
+    /// part-stat steps: only the parts, materials and counts it has (`?unlock=all` lifts them), and with VOYAGE-READY
+    /// at most `free_cores` cores; the
     /// trials that are on, filled in from `src`. Refused in words when a trial has nothing to fight or none is on.
     pub fn config(&self, content: &Content, starts: &[StartDesign], granted: &Granted, free_cores: u32, src: &Sources) -> Result<RunConfig, String> {
         let pilot = || {
@@ -554,6 +555,8 @@ impl Setup {
             crossover: arena::evolve::DEFAULT_CROSSOVER,
             mutations: arena::evolve::DEFAULT_MUTATIONS,
             enemy,
+            // Your side is built with the career's part-stat steps, as its designs fly (GDR-0024's refinement).
+            upgrades: granted.upgrades.clone(),
         })
     }
 }

@@ -39,6 +39,16 @@ impl<'a> Validator<'a> {
                     }
                     continue;
                 }
+                Unlock::PartStat { target, stat, step } => {
+                    self.stat_change(n, &f, ("research steps", "step"), target, stat, *step);
+                    let lands = c.parts.iter().filter(|p| p.matches(target)).any(|p| {
+                        c.part_stats(p, None).iter().any(|l| l.bonus.is_none() && crate::design::upgrades::shows_on(stat, &l.stat))
+                    });
+                    if !lands && c.stats.contains(stat) {
+                        self.err(n, &f, format!("no part it picks has `{stat}`: the step would change nothing"));
+                    }
+                    continue;
+                }
                 Unlock::Part(id) => (Kind::Part, id, c.parts.get(id).map(|p| p.locked)),
                 Unlock::Material(id) => (Kind::Material, id, c.materials.get(id).map(|m| m.locked)),
                 Unlock::Frame(id) => (Kind::Frame, id, c.frames.get(id).map(|x| x.locked)),

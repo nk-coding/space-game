@@ -98,8 +98,10 @@ pub fn part_info(content: &Content, granted: &Granted, part: &Part, material: Op
     } else {
         (locked_sub(content, part), Tone::Dim)
     };
-    let lines = content.part_stats(part, material);
-    let mut stats: Vec<StatLine> = lines.iter().filter(|l| l.bonus.is_none()).map(|l| StatLine::new(l.label.to_uppercase(), l.text.clone(), Tone::Number)).collect();
+    // The career's part-stat steps (GDR-0024's refinement) show in teal.
+    let lines = content.part_stats_upgraded(part, material, &granted.upgrades);
+    let tone = |l: &data::StatLine| if l.upgraded_from.is_some() { Tone::Teal } else { Tone::Number };
+    let mut stats: Vec<StatLine> = lines.iter().filter(|l| l.bonus.is_none()).map(|l| StatLine::new(l.label.to_uppercase(), l.text.clone(), tone(l))).collect();
     if !part.hull {
         let recipe = part.recipe.as_ref().map_or_else(
             || "Salvage only".to_string(),
@@ -557,6 +559,21 @@ mod tests {
         }
         let longest = labels.iter().max_by(|a, b| width(a).total_cmp(&width(b))).unwrap();
         assert!(width(longest) <= column, "{longest}: {} px in a {column} px column", width(longest));
+    }
+
+    /// A stat the career's steps raised reads in teal, with the raised number; the others stay white.
+    #[test]
+    fn an_upgraded_stat_reads_as_upgraded() {
+        let content = data::base_content();
+        let upgrades = data::Upgrades::of_research(&content, ["radiator_vent_1", "radiator_vent_2"]);
+        let granted = Granted { unlocks: data::career::Unlocks::all(&content), upgrades, ..default() };
+        let rad = content.parts.get("radiator").unwrap();
+        let (plain, raised) = (part_info(&content, &Granted::default(), rad, None, (0, Held::Design)), part_info(&content, &granted, rad, None, (0, Held::Design)));
+        let vent = content.stats.get("heat_vent").unwrap().name.to_uppercase();
+        let line = |i: &PartInfo| i.stats.iter().find(|l| l.label == vent).unwrap().clone();
+        assert_eq!((line(&plain).tone, line(&raised).tone), (Tone::Number, Tone::Teal));
+        assert_ne!(line(&plain).value, line(&raised).value);
+        assert!(raised.stats.iter().filter(|l| l.label != vent).all(|l| l.tone != Tone::Teal));
     }
 
     /// A part's lines: its stats from content, then its recipe and stock across both columns; a locked one names its

@@ -78,6 +78,9 @@ pub enum Unlock {
     /// A longer jump: the drive reaches this many S further (GDR-0093: two propulsion nodes of 0.75 S take the
     /// galaxy's starting 2.5 S to 4 S).
     JumpRange(f32),
+    /// A refinement step (GDR-0024): `step` on `stat` (an adjacency-bonus stat id) of every part `target` picks,
+    /// for the player's own designs ([`crate::Upgrades`]).
+    PartStat { target: Selector, stat: String, step: Effect },
 }
 
 /// `research/*.ron`: a research node. Unlocks at once when paid (GDR-0063); the player's set of researched nodes

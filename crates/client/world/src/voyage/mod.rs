@@ -114,6 +114,8 @@ pub struct Launched {
     pub mind: u32,
     /// The FLEET escorts' designs.
     pub escorts: Vec<Blueprint>,
+    /// The career's part-stat steps the fleet is built with (GDR-0024's refinement), as at the launch.
+    pub upgrades: data::Upgrades,
     /// `None`: recorded in the career (its end is too). `Some(why)`: a practice run (URL only), never saved.
     pub practice: Option<String>,
     /// A generated cluster instead of a content voyage (galaxy plan E3, E4, for testing: `?scene=voyage&cluster=`);
@@ -245,7 +247,7 @@ impl LaunchInputs<'_> {
         info!("voyage: {id} launched, seed {seed}{}", practice.as_deref().map(|p| format!(" (practice: {p})")).unwrap_or_default());
         let mind = self.granted.mind_capacity;
         *self.run = VoyageRun {
-            launched: Some(Launched { voyage: id.clone(), seed, mind, escorts: escorts.clone(), practice, cluster: None }),
+            launched: Some(Launched { voyage: id.clone(), seed, mind, escorts: escorts.clone(), upgrades: self.granted.upgrades.clone(), practice, cluster: None }),
             ..default()
         };
         self.scene.kind = SceneKind::Voyage(id);
@@ -289,6 +291,7 @@ impl LaunchInputs<'_> {
                 seed,
                 mind: self.granted.mind_capacity,
                 escorts: escorts.clone(),
+                upgrades: self.granted.upgrades.clone(),
                 practice,
                 cluster: Some(ClusterLaunch { cluster: k, sky_seed, band, interior, leads }),
             }),
@@ -341,6 +344,7 @@ impl LaunchInputs<'_> {
                 seed,
                 mind: self.granted.mind_capacity,
                 escorts: self.escorts.0.clone(),
+                upgrades: self.granted.upgrades.clone(),
                 practice: Some("A GENERATED CLUSTER, FOR TESTING".into()),
                 cluster: Some(ClusterLaunch { cluster: k, sky_seed: c.seed, band: c.band.clone(), interior, leads }),
             }),
@@ -901,7 +905,7 @@ mod tests {
     }
 
     fn launched(voyage: &str, seed: u64, practice: Option<String>) -> Launched {
-        Launched { voyage: voyage.into(), seed, mind: 2, escorts: Vec::new(), practice, cluster: None }
+        Launched { voyage: voyage.into(), seed, mind: 2, escorts: Vec::new(), upgrades: data::Upgrades::NONE, practice, cluster: None }
     }
 
     /// The V key's voyage, the launch's decisions, and the seed it rolls from (`docs/career.md`'s fixed value).
@@ -1019,6 +1023,7 @@ mod tests {
             seed,
             mind: 2,
             escorts: Vec::new(),
+            upgrades: data::Upgrades::NONE,
             practice: None,
             cluster: Some(ClusterLaunch { cluster: k, sky_seed: 1, band: "rim".into(), interior: galaxy::interior(&content, pc.career().exploration().unwrap().skeleton(), k).unwrap(), leads: Leads::default() }),
         };

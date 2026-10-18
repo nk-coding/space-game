@@ -248,8 +248,8 @@ fn give_back_zoom(ui: Res<BehaviorUi>, cam: Res<BehaviorCamera>, mut rig: ResMut
 /// The drydock's design report (`drydock::report`), brought up to date on this screen too: the weapon reach and
 /// TEST IN RANGE read it. (A system of its own: the drydock's schedule orders its systems by `report::update`'s
 /// name, which must stay unique there.)
-fn design_report(design: Res<PlayerDesign>, content: Res<GameContent>, time: Res<Time<Real>>, out: ResMut<DrydockReport>) {
-    crate::drydock::report::update(design, content, time, out);
+fn design_report(design: Res<PlayerDesign>, content: Res<GameContent>, granted: Option<Res<world::career::Granted>>, time: Res<Time<Real>>, out: ResMut<DrydockReport>) {
+    crate::drydock::report::update(design, content, granted, time, out);
 }
 
 /// The screen is shown only in its mode, opening and closing with its transition (`ui_kit::ScreenFx`); to and from

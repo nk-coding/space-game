@@ -151,7 +151,7 @@ fn roman(n: usize) -> String {
 }
 
 /// A node's icon: the part it unlocks (hull parts in the first armour), the armour block in the material it
-/// unlocks, the formation for a frame, the mind's ring for mind capacity.
+/// unlocks, the formation for a frame, the mind's ring for mind capacity, the first part a part-stat step picks.
 fn node_icon(content: &Content, style: &Style, node: &ResearchNode) -> UiIcon {
     let first_armor = || content.materials.iter().find(|m| m.armor.is_some()).map(|m| m.id.clone());
     match node.unlocks.first() {
@@ -166,6 +166,10 @@ fn node_icon(content: &Content, style: &Style, node: &ResearchNode) -> UiIcon {
         Some(Unlock::Frame(_)) => UiIcon::Glyph { glyph: Glyph::Formation, color: style.ui.teal },
         Some(Unlock::Facility(_)) => UiIcon::Glyph { glyph: Glyph::Diamond, color: style.ui.violet },
         Some(Unlock::JumpRange(_)) => UiIcon::Glyph { glyph: Glyph::Play, color: style.ui.teal },
+        Some(Unlock::PartStat { target, .. }) => match content.parts.iter().find(|p| !p.hull && p.matches(target)) {
+            Some(p) => UiIcon::Part { part: p.id.clone(), material: None },
+            None => UiIcon::Glyph { glyph: Glyph::Diamond, color: style.ui.teal },
+        },
         Some(Unlock::MindCapacity(_)) | None => UiIcon::Glyph { glyph: Glyph::Menu, color: style.ui.violet },
     }
 }
@@ -494,8 +498,9 @@ pub struct Stat {
 
 /// What the preview shows for a node: a head, the icon, stat cells and bonus lines. A part: its stat lines from
 /// content (as the drydock's palette part); a material: the armour block in it; a frame: its size; mind
-/// capacity: the mind before and after; jump range: the drive's reach before and after.
-pub fn preview(content: &Content, style: &Style, node: &ResearchNode, now: tree::Now) -> (String, UiIcon, Vec<Stat>, Vec<String>) {
+/// capacity: the mind before and after; jump range: the drive's reach before and after; a part-stat step: each part it
+/// picks, its stat before and after the node (`has`: the career's steps, `done`: the node's among them).
+pub fn preview(content: &Content, style: &Style, node: &ResearchNode, now: tree::Now, has: (&data::Upgrades, bool)) -> (String, UiIcon, Vec<Stat>, Vec<String>) {
     let capacity = now.mind;
     let icon = node_icon(content, style, node);
     let lines = |part: &data::Part, material: Option<&data::Material>| {
@@ -546,8 +551,37 @@ pub fn preview(content: &Content, style: &Style, node: &ResearchNode, now: tree:
             let value = format!("{} » {}", tree::range_text(content, now.range), tree::range_text(content, now.range + s));
             ("THE DRIVE".into(), icon, vec![Stat { label, value }], Vec::new())
         }
+        Some(Unlock::PartStat { target, stat, .. }) => {
+            let (before, after) = step_around(content, node, has);
+            let mut stats = Vec::new();
+            for part in content.parts.iter().filter(|p| p.matches(target)) {
+                let (b, a) = (content.part_stats_upgraded(part, None, &before), content.part_stats_upgraded(part, None, &after));
+                for (b, a) in b.iter().zip(&a).filter(|(b, _)| b.bonus.is_none() && data::design::upgrades::shows_on(stat, &b.stat)) {
+                    stats.push(Stat { label: format!("{} {}", part.name, b.label).to_uppercase(), value: format!("{} » {}", b.text, a.text) });
+                }
+            }
+            let label = content.stats.get(stat).map_or_else(|| stat.to_uppercase(), |d| d.name.to_uppercase());
+            (format!("{label}  ·  {}", content.selector_label(target).to_uppercase()), icon, stats, Vec::new())
+        }
         None => (String::new(), icon, Vec::new(), Vec::new()),
     }
+}
+
+/// The career's part-stat steps without and with `node`'s (`has`: the career's, `done`: the node's among them).
+fn step_around(content: &Content, node: &ResearchNode, has: (&data::Upgrades, bool)) -> (data::Upgrades, data::Upgrades) {
+    let (has, done) = has;
+    let own = data::Upgrades::of_research(content, [node.id.as_str()]);
+    let mut without = has.clone();
+    if done {
+        for s in &own.0 {
+            if let Some(k) = without.0.iter().rposition(|x| x == s) {
+                without.0.remove(k);
+            }
+        }
+    }
+    let mut with = without.clone();
+    with.0.extend(own.0);
+    (without, with)
 }
 
 /// The screen follows the career and the selection: the stores, every card's state and cost, the connectors,
@@ -586,7 +620,7 @@ pub(super) fn sync(
     // A researched node shows what it cost, not what the stores hold now.
     let done = matches!(sel_state, Some(CardState::Done));
     let sel_chips = selected.map_or(Vec::new(), |n| if done { tree::cost_chips(n) } else { tree::chips(c, n) });
-    let (head, icon, stats, bonuses) = selected.map_or((String::new(), UiIcon::Glyph { glyph: Glyph::Menu, color: ui.dim }, Vec::new(), Vec::new()), |n| preview(content, &style, n, now));
+    let (head, icon, stats, bonuses) = selected.map_or((String::new(), UiIcon::Glyph { glyph: Glyph::Menu, color: ui.dim }, Vec::new(), Vec::new()), |n| preview(content, &style, n, now, (&granted.upgrades, done)));
     let ready = tree::ready(content, c);
     let lane_families: Vec<&str> = tree.lanes.iter().map(|l| l.family.as_str()).collect();
     let mats = cost_materials(content);

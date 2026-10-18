@@ -275,50 +275,7 @@ impl<'a> Validator<'a> {
         }
         for (k, b) in p.bonuses.iter().enumerate() {
             let f = format!("bonuses[{k}]");
-            match &b.target {
-                Selector::Part(id) if !self.c.parts.contains(id) => {
-                    self.err(p, format!("{f}.target"), format!("unknown part `{id}`"))
-                }
-                Selector::Category(id) if !self.c.categories.contains(id) => {
-                    self.err(p, format!("{f}.target"), format!("unknown category `{id}`"))
-                }
-                Selector::Tag(t) if !self.c.parts.iter().any(|q| q.has_tag(t)) => self.err(
-                    p,
-                    format!("{f}.target"),
-                    format!("no part has the tag `{t}`"),
-                ),
-                _ => {}
-            }
-            if !self.c.stats.contains(&b.stat) {
-                self.err(p, format!("{f}.stat"), format!("unknown stat `{}`", b.stat));
-            } else if !BONUS_STATS.contains(&b.stat.as_str()) {
-                self.err(
-                    p,
-                    format!("{f}.stat"),
-                    format!(
-                        "bonuses cannot change `{}`; they change {}",
-                        b.stat,
-                        BONUS_STATS.join(", ")
-                    ),
-                );
-            }
-            match b.effect {
-                Effect::Add(x) if !(x.is_finite() && x.abs() <= MAX_NUMBER) => self.err(
-                    p,
-                    format!("{f}.effect"),
-                    format!("must be a finite number from -{MAX_NUMBER} to {MAX_NUMBER}, got {x}"),
-                ),
-                Effect::Percent(x) if !(x.is_finite() && x > -100.0 && x <= MAX_BONUS_PERCENT) => {
-                    self.err(
-                        p,
-                        format!("{f}.effect"),
-                        format!(
-                            "a percentage above -100 and at most {MAX_BONUS_PERCENT}, got {x}"
-                        ),
-                    )
-                }
-                _ => {}
-            }
+            self.stat_change(p, &f, ("bonuses", "effect"), &b.target, &b.stat, b.effect);
             match b.max_stacks {
                 Some(0) => self.err(
                     p,
@@ -365,6 +322,43 @@ impl<'a> Validator<'a> {
                 "locked",
                 "every frame is locked: a new game has no frame to build in",
             );
+        }
+    }
+
+    /// A change to a part stat (an adjacency bonus, or a research step, `Unlock::PartStat`) at `f`: the parts it
+    /// picks, a stat the sim applies and an effect in range. `names` is what makes the change (in the message on a
+    /// stat it cannot change) and the effect's field.
+    pub(super) fn stat_change<T: Entry>(&mut self, e: &T, f: &str, names: (&str, &str), target: &Selector, stat: &str, effect: Effect) {
+        let (what, field) = names;
+        match target {
+            Selector::Part(id) if !self.c.parts.contains(id) => {
+                self.err(e, format!("{f}.target"), format!("unknown part `{id}`"))
+            }
+            Selector::Category(id) if !self.c.categories.contains(id) => {
+                self.err(e, format!("{f}.target"), format!("unknown category `{id}`"))
+            }
+            Selector::Tag(t) if !self.c.parts.iter().any(|q| q.has_tag(t)) => {
+                self.err(e, format!("{f}.target"), format!("no part has the tag `{t}`"))
+            }
+            _ => {}
+        }
+        if !self.c.stats.contains(stat) {
+            self.err(e, format!("{f}.stat"), format!("unknown stat `{stat}`"));
+        } else if !BONUS_STATS.contains(&stat) {
+            self.err(e, format!("{f}.stat"), format!("{what} cannot change `{stat}`; they change {}", BONUS_STATS.join(", ")));
+        }
+        match effect {
+            Effect::Add(x) if !(x.is_finite() && x.abs() <= MAX_NUMBER) => self.err(
+                e,
+                format!("{f}.{field}"),
+                format!("must be a finite number from -{MAX_NUMBER} to {MAX_NUMBER}, got {x}"),
+            ),
+            Effect::Percent(x) if !(x.is_finite() && x > -100.0 && x <= MAX_BONUS_PERCENT) => self.err(
+                e,
+                format!("{f}.{field}"),
+                format!("a percentage above -100 and at most {MAX_BONUS_PERCENT}, got {x}"),
+            ),
+            _ => {}
         }
     }
 }

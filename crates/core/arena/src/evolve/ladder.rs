@@ -64,12 +64,13 @@ impl Ladder {
         data::hash::fnv1a64(data::ron_options().to_string(self).expect("a ladder serialises").as_bytes())
     }
 
-    /// The fights of `design` (one ship, as a fight entry) on every rung, each rung's seeds in order.
+    /// The fights of `design` (one ship, as a fight entry) on every rung, each rung's seeds in order. A rating is of
+    /// the design as the content builds it (no researched part-stat steps), so ratings compare between careers.
     pub fn jobs(&self, content: &Content, design: &Entry) -> Result<Vec<Job>, RunError> {
         self.trial.check().map_err(RunError::Fitness)?;
         let kind = self.trial.resolve(content)?;
         let me = Contestant { entry: design.clone(), build_points: 0.0 };
-        Ok(kind.jobs(&me, &GenCtx { starts: &[], hall: &[], enemies: &[], fresh: None }))
+        Ok(kind.jobs(&me, &GenCtx { starts: &[], hall: &[], enemies: &[], fresh: None, upgrades: &data::Upgrades::NONE }))
     }
 
     /// The fights of `design` as work to step or hand out.

@@ -295,6 +295,8 @@ pub(crate) struct SceneInputs<'w> {
     behaviors: Res<'w, PlayerBehaviors>,
     voyage: Res<'w, VoyageRun>,
     replay: ResMut<'w, Replay>,
+    /// The career's grants: the sandbox builds the player's design with its part-stat steps.
+    granted: Option<Res<'w, crate::career::Granted>>,
 }
 
 /// The scene at start (in the drydock the world stays empty).
@@ -359,7 +361,8 @@ fn build_world(scene: &mut Scene, focus: &mut PilotFocus, inputs: &mut SceneInpu
                 Ok(lib) => sim.set_behaviors(lib),
                 Err(problems) => error!("behavior library: {} problems, first: {:?}", problems.len(), problems.first()),
             }
-            let mut world = SimWorld::new(sim, content).with_others(others);
+            let upgrades = inputs.granted.as_ref().map_or(data::Upgrades::NONE, |g| g.upgrades.clone());
+            let mut world = SimWorld::new(sim, content).with_others(others).with_upgrades(upgrades);
             // A behavior the design names that can't fly (errors, deleted): its faction's, with a banner.
             let fallback = behaviors::fallback(inputs.design.blueprint(), &world.content, &inputs.behaviors);
             let bp = fallback.as_ref().map_or(inputs.design.blueprint(), |(bp, _)| bp);
@@ -464,7 +467,7 @@ fn build_voyage(scene: &mut Scene, focus: &mut PilotFocus, inputs: &SceneInputs,
         Some(c) => sim::VoyagePlan::roll_interior(&others, &launched.voyage, &c.interior, &c.leads, launched.seed),
         None => others.voyages.get(id).ok_or_else(|| format!("no voyage `{id}`")).and_then(|v| sim::VoyagePlan::roll(&others, v, launched.seed)),
     };
-    let mut world = SimWorld::new(sim, content).with_others(others);
+    let mut world = SimWorld::new(sim, content).with_others(others).with_upgrades(launched.upgrades.clone());
     let plan = match plan {
         Ok(plan) => plan,
         Err(e) => {

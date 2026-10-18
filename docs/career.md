@@ -196,6 +196,10 @@ below) is never written over: the game keeps it as it is ("How the game uses it"
   nodes (2, then 3 and 4 with the two mind expansions of the base pack).
 - **Jump range** (`jump_range`, S; GDR-0093): the career's galaxy's `jump_range` plus every `JumpRange(s)` of the
   researched nodes (2.5, then 3.25 and 4 with the two jump calibrations of the base pack); 0 without a galaxy.
+- **Part-stat steps** (`upgrades`, 18 Oct 2026, GDR-0024's refinement): every `PartStat` of the researched nodes in
+  content order (`data::Upgrades`), what the player's designs are built with: `Granted::upgrades` (none in free
+  mode), snapshotted into a voyage's `Launched` at launch, the sandbox's world, the drydock's report, its stat lines and
+  the lab's runs.
 - **Open voyages** (`open_voyages`, `is_open`), in content order (the voyage map's): the start's `voyages`, and
   every voyage with `opens_after` whose voyages have all been cleared (`VoyageRecord::cleared`: a goal cleared on
   a voyage that came home). A voyage without `opens_after` opens only through a start. Loading drops records of

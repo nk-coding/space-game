@@ -118,6 +118,7 @@ impl Wiki<'_> {
             .collect();
         sections.push(("Used by ships".to_string(), list_or_none(&ships)));
         sections.extend(self.unlocked_by(&Unlock::Part(p.id.clone()), p.locked));
+        sections.extend(self.refined_by(p));
         sections.push(("Salvage".to_string(), self.part_salvage(root, p)));
         if !p.hull {
             sections.push(("Recipe".to_string(), self.part_recipe(root, p)));

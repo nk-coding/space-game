@@ -60,7 +60,7 @@ pub use flight::physics::{BodyKey, Contact, Physics, RayHit};
 pub use hash::{StateHash, StateHasher};
 pub use ids::{PieceId, ShipId};
 pub use math::{Rot, Vec2};
-pub use report::{DesignReport, design_report};
+pub use report::{DesignReport, design_report, design_report_upgraded};
 pub use rng::{Pcg32, Stream};
 pub use ship::{
     Body, GunMount, PartState, Piece, PowerState, Scan, Ship, ShipControls, ThrustAuthority, Thruster,

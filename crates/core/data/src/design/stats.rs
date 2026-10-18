@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::content::load::Content;
 use crate::content::model::{Better, Blueprint, Condition, Effect, Material, Part, Selector};
+use crate::design::upgrades::Upgrades;
 
 /// Stat ids the code emits. Each must be defined in `stats.ron` (checked by validation).
 pub const BUILTIN_STATS: &[&str] = &[
@@ -121,6 +122,10 @@ pub struct StatLine {
     pub better: Better,
     /// Set for adjacency bonuses this part grants to its neighbours.
     pub bonus: Option<BonusInfo>,
+    /// The value before the player's researched steps, when they changed it ([`Content::part_stats_upgraded`]);
+    /// `value` and `text` are then the upgraded ones.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub upgraded_from: Option<f32>,
 }
 
 /// Sums over every placement of a blueprint ([`Content::ship_totals`]): the per-part stat values that add up,
@@ -190,6 +195,7 @@ impl Content {
             text,
             better: def.better,
             bonus: None,
+            upgraded_from: None,
         })
     }
 
@@ -320,21 +326,8 @@ impl Content {
             let Some(def) = self.stats.get(&b.stat) else {
                 continue;
             };
-            let (value, text) = match b.effect {
-                Effect::Add(x) => (
-                    x,
-                    with_unit(&format!("+{}", format_number(x, def.decimals)), &def.unit),
-                ),
-                Effect::Percent(x) => (x, format!("+{}%", format_number(x, 1))),
-            };
-            let target_label = match &b.target {
-                Selector::Part(id) => self.parts.get(id).map_or(id.clone(), |p| p.name.clone()),
-                Selector::Category(id) => self
-                    .categories
-                    .get(id)
-                    .map_or(id.clone(), |c| c.name.clone()),
-                Selector::Tag(t) => t.clone(),
-            };
+            let (value, text) = self.effect_text(&b.stat, b.effect);
+            let target_label = self.selector_label(&b.target);
             lines.push(StatLine {
                 stat: b.stat.clone(),
                 label: def.name.clone(),
@@ -348,7 +341,47 @@ impl Content {
                     max_stacks: b.max_stacks,
                     when: b.when.clone(),
                 }),
+                upgraded_from: None,
             });
+        }
+        lines
+    }
+
+    /// Who a selector picks, in words: the part's or category's name, the tag itself.
+    pub fn selector_label(&self, target: &Selector) -> String {
+        match target {
+            Selector::Part(id) => self.parts.get(id).map_or(id.clone(), |p| p.name.clone()),
+            Selector::Category(id) => self.categories.get(id).map_or(id.clone(), |c| c.name.clone()),
+            Selector::Tag(t) => t.clone(),
+        }
+    }
+
+    /// An effect on `stat` (a bonus or a research step) as its value and text: `"+15%"`, `"+0.1/s"`.
+    pub fn effect_text(&self, stat: &str, effect: Effect) -> (f32, String) {
+        let (decimals, unit) = self.stats.get(stat).map_or((1, ""), |d| (d.decimals, d.unit.as_str()));
+        match effect {
+            Effect::Add(x) => (x, with_unit(&format!("+{}", format_number(x, decimals)), unit)),
+            Effect::Percent(x) => (x, format!("+{}%", format_number(x, 1))),
+        }
+    }
+
+    /// [`Content::part_stats`] with the player's researched steps (GDR-0024's refinement): every own line a step
+    /// changes carries the upgraded value and [`StatLine::upgraded_from`] the base one. The bonus lines stay as
+    /// they are.
+    pub fn part_stats_upgraded(&self, part: &Part, material: Option<&Material>, upgrades: &Upgrades) -> Vec<StatLine> {
+        let mut lines = self.part_stats(part, material);
+        if upgrades.is_empty() {
+            return lines;
+        }
+        for l in lines.iter_mut().filter(|l| l.bonus.is_none()) {
+            let Some(now) = upgrades.line_value(part, &l.stat, l.value) else {
+                continue;
+            };
+            if let Some(u) = self.stat_line(&l.stat, now) {
+                l.upgraded_from = Some(l.value);
+                l.value = u.value;
+                l.text = u.text;
+            }
         }
         lines
     }

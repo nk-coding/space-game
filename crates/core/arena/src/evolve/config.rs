@@ -4,6 +4,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
+use data::Upgrades;
 use serde::{Deserialize, Serialize};
 
 use crate::spec::{BehaviorRef, DesignRef};
@@ -75,6 +76,11 @@ pub struct RunConfig {
     /// there is one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub enemy: Option<Population>,
+    /// The researched part-stat steps (GDR-0024's refinement: the career's) your side is built with: your genomes,
+    /// starts, hall of fame and fleet in every fight and voyage, and the measures; never THE ENEMY or the content's
+    /// opponents. Written only when there are any.
+    #[serde(default, skip_serializing_if = "Upgrades::is_empty")]
+    pub upgrades: Upgrades,
 }
 
 /// THE ENEMY of an arms race (GDR-0092 "Co-evolution"): its own starts, genes, limits, archive, size and random
@@ -557,6 +563,9 @@ impl RunConfig {
         }
         if !(1..=MAX_MUTATIONS).contains(&self.mutations) {
             return bad(format!("`mutations` must be 1 to {MAX_MUTATIONS}"));
+        }
+        if let Err(e) = self.upgrades.check() {
+            return bad(format!("`upgrades`: {e}"));
         }
         let trials = &self.trials;
         if trials.is_empty() {
