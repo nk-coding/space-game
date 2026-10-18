@@ -42,7 +42,7 @@ per sim tick with `sim::flight::turn_ramp_step` (like the lock's nudge with `nud
 | Lock a target | left-click a ship (or a salvage piece) | tap it |
 | While locked | the ship turns its strongest working guns onto the target (lead point for projectiles); A/D nudge the aim and it springs back; W/S and Q/E still thrust and strafe | the stick strafes |
 | Unlock | click empty space, or Esc (with nothing locked Esc opens the flight menu: RESUME, CONTROLS, SETTINGS, SHIPYARD or ABANDON VOYAGE…; it pauses the test range, never a voyage; Esc closes it, GDR-0090) | tap empty space |
-| LOCK TARGET (`lock_next`, GDR-0088): the first press locks the nearest enemy, each next press the next one by distance, round to the nearest again; the order is the sim's (`sim::flight::next_lock`: from the flown ship's position, ties by id), the lock the one a click sets (`PlayerInput::lock`) | Tab | – |
+| LOCK TARGET (`lock_next`, GDR-0088): the first press locks the nearest enemy, each next press the next one by distance, round to the nearest again; the order is the sim's (`sim::flight::next_lock`: from the flown ship's position, ties by id), the lock the one a click sets (`PlayerInput::lock`) | L (Tab until 18 Oct 2026, when Tab went to the cluster map) | – |
 | Auto-lock (the `auto_lock` pilot assist): while nothing is locked, the ship it asks for (`AssistState::auto_lock`) becomes the lock at the scene's tick (`scene::tick_lock`), the same lock as a click's (HUD, target panel, lock ring, sim). Esc or a click on empty space drops it and pauses auto-lock until you lock again or switch it (`AUTO-LOCK · PAUSED` in the HUD) | – | – |
 | Fire (by weapon group, GDR-0088: each gun's group is set in the drydock, a gun without one is group 1) | Space: every group; 1 / 2 / 3: that group; hold the left button on empty space: group 1; hold the right button: group 2. The held triggers OR into the pilot's fire mask (`PlayerInput::fire`, `sim::PilotInput::fire`); the controls overlay shows each from the bindings | fire button bottom right: every group |
 | Pilot assists (GDR-0088; the design's PILOT ASSISTS, set on the BEHAVIOR screen): switch the assists on toggle 1–4 on and off for the mission / switch every assist off and back on (as the toggles left them). Each switch is a `ShipCommand::SwitchAssists` for the flown ship; the banner says what changed (`BRAKE ON · AUTO-FIRE 2 OFF`, `ALL ASSISTS OFF`, `F3 · NO ASSIST ON TOGGLE 3`) | F1–F4 / Z | – |
@@ -53,7 +53,7 @@ per sim tick with `sim::flight::turn_ramp_step` (like the lock's nudge with `nud
 | Drydock (back to the ship editor; the design is untouched); in TEST IN RANGE back to where the test started; nothing in a voyage | T | – |
 | Home (the shipyard; the flight ends); in a voyage M opens the ABANDON VOYAGE? panel instead (GDR-0077: Enter abandons the voyage, lost; Esc or M again close it) | M, or the ring top left (not in a voyage) | the ring top left |
 | Recall home from a voyage (when no armed awake enemy is within 200 m, or the fleet has no working gun left: the emergency recall; a 3 s warp-out) | R, or the RECALL pill | the RECALL pill |
-| The cluster map on a voyage: the whole cluster laid over the view (galaxy plan E6) | N | — |
+| The cluster map on a voyage: the whole cluster laid over the view (galaxy plan E6); held, it shows until the key is let go; a click on the minimap opens it until Esc, a click anywhere or the key (18 Oct 2026; N toggled it before) | hold Tab, or click the minimap | — |
 | The minimap on a voyage ([GDR-0106](gdr/0106-flight-minimap.md)): steps its range 1 km → 2.5 km → hidden → 1 km | B | – (always 1 km) |
 | Raider waves off / on (sandbox; off removes the raiders) | C | – |
 | The controls (18 Oct 2026, in place of the help line along the bottom): lays this scene's controls over the view, a column per SETTINGS group with the bound inputs and a line for the mouse (`flight_hud/help.rs`); the flight goes on under it; again or Esc closes it | / (also ? with Shift), or CONTROLS in the flight menu (Esc) | CONTROLS in the flight menu |
@@ -99,6 +99,7 @@ what fits the window, `kit::ui_kit::UiSize`, applied by every screen's UI scale)
 | `save=<slot>` | play the career save `saves/<slot>` instead of `saves/career` (a new game if it doesn't exist; [Career](#career)) |
 | `newgame=1` | start over: a new career replaces the save (no confirm: a development switch; every load with it starts over again), and the drydock docks the start's ship |
 | `unlock=all` | free mode: every part, material and frame in the drydock, nothing locked or NEW; no unlock is written into the save |
+| `debrief=sample` / `debrief=short` (with `newgame=1`; add `save=<slot>` to keep the main save) | at home, the report of a cleared Shipyard approach from a sample haul (`debrief.rs`, a development fixture): `sample` several research families and materials, intact parts to sort and five kinds dismantled; `short` six core fragments (one material, no research data) |
 | `lab_workers=0` | the evolution lab computes in the frame's slices, without its web workers (ADR-0043; to compare, or to find a worker's fault) |
 | `load=1\|5\|20` | browser load test: `sim::voyage::scenario::load_test(n, seed)`, camera frames the fight, stats overlay on |
 | `seed=N` | sim seed (default 42; a whole number, exact up to 2^64) |
@@ -880,10 +881,12 @@ off, the flash and its ring where it left), `voyage-warp-emergency.png` (the eme
   THE OUTER REACH` (coral), `CACHE OPENED` over what went into store (`LOGIC +8 · PROPULSION +8 · PROGRAMMABLE MATTER
   +4`, teal), `A MEMORY · THE LAST LAUNCH` / `READ IT AT THE LOG`, `SIGNAL FOLLOWED · A GRAVEYARD`. The end gives the
   finds to the career before `cluster_ended`, recalled or lost (a voyage cut short too).
-- **The cluster map** (`flight_hud/overview.rs`): N (`cluster_map`) lays the cluster over the view's middle (a disc of
+- **The cluster map** (`flight_hud/overview.rs`): holding Tab (`cluster_map`) lays the cluster over the view's middle
+  until it is let go; a click on the minimap pins it open until Esc, the key or a click anywhere on the view (a click
+  catcher under the HUD's widgets; 18 Oct 2026, N toggled it before). It is a disc of
   0.4 of the view's short side, dark at 86 %): its edge dotted, the entry a small diamond, every scan's sweep a faint
   violet circle, the bearings dashed gold to the map's edge, the sites found as dots in rings (a signal's two), the
-  fleet teal dots (the flown one with a heading tick); over it `CLUSTER MAP · NYOST FIELD · 4.3 KM ACROSS · N CLOSES`
+  fleet teal dots (the flown one with a heading tick); over it `CLUSTER MAP · NYOST FIELD · 4.3 KM ACROSS · LET GO OF TAB TO CLOSE` (pinned: `ESC, TAB OR A CLICK CLOSES`)
   (at least 60 px down: in a short window it ran over the HUD's title).
   The site markers at the screen's edge step aside while it shows; the flight goes on. Screenshot:
   `docs/results/galaxy-cluster-map.png`. Since 17 Oct 2026 it is drawn by the painter it shares with the minimap
@@ -893,7 +896,8 @@ off, the flash and its ring where it left), `voyage-warp-emergency.png` (the eme
   `flight_hud/chart.rs`): on a voyage a dark disc bottom right (76 px radius, 28 px from the right, 46 px up; on
   touch 184 px up, above the fire button; a `HudZone`, so the edge markers keep clear of it), north up and centred on
   the flown ship (the camera without one), `N` at its top, a faint ring at half the range and under it `RANGE 1.0 KM
-  · B`. In it, like the cluster map: the cluster's edge dotted, the entry, the rocks spawned so far as faint specks,
+  · B`. A button since 18 Oct 2026: hovered, its tooltip says CLUSTER MAP and the key; a click pins the cluster map
+  open. In it, like the cluster map: the cluster's edge dotted, the entry, the rocks spawned so far as faint specks,
   each scan's sweep in faint violet, the bearings dashed gold until their site is found, the sites found with their
   rings, each non-dormant vessel's sensor reach as a faint dotted teal ring (`sim::Voyage::sensors`, the director's
   own list), the contacts within it (running enemy vessels coral, dark or dormant ones of another side grey, wrecks

@@ -5,7 +5,7 @@
 //!   thrust along the nose, Q/E strafe (arrows: rotate and thrust). Under a lock the ship aims its strongest
 //!   guns and A/D nudge the aim (springs back). Left-click a ship = lock, click empty space = unlock, hold the
 //!   left button on empty space = fire weapon group 1. Space fires every group, 1 / 2 / 3 (and the right button:
-//!   2) fire one group each (GDR-0088); the held triggers make the pilot's fire mask. Tab (LOCK TARGET) = the nearest
+//!   2) fire one group each (GDR-0088); the held triggers make the pilot's fire mask. L (LOCK TARGET) = the nearest
 //!   enemy, then the next by distance (`sim::flight::next_lock`), Esc = unlock (not while
 //!   the ABANDON VOYAGE? panel is open: Esc closes it, `voyage.rs`), X = drift toggle, G (SCAN) = a scan with the
 //!   flown ship's scanner (`ShipCommand::Scan`; the HUD's SCAN pill does the same). V / Shift+V = next / previous
@@ -38,7 +38,7 @@ use crate::flight_hud::{HudButtons, HudZone, on_hud_button, switch_note};
 use crate::mode::{AppMode, FlightUi};
 use crate::scene::{Scene, is_friendly, player_vessels};
 use crate::sim_bridge::{PilotFocus, SimWorld, piece_com, sv, v2};
-use crate::flight_hud::FlightMenu;
+use crate::flight_hud::{FlightMenu, Overview};
 use crate::settings::{Act, SettingsLayer};
 use crate::voyage::VoyageRun;
 use data::input::Action;
@@ -213,6 +213,7 @@ fn keyboard(
     focus: Res<PilotFocus>,
     run: Res<VoyageRun>,
     mut menu: ResMut<FlightMenu>,
+    mut overview: ResMut<Overview>,
     mut scene: ResMut<Scene>,
 ) {
     // Held this frame, or pressed and released within it (a quick tap).
@@ -246,13 +247,16 @@ fn keyboard(
     if act.just_pressed(Action::ControlsHelp) {
         menu.help = !menu.help;
     }
-    // Esc (fixed, GDR-0090): closes the controls overlay or the menu; else unlocks; else opens the menu. The input runs before
-    // `voyage_keys` in the frame: an Esc that closes the ABANDON VOYAGE? panel does neither.
+    // Esc (fixed, GDR-0090): closes the controls overlay, the menu or the pinned cluster map; else unlocks; else opens
+    // the menu. The input runs before `voyage_keys` in the frame: an Esc that closes the ABANDON VOYAGE? panel does
+    // neither.
     if keys.just_pressed(KeyCode::Escape) && !run.asking {
         if menu.help {
             menu.help = false;
         } else if menu.open {
             menu.open = false;
+        } else if overview.is_pinned() {
+            overview.unpin();
         } else if input.lock.is_some() {
             input.lock = None;
         } else {
@@ -611,6 +615,7 @@ mod tests {
             .init_resource::<Ticks>()
             .init_resource::<SettingsLayer>()
             .init_resource::<FlightMenu>()
+            .init_resource::<Overview>()
             .insert_resource(crate::settings::Controls::defaults(&data::base_content()))
             .insert_resource(Scene::new(crate::scene::SceneKind::Sandbox, 1))
             .insert_resource(SimWorld::new(sim::Sim::new(1), data::Content::default()));
@@ -692,8 +697,9 @@ mod tests {
         assert!(ticks.iter().all(|t| t.0.y == 0.0), "{ticks:?}");
     }
 
-    /// LOCK TARGET (Tab, GDR-0088): the first press locks the nearest enemy, each next press the next one by
-    /// distance, round to the nearest again; the lock is the one a click sets (`PlayerInput::lock`).
+    /// LOCK TARGET (L since 18 Oct 2026, when Tab went to the cluster map; GDR-0088): the first press locks the
+    /// nearest enemy, each next press the next one by distance, round to the nearest again; the lock is the one a
+    /// click sets (`PlayerInput::lock`).
     #[test]
     fn lock_target_locks_the_nearest_then_cycles_by_distance() {
         let mut app = app(40.0);
@@ -710,17 +716,17 @@ mod tests {
         let lock = |app: &App| app.world().resource::<PlayerInput>().lock;
         let mut seen = Vec::new();
         for _ in 0..4 {
-            frame(&mut app, |k| k.press(KeyCode::Tab));
+            frame(&mut app, |k| k.press(KeyCode::KeyL));
             seen.push(lock(&app));
-            frame(&mut app, |k| k.release(KeyCode::Tab));
+            frame(&mut app, |k| k.release(KeyCode::KeyL));
         }
         assert_eq!(seen, [near, mid, far, near].map(|s| Some(Target::Ship(s))));
-        // Esc drops it; Tab locks the nearest again.
+        // Esc drops it; L locks the nearest again.
         frame(&mut app, |k| k.press(KeyCode::Escape));
         assert_eq!(lock(&app), None);
         frame(&mut app, |k| {
             k.release(KeyCode::Escape);
-            k.press(KeyCode::Tab);
+            k.press(KeyCode::KeyL);
         });
         assert_eq!(lock(&app), Some(Target::Ship(near)));
     }

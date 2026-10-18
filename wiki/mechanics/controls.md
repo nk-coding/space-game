@@ -68,7 +68,9 @@ On a voyage the **minimap** sits in the bottom right corner: north is up and you
 only what your fleet knows: ships within your sensors (enemies coral, dark ships grey, wrecks gold), the sites you
 have found, your scans' bearings and sweeps, the rock you have come near, the cluster's edge and your fleet in teal.
 [[control:minimap]] ([[control:minimap.keys]]) widens it from 1 km round you to 2.5 km, then hides it, then brings it
-back. [[control:cluster_map]] ([[control:cluster_map.keys]]) lays the whole cluster over your view, drawn the same way.
+back. Hold [[control:cluster_map]] ([[control:cluster_map.keys]]) to lay the whole cluster over your view, drawn the
+same way; it goes when you let go. A click on the minimap opens the cluster map until you close it with Esc, a click or
+the same key; the minimap's tooltip names the key.
 
 ### Switching vessels
 
@@ -102,7 +104,7 @@ The touch controls appear after your first touch.
 
 A few inputs are fixed:
 
-- **Esc** goes back or closes. In flight it closes the controls list or the flight menu if one is open; otherwise it unlocks your target;
+- **Esc** goes back or closes. In flight it closes the controls list, the flight menu or a cluster map opened from the minimap if one is open; otherwise it unlocks your target;
   with nothing locked it opens the flight menu. While the ABANDON VOYAGE? panel is open, Esc closes the panel.
 - **Enter** confirms.
 - **The left mouse button** is the pointer: it clicks, locks, selects and drags. It can't be bound to an action.

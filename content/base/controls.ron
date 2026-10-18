@@ -15,7 +15,7 @@
     (id: "fire_group_1", name: "Fire group 1", summary: "Fires weapon group 1 while held, as does the left button held on empty space.", section: flight, contexts: [flight], inputs: ["Digit1"]),
     (id: "fire_group_2", name: "Fire group 2", summary: "Fires the guns of weapon group 2 while held.", section: flight, contexts: [flight], inputs: ["Digit2", "MouseRight"]),
     (id: "fire_group_3", name: "Fire group 3", summary: "Fires the guns of weapon group 3 while held.", section: flight, contexts: [flight], inputs: ["Digit3"]),
-    (id: "lock_next", name: "Lock target", summary: "Locks the nearest enemy; pressed again while one is locked, the next one by distance, round to the nearest again.", section: flight, contexts: [flight], inputs: ["Tab"]),
+    (id: "lock_next", name: "Lock target", summary: "Locks the nearest enemy; pressed again while one is locked, the next one by distance, round to the nearest again.", section: flight, contexts: [flight], inputs: ["KeyL"]),
     (id: "scan", name: "Scan", summary: "Starts a scan with the flown ship's scanner: sites within its range show, signals beyond it give a bearing. Wakes sleeping enemies close by.", section: flight, contexts: [flight], inputs: ["KeyG"]),
     (id: "drift", name: "Drift", summary: "Turns drift on and off: pure momentum while keys are held, no sideways correction.", section: flight, contexts: [flight], inputs: ["KeyX"]),
     (id: "focus_next", name: "Next vessel", summary: "Flies the next of your vessels.", section: flight, contexts: [flight], inputs: ["KeyV"]),
@@ -27,7 +27,7 @@
     (id: "assist_toggle_4", name: "Assist toggle 4", summary: "Switches the pilot assists on toggle 4 on and off (set under PILOT ASSISTS).", section: flight, contexts: [flight], inputs: ["F4"]),
     (id: "all_assists", name: "All assists", summary: "Switches every pilot assist off, and back on as the toggles left them.", section: flight, contexts: [flight], inputs: ["KeyZ"]),
     // Missions.
-    (id: "cluster_map", name: "Cluster map", summary: "On a voyage: lays the whole cluster over the view, with the sites found, the bearings, your fleet and what your scans swept; again to close it.", section: mission, contexts: [flight], inputs: ["KeyN"]),
+    (id: "cluster_map", name: "Cluster map", summary: "On a voyage: lays the whole cluster over the view while held, with the sites found, the bearings, your fleet and what your scans swept. A click on the minimap opens it until Esc, a click or this key.", section: mission, contexts: [flight], inputs: ["Tab"]),
     (id: "minimap", name: "Minimap", summary: "On a voyage: the minimap in the corner shows a wider area, then goes away, then comes back close; it shows what your sensors and scans found round the ship you fly.", section: mission, contexts: [flight], inputs: ["KeyB"]),
     (id: "recall", name: "Recall", summary: "On a voyage: warps the fleet home with what it carries.", section: mission, contexts: [flight], inputs: ["KeyR"]),
     (id: "leave", name: "Shipyard / abandon", summary: "In the test range: back to the shipyard. On a voyage: asks whether to abandon it.", section: mission, contexts: [flight], inputs: ["KeyM"]),

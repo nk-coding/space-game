@@ -3,7 +3,8 @@
 //! cluster's edge, rocks, scans and bearings, sites found, contacts within the sensors, the fleet. Under it the
 //! range its radius shows and the MINIMAP key, which steps near → far → hidden. A faint thin ring at half the range.
 //! The numbers are style tokens (`minimap.*` in `art/tokens.json`). On touch it sits above the fire button. It
-//! steps aside while the cluster map is open; the edge markers keep clear of it (`HudZone`).
+//! steps aside while the cluster map is open; the edge markers keep clear of it (`HudZone`). A click on it pins the
+//! cluster map open (`overview.rs`); its tooltip names the map and its key.
 
 use super::*;
 use super::chart::{Chart, Pen, paint};
@@ -36,7 +37,7 @@ impl Minimap {
     }
 }
 
-/// The whole minimap (hidden off a voyage).
+/// The whole minimap (hidden off a voyage): a button that opens the cluster map.
 #[derive(Component)]
 pub(super) struct MinimapBlock;
 
@@ -64,6 +65,10 @@ pub(super) fn spawn(root: &mut ChildSpawnerCommands, fonts: &HudFonts, ui: &kit:
     root.spawn((
         MinimapBlock,
         HudZone,
+        HudButton,
+        Hot::default(),
+        Tip::new("CLUSTER MAP"),
+        ActionTip(Action::ClusterMap),
         Visibility::Hidden,
         Node {
             position_type: PositionType::Absolute,

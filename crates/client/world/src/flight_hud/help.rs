@@ -106,6 +106,7 @@ fn acts(row: &HelpRow, kind: &SceneKind, piloted: bool) -> bool {
 fn mouse_line(kind: &SceneKind, piloted: bool) -> &'static str {
     match kind {
         SceneKind::Fight => "CLICK A SHIP FOLLOW  ·  DRAG PAN  ·  WHEEL ZOOM",
+        SceneKind::Voyage(_) if piloted => "CLICK A SHIP LOCK  ·  CLICK THE MINIMAP CLUSTER MAP  ·  MIDDLE DRAG PAN  ·  WHEEL ZOOM",
         _ if piloted => "CLICK A SHIP LOCK  ·  MIDDLE DRAG PAN  ·  WHEEL ZOOM",
         _ => "DRAG PAN  ·  WHEEL ZOOM",
     }

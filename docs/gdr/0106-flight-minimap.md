@@ -1,6 +1,9 @@
 # GDR-0106: A minimap in flight: an always-on disc bottom right on a voyage, north up round the flown ship, 1 km (B: 2.5 km, then off), only what the sensors and scans revealed, drawn by the cluster map's painter
 
 - Status: Accepted (provisional, lead), 17 Oct 2026, for Niklas to review
+  2026-10-18 (Niklas): the minimap is a button: its tooltip names the cluster map and its key, a click pins the
+  cluster map open (closed by Esc, a click or the key; [GDR-0090](0090-action-map-settings-and-pause-menu.md)'s status
+  line of this date).
 - Date: 2026-10-17
 - Decided by: lead session (defaults for Niklas's request of 17 Oct 2026 for a minimap while flying)
 - Related: [GDR-0095](0095-sensors-hidden-sites-and-scans.md), [GDR-0097](0097-galaxy-map-and-voyage-flow.md), [GDR-0104](0104-scenery-rocks-filler-landmarks.md), [GDR-0090](0090-action-map-settings-and-pause-menu.md), [GDR-0050](0050-fleet-bar.md), `docs/client.md` "Voyages"

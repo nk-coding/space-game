@@ -72,6 +72,7 @@ use crate::ship_view::PieceView;
 use markers::{lock_ring, offscreen_markers, site_markers};
 pub use assists::{assist_name, switch_note};
 pub use menu::FlightMenu;
+pub use overview::Overview;
 pub use text::hull_fraction;
 use text::update_text;
 
@@ -250,7 +251,7 @@ impl Plugin for FlightHudPlugin {
             .add_systems(FixedUpdate, scan::note_scans.after(crate::sim_bridge::SimSet::Events).run_if(in_state(AppMode::Flight)))
             .add_systems(OnExit(AppMode::Flight), scan::forget_scans);
         app.init_resource::<overview::Overview>()
-            .add_systems(Update, overview::toggle.run_if(in_state(AppMode::Flight)))
+            .add_systems(Update, overview::toggle.after(UiInputSet).run_if(in_state(AppMode::Flight)))
             .add_systems(FixedUpdate, overview::note.after(crate::sim_bridge::SimSet::Events).run_if(in_state(AppMode::Flight)))
             .add_systems(OnExit(AppMode::Flight), overview::forget);
         app.add_systems(Startup, minimap::load)
@@ -285,6 +286,8 @@ pub fn spawn_hud(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>
             Node { width: percent(100), height: percent(100), position_type: PositionType::Absolute, ..default() },
         ))
         .with_children(|root| {
+            // Under everything: the pinned cluster map's click catcher.
+            overview::spawn_catcher(root);
             // Top left, at the frame's corner (`ui_kit::frame`, as on every screen): the home ring, and beside it one
             // column of groups in the same type: the hull, the voyage's cargo and RECALL, the speed, the assists.
             let f = frame();
@@ -367,7 +370,7 @@ pub fn spawn_hud(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>
                         row.spawn((HudText::LostHome, label(&fonts, "", 11.0, teal)));
                     });
             });
-            // Voyages: the cluster map's title (N), the minimap bottom right.
+            // Voyages: the cluster map's title, the minimap bottom right.
             overview::spawn(root, &fonts, ui);
             minimap::spawn(root, &fonts, ui);
             // Voyages: the labels of the site markers at the screen edge (placed every frame).

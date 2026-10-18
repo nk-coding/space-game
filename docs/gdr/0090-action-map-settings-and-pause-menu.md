@@ -13,6 +13,11 @@
   `controls_help` key (/) stays. The speed is a group of the HUD's top left column (hull, a voyage's cargo and
   RECALL, speed, assists), in the frame's type ([GDR-0008](0008-ui-ship-mind-interface.md)'s status). Screenshots
   `docs/results/flight-menu-controls.png`, `flight-controls-from-menu.png`, `flight-hud-frame.png`.
+  2026-10-18, the map keys (Niklas: hold to peek, the minimap opens the map): CLUSTER MAP is held on Tab (the map
+  shows while the key is down; on the web the canvas keeps Tab, `prevent_default_event_handling`); N no longer opens
+  it (one action, one behaviour: a toggle on N beside the hold would be a second action for what the minimap's click
+  does). A click on the minimap pins the map open until Esc, a click or the key; Esc closes a pinned map before it
+  unlocks. LOCK TARGET moves from Tab to L. The minimap is a button with a tooltip (CLUSTER MAP and its key).
 - Date: 2026-10-15
 - Decided by: Niklas (Esc, pausing, where settings opens, its scope, toggle slots: interactively); lead session (the
   action list, the matching rules, the layout; defaults for Niklas to review)
