@@ -1614,8 +1614,11 @@ from the drydock's LOCKED fusion reactor row), `research-flight.png` (home's cam
   column stack in rows. Connectors run from a requirement's right edge to the dependent's left edge, straight on one
   row, with an elbow halfway across the gap between rows; solid teal once the requirement is researched, dashed
   grey before. `Tree::new` is a function of the content alone, so the screen is built once at start;
-  `Tree::place` puts it on the 1280 × 720 layout (cards up to 210 × 40 px, columns 250 px apart, lane rows 66 to
-  96 px; more columns make narrower cards, more lanes than fit scroll with the wheel).
+  `Tree::place` puts it on the 1280 × 720 layout (cards up to 210 × 40 px, columns 250 px apart, lane rows 68 to
+  96 px; more columns make narrower cards, more lanes than fit scroll with the wheel). Since 19 Oct 2026 the least
+  row is what it lays out (the card, the line under it, a gap; it was a fixed 60 px that ran the chips into the
+  card below), and a line under a card too long for its room (up to the next column's line, in the last column the
+  tree's edge; estimated from its longest text) wraps its chips to a second line, its row 20 px taller.
 - **Cards**: the unlock's icon (the part as a flight tile; the armour block in an unlocked material; the formation
   for a frame; the mind's ring for mind capacity), the name, and a mark: a gold diamond while it can be paid
   (**ready**, gold outline and glow), `DONE` once researched (teal outline), a lock instead of the icon while
