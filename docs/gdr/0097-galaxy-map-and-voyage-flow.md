@@ -7,6 +7,9 @@
   2026-10-17: Accepted (Niklas, 17 Oct 2026). The lost-voyage rule is kept: finds, charts, signals and trail rewards survive a lost
   voyage; only the haul is lost, data cores included ([GDR-0029](0029-mild-death-bonded-matter.md), [GDR-0096](0096-career-galaxy-format-3.md)).
   2026-10-17: the cluster map shares its painter with the minimap and so also shows rocks, sensor rings and contacts within the sensors ([GDR-0106](0106-flight-minimap.md)).
+  2026-10-18 (Niklas: the gold pulses stuttered at well over 120 fps): the signals' pulses, the areas' waves, a
+  narrowed edge's fade and the warp's light ran in steps (15–30 a second) so the meshes were rebuilt only per step;
+  their phases are continuous now (real time), the meshes rebuilt every frame while one runs.
 - Date: 2026-10-16
 - Decided by: lead session (defaults for Niklas to review, galaxy tracks E5 and E6)
 - Related: [GDR-0078](0078-galaxy-exploration-v1.md), [GDR-0080](0080-exploration-searching-and-story.md), [GDR-0091](0091-log-building-and-voyage-history.md), [GDR-0093](0093-galaxy-exploration-decisions-16-oct.md), [GDR-0095](0095-sensors-hidden-sites-and-scans.md), [GDR-0096](0096-career-galaxy-format-3.md), [GDR-0065](0065-phase-7-screens-and-escort-action.md), `docs/plans/galaxy-voyages.md` (E5, E6, 4.1–4.5), `docs/client.md` "Voyage map", "Voyages", "LOG"

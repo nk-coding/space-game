@@ -82,7 +82,7 @@ use crate::fleet::MAX_ESCORTS;
 
 use portal::Portal;
 
-use draw::{FADE, FADE_STEPS, Hover, LEGEND, LEGEND_COLUMNS, LEGEND_GAP, LEGEND_ROWS, Look, WARP_STEPS, WarpLook};
+use draw::{FADE, Hover, LEGEND, LEGEND_COLUMNS, LEGEND_GAP, LEGEND_ROWS, Look, WarpLook};
 use known::{Known, Pick, jump_blocker, place_words};
 use layout::{Geometry, PANEL_X, STAGE, VoyageState, chips, course_blocker, is_guardian, minutes, site_dots, site_rows, state_words};
 use view::{Anchored, Layer, MapView, TOP_Y, ViewButton, ZoomText};
@@ -1278,7 +1278,7 @@ fn place_mesh(
     toggles: Res<RenderToggles>,
     style: Res<Style>,
     atlas: Res<Atlas>,
-    (time, real): (Res<Time>, Res<Time<Real>>),
+    real: Res<Time<Real>>,
     mut meshes: ResMut<Assets<Mesh>>,
 ) {
     let content = &content.0;
@@ -1293,8 +1293,8 @@ fn place_mesh(
         selected: None,
         hovered: None,
         glow: toggles.glow_sprites,
-        pulse: 0,
-        wave: 0,
+        pulse: 0.0,
+        wave: 0.0,
         fading: Vec::new(),
         course: None,
         warp: None,
@@ -1310,7 +1310,8 @@ fn place_mesh(
         };
         Some((from, to))
     });
-    let seconds = time.elapsed_secs_wrapped();
+    // Real time, every frame: the pulses move on each frame (they stepped at 15–20 Hz before 18 Oct 2026).
+    let seconds = real.elapsed_secs_wrapped();
     let look = Look {
         selected: pick,
         hovered: hots.iter().find_map(|(b, h)| match (b, h.hovered) {
@@ -1321,17 +1322,14 @@ fn place_mesh(
         }),
         pulse: Look::pulse_at(&far.states, seconds),
         course: course.filter(|_| map.warp.is_none()),
-        warp: map.warp.map(|w| {
-            let steps = (w.seconds * WARP_STEPS).max(1.0) as u32;
-            WarpLook { from: w.from, to: w.to, step: (((now - w.start) * WARP_STEPS) as u32).min(steps), steps }
-        }),
+        warp: map.warp.map(|w| WarpLook { from: w.from, to: w.to, t: ((now - w.start) / w.seconds.max(1e-3)).clamp(0.0, 1.0) }),
         ..far.clone()
     };
     // The areas' own look: the waves and the fading edges, not the voyages' pulse.
     let areas = Look {
-        pulse: 0,
+        pulse: 0.0,
         wave: Look::wave_at(known, seconds),
-        fading: map.fading.iter().map(|&(a, t)| (a, (((now - t) / FADE) * FADE_STEPS as f32) as u32)).collect(),
+        fading: map.fading.iter().map(|&(a, t)| (a, ((now - t) / FADE).clamp(0.0, 1.0))).collect(),
         course: None,
         warp: None,
         ..look.clone()

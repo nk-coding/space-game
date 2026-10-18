@@ -7,7 +7,8 @@
 //!   signal heard as an area: a dotted gold edge like the band edges, a faint fill and a slow pulse running out to
 //!   the edge; when a signal narrows the old edge fades out over [`FADE`] while the new one draws. Placed through
 //!   the view but drawn in stage px (lines keep their width at any zoom); rebuilt when what it shows or the view
-//!   changes, and per step of the pulse ([`WAVE_STEPS`] a [`WAVE_PERIOD`]).
+//!   changes, and every frame while a pulse runs or an edge fades (their phases are continuous: in steps of 15–20 a
+//!   second they stuttered at 120 fps; Niklas, 18 Oct 2026).
 //! * **The detail** ([`build_detail`]): the markers of the voyages found so far, no route between them
 //!   (GDR-0078): open a ring, cleared a filled dot, a new signal a ring sending out pulses, a guardian a coral
 //!   diamond, the shipyard a diamond with a ship, the selection a dotted ring around it; a charted cluster a small
@@ -15,7 +16,8 @@
 //!   crosshair, and a dotted line from where a jump to the pick starts; the warp, a light running along it. Unknown
 //!   voyages and uncharted clusters are not drawn. Placed through the view (`view::MapView`) but sized in stage px,
 //!   so they keep their size at any zoom; they fade out towards the panel's edge. Rebuilt when what it shows
-//!   ([`Look`], with the pulse's step while a signal shows) or the view changes: a few hundred vertices.
+//!   ([`Look`], with the pulse's phase while a signal shows, every frame then) or the view changes: a few hundred
+//!   vertices.
 //! * **The chrome** ([`build_chrome`]): the legend's symbols and the panel's backing, fixed to the stage. Built once.
 
 use bevy::prelude::*;
@@ -40,17 +42,12 @@ const OPEN_R: f32 = 8.5;
 const CLUSTER_R: f32 = 6.0;
 const SELECT_R: f32 = 19.0;
 const PULSE_R: f32 = 25.0;
-/// A signal's pulse: one every this many seconds, drawn in this many steps (the detail is rebuilt per step).
+/// A signal's pulse: one every this many seconds.
 pub const PULSE_PERIOD: f32 = 1.6;
-pub const PULSE_STEPS: u32 = 32;
-/// A signal area's pulse runs out to its edge in this many seconds, in this many steps.
+/// A signal area's pulse runs out to its edge in this many seconds.
 pub const WAVE_PERIOD: f32 = 3.2;
-pub const WAVE_STEPS: u32 = 48;
-/// A narrowed signal's old edge fades out over this many seconds, in this many steps.
+/// A narrowed signal's old edge fades out over this many seconds.
 pub const FADE: f32 = 1.6;
-pub const FADE_STEPS: u32 = 24;
-/// The warp's light, drawn in this many steps a second.
-pub const WARP_STEPS: f32 = 30.0;
 /// How far the panel's backing runs on past the stage (a much wider or taller window than the stage).
 const PANEL_RUN: f32 = 6000.0;
 /// The detail fades out over this many stage px before the panel's edge.
@@ -64,13 +61,12 @@ pub enum Hover {
     Signal(TrailSignal),
 }
 
-/// A warp under way on the map: from where to where (galaxy px) and how far along (0 to 1, in [`WARP_STEPS`]).
+/// A warp under way on the map: from where to where (galaxy px) and how far along (0 to 1).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct WarpLook {
     pub from: Vec2,
     pub to: Vec2,
-    pub step: u32,
-    pub steps: u32,
+    pub t: f32,
 }
 
 /// What the meshes show besides the layout (the rebuild key).
@@ -84,32 +80,32 @@ pub struct Look {
     pub selected: Option<Pick>,
     pub hovered: Option<Hover>,
     pub glow: bool,
-    /// The voyages' signal pulse step (0 to [`PULSE_STEPS`]; always 0 while there is no new voyage signal).
-    pub pulse: u32,
-    /// The signal areas' pulse step (0 to [`WAVE_STEPS`]; 0 without an area).
-    pub wave: u32,
-    /// Old edges of signals that narrowed, fading: the area and its fade step (0 to [`FADE_STEPS`]).
-    pub fading: Vec<(Area, u32)>,
+    /// The voyages' signal pulse phase (0 to 1; always 0 while there is no new voyage signal).
+    pub pulse: f32,
+    /// The signal areas' pulse phase (0 to 1; 0 without an area).
+    pub wave: f32,
+    /// Old edges of signals that narrowed, fading: the area and how far it has faded (0 to 1).
+    pub fading: Vec<(Area, f32)>,
     /// Where a jump to the selection starts (galaxy px), drawn as a dotted line to it.
     pub course: Option<(Vec2, Vec2)>,
     pub warp: Option<WarpLook>,
 }
 
 impl Look {
-    /// The pulse step at `seconds` while a signal shows, else 0 (so the look, the rebuild key, stays still).
-    pub fn pulse_at(states: &[VoyageState], seconds: f32) -> u32 {
+    /// The pulse's phase at `seconds` while a signal shows, else 0 (so the look, the rebuild key, stays still).
+    pub fn pulse_at(states: &[VoyageState], seconds: f32) -> f32 {
         if !states.contains(&VoyageState::Signal) {
-            return 0;
+            return 0.0;
         }
-        ((seconds / PULSE_PERIOD).fract() * PULSE_STEPS as f32) as u32 % PULSE_STEPS
+        (seconds / PULSE_PERIOD).fract()
     }
 
-    /// The areas' pulse step at `seconds` while an area shows, else 0.
-    pub fn wave_at(known: &Known, seconds: f32) -> u32 {
+    /// The areas' pulse phase at `seconds` while an area shows, else 0.
+    pub fn wave_at(known: &Known, seconds: f32) -> f32 {
         if !known.signals.iter().any(|s| s.is_area()) {
-            return 0;
+            return 0.0;
         }
-        ((seconds / WAVE_PERIOD).fract() * WAVE_STEPS as f32) as u32 % WAVE_STEPS
+        (seconds / WAVE_PERIOD).fract()
     }
 }
 
@@ -261,12 +257,12 @@ pub fn build_areas(geo: &Geometry, look: &Look, to: impl Fn(Vec2) -> Vec2, zoom:
     }
 
     // Old edges of narrowed signals, fading.
-    for (area, step) in &look.fading {
-        let k = 1.0 - *step as f32 / FADE_STEPS as f32;
+    for (area, faded) in &look.fading {
+        let k = 1.0 - faded.clamp(0.0, 1.0);
         dotted_edge(&mut pen, to(geo.to_galaxy(area.centre)), geo.px(area.radius) * zoom, 0.9, vcol(ui.gold, 0.6 * k));
     }
     // The signal areas: a faint fill, a dotted edge, a pulse running out to it.
-    let wave = look.wave as f32 / WAVE_STEPS as f32;
+    let wave = look.wave;
     for m in known.signals.iter().filter(|m| m.is_area()) {
         let c = to(geo.to_galaxy(m.area.centre));
         let r = geo.px(m.area.radius) * zoom;
@@ -420,7 +416,7 @@ pub fn build_detail(geo: &Geometry, look: &Look, to: impl Fn(Vec2) -> Vec2, styl
     }
     if let Some(w) = look.warp {
         let (a, b) = (to(w.from), to(w.to));
-        let t = (w.step as f32 / w.steps.max(1) as f32).clamp(0.0, 1.0);
+        let t = w.t.clamp(0.0, 1.0);
         let head = a.lerp(b, t);
         pen.line(a, head, 1.2, vcol(ui.teal, 0.8));
         if glow {
@@ -501,7 +497,7 @@ pub fn build_detail(geo: &Geometry, look: &Look, to: impl Fn(Vec2) -> Vec2, styl
         if look.hovered == Some(Hover::Voyage(n)) && !selected {
             pen.ring(at, 16.0, 0.6, f(vcol(ui.number, 0.35)));
         }
-        let pulse = look.pulse as f32 / PULSE_STEPS as f32;
+        let pulse = look.pulse;
         if guardian {
             if state == VoyageState::Signal {
                 pulses(&mut pen, at, pulse, glow, ui.coral, f);
@@ -624,13 +620,16 @@ mod tests {
         assert!(run.iter().all(|q| q.x <= 50.0 + 1e-3));
     }
 
-    /// The pulse runs through its steps while a signal shows and stands still at 0 otherwise.
+    /// The pulse runs smoothly (a new phase every frame, not in steps) while a signal shows and stands still at 0
+    /// otherwise.
     #[test]
     fn the_pulse_runs_only_for_a_signal() {
         let (open, signal) = ([VoyageState::Open, VoyageState::Unknown], [VoyageState::Open, VoyageState::Signal]);
-        assert_eq!(Look::pulse_at(&open, 0.7), 0);
-        assert_eq!(Look::pulse_at(&signal, 0.0), 0);
-        assert_eq!(Look::pulse_at(&signal, PULSE_PERIOD / 2.0), PULSE_STEPS / 2);
-        assert!((0..400).all(|k| Look::pulse_at(&signal, k as f32 * 0.037) < PULSE_STEPS));
+        assert_eq!(Look::pulse_at(&open, 0.7), 0.0);
+        assert_eq!(Look::pulse_at(&signal, 0.0), 0.0);
+        assert!((Look::pulse_at(&signal, PULSE_PERIOD / 2.0) - 0.5).abs() < 1e-5);
+        // Two frames at 144 fps show two phases.
+        assert!(Look::pulse_at(&signal, 1.0 + 1.0 / 144.0) > Look::pulse_at(&signal, 1.0));
+        assert!((0..400).all(|k| (0.0..1.0).contains(&Look::pulse_at(&signal, k as f32 * 0.037))));
     }
 }
