@@ -73,6 +73,25 @@ pub struct Known {
     pub starts: Vec<u32>,
     /// The jump range (S).
     pub reach: f32,
+    /// The galaxy's bands from the rim inwards (`layout::Geometry::rings`' order).
+    pub bands: Vec<BandMark>,
+}
+
+/// A band's state: open (jumps reach into it: the first band, or a gate of the band outside it opened,
+/// `Career::band_open`) or sealed, and who keeps the gates into it (the guardians' names, a set piece's first: `The
+/// Warden`, `Gate sentinel`; none for the first band).
+#[derive(Clone, Debug, PartialEq)]
+pub struct BandMark {
+    pub open: bool,
+    pub guardians: Vec<String>,
+}
+
+impl BandMark {
+    /// What beats its way in, in words (uppercase): `BEAT THE WARDEN OR A GATE SENTINEL`; nothing without guardians.
+    pub fn beat(&self) -> Option<String> {
+        let named: Vec<String> = self.guardians.iter().map(|n| if n.starts_with("The ") { n.clone() } else { format!("a {n}") }).collect();
+        (!named.is_empty()).then(|| format!("BEAT {}", named.join(" or ")).to_uppercase())
+    }
 }
 
 impl Known {
@@ -103,7 +122,25 @@ impl Known {
             }
         }
         let starts = std::iter::once(sk.home).chain(g.charted().keys().copied().filter(|&k| k != sk.home)).collect();
-        Known { clusters, signals, starts, reach: career.jump_range(content) }
+        let keys = content.galaxies.get(&sk.galaxy).map_or(&[][..], |x| x.bands.as_slice());
+        let bands = (0..keys.len())
+            .map(|b| {
+                let mut guardians = Vec::new();
+                if let Some(outer) = b.checked_sub(1).map(|o| keys[o].as_str()) {
+                    // The set pieces on the outer band's gates (the Warden's), then its gate trail's guardian.
+                    let pieces = content.voyages.iter().filter(|v| g.pins().get(&v.id).is_some_and(|&k| sk.clusters.get(k as usize).is_some_and(|c| c.gate && c.band == outer)));
+                    let set = pieces.filter_map(|v| v.goal()).map(|s| s.encounter.as_str());
+                    let trail = content.bands.get(outer).and_then(|x| x.gates.as_ref()).and_then(|x| content.trails.get(&x.trail)).map(|t| t.target.as_str());
+                    for e in set.chain(trail).filter_map(|e| content.encounters.get(e)) {
+                        if !guardians.contains(&e.name) {
+                            guardians.push(e.name.clone());
+                        }
+                    }
+                }
+                BandMark { open: career.band_open(content, &keys[b]), guardians }
+            })
+            .collect();
+        Known { clusters, signals, starts, reach: career.jump_range(content), bands }
     }
 
     /// The mark of cluster `k`, if the map shows it.
@@ -411,5 +448,24 @@ mod tests {
         assert_eq!((w.title.as_str(), w.chips[1].0.as_str()), ("Unknown space", "UNCHARTED"));
         assert!(w.warp.starts_with("WARP ≈ "), "{}", w.warp);
         assert_eq!(place_words(&content, &c, &k, &Pick::Voyage("yard_approach".into())), None);
+    }
+
+    /// A new game has the rim open and every band inside it sealed, the outer reach's gates kept by the Warden and
+    /// the gate sentinels; a rim gate opened opens the outer reach and nothing deeper.
+    #[test]
+    fn the_bands_open_with_their_gates() {
+        let content = data::base_content();
+        let mut storage = world::storage::Storage::new(world::storage::MemoryBackend::default());
+        let switches = world::career::Switches::from_params(&kit::params::Params::parse("")).0;
+        let mut c = world::career::load(&mut storage, &content, switches, 4207, 1).career().clone();
+        let open = |k: &Known| k.bands.iter().map(|b| b.open).collect::<Vec<_>>();
+        let k = Known::of(&content, &c);
+        assert_eq!(open(&k), [true, false, false, false, false]);
+        assert_eq!((k.bands[0].beat(), k.bands[1].beat().as_deref()), (None, Some("BEAT THE WARDEN OR A GATE SENTINEL")));
+        assert_eq!(k.bands[2].beat().as_deref(), Some("BEAT A BASTION GATE"));
+        let sk = c.exploration().unwrap().skeleton().clone();
+        let gate = sk.band("rim").find(|&g| sk.clusters[g as usize].gate).expect("the rim has gates");
+        assert!(c.open_gate(gate));
+        assert_eq!(open(&Known::of(&content, &c)), [true, true, false, false, false]);
     }
 }

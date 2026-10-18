@@ -33,6 +33,53 @@ pub struct Style {
     pub ui_label: Color,
     /// The UI accents and text colours (`ui.*` in the tokens).
     pub ui: UiPalette,
+    /// The voyage map's bands, open and sealed (`map.bands.*`).
+    pub bands: BandStyle,
+}
+
+/// The voyage map's look for open and sealed bands (`map.bands.*` in the tokens, GDR-0097): a tone and opacities
+/// for each, edge widths, the sealed edge's dashes and its locks (galaxy px).
+#[derive(Clone, Copy, Debug)]
+pub struct BandStyle {
+    pub open: Color,
+    pub open_fill: f32,
+    pub open_edge: f32,
+    pub open_edge_width: f32,
+    pub open_veil: f32,
+    pub sealed: Color,
+    pub sealed_tint: f32,
+    pub sealed_edge: f32,
+    pub sealed_edge_width: f32,
+    pub sealed_dash: f32,
+    pub sealed_gap: f32,
+    pub sealed_veil: f32,
+    /// The edges between sealed bands.
+    pub deep_edge: f32,
+    pub lock: f32,
+    pub lock_size: f32,
+}
+
+impl BandStyle {
+    fn from_atlas(atlas: &Atlas) -> Self {
+        let f = |k: &str| atlas.token_f32(&format!("map.bands.{k}"));
+        Self {
+            open: atlas.token_color("map.bands.open"),
+            open_fill: f("open_fill"),
+            open_edge: f("open_edge"),
+            open_edge_width: f("open_edge_width"),
+            open_veil: f("open_veil"),
+            sealed: atlas.token_color("map.bands.sealed"),
+            sealed_tint: f("sealed_tint"),
+            sealed_edge: f("sealed_edge"),
+            sealed_edge_width: f("sealed_edge_width"),
+            sealed_dash: f("sealed_dash"),
+            sealed_gap: f("sealed_gap"),
+            sealed_veil: f("sealed_veil"),
+            deep_edge: f("deep_edge"),
+            lock: f("lock"),
+            lock_size: f("lock_size"),
+        }
+    }
 }
 
 /// UI colours (`ui.*`, GDR-0008): teal primary, gold, coral (danger and enemies), violet (logic), grey labels,
@@ -93,6 +140,7 @@ impl Style {
                 dim: atlas.token_color("ui.dim"),
                 number: atlas.token_color("ui.number"),
             },
+            bands: BandStyle::from_atlas(atlas),
         }
     }
 

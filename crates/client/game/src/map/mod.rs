@@ -167,7 +167,7 @@ struct MapMesh {
 /// The star map's meshes, bottom to top.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Sheet {
-    /// The galaxy (`galaxy::build`), moved and scaled with the view.
+    /// The galaxy (`galaxy::build`, rebuilt when a band opens), moved and scaled with the view.
     Galaxy,
     /// Its far layer (`galaxy::build_far`), likewise.
     Far,
@@ -206,6 +206,8 @@ impl Sheet {
 enum Built {
     /// Built once.
     Fixed,
+    /// The bands open (the galaxy's).
+    Bands(Vec<bool>),
     Far(Look),
     /// The look and the view (zoom, offset).
     Placed(Look, f32, Vec2),
@@ -233,6 +235,10 @@ enum MapText {
     SignalState(usize),
     /// The legend's last word: the jump range now.
     Reach,
+    /// A band's state under its name (`Geometry::rings[k]`), and the next band's name and state along the top.
+    BandState(usize),
+    TopNext,
+    TopNextState,
     Head,
     Title,
     Summary,
@@ -400,15 +406,10 @@ fn spawn(
 ) {
     let (white, soft) = (atlas.region("fx/white"), atlas.region("fx/dot_soft"));
     for sheet in Sheet::ALL {
-        // The galaxy and the chrome never change: built here.
+        // The chrome never changes: built here.
         let (mesh, built) = match sheet {
-            Sheet::Galaxy => {
-                let (mesh, over) = galaxy::build(&geo.0, &style, &white, &soft);
-                debug!("map: the galaxy's mesh covers its disc {over:.1} times over");
-                (mesh, Some(Built::Fixed))
-            }
             Sheet::Chrome => (draw::build_chrome(&style, &white, &soft), Some(Built::Fixed)),
-            Sheet::Far | Sheet::Areas | Sheet::Detail => (MeshBuf::placeholder(), None),
+            Sheet::Galaxy | Sheet::Far | Sheet::Areas | Sheet::Detail => (MeshBuf::placeholder(), None),
         };
         let mesh = meshes.add(mesh);
         let material = atlas.group_material(&mut materials);
@@ -450,21 +451,19 @@ fn spawn(
             let frame = Node { position_type: PositionType::Absolute, left: px(0), top: px(0), width: px(PANEL_X), height: px(STAGE.y), ..default() };
             stage.spawn((ScreenPart::new(Edge::Fade, 0), MapClip, clip)).with_children(|clip| { clip.spawn((MapFrame, frame)).with_children(|m| {
                 // Under everything else: the galaxy's band names (seen zoomed out), halfway across each band: home's
-                // (`CHARTED`) and the next (`UNCHARTED`) above the centre, the narrower deeper ones below it.
+                // and the next above the centre, the narrower deeper ones below it; under each its state (`sync_map`:
+                // `CHARTED · OPEN`, `UNCHARTED · OPEN`, `SEALED · BEAT THE WARDEN …`, `SEALED`).
                 let b = &geo.band;
                 let whole = MapView::new(b.centre, b.outer).whole();
                 for (k, ring) in geo.rings.iter().enumerate() {
                     let up = if k < 2 { -1.0 } else { 1.0 };
                     let at = b.centre + Vec2::new(0.0, up * (ring.outer + ring.inner) / 2.0);
                     let laid = whole.to_screen(at);
-                    let top = if k < 2 { laid.y - 11.0 } else { laid.y - 6.0 };
-                    let node = Node { position_type: PositionType::Absolute, left: px(laid.x), top: px(top), width: px(0), align_items: AlignItems::Center, ..column(3.0) };
+                    let node = Node { position_type: PositionType::Absolute, left: px(laid.x), top: px(laid.y - 11.0), width: px(0), align_items: AlignItems::Center, ..column(3.0) };
                     let tone = if ring.charted { Tone::Teal } else { Tone::Label };
                     m.spawn((Anchored::Far(at), UiTransform::default(), Visibility::Hidden, node)).with_children(|l| {
                         l.spawn((label(fonts, &ring.key.replace('_', " ").to_uppercase(), if k == 0 { 10.5 } else { 9.0 }, c(tone, 0.9)), words));
-                        if k < 2 {
-                            l.spawn((label(fonts, if ring.charted { "CHARTED" } else { "UNCHARTED" }, 7.0, c(Tone::Dim, 1.0)), words));
-                        }
+                        l.spawn((MapText::BandState(k), label(fonts, "", 7.0, c(Tone::Dim, 1.0)), words));
                     });
                 }
                 // The signals' labels, over their areas' tops (placed by `sync_map`): `SIGNAL · A GATE`, the source's
@@ -484,11 +483,18 @@ fn spawn(
                 // along the line with the arcs, `view::MapView::top_band_x`).
                 let top = MapView::new(b.centre, b.outer).top_band_x(b);
                 let centred = |x: f32| Node { position_type: PositionType::Absolute, left: px(x), top: px(TOP_Y - 5.0), width: px(0), justify_content: JustifyContent::Center, ..default() };
-                let names = [Some((b.key.as_str(), Tone::Label)), b.next_key.as_deref().map(|n| (n, Tone::Coral))];
-                for (k, (x, name)) in top.into_iter().zip(names).enumerate() {
-                    if let (Some(x), Some((name, tone))) = (x, name) {
-                        m.spawn((Anchored::TopBand(k, x), UiTransform::default(), centred(x))).with_child((label(fonts, &name.replace('_', " ").to_uppercase(), 8.5, c(tone, 0.8)), words));
-                    }
+                // The next one's name says whether it is open (`sync_map`).
+                if let Some(x) = top[0] {
+                    m.spawn((Anchored::TopBand(0, x), UiTransform::default(), centred(x))).with_child((label(fonts, &b.key.replace('_', " ").to_uppercase(), 8.5, c(Tone::Label, 0.8)), words));
+                }
+                if let (Some(x), Some(next)) = (top[1], b.next_key.as_deref()) {
+                    let node = Node { align_items: AlignItems::Center, ..column(2.0) };
+                    m.spawn((Anchored::TopBand(1, x), UiTransform::default(), centred(x))).with_children(|l| {
+                        l.spawn(node).with_children(|l| {
+                            l.spawn((MapText::TopNext, label(fonts, &next.replace('_', " ").to_uppercase(), 8.5, c(Tone::Coral, 0.8)), words));
+                            l.spawn((MapText::TopNextState, label(fonts, "", 6.5, c(Tone::Coral, 0.7)), words));
+                        });
+                    });
                 }
                 // The shipyard's label, left of it.
                 let h = geo.home;
@@ -962,6 +968,16 @@ fn sync_map(
                 Some(m) => (m.state_word().to_string(), Tone::Gold, 0.85),
                 None => continue,
             },
+            MapText::BandState(k) => band_state(geo, known, k),
+            MapText::TopNext | MapText::TopNextState => {
+                let k = geo.rings.iter().position(|r| r.charted).unwrap_or(0) + 1;
+                let open = known.bands.get(k).is_some_and(|m| m.open);
+                let tone = if open { Tone::Teal } else { Tone::Coral };
+                match *t {
+                    MapText::TopNext => (text.0.clone(), tone, 0.8),
+                    _ => ((if open { "OPEN" } else { "SEALED" }).into(), tone, 0.7),
+                }
+            }
             _ => continue,
         };
         set_text(&mut text, &words);
@@ -1260,6 +1276,21 @@ fn sync_panel(
     }
 }
 
+/// A band's state under its name (`Geometry::rings[k]`): home's `CHARTED · OPEN`, another open one `UNCHARTED ·
+/// OPEN`, the first sealed one `SEALED` and who beats its way in, a deeper one `SEALED`.
+fn band_state(geo: &Geometry, known: &Known, k: usize) -> (String, Tone, f32) {
+    let mark = known.bands.get(k);
+    let charted = geo.rings.get(k).is_some_and(|r| r.charted);
+    match mark {
+        Some(m) if m.open || charted => (format!("{}  ·  OPEN", if charted { "CHARTED" } else { "UNCHARTED" }), Tone::Teal, 0.8),
+        Some(m) if k > 0 && known.bands.get(k - 1).is_some_and(|o| o.open) => match m.beat() {
+            Some(beat) => (format!("SEALED  ·  {beat}"), Tone::Coral, 0.85),
+            None => ("SEALED".into(), Tone::Coral, 0.85),
+        },
+        _ => ("SEALED".into(), Tone::Dim, 1.0),
+    }
+}
+
 /// The star map's meshes: each rebuilt when what it shows changes, placed over the stage (stage px → world through
 /// the camera rig, as `ui_icons` places icons), the galaxy's moved and scaled with the view.
 #[allow(clippy::too_many_arguments)]
@@ -1344,15 +1375,22 @@ fn place_mesh(
     let unit = k / rig.zoom;
     let centre = rig.screen_to_world(at.translation / scale);
     let (white, soft) = (atlas.region("fx/white"), atlas.region("fx/dot_soft"));
+    let open: Vec<bool> = known.bands.iter().map(|b| b.open).collect();
     for (mut m, mut tf) in &mut sheets {
         let want = match m.sheet {
             Sheet::Far => Some(Built::Far(far.clone())),
             Sheet::Detail => Some(Built::Placed(look.clone(), view.zoom, view.offset)),
             Sheet::Areas => Some(Built::Placed(areas.clone(), view.zoom, view.offset)),
-            Sheet::Galaxy | Sheet::Chrome => None,
+            Sheet::Galaxy => Some(Built::Bands(open.clone())),
+            Sheet::Chrome => None,
         };
         if let Some(want) = want.filter(|w| m.built.as_ref() != Some(w)) {
             let mesh = match m.sheet {
+                Sheet::Galaxy => {
+                    let (mesh, over) = galaxy::build(geo, &style, &open, &white, &soft);
+                    debug!("map: the galaxy's mesh covers its disc {over:.1} times over");
+                    mesh
+                }
                 Sheet::Far => galaxy::build_far(geo, &far, &style, &white, &soft),
                 Sheet::Areas => draw::build_areas(geo, &areas, |g| view.to_screen(g), view.zoom, &style, &white, &soft),
                 _ => draw::build_detail(geo, &look, |g| view.to_screen(g), &style, &white, &soft),

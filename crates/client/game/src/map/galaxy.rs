@@ -3,19 +3,22 @@
 //! (`layout::Geometry`). Two atlas meshes in galaxy px (the default view's stage px), moved and scaled with the view:
 //!
 //! * **The galaxy** (always shown): haze along four spiral arms and a warm core, crisp star dust (and a few faint
-//!   constellation lines) only in home's band, uncharted bands veiled and fogged (soft smudges, no stars, the faint
-//!   coral tint inside the gate), a sparse halo outside the rim, and every band edge as a dotted ring. Built once. Its
+//!   constellation lines) only in home's band, uncharted bands veiled, the sealed ones darker and fogged (soft
+//!   smudges, no stars, a faint coral tint), an open band past home's faintly tinted, a sparse halo outside the rim,
+//!   and the band edges: the galaxy's dotted, a gate edge into an open band solid, the one into the first sealed band
+//!   dashed in coral, the deeper ones faint dots (GDR-0097, `map.bands.*` in the tokens). Rebuilt when a band opens. Its
 //!   glows are few and large rather than many and faint: what a frame blends grows with their area, and the map
 //!   must stay light on a 2560 px window (GDR-0097: [`overdraw`]).
 //! * **The far layer** (fades in as the view zooms out, `view::far_alpha`): home's band lit, each voyage found and
 //!   each known cluster a soft beacon (a new signal with a ring around it; unknown voyages and uncharted clusters
-//!   show nothing, and no route joins them: the rim is a place to explore, not a path, GDR-0078), and the shipyard
-//!   a large diamond. Rebuilt when what the career knows changes.
+//!   show nothing, and no route joins them: the rim is a place to explore, not a path, GDR-0078), the shipyard
+//!   a large diamond, and locks along the gate edges: open (teal) on an open gate edge, shut (coral) on the edge into
+//!   the first sealed band. Rebuilt when what the career knows changes.
 
 use bevy::prelude::*;
 use kit::atlas::Region;
 use kit::rng::Rng;
-use kit::style::{Style, UiPalette, mix, vcol};
+use kit::style::{BandStyle, Style, UiPalette, mix, vcol};
 
 use super::draw::{Look, Pen};
 use super::layout::{Geometry, VoyageState};
@@ -30,6 +33,9 @@ const STARS: usize = 1000;
 const HALO: usize = 180;
 /// The halo's reach past the rim (share of the galaxy's radius).
 const HALO_REACH: f32 = 0.4;
+/// Where the far layer's locks sit along a gate edge (degrees from the centre's right, y down): clear of the band
+/// names straight above and below the centre.
+const LOCKS: [f32; 6] = [0.0, 50.0, 130.0, 180.0, 230.0, 310.0];
 
 /// A point on arm `arm` at radius `r` (galaxy px), turned by `jitter` radians.
 fn on_arm(centre: Vec2, radius: f32, arm: usize, r: f32, jitter: f32) -> Vec2 {
@@ -44,9 +50,9 @@ fn in_annulus(rng: &mut Rng, centre: Vec2, inner: f32, outer: f32) -> Vec2 {
 }
 
 /// The galaxy's mesh (see the module doc), and how many times over it covers its disc ([`overdraw`]).
-pub fn build(geo: &Geometry, style: &Style, white: &Region, soft: &Region) -> (Mesh, f32) {
+pub fn build(geo: &Geometry, style: &Style, open: &[bool], white: &Region, soft: &Region) -> (Mesh, f32) {
     let mut pen = Pen::new(white, soft);
-    paint(geo, &style.ui, style.background.outer(), &mut pen);
+    paint(geo, &style.ui, &style.bands, open, style.background.outer(), &mut pen);
     let over = pen.area() / disc(geo);
     (pen.into_mesh(), over)
 }
@@ -60,15 +66,35 @@ fn disc(geo: &Geometry) -> f32 {
 /// the disc's (the pixels a frame blends grow with it; GDR-0097: from about 12 to under 5, on a disc of a fifth the
 /// area, about a tenth of the pixels a frame blends).
 #[cfg(test)]
-fn overdraw(geo: &Geometry) -> f32 {
+fn overdraw(geo: &Geometry, open: &[bool]) -> f32 {
     let region = Region { uv: Rect::default(), cells: Vec2::ONE, origin: Vec2::ZERO };
     let mut pen = Pen::new(&region, &region);
     let w = Color::WHITE;
-    paint(geo, &UiPalette { teal: w, gold: w, coral: w, violet: w, label: w, dim: w, number: w }, w, &mut pen);
+    let ui = UiPalette { teal: w, gold: w, coral: w, violet: w, label: w, dim: w, number: w };
+    let bands = BandStyle {
+        open: w,
+        open_fill: 1.0,
+        open_edge: 1.0,
+        open_edge_width: 1.0,
+        open_veil: 1.0,
+        sealed: w,
+        sealed_tint: 1.0,
+        sealed_edge: 1.0,
+        sealed_edge_width: 1.0,
+        sealed_dash: 12.0,
+        sealed_gap: 9.0,
+        sealed_veil: 1.0,
+        deep_edge: 1.0,
+        lock: 1.0,
+        lock_size: 26.0,
+    };
+    paint(geo, &ui, &bands, open, w, &mut pen);
     pen.area() / disc(geo)
 }
 
-fn paint(geo: &Geometry, ui: &UiPalette, veil: Color, pen: &mut Pen) {
+/// `open`: each band's state, from the rim inwards (`known::Known::bands`; home's band and those outside it open
+/// without one).
+fn paint(geo: &Geometry, ui: &UiPalette, bands: &BandStyle, open: &[bool], veil: Color, pen: &mut Pen) {
     let c = geo.band.centre;
     let radius = geo.rings.first().map_or(geo.band.outer, |r| r.outer);
     let rings = &geo.rings;
@@ -87,26 +113,34 @@ fn paint(geo: &Geometry, ui: &UiPalette, veil: Color, pen: &mut Pen) {
         }
     }
 
-    // Uncharted bands: a veil of the background dims them, the core glows through it faintly, fog (soft smudges,
-    // more of them on the arms) drifts over it under a faint coral tint inside the gate.
+    // The bands inside home's: a veil of the background dims them, darker over the sealed ones (inside the last
+    // open band), where the core glows through it faintly and fog (soft smudges, more of them on the arms) drifts
+    // under a faint coral tint; an open band past home's carries a faint tint of its own (GDR-0097).
     let home = rings.iter().position(|r| r.charted).unwrap_or(0);
     let gate = rings.get(home).map_or(radius, |r| r.inner);
+    let is_open = |k: usize| open.get(k).copied().unwrap_or(k <= home);
+    let last = (home..rings.len()).take_while(|&k| is_open(k)).last().unwrap_or(home);
+    let seal = rings.get(last).map_or(gate, |r| r.inner);
+    pen.disc_n(c, gate, 160, vcol(veil, bands.open_veil));
     for k in [1.0, 0.95] {
-        pen.disc_n(c, gate * k, 160, vcol(veil, 0.26));
+        pen.disc_n(c, seal * k, 160, vcol(veil, bands.sealed_veil / 2.0));
+    }
+    for ring in rings.iter().take(last + 1).skip(home + 1) {
+        pen.ring(c, (ring.outer + ring.inner) / 2.0, (ring.outer - ring.inner) / 2.0, vcol(bands.open, bands.open_fill));
     }
     for (size, a, tone) in [(3.4, 0.16, mix(ui.gold, ui.number, 0.3)), (1.6, 0.3, mix(ui.gold, ui.number, 0.5)), (0.6, 0.6, ui.number)] {
         pen.glow(c, core * size, vcol(tone, a));
     }
     for k in 0..FOG {
         let at = if k % 3 == 0 {
-            in_annulus(&mut rng, c, core, gate)
+            in_annulus(&mut rng, c, core, seal)
         } else {
-            let r = rng.range(core, gate);
+            let r = rng.range(core, seal);
             on_arm(c, radius, k % ARMS, r, rng.range(-0.3, 0.3))
         };
         pen.glow(at, radius * rng.range(0.05, 0.13), vcol(mix(ui.label, ui.coral, 0.15), rng.range(0.05, 0.11)));
     }
-    pen.disc_n(c, gate, 160, vcol(ui.coral, 0.025));
+    pen.disc_n(c, seal, 160, vcol(bands.sealed, bands.sealed_tint));
 
     // Star dust in home's band and a sparse halo past the rim; a few faint constellation lines.
     let charted = rings.get(home).map_or((gate, radius), |r| (r.inner, r.outer));
@@ -122,8 +156,8 @@ fn paint(geo: &Geometry, ui: &UiPalette, veil: Color, pen: &mut Pen) {
         pen.disc(*at, *r, vcol(mix(ui.label, ui.teal, 0.3), *a));
     }
 
-    // The band edges: the galaxy's edge, home's band's gate (coral), the next band's edge fainter, the deeper ones
-    // faintest.
+    // The band edges: the galaxy's edge; a gate edge into an open band solid, the one into the first sealed band
+    // dashed (its locks are the far layer's), the deeper ones faint dots.
     for (k, ring) in rings.iter().enumerate() {
         if k == 0 {
             pen.dotted_circle(c, ring.outer, 7.0, 0.9, vcol(ui.label, 0.3));
@@ -131,12 +165,13 @@ fn paint(geo: &Geometry, ui: &UiPalette, veil: Color, pen: &mut Pen) {
         if ring.inner <= 0.0 {
             continue;
         }
-        let (dot, col) = match k.cmp(&home) {
-            std::cmp::Ordering::Less | std::cmp::Ordering::Equal if k == home => (1.0, vcol(mix(ui.label, ui.coral, 0.35), 0.45)),
-            std::cmp::Ordering::Greater if k == home + 1 => (0.8, vcol(ui.label, 0.14)),
-            _ => (0.8, vcol(ui.label, 0.1)),
-        };
-        pen.dotted_circle(c, ring.inner, 7.0, dot, col);
+        if is_open(k + 1) {
+            pen.ring(c, ring.inner, bands.open_edge_width / 2.0, vcol(bands.open, bands.open_edge));
+        } else if k == last {
+            pen.dashed_circle(c, ring.inner, bands.sealed_dash, bands.sealed_gap, bands.sealed_edge_width / 2.0, vcol(bands.sealed, bands.sealed_edge));
+        } else {
+            pen.dotted_circle(c, ring.inner, 7.0, 0.8, vcol(ui.label, bands.deep_edge));
+        }
     }
 }
 
@@ -171,6 +206,24 @@ pub fn build_far(geo: &Geometry, look: &Look, style: &Style, white: &Region, sof
         }
         pen.disc(at, 8.0, vcol(tone, 0.9));
     }
+    // Locks along the gate edges: open ones on each edge into an open band, shut ones on the edge into the first
+    // sealed band.
+    let bands = &style.bands;
+    let size = bands.lock_size;
+    let mut past_open = true;
+    for (k, ring) in geo.rings.iter().enumerate().filter(|(_, r)| r.inner > 0.0) {
+        let next = known.bands.get(k + 1).is_some_and(|m| m.open);
+        if !next && !past_open {
+            break;
+        }
+        past_open = next;
+        let (tone, a) = if next { (bands.open, bands.lock * 0.6) } else { (bands.sealed, bands.lock) };
+        for deg in LOCKS {
+            let at = b.centre + Vec2::from_angle(deg.to_radians()) * ring.inner;
+            pen.disc(at, size * 0.62, vcol(style.background.outer(), 0.9));
+            lock(&mut pen, at, size, next, vcol(tone, a));
+        }
+    }
     // The shipyard.
     let h = geo.home;
     if glow {
@@ -179,6 +232,27 @@ pub fn build_far(geo: &Geometry, look: &Look, style: &Style, white: &Region, sof
     pen.diamond_outline(h, 42.0, 3.5, vcol(ui.number, 0.95));
     pen.diamond(h, 15.0, vcol(ui.teal, 1.0));
     pen.into_mesh()
+}
+
+/// A padlock `size` across centred on `at` (galaxy px, y down): its body, and its shackle, lifted and swung open
+/// when `open`.
+fn lock(pen: &mut Pen, at: Vec2, size: f32, open: bool, col: [f32; 4]) {
+    let q = |x: f32, y: f32| at + Vec2::new(x, y) * size;
+    pen.rect(q(-0.3, -0.02), q(0.3, 0.4), col);
+    let lift = if open { 0.14 } else { 0.0 };
+    let end = if open { 0.15 } else { 0.0 };
+    let arc: Vec<Vec2> = (0..=10)
+        .map(|i| {
+            let t = std::f32::consts::PI * (1.0 - i as f32 / 10.0 * (1.0 - end));
+            q(0.19 * t.cos(), -0.02 - lift - 0.22 * t.sin())
+        })
+        .collect();
+    let mut shackle = vec![q(-0.19, -0.02)];
+    shackle.extend(arc);
+    if !open {
+        shackle.push(q(0.19, -0.02));
+    }
+    pen.polyline(&shackle, size * 0.06, col);
 }
 
 #[cfg(test)]
@@ -210,7 +284,9 @@ mod tests {
         assert_eq!(g.rings[4].inner, 0.0);
         let d = g.home.distance(g.band.centre);
         assert!(d > g.rings[0].inner && d < g.rings[0].outer, "home lies in the rim: {d}");
-        let over = overdraw(&g);
-        assert!(over < 6.0, "the galaxy covers its disc {over:.1} times over");
+        for open in [&[true, false, false, false, false][..], &[true, true, false, false, false]] {
+            let over = overdraw(&g, open);
+            assert!(over < 6.0, "the galaxy covers its disc {over:.1} times over");
+        }
     }
 }

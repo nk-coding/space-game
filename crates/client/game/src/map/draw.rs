@@ -209,6 +209,17 @@ impl Pen {
     pub fn dotted_circle(&mut self, centre: Vec2, r: f32, step: f32, dot: f32, col: [f32; 4]) {
         self.dotted_ring(centre, r, (std::f32::consts::TAU * r / step).ceil() as usize, dot, col);
     }
+
+    /// A dashed circle: dashes about `dash` px long, `gap` px apart, `half` px either side of the circle.
+    pub fn dashed_circle(&mut self, centre: Vec2, r: f32, dash: f32, gap: f32, half: f32, col: [f32; 4]) {
+        let n = (std::f32::consts::TAU * r / (dash + gap)).ceil().max(1.0) as usize;
+        let turn = std::f32::consts::TAU / n as f32;
+        let on = turn * dash / (dash + gap);
+        for k in 0..n {
+            let pts: Vec<Vec2> = (0..=3).map(|i| centre + Vec2::from_angle(k as f32 * turn + on * i as f32 / 3.0) * r).collect();
+            self.polyline(&pts, half, col);
+        }
+    }
 }
 
 /// `col` with its alpha times `k`.
