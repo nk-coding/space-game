@@ -1,9 +1,12 @@
 //! The WORKSHOP (GDR-0108): a layer over home at the workshop under the bottom wall. Left, the parts list: every part
-//! with a recipe that is unlocked or in stock (what the fleet is short of first, FABRICATE MISSING for those), its
-//! stock (against what the fleet carries), MAKE and DISMANTLE (a share of its recipe, no data; never below what the
-//! fleet carries). Right, the materials in store, one row each (there will be more than a top bar holds); the part
-//! under the pointer shows what it needs there, coral where the store is short (Niklas, 18 Oct 2026). Every row
-//! leads with the part's icon as the drydock's palette draws it (`drydock::panels::part_icon`).
+//! with a recipe that is unlocked or in stock, in the kit's grouped list like the drydock's palette (Niklas, 18 Oct
+//! 2026: the search, a section per category with its chip; `kit::ui_kit::GroupedList`), what the fleet is short of
+//! first in each section (FABRICATE MISSING for those, above the list), its stock (against what the fleet carries),
+//! MAKE and DISMANTLE (a share of its recipe, no data; never below what the fleet carries). Right, the materials in
+//! store, one row each (there will be more than a top bar holds); the part under the pointer shows what it needs
+//! there, coral where the store is short (Niklas, 18 Oct 2026). Every row leads with the part's icon as the drydock's
+//! palette draws it (`drydock::panels::part_icon`); the pointer resting on a row shows the part's hover card
+//! (`world::part_card`, the drydock's too) in the room between the two columns.
 //!
 //! The haul's intact parts are no longer sorted here: the voyage's report keeps or dismantles them, and what it leaves
 //! goes to the stock when it is dismissed (`debrief.rs`; Niklas, 18 Oct 2026: "actions like take / dismantle for
@@ -16,12 +19,14 @@
 //! ```text
 //! (o) SHIPYARD › WORKSHOP                                                                 [CLOSE]
 //!     Workshop
-//!   PARTS  ·  THE FLEET IS SHORT OF 2   [FABRICATE MISSING]           MATERIALS IN STORE
-//!   CAPACITOR 2 / 4                                                   PULSE LASER  ·  NEEDS
-//!   [] Pulse laser   2 / 4                       [MAKE] [DISMANTLE]   COPPER              7   NEEDS 3
-//!      (−) 2 (+) [MAX]                          [MAKE 2] [CANCEL]     LATTICE CRYSTAL     4   NEEDS 2
-//!      COSTS COPPER 6 · CRYSTAL 4                                     STEEL               6   NEEDS 1
-//!   [] Thruster      4                           [MAKE] [DISMANTLE]   CERAMIC             2
+//!   PARTS  ·  THE FLEET IS SHORT OF 2   [FABRICATE MISSING]                     MATERIALS IN STORE
+//!   CAPACITOR 2 / 4                                                             PULSE LASER  ·  NEEDS
+//!   [ Search parts                                  ]   ┌ hover card ┐          COPPER          7   NEEDS 3
+//!   [POWER][WEAPONS][DEFENSE][…]                         │ [▣] Pulse  │          LATTICE CRYSTAL 4   NEEDS 2
+//!   WEAPONS                                     2       │ stats …    │          STEEL           6   NEEDS 1
+//!   [] Pulse laser   2 / 4      [MAKE] [DISMANTLE]       └────────────┘          CERAMIC         2
+//!      (−) 2 (+) [MAX]         [MAKE 2] [CANCEL]
+//!      COSTS COPPER 6 · CRYSTAL 4
 //!   FABRICATED 2 PULSE LASER  ·  IN STOCK
 //! ```
 //!
@@ -42,11 +47,12 @@ use data::{Career, Content};
 use kit::style::{Style, ui_color};
 use kit::ui_icons::{Glyph, UiIcon};
 use kit::ui_kit::{
-    Edge, Hot, HudFonts, Pill, Ring, ScreenFx, ScreenPart, Scrollbar, Tip, Tone, UiClick, UiInputSet, UiStyleSet, frame, label, number, prose, ring_glyph, ring_node, show_screen,
-    spawn_close, spawn_head, spawn_pill, tracked,
+    Edge, Hot, HudFonts, ListRow, ListSpec, Pill, Ring, ScreenFx, ScreenPart, Scrollbar, Tip, Tone, UiClick, UiInputSet, UiPointer, UiStyleSet, fill_list, frame, label, number, prose,
+    ring_glyph, ring_node, show_screen, spawn_close, spawn_grouped_list, spawn_head, spawn_pill, tracked,
 };
 use world::career::{EscortDesigns, Note, PlayerCareer};
 use world::mode::AppMode;
+use world::part_card::{Held, PartHover};
 use world::player::PlayerDesign;
 use world::sim_bridge::GameContent;
 use world::storage::Storage;
@@ -57,9 +63,9 @@ use crate::home::HomeAction;
 
 /// The layout's size (logical px), like the LOG's.
 const STAGE: Vec2 = Vec2::new(1280.0, 720.0);
-/// The two columns' boxes on the stage: the parts, the materials.
-const PARTS: (Vec2, Vec2) = (Vec2::new(40.0, 84.0), Vec2::new(780.0, 568.0));
-const MATERIALS: (Vec2, Vec2) = (Vec2::new(868.0, 84.0), Vec2::new(372.0, 568.0));
+/// The two columns' boxes on the stage: the parts, the materials; the hover card shows in the room between them.
+const PARTS: (Vec2, Vec2) = (Vec2::new(40.0, 84.0), Vec2::new(640.0, 568.0));
+const MATERIALS: (Vec2, Vec2) = (Vec2::new(960.0, 84.0), Vec2::new(280.0, 568.0));
 const ROW: f32 = 44.0;
 /// The most a count goes to, and a shift-click's step.
 const COUNT_MAX: u32 = 99;
@@ -83,6 +89,8 @@ pub struct SortRow {
 pub struct MakeRow {
     pub part: String,
     pub name: String,
+    /// Its category (the list's section).
+    pub category: String,
     pub stock: u32,
     pub need: u32,
     pub why: Option<String>,
@@ -176,7 +184,8 @@ pub fn sort_rows(content: &Content, career: &Career, need: &BTreeMap<String, u32
         .collect()
 }
 
-/// The parts with a recipe that are unlocked or in stock: those the fleet is short of first, then in content order.
+/// The parts with a recipe that are unlocked or in stock, by category in content order (the list's sections): in
+/// each, those the fleet is short of first, then in content order.
 pub fn make_rows(content: &Content, career: &Career, need: &BTreeMap<String, u32>) -> Vec<MakeRow> {
     let unlocks = career.unlocks(content);
     let mut rows: Vec<MakeRow> = content
@@ -186,6 +195,7 @@ pub fn make_rows(content: &Content, career: &Career, need: &BTreeMap<String, u32
         .map(|p| MakeRow {
             part: p.id.clone(),
             name: p.name.clone(),
+            category: p.category.clone(),
             stock: career.stock().get(&p.id).copied().unwrap_or(0),
             need: need.get(&p.id).copied().unwrap_or(0),
             why: career.can_fabricate(content, &p.id, 1).err().map(|r| refusal_words(content, &r)),
@@ -193,7 +203,7 @@ pub fn make_rows(content: &Content, career: &Career, need: &BTreeMap<String, u32
             spare: most(content, career, need, Act::Scrap, &p.id),
         })
         .collect();
-    rows.sort_by_key(|r| r.need <= r.stock);
+    rows.sort_by_key(|r| (content.categories.iter().position(|c| c.id == r.category), r.need <= r.stock));
     rows
 }
 
@@ -275,8 +285,12 @@ pub fn is_open(layer: Res<WorkshopLayer>) -> bool {
 #[derive(Component)]
 struct WorkshopRoot;
 
+/// The parts list (the kit's grouped list's area) and the lines over it (what the fleet is short of).
 #[derive(Component)]
 struct PartList;
+
+#[derive(Component)]
+struct PartsHead;
 
 #[derive(Component)]
 struct MaterialList;
@@ -323,7 +337,12 @@ impl Plugin for WorkshopPlugin {
 }
 
 /// The lists' nodes, for a refill.
-type Lists<'w, 's> = (Single<'w, 's, Entity, With<PartList>>, Single<'w, 's, Entity, With<MaterialList>>, Single<'w, 's, Entity, With<Said>>);
+type Lists<'w, 's> = (
+    Single<'w, 's, Entity, With<PartList>>,
+    Single<'w, 's, Entity, With<MaterialList>>,
+    Single<'w, 's, Entity, With<Said>>,
+    Single<'w, 's, Entity, With<PartsHead>>,
+);
 
 /// What a refill reads.
 #[derive(bevy::ecs::system::SystemParam)]
@@ -358,9 +377,13 @@ fn input(
     mut layer: ResMut<WorkshopLayer>,
     mut career: ResMut<PlayerCareer>,
     mut storage: ResMut<Storage>,
+    pointer: Res<UiPointer>,
+    mut typing: Local<bool>,
     fill: Fill,
     lists: Lists,
 ) {
+    // The Esc that lets the search field go (it had the keyboard last frame) closes nothing.
+    let was_typing = std::mem::replace(&mut *typing, pointer.typing);
     let mut closed = false;
     let mut todo = None;
     for c in clicks.read() {
@@ -375,7 +398,7 @@ fn input(
     let c = &fill.content.0;
     let need = fleet_need(c, &fill.design, &fill.escorts);
     // Esc cancels a count being chosen first, then closes.
-    let esc = keys.just_pressed(KeyCode::Escape);
+    let esc = keys.just_pressed(KeyCode::Escape) && !was_typing && !pointer.typing;
     let cancel = esc && layer.choice.is_some();
     let acted = todo.is_some() || cancel;
     if cancel {
@@ -492,12 +515,21 @@ fn refill(commands: &mut Commands, lists: &Lists, fill: &Fill, career: &Career, 
     let (fonts, style, content) = (&*fill.fonts, &*fill.style, &fill.content.0);
     let need = fleet_need(content, &fill.design, &fill.escorts);
     let ui = style.ui;
-    let (parts, mats, line) = (*lists.0, *lists.1, *lists.2);
+    let (parts, mats, line, head) = (*lists.0, *lists.1, *lists.2, *lists.3);
     let strip = layer.choice.as_ref().map(|ch| Strip { choice: ch, top: most(content, career, &need, ch.act, &ch.part), words: choice_words(content, ch) });
     let short = missing(career, &need);
     let rows = make_rows(content, career, &need);
-    commands.entity(parts).despawn_children();
-    commands.entity(parts).with_children(|p| fill_parts(p, &Rows { fonts, style, content, strip: strip.as_ref() }, &short, &rows));
+    commands.entity(head).despawn_children();
+    commands.entity(head).with_children(|p| fill_head(p, fonts, style, content, &short));
+    let cx = Rows { fonts, style, content, strip: strip.as_ref() };
+    let list: Vec<ListRow> = rows
+        .iter()
+        .map(|r| ListRow { key: r.part.clone(), group: r.category.clone(), find: r.name.to_lowercase(), aside: false })
+        .collect();
+    fill_list(commands, parts, fonts, &ui, &list, |p, l| {
+        let r = rows.iter().find(|r| r.part == l.key).expect("a row per list row");
+        spawn_part_row(p, &cx, r)
+    });
     commands.entity(mats).despawn_children();
     commands.entity(mats).with_children(|p| fill_materials(p, fonts, &ui, content, career, layer.shown.as_ref()));
     commands.entity(line).despawn_children();
@@ -556,13 +588,11 @@ pub(crate) fn icon_sized(content: &Content, part: &str, size: Vec2) -> (UiIcon, 
     (part_icon(content, part, armor), Node { width: px(size.x), height: px(size.y), flex_shrink: 0.0, ..default() })
 }
 
-/// The parts list: what the fleet is short of and FABRICATE MISSING, then a row per part with its stock, MAKE and
-/// DISMANTLE.
-fn fill_parts(p: &mut ChildSpawnerCommands, cx: &Rows, short: &[(String, u32, u32)], rows: &[MakeRow]) {
-    let (fonts, style, content) = (cx.fonts, cx.style, cx.content);
+/// Over the parts list: what the fleet is short of and FABRICATE MISSING.
+fn fill_head(p: &mut ChildSpawnerCommands, fonts: &HudFonts, style: &Style, content: &Content, short: &[(String, u32, u32)]) {
     let ui = style.ui;
     let c = |tone: Tone| ui_color(tone.color(&ui), 1.0);
-    p.spawn(Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(14), margin: UiRect::bottom(px(8)), flex_shrink: 0.0, ..default() }).with_children(|h| {
+    p.spawn(Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(14), flex_shrink: 0.0, ..default() }).with_children(|h| {
         if short.is_empty() {
             h.spawn(label(fonts, "PARTS  ·  THE FLEET IS IN STOCK", 9.5, c(Tone::Teal)));
         } else {
@@ -576,21 +606,30 @@ fn fill_parts(p: &mut ChildSpawnerCommands, cx: &Rows, short: &[(String, u32, u3
             .iter()
             .map(|(part, need, have)| format!("{} {have} / {need}", content.parts.get(part).map_or_else(|| part.to_uppercase(), |p| p.name.to_uppercase())))
             .collect();
-        p.spawn((tracked(fonts, &words.join("  ·  "), 8.5, c(Tone::Coral), 0.16), Node { margin: UiRect::bottom(px(10)), flex_shrink: 0.0, ..default() }));
+        p.spawn((tracked(fonts, &words.join("  ·  "), 8.5, c(Tone::Coral), 0.16), Node { flex_shrink: 0.0, ..default() }));
     }
-    for r in rows {
-        let strip = cx.strip.filter(|s| s.choice.part == r.part);
-        let on = |act: Act| strip.is_some_and(|s| s.choice.act == act);
-        let wrap = (
-            PartRowOf(r.part.clone()),
-            Hot::default(),
-            Node { flex_shrink: 0.0, flex_direction: FlexDirection::Column, border: UiRect::bottom(px(1)), ..default() },
-            BorderColor::all(ui_color(ui.dim, 0.25)),
-        );
-        p.spawn(wrap).with_children(|wrap| {
+}
+
+/// A part's row in the list: its icon, name and stock, why it can't be made, MAKE and DISMANTLE, and the strip of a
+/// count being chosen for it.
+fn spawn_part_row(p: &mut ChildSpawnerCommands, cx: &Rows, r: &MakeRow) -> Entity {
+    let (fonts, style, content) = (cx.fonts, cx.style, cx.content);
+    let ui = style.ui;
+    let c = |tone: Tone| ui_color(tone.color(&ui), 1.0);
+    let strip = cx.strip.filter(|s| s.choice.part == r.part);
+    let on = |act: Act| strip.is_some_and(|s| s.choice.act == act);
+    let wrap = (
+        PartRowOf(r.part.clone()),
+        PartHover { part: r.part.clone(), material: None, held: Held::Fleet },
+        Hot::default(),
+        Node { flex_shrink: 0.0, flex_direction: FlexDirection::Column, border: UiRect::bottom(px(1)), ..default() },
+        BorderColor::all(ui_color(ui.dim, 0.25)),
+    );
+    p.spawn(wrap)
+        .with_children(|wrap| {
             wrap.spawn(Node { min_height: px(ROW), flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(12), ..default() }).with_children(|row| {
                 row.spawn(icon(content, &r.part));
-                row.spawn((prose(fonts, &r.name, 15.0, c(Tone::Number)), Node { width: px(170), flex_shrink: 0.0, ..default() }));
+                row.spawn((prose(fonts, &r.name, 15.0, c(Tone::Number)), Node { width: px(150), flex_shrink: 0.0, ..default() }));
                 let (stock, tone) = if r.need > 0 { (format!("{} / {}", r.stock, r.need), if r.stock < r.need { Tone::Coral } else { Tone::Teal }) } else { (r.stock.to_string(), Tone::Number) };
                 row.spawn((number(fonts, &stock, 14.0, c(tone)), Node { width: px(56), flex_shrink: 0.0, ..default() }));
                 let why = r.why.as_ref().filter(|w| !w.starts_with("SHORT OF")).cloned().unwrap_or_default();
@@ -610,8 +649,8 @@ fn fill_parts(p: &mut ChildSpawnerCommands, cx: &Rows, short: &[(String, u32, u3
             if let Some(s) = strip {
                 spawn_strip(wrap, fonts, style, s);
             }
-        });
-    }
+        })
+        .id()
 }
 
 /// The materials column: a row per material in store (and per one the shown part needs), and what that part needs
@@ -639,7 +678,9 @@ fn fill_materials(p: &mut ChildSpawnerCommands, fonts: &HudFonts, ui: &kit::styl
     for m in rows {
         let lit = shown.is_none() || m.need.is_some();
         p.spawn((row.clone(), BorderColor::all(ui_color(ui.dim, 0.2)))).with_children(|r| {
-            r.spawn((label(fonts, &m.name.to_uppercase(), 9.0, c(if lit { Tone::Label } else { Tone::Dim })), Node { flex_grow: 1.0, ..default() }));
+            // One line: a long name is cut at its room, never wrapped (the column is narrow beside the hover card's room).
+            r.spawn(Node { flex_grow: 1.0, flex_shrink: 1.0, min_width: px(0), overflow: Overflow::clip_x(), ..default() })
+                .with_child((label(fonts, &m.name.to_uppercase(), 9.0, c(if lit { Tone::Label } else { Tone::Dim })), TextLayout::no_wrap()));
             r.spawn((number(fonts, &m.have.to_string(), 15.0, c(if lit { Tone::Number } else { Tone::Dim })), Node { min_width: px(36), justify_content: JustifyContent::FlexEnd, ..default() }));
             let (need, tone) = match m.need {
                 Some(n) => (format!("NEEDS {n}"), if m.have < n { Tone::Coral } else { Tone::Teal }),
@@ -650,7 +691,7 @@ fn fill_materials(p: &mut ChildSpawnerCommands, fonts: &HudFonts, ui: &kit::styl
     }
 }
 
-fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>) {
+fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>, content: Res<GameContent>) {
     let ui = style.ui;
     let fonts = &*fonts;
     let abs = |at: Vec2, size: Option<Vec2>| Node {
@@ -673,7 +714,20 @@ fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>) {
         .with_children(|root| {
             root.spawn(Node { position_type: PositionType::Absolute, width: percent(100), height: percent(100), justify_content: JustifyContent::Center, align_items: AlignItems::Center, ..default() }).with_children(|centre| {
                 centre.spawn(Node { width: px(STAGE.x), height: px(STAGE.y), flex_shrink: 0.0, ..default() }).with_children(|stage| {
-                    stage.spawn((PartList, ScreenPart::new(Edge::Fade, 1), Scrollbar::vertical(), ScrollPosition::default(), list(PARTS)));
+                    // The parts: what the fleet is short of, then the kit's grouped list (search, chips, sections).
+                    stage.spawn((ScreenPart::new(Edge::Fade, 1), Node { flex_direction: FlexDirection::Column, row_gap: px(10), ..abs(PARTS.0, Some(PARTS.1)) })).with_children(|col| {
+                        col.spawn((PartsHead, Node { flex_direction: FlexDirection::Column, row_gap: px(8), flex_shrink: 0.0, ..default() }));
+                        let spec = ListSpec {
+                            placeholder: "Search parts".into(),
+                            max_chars: 24,
+                            groups: content.0.categories.iter().map(|c| (c.id.clone(), c.name.clone())).collect(),
+                            aside: "",
+                            row_gap: 0.0,
+                            pad_right: 14.0,
+                        };
+                        let area = spawn_grouped_list(col, fonts, &ui, spec, Tip::new("SEARCH PARTS"), |_| {});
+                        col.commands().entity(area).insert(PartList);
+                    });
                     stage.spawn((MaterialList, ScreenPart::new(Edge::Right, 1), Scrollbar::vertical(), ScrollPosition::default(), list(MATERIALS)));
                     stage.spawn((Said, ScreenPart::new(Edge::Bottom, 0), abs(Vec2::new(40.0, 664.0), None)));
                 });
@@ -711,7 +765,14 @@ mod tests {
         let short = missing(&c, &need);
         assert_eq!(short[0], ("capacitor".to_string(), 4, 2));
         let make = make_rows(&content, &c, &need);
-        assert!(make[0].need > make[0].stock, "what the fleet lacks comes first");
+        let short_first = |cat: &str| {
+            let section: Vec<&MakeRow> = make.iter().filter(|r| r.category == cat).collect();
+            section.windows(2).all(|w| w[0].need > w[0].stock || w[1].need <= w[1].stock)
+        };
+        assert!(content.categories.iter().all(|c| short_first(&c.id)), "in each section what the fleet lacks comes first");
+        let order: Vec<usize> = make.iter().map(|r| content.categories.iter().position(|c| c.id == r.category).unwrap()).collect();
+        assert!(order.windows(2).all(|w| w[0] <= w[1]), "the sections in content order");
+        assert!(make.iter().any(|r| r.part == "capacitor" && r.need > r.stock));
         assert!(make.iter().all(|r| r.part != "beam_laser" && r.part != "armor_block"), "locked and hull parts are not offered");
         let laser = make.iter().find(|r| r.part == "pulse_laser").unwrap();
         assert_eq!(laser.why, None);

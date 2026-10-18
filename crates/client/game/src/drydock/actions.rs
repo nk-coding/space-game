@@ -1,6 +1,6 @@
 //! What the drydock's buttons and keys mean. Both send one message, [`DrydockAction`]: a click on a node with an
 //! [`ActionButton`] sends its action, the keyboard shortcuts send the same ones. Handlers read the message and
-//! never touch widget code; this module handles the UI state (tool, material, overlays, category, picked part),
+//! never touch widget code; this module handles the UI state (tool, material, overlays, picked part),
 //! the test flight and the ring menu (home). Zoom is handled by the camera (`view.rs`), editing (undo / redo,
 //! mirror, bevel, rotate, the selected part) by `tools.rs`, saving, export and the blueprint list by
 //! `blueprints/`, the BEHAVIOR button by `behavior_ui`, a click on a locked part or armour by `research`.
@@ -48,8 +48,6 @@ pub enum DrydockAction {
     /// Armour material for hull parts (content id).
     Material(String),
     Overlay(Overlay),
-    /// A category chip: the palette's list jumps to the category's section (content id).
-    Category(String),
     /// Pick a part in the palette (content id).
     PickPart(String),
     ZoomIn,
@@ -255,7 +253,6 @@ pub(super) fn apply(
             DrydockAction::Tool(t) => ui.tool = *t,
             DrydockAction::Material(m) if granted.unlocks.has_material(m) => ui.material.clone_from(m),
             DrydockAction::Overlay(o) => ui.toggle_overlay(*o),
-            DrydockAction::Category(c) => ui.jump = Some(c.clone()),
             // A picked slope orients itself to the hull again.
             DrydockAction::PickPart(p) if granted.unlocks.has_part(p) => {
                 ui.picked = Some(p.clone());
@@ -310,7 +307,6 @@ mod tests {
             .init_resource::<DrydockStatus>()
             .insert_resource(Lab::default())
             .init_resource::<DesignSlot>()
-            .init_resource::<crate::drydock::panels::Palette>()
             .insert_resource(GameContent(content))
             .add_message::<DrydockAction>()
             .add_message::<UiClick>()

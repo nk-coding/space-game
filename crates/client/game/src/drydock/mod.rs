@@ -81,7 +81,6 @@ impl Plugin for DrydockPlugin {
             .init_resource::<DrydockStats>()
             .init_resource::<report::DrydockReport>()
             .init_resource::<DrydockCursor>()
-            .init_resource::<panels::Palette>()
             .add_message::<DrydockAction>()
             // `BlueprintsPlugin` puts the last session's working design in (in its build, at once).
             .add_plugins((behaviors::BehaviorsPlugin, blueprints::BlueprintsPlugin));
@@ -108,14 +107,14 @@ impl Plugin for DrydockPlugin {
             .add_systems(
                 Update,
                 (
-                    (actions::clicks, actions::shortcuts, panels::sync_search).in_set(DockSet::Input),
+                    (actions::clicks, actions::shortcuts).in_set(DockSet::Input),
                     (view::ui_scale, view::camera, actions::apply, report::update, stats::update, stats::voyage).chain().in_set(DockSet::Apply),
                     panels::see_fresh.after(inspector::update).in_set(DockSet::Apply),
                     (
                         view::rebuild_ship,
                         overlays::rebuild,
-                        panels::sync_palette,
-                        panels::scroll_chips,
+                        panels::fill_palette,
+                        panels::sync_rows,
                         panels::sync_swatches,
                         panels::scroll_selected,
                         panels::sync_blocks,

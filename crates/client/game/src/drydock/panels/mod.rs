@@ -16,12 +16,16 @@
 //!                                                                  VOYAGE-READY · …
 //! ```
 //!
-//! * **Left column**: the search; `ARMOR · <name>` over a strip of material swatches (the armour block in each
-//!   material, a light outline, the picked one outlined teal; it scrolls sideways past eight; the tooltip names the
-//!   material with its numbers and key); one line of category chips that scrolls sideways (wheel or drag; a fade at
-//!   the edges) and jumps the list to its section, the chip of the section in view lit; then every part in
-//!   sections, a heading per category with its count. The search filters the whole list (empty sections and their
-//!   chips go). Each row ends with how many of the part are left (`∞`: part availability, GDR-0082).
+//! * **Left column**: the kit's grouped list (`kit::ui_kit::GroupedList`, the workshop's too): the search;
+//!   `ARMOR · <name>` over a strip of material swatches (the armour block in each material, a light outline, the
+//!   picked one outlined teal; it scrolls sideways past eight; the tooltip names the material with its numbers and
+//!   key); one line of category chips that scrolls sideways (wheel or drag) and jumps the list to its section, the
+//!   chip of the section in view lit; then every part in sections, a heading per category with its count. The search
+//!   filters the whole list (empty sections and their chips go). Each row ends with how many of the part are left
+//!   (`∞`: part availability, GDR-0082). The pointer resting on a row shows the part's hover card beside the column,
+//!   over the grid (`world::part_card`).
+//! * **SELECTED PART**: the shared stat block (`world::part_card::StatBlock`): two columns, a label over its value on
+//!   one line each.
 //! * **Bottom bar**: undo and redo; the tools; mirror and bevel; the status line over the voyage-ready line (each
 //!   shortened with `…` when it doesn't fit); SAVE, BLUEPRINTS and EXPORT as icons and the ⋯ menu of rarer actions
 //!   (opening upward: NEW DESIGN, FRAME, COPY SHARE CODE, the `.ron` file, IMPORT); BEHAVIOR and TEST-FLY. When the
@@ -53,17 +57,17 @@ use std::fmt::Write as _;
 use bevy::prelude::*;
 use bevy::text::LetterSpacing;
 use bevy::ui::{ComputedNode, UiGlobalTransform};
-use bevy::window::PrimaryWindow;
-use data::{Content, Part, Shape, Unlock};
+use data::{Content, Part, Shape};
 use kit::style::{Style, ui_color};
 use kit::ui_icons::{Glyph, UiIcon};
 use kit::ui_kit::{
-    HudFonts, Edge, Hot, Pill, PillText, Ring, ScreenFx, ScreenPart, ScrollRows, Scrollbar, SmoothScroll, TextField, Tip, Tone, UiBlock, ValueBar,
-    field_text, label, number,
+    HudFonts, Edge, Hot, ListRow, ListSpec, Pill, PillText, Ring, ScreenFx, ScreenPart, Scrollbar, Tip, Tone, UiBlock, ValueBar,
+    label, number, fill_list, spawn_grouped_list,
     crumb, frame, prose, ring_glyph, spawn_back, ring_node, set_color, set_text, spawn_bar, spawn_brackets, spawn_pill, sub_tone, tracked,
 };
 use world::camera::CameraRig;
-use world::career::{Granted, SeenPart, unlocked_by};
+use world::career::{Granted, SeenPart};
+use world::part_card::{Held, PartHover, StatBlock, locked_sub, spawn_stat_block};
 use world::player::PlayerDesign;
 use world::sim_bridge::GameContent;
 
@@ -74,7 +78,7 @@ use super::stats::{DETAIL_CELLS, MAIN_CELLS};
 use super::view::{DockCamera, DrydockCursor, GridViewport};
 
 pub(in crate::drydock) use spawn::spawn;
-pub(in crate::drydock) use sync::{fit_bar, fit_status, scroll_chips, scroll_selected, see_fresh, sync_blocks, sync_live, sync_menus, sync_palette, sync_pills, sync_scrim, sync_search, sync_swatches, sync_texts};
+pub(in crate::drydock) use sync::{fill_palette, fit_bar, fit_status, scroll_selected, see_fresh, sync_blocks, sync_live, sync_menus, sync_pills, sync_rows, sync_scrim, sync_swatches, sync_texts};
 
 /// The left column's width.
 const LEFT_W: f32 = 248.0;
@@ -102,11 +106,8 @@ pub(in crate::drydock) struct GridScrim;
 /// the solid bottom band began (Niklas, 15 Oct 2026: "at the border it is slightly more see through").
 const SCRIM_ALPHA: f32 = 0.85;
 const SCRIM_INTO: f32 = 16.0;
-/// List entries in the pool (headings and part rows; the list scrolls by pixels). More than the content has, so
-/// the pool never shows other entries while it scrolls (that rebuilt the part icons, a blink).
-const SLOTS: usize = 48;
+/// A palette row's height, and the gap between rows.
 const ROW_H: f32 = 42.0;
-const HEAD_H: f32 = 26.0;
 const ROW_GAP: f32 = 3.0;
 /// An armour swatch's tile, the room around it for its ring (its margin, out to the ring's outer edge) and the ring's
 /// width, and the gap between two swatches' margins: eight fill the column (26 px each with their margins, as before).
@@ -121,8 +122,8 @@ const UNFOLD_MARGIN: f32 = 24.0;
 /// The bottom bar's menus over everything (the BLUEPRINTS screen is at 20), the veil that closes them just below.
 const MENU_Z: i32 = 41;
 const VEIL_Z: i32 = 40;
-/// The selected part's stat lines and bonus lines.
-const SEL_STATS: usize = 12;
+/// The selected part's stat lines (its stat block's cells) and bonus lines.
+const SEL_STATS: usize = 16;
 const SEL_BONUSES: usize = 3;
 
 /// The drydock's UI root (shown only in the drydock).
@@ -135,25 +136,28 @@ pub struct DrydockRoot;
 #[derive(Component)]
 pub(in crate::drydock) struct UnderShelf;
 
+/// The palette's list (the kit's grouped list's area).
 #[derive(Component)]
 pub(super) struct PaletteList;
 
-/// A slot of the list: a section heading or a part row.
+/// A palette row (its part), its icon, its NEW tag (a fresh part: research unlocked it and the drydock hasn't shown it
+/// yet) and its texts.
 #[derive(Component)]
-pub(super) struct Slot(usize);
+pub(super) struct PaletteRow(String);
 
 #[derive(Component)]
-pub(super) struct SlotHead(usize);
+pub(super) struct RowIcon(String);
 
 #[derive(Component)]
-pub(super) struct PaletteRow(usize);
+pub(super) struct RowNew(String);
 
 #[derive(Component)]
-pub(super) struct RowIcon(usize);
-
-/// A palette row's NEW tag (a fresh part: research unlocked it and the drydock hasn't shown it yet).
-#[derive(Component)]
-pub(super) struct RowNew(usize);
+pub(super) enum RowText {
+    Name(String),
+    Sub(String),
+    /// How many of the part are left (`∞` while parts are unlimited).
+    Count(String),
+}
 
 /// The armour swatches' line (scrolls sideways) and a swatch's tile (the armour block in its material, a lock when
 /// locked).
@@ -162,10 +166,6 @@ pub(super) struct SwatchStrip;
 
 #[derive(Component)]
 pub(super) struct SwatchTile(String);
-
-/// The category chips' line (scrolls sideways; the kit's fades show over an edge with more chips past it).
-#[derive(Component)]
-pub(super) struct ChipLine;
 
 /// The bottom bar's tool pills with mirror and bevel (wide), and the dropdown with the two icon toggles (folded).
 #[derive(Component)]
@@ -194,8 +194,9 @@ pub(super) struct StatCellNode(usize);
 #[derive(Component)]
 pub(super) struct StatBar(usize);
 
+/// The selected part's stat block.
 #[derive(Component)]
-pub(super) struct SelStat(usize);
+pub(super) struct SelStats;
 
 #[derive(Component)]
 pub(super) struct SelBonus(usize);
@@ -220,63 +221,11 @@ pub(super) enum PanelText {
     SelName,
     SelSub,
     SelSummary,
-    HeadName(usize),
-    HeadCount(usize),
-    RowName(usize),
-    RowSub(usize),
-    /// How many of the part are left (`∞` while parts are unlimited).
-    RowCount(usize),
     StatLabel(usize),
     StatValue(usize),
     /// A main cell's small line under its bar (the power drawn in bursts, "+3 WHILE SCANNING").
     StatNote(usize),
-    SelStatLabel(usize),
-    SelStatValue(usize),
     SelBonus(usize),
-}
-
-/// One entry of the palette's list.
-#[derive(Clone, Debug, PartialEq, Eq)]
-enum Entry {
-    /// A section heading: the category, its unlocked and locked parts listed.
-    Head { category: String, open: usize, locked: usize },
-    Part(String),
-}
-
-impl Entry {
-    fn height(&self) -> f32 {
-        match self {
-            Entry::Head { .. } => HEAD_H,
-            Entry::Part(_) => ROW_H,
-        }
-    }
-}
-
-/// The palette list: its entries (sections of the search's parts, the locked ones last in each), the first entry
-/// shown and how many fit, and which section's chip is lit.
-#[derive(Resource, Default, Debug)]
-pub(super) struct Palette {
-    entries: Vec<Entry>,
-    offset: usize,
-    visible: usize,
-    /// What the list was made from: search, material.
-    made_from: Option<(String, String)>,
-    /// The chip clicked last: lit while its heading is in view (the list may not reach it to the top).
-    jumped: Option<String>,
-    /// The lit chip: the section in view.
-    lit: Option<String>,
-}
-
-impl Palette {
-    /// Is there a section of this category in the list?
-    fn has_section(&self, category: &str) -> bool {
-        self.entries.iter().any(|e| matches!(e, Entry::Head { category: c, .. } if c == category))
-    }
-
-    /// The entry shown in slot `k`.
-    fn shown(&self, k: usize) -> Option<&Entry> {
-        (k < self.visible).then(|| self.entries.get(self.offset + k)).flatten()
-    }
 }
 
 #[cfg(test)]

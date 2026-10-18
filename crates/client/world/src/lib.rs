@@ -19,7 +19,8 @@
 //! - `settings`: the action map's bindings (every screen reads its inputs through `settings::Act`) and the display
 //!   settings, saved on this device (GDR-0090).
 //! - `ship_model` / `ship_view`: content + sim piece → style-2a meshes, posed from `render_pose` every frame;
-//!   `part_icons`: part and ship icons in the UI, drawn the same way.
+//!   `part_icons`: part and ship icons in the UI, drawn the same way; `part_card`: a part's information, its stat
+//!   block and the hover card beside a part list (the drydock's palette, the workshop).
 //! - `fx`: immediate-mode sprites (plumes, trails, beams, tracers, sparks, flashes, blasts).
 //! - `shield`: shield bubbles (one batched mesh, each quad at its ship's depth against the opaque ship tiles,
 //!   procedural shader `shield.wesl`).
@@ -43,6 +44,7 @@ pub mod flight_hud;
 pub mod fx;
 pub mod hud;
 pub mod mode;
+pub mod part_card;
 pub mod part_icons;
 pub mod player;
 pub mod replay;

@@ -1,21 +1,11 @@
-//! The screen follows the state (`DockSet::Show`): the search, the pills, the palette and its chips, the armour
-//! swatches, the bottom bar folding to fit, the menus, the selected part's blocks, the texts, the live line.
+//! The screen follows the state (`DockSet::Show`): the pills, the palette's rows, the armour swatches, the bottom bar
+//! folding to fit, the menus, the selected part's blocks, the texts, the live line.
 
 use super::*;
 
-/// The search field and [`DrydockUi::search`] stay equal: typing writes the resource, other systems may too.
-pub(in crate::drydock) fn sync_search(mut ui: ResMut<DrydockUi>, mut field: Single<&mut TextField, With<SearchField>>) {
-    if field.is_changed() && field.value != ui.search {
-        ui.search.clone_from(&field.value);
-    } else if ui.is_changed() && ui.search != field.value {
-        field.value.clone_from(&ui.search);
-    }
-}
-
 /// Active and disabled states of the action widgets, from the drydock's state (the mirror and bevel modes are
 /// the editor's; the inspector keeps its own pills, but locked armour is dimmed here too). Locked parts,
-/// materials and frames are disabled: they send nothing. A category chip is lit for the section in view and goes
-/// with its section (a search that leaves it empty).
+/// materials and frames are disabled: they send nothing.
 #[allow(clippy::too_many_arguments, clippy::type_complexity)]
 pub(in crate::drydock) fn sync_pills(
     ui: Res<DrydockUi>,
@@ -23,7 +13,6 @@ pub(in crate::drydock) fn sync_pills(
     status: Res<DrydockStatus>,
     granted: Res<Granted>,
     content: Res<GameContent>,
-    pal: Res<Palette>,
     mut pills: Query<(&ActionButton, &mut Pill, &mut Node)>,
     mut rings: Query<(&ActionButton, &mut Ring), Without<Pill>>,
 ) {
@@ -38,10 +27,6 @@ pub(in crate::drydock) fn sync_pills(
                 (ui.material == *m, !unlocks.has_material(m))
             }
             DrydockAction::Overlay(o) => (ui.overlay(*o), false),
-            DrydockAction::Category(cat) => {
-                set_display(&mut node, pal.has_section(cat));
-                (pal.lit.as_deref() == Some(cat.as_str()), false)
-            }
             DrydockAction::PickPart(p) => (ui.picked.as_deref() == Some(p.as_str()), !p.is_empty() && !unlocks.has_part(p)),
             DrydockAction::TestFly => (false, status.grounded.is_some()),
             DrydockAction::Rare(Rare::Frame(f)) => (design.frame() == *f, !granted.frame_open(&content.0, *f)),
@@ -73,101 +58,117 @@ pub(in crate::drydock) fn sync_pills(
     }
 }
 
-/// The part list: its entries (sections of the search's parts, the locked ones last in each), which show from its
-/// scroll (the kit's wheel and scrollbar move it; a chip glides it to its section); the lit chip; the slots'
-/// headings and rows, the rows' icons (a lock for a locked part) and NEW tags.
+/// The palette's rows anew (the kit's grouped list: its search, sections and chips) at the start and when the unlocks
+/// change: a section per category, the unlocked parts then the locked ones research can unlock (put aside: counted as
+/// LOCKED in the heading).
+pub(in crate::drydock) fn fill_palette(
+    mut commands: Commands,
+    granted: Res<Granted>,
+    content: Res<GameContent>,
+    fonts: Res<HudFonts>,
+    style: Res<Style>,
+    list: Single<Entity, With<PaletteList>>,
+    mut filled: Local<bool>,
+) {
+    if *filled && !granted.is_changed() {
+        return;
+    }
+    *filled = true;
+    let content = &content.0;
+    let rows: Vec<ListRow> = palette_sections(content, &granted.unlocks)
+        .into_iter()
+        .flat_map(|s| {
+            let open = s.parts.len() - s.locked;
+            let category = s.category;
+            s.parts.into_iter().enumerate().map(move |(i, p)| (category.clone(), p, i >= open))
+        })
+        .map(|(group, key, aside)| ListRow { find: content.parts.get(&key).map_or_else(String::new, |p| p.name.to_lowercase()), key, group, aside })
+        .collect();
+    let ui = style.ui;
+    let c = |tone: Tone, a: f32| ui_color(tone.color(&ui), a);
+    fill_list(&mut commands, *list, &fonts, &ui, &rows, |l, r| super::spawn::spawn_row(l, &fonts, &c, &r.key));
+}
+
+/// The palette rows follow the state: the icon (a lock for a locked part; hull parts in the chosen armour), the
+/// hover card's armour, the NEW tag, the name, the subtitle (`2×1 · <key stat>`, or `LOCKED · <research node>`) and
+/// how many are left.
 #[allow(clippy::too_many_arguments, clippy::type_complexity)]
-pub(in crate::drydock) fn sync_palette(
-    mut ui: ResMut<DrydockUi>,
+pub(in crate::drydock) fn sync_rows(
+    ui: Res<DrydockUi>,
+    design: Res<PlayerDesign>,
     content: Res<GameContent>,
     granted: Res<Granted>,
     style: Res<Style>,
-    mut pal: ResMut<Palette>,
-    list: Single<(&ComputedNode, &mut ScrollRows, &mut SmoothScroll), With<PaletteList>>,
-    mut slots: Query<(&Slot, &mut Node), (Without<SlotHead>, Without<PaletteRow>, Without<RowNew>)>,
-    mut heads: Query<(&SlotHead, &mut Node), (Without<Slot>, Without<PaletteRow>, Without<RowNew>)>,
-    mut rows: Query<(&PaletteRow, &mut Node, &mut ActionButton), (Without<Slot>, Without<SlotHead>, Without<RowNew>)>,
+    added: Query<(), Added<PaletteRow>>,
+    mut hovers: Query<(&PaletteRow, &mut PartHover)>,
     mut icons: Query<(&RowIcon, &mut UiIcon)>,
-    mut tags: Query<(&RowNew, &mut Node), (Without<Slot>, Without<SlotHead>, Without<PaletteRow>)>,
+    mut tags: Query<(&RowNew, &mut Node)>,
+    mut texts: Query<(&RowText, &mut Text, &mut TextColor)>,
 ) {
-    let content = &content.0;
-    let made_from = (ui.is_changed() || granted.is_changed() || pal.made_from.is_none())
-        .then(|| (ui.search.to_lowercase(), ui.material.clone()))
-        .filter(|m| granted.is_changed() || pal.made_from.as_ref() != Some(m));
-    let (node, mut bar, mut smooth) = list.into_inner();
-    if let Some(made_from) = made_from {
-        let mut entries = Vec::new();
-        for s in palette_sections(content, &granted.unlocks, &made_from.0) {
-            entries.push(Entry::Head { category: s.category, open: s.parts.len() - s.locked, locked: s.locked });
-            entries.extend(s.parts.into_iter().map(Entry::Part));
-        }
-        // Another search starts at the top; a new material only recolours the list.
-        if pal.made_from.as_ref().is_none_or(|m| m.0 != made_from.0) {
-            bar.scroll = 0.0;
-            pal.jumped = None;
-        }
-        pal.entries = entries;
-        pal.made_from = Some(made_from);
-    }
-    let lengths: Vec<f32> = pal.entries.iter().map(Entry::height).collect();
-    let mut jumped = pal.jumped.clone();
-    let jump = if ui.jump.is_some() { ui.jump.take() } else { None };
-    if let Some(cat) = jump
-        && let Some(i) = pal.entries.iter().position(|e| matches!(e, Entry::Head { category, .. } if *category == cat))
-    {
-        // Its heading's top: the entries above it and their gaps.
-        smooth.to(lengths[..i].iter().sum::<f32>() + ROW_GAP * i as f32);
-        jumped = Some(cat);
-    }
-    let w = ScrollRows::lay(&mut bar, &lengths, ROW_GAP, node.size.y * node.inverse_scale_factor, SLOTS);
-    let (offset, visible, (top, end)) = (w.first, w.count.min(SLOTS), w.seen);
-    // The lit chip: the one clicked while the list glides to it and while its heading is in view, else the section
-    // at the top.
-    let in_view = |cat: &str| pal.entries[top..end].iter().any(|e| matches!(e, Entry::Head { category, .. } if category == cat));
-    let jumped = jumped.filter(|c| smooth.gliding() || in_view(c));
-    let lit = jumped.clone().or_else(|| {
-        pal.entries[..(top + 1).min(pal.entries.len())].iter().rev().find_map(|e| match e {
-            Entry::Head { category, .. } => Some(category.clone()),
-            Entry::Part(_) => None,
-        })
-    });
-    if offset != pal.offset || visible != pal.visible || jumped != pal.jumped || lit != pal.lit {
-        pal.offset = offset;
-        pal.visible = visible;
-        pal.jumped = jumped;
-        pal.lit = lit;
-    }
-    if !pal.is_changed() && !ui.is_changed() && !granted.is_changed() {
+    if !(ui.is_changed() || design.is_changed() || granted.is_changed() || !added.is_empty()) {
         return;
     }
-    for (slot, mut n) in &mut slots {
-        set_display(&mut n, pal.shown(slot.0).is_some());
-    }
-    for (head, mut n) in &mut heads {
-        set_display(&mut n, matches!(pal.shown(head.0), Some(Entry::Head { .. })));
-    }
-    let part = |k: usize| match pal.shown(k) {
-        Some(Entry::Part(p)) => Some(p),
-        _ => None,
-    };
-    for (row, mut n, mut action) in &mut rows {
-        let p = part(row.0);
-        set_display(&mut n, p.is_some());
-        // A locked row keeps its part id: `sync_pills` disables it, so a click opens its research (`actions::clicks`).
-        let want = DrydockAction::PickPart(p.cloned().unwrap_or_default());
-        if action.0 != want {
-            action.0 = want;
+    let content = &content.0;
+    let open = |p: &str| granted.unlocks.has_part(p);
+    for (row, mut hover) in &mut hovers {
+        let material = content.parts.get(&row.0).filter(|p| p.hull).map(|_| ui.material.clone());
+        if hover.material != material {
+            hover.material = material;
         }
     }
     for (row, mut icon) in &mut icons {
-        let Some(p) = part(row.0) else { continue };
-        let want = if granted.unlocks.has_part(p) { part_icon(content, p, &ui.material) } else { UiIcon::Glyph { glyph: Glyph::Lock, color: style.ui.dim } };
+        let want = if open(&row.0) { part_icon(content, &row.0, &ui.material) } else { UiIcon::Glyph { glyph: Glyph::Lock, color: style.ui.dim } };
         if *icon != want {
             *icon = want;
         }
     }
     for (tag, mut n) in &mut tags {
-        set_display(&mut n, part(tag.0).is_some_and(|p| granted.fresh.contains(p)));
+        set_display(&mut n, granted.fresh.contains(&tag.0));
+    }
+    let mut s = String::new();
+    for (t, mut text, mut color) in &mut texts {
+        s.clear();
+        let (RowText::Name(id) | RowText::Sub(id) | RowText::Count(id)) = t;
+        let Some(p) = content.parts.get(id) else { continue };
+        let tone = match t {
+            RowText::Name(_) => {
+                s.push_str(&p.name);
+                if open(id) { Tone::Number } else { Tone::Dim }
+            }
+            RowText::Sub(_) => {
+                if open(id) {
+                    s.push_str(&footprint(p));
+                    if let Some(stat) = key_stat(content, p, &ui.material) {
+                        s.push_str(" · ");
+                        s.push_str(&stat);
+                    }
+                } else {
+                    s.push_str(&locked_sub(content, p));
+                }
+                sub_tone(ui.picked.as_deref() == Some(id.as_str()))
+            }
+            // The workshop's stock less what the design holds (GDR-0108): coral when the design is short of it, dim
+            // when none is left; hull plating is not counted.
+            RowText::Count(_) if !open(id) => Tone::Label,
+            RowText::Count(_) => match granted.in_stock(id).filter(|_| !p.hull) {
+                None => {
+                    s.push('∞');
+                    Tone::Label
+                }
+                Some(n) => {
+                    let used = design.dock().parts().iter().filter(|x| x.part == *id).count() as i64;
+                    let left = i64::from(n) - used;
+                    let _ = write!(s, "{left}");
+                    match left {
+                        ..0 => Tone::Coral,
+                        0 => Tone::Dim,
+                        _ => Tone::Label,
+                    }
+                }
+            },
+        };
+        set_text(&mut text, &s);
+        set_color(&mut color, ui_color(tone.color(&style.ui), 1.0));
     }
 }
 
@@ -203,50 +204,6 @@ pub(in crate::drydock) fn sync_swatches(granted: Res<Granted>, style: Res<Style>
             if *icon != want {
                 *icon = want;
             }
-        }
-    }
-}
-
-/// The category chips' line: a drag over it scrolls it sideways (at once; the wheel is the kit's), a lit chip
-/// glides into view, and the kit's fades show over an edge with more chips behind it.
-#[allow(clippy::type_complexity)]
-pub(in crate::drydock) fn scroll_chips(
-    pal: Res<Palette>,
-    window: Single<&Window, With<PrimaryWindow>>,
-    buttons: Res<ButtonInput<MouseButton>>,
-    line: Single<(&ComputedNode, &UiGlobalTransform, &mut ScrollPosition, &mut SmoothScroll, &Children), With<ChipLine>>,
-    chips: Query<(&ComputedNode, &UiGlobalTransform, &ActionButton)>,
-    mut drag: Local<Option<(f32, f32)>>,
-) {
-    let (node, tf, mut pos, mut smooth, children) = line.into_inner();
-    let k = node.inverse_scale_factor;
-    let max = ((node.content_size.x - node.size.x) * k).max(0.0);
-    let cursor = window.physical_cursor_position();
-    let over = cursor.is_some_and(|c| node.contains_point(*tf, c));
-    let x = pos.0.x;
-    if buttons.just_pressed(MouseButton::Left) && over {
-        *drag = cursor.map(|c| (c.x, x));
-    }
-    if !buttons.pressed(MouseButton::Left) {
-        *drag = None;
-    }
-    if let (Some((from, start)), Some(c)) = (*drag, cursor) {
-        let x = (start - (c.x - from) * k).clamp(0.0, max);
-        if pos.0.x != x {
-            pos.0.x = x;
-        }
-    } else if pal.is_changed()
-        && let Some(lit) = &pal.lit
-        && let Some((chip, at, _)) = children.iter().filter_map(|e| chips.get(e).ok()).find(|(_, _, b)| b.0 == DrydockAction::Category(lit.clone()))
-    {
-        // The lit chip into view (positions in the line's content, logical px).
-        let left = ((at.translation.x - chip.size.x / 2.0) - (tf.translation.x - node.size.x / 2.0)) * k + x;
-        let right = left + chip.size.x * k;
-        let width = node.size.x * k;
-        if left < x {
-            smooth.to(left);
-        } else if right > x + width {
-            smooth.to(right - width);
         }
     }
 }
@@ -369,14 +326,6 @@ pub(in crate::drydock) fn see_fresh(insp: Res<Inspector>, granted: Res<Granted>,
     }
 }
 
-/// What a locked palette row says under its name: `LOCKED · <the research node that unlocks it>`.
-pub(super) fn locked_sub(content: &Content, part: &Part) -> String {
-    match unlocked_by(content, &Unlock::Part(part.id.clone())) {
-        Some(node) => format!("LOCKED  ·  {}", node.name.to_uppercase()),
-        None => "LOCKED".into(),
-    }
-}
-
 /// A part's icon: hull parts in the chosen armour.
 pub(crate) fn part_icon(content: &Content, part: &str, material: &str) -> UiIcon {
     let hull = content.parts.get(part).is_some_and(|p| p.hull);
@@ -393,18 +342,18 @@ pub(in crate::drydock) fn scroll_selected(insp: Res<Inspector>, mut area: Single
     }
 }
 
-/// The selected part's icon, its summary (none for a placed part), its stat and bonus rows (from [`Inspector`]),
-/// the stats grid's bars and cells.
+/// The selected part's icon, its summary (none for a placed part), its stat block and bonus rows (from
+/// [`Inspector`]), the stats grid's bars and cells.
 #[allow(clippy::too_many_arguments, clippy::type_complexity)]
 pub(in crate::drydock) fn sync_blocks(
     insp: Res<Inspector>,
     stats: Res<DrydockStats>,
     mut sel_icon: Single<&mut UiIcon, With<SelIcon>>,
-    mut texts: Query<(&PanelText, &mut Node), (Without<SelStat>, Without<SelBonus>, Without<StatCellNode>, Without<StatBar>)>,
-    mut sel_stats: Query<(&SelStat, &mut Node), (Without<SelBonus>, Without<StatCellNode>)>,
-    mut sel_bonuses: Query<(&SelBonus, &mut Node), (Without<SelStat>, Without<StatCellNode>)>,
-    mut cells: Query<(&StatCellNode, &mut Node), (Without<SelStat>, Without<SelBonus>)>,
-    mut bars: Query<(&StatBar, &mut ValueBar, &mut Node), (Without<SelStat>, Without<SelBonus>, Without<StatCellNode>)>,
+    mut sel_stats: Single<&mut StatBlock, With<SelStats>>,
+    mut texts: Query<(&PanelText, &mut Node), (Without<SelBonus>, Without<StatCellNode>, Without<StatBar>)>,
+    mut sel_bonuses: Query<(&SelBonus, &mut Node), Without<StatCellNode>>,
+    mut cells: Query<(&StatCellNode, &mut Node), Without<SelBonus>>,
+    mut bars: Query<(&StatBar, &mut ValueBar, &mut Node), (Without<SelBonus>, Without<StatCellNode>)>,
 ) {
     if insp.is_changed() {
         let want = UiIcon::Part { part: insp.part.clone(), material: insp.material.clone() };
@@ -416,8 +365,8 @@ pub(in crate::drydock) fn sync_blocks(
                 set_display(&mut n, !insp.summary.is_empty());
             }
         }
-        for (s, mut n) in &mut sel_stats {
-            set_display(&mut n, s.0 < insp.stats.len());
+        if sel_stats.0 != insp.stats {
+            sel_stats.0.clone_from(&insp.stats);
         }
         for (b, mut n) in &mut sel_bonuses {
             set_display(&mut n, b.0 < insp.bonuses.len());
@@ -477,9 +426,7 @@ pub(in crate::drydock) fn sync_texts(
     status: Res<DrydockStatus>,
     stats: Res<DrydockStats>,
     insp: Res<Inspector>,
-    pal: Res<Palette>,
     content: Res<GameContent>,
-    granted: Res<Granted>,
     style: Res<Style>,
     mut texts: Query<(&PanelText, &mut Text, &mut TextColor)>,
     mut done: Local<bool>,
@@ -490,21 +437,11 @@ pub(in crate::drydock) fn sync_texts(
         && !status.is_changed()
         && !stats.is_changed()
         && !insp.is_changed()
-        && !pal.is_changed()
-        && !granted.is_changed()
     {
         return;
     }
     *done = true;
     let content = &content.0;
-    let row_part = |k: usize| match pal.shown(k) {
-        Some(Entry::Part(p)) => content.parts.get(p),
-        _ => None,
-    };
-    let head = |k: usize| match pal.shown(k) {
-        Some(Entry::Head { category, open, locked }) => Some((category, *open, *locked)),
-        _ => None,
-    };
     let mut s = String::new();
     for (t, mut text, mut color) in &mut texts {
         s.clear();
@@ -532,42 +469,6 @@ pub(in crate::drydock) fn sync_texts(
                 set_text(&mut text, &s);
                 continue;
             }
-            PanelText::HeadName(k) => {
-                if let Some((category, ..)) = head(k) {
-                    s.push_str(&content.categories.get(category).map_or(category.to_uppercase(), |c| c.name.to_uppercase()));
-                }
-                Tone::Label
-            }
-            PanelText::HeadCount(k) => {
-                if let Some((_, open, locked)) = head(k) {
-                    let _ = write!(s, "{open}");
-                    if locked > 0 {
-                        let _ = write!(s, "  ·  {locked} LOCKED");
-                    }
-                }
-                Tone::Dim
-            }
-            // The workshop's stock less what the design holds (GDR-0108): coral when the design is short of it,
-            // dim when none is left; hull plating is not counted.
-            PanelText::RowCount(k) => match row_part(k).filter(|p| granted.unlocks.has_part(&p.id)) {
-                Some(p) => match granted.in_stock(&p.id).filter(|_| !p.hull) {
-                    None => {
-                        s.push('∞');
-                        Tone::Label
-                    }
-                    Some(n) => {
-                        let used = design.dock().parts().iter().filter(|x| x.part == p.id).count() as i64;
-                        let left = i64::from(n) - used;
-                        let _ = write!(s, "{left}");
-                        match left {
-                            ..0 => Tone::Coral,
-                            0 => Tone::Dim,
-                            _ => Tone::Label,
-                        }
-                    }
-                },
-                None => Tone::Label,
-            },
             PanelText::SelName => {
                 s.push_str(&insp.name);
                 insp.name_tone
@@ -579,25 +480,6 @@ pub(in crate::drydock) fn sync_texts(
             PanelText::SelSummary => {
                 s.push_str(&insp.summary);
                 Tone::Label
-            }
-            PanelText::RowName(k) => {
-                let p = row_part(k);
-                s.push_str(p.map_or("", |p| p.name.as_str()));
-                if p.is_some_and(|p| !granted.unlocks.has_part(&p.id)) { Tone::Dim } else { Tone::Number }
-            }
-            PanelText::RowSub(k) => {
-                match row_part(k) {
-                    Some(p) if !granted.unlocks.has_part(&p.id) => s.push_str(&locked_sub(content, p)),
-                    Some(p) => {
-                        s.push_str(&footprint(p));
-                        if let Some(stat) = key_stat(content, p, &ui.material) {
-                            s.push_str(" · ");
-                            s.push_str(&stat);
-                        }
-                    }
-                    None => {}
-                }
-                sub_tone(row_part(k).is_some_and(|p| ui.picked.as_deref() == Some(p.id.as_str())))
             }
             PanelText::StatLabel(k) => {
                 s.push_str(stats.cells.get(k).map_or("", |c| c.label.as_str()));
@@ -611,15 +493,6 @@ pub(in crate::drydock) fn sync_texts(
             PanelText::StatNote(k) => {
                 s.push_str(stats.cells.get(k).and_then(|c| c.note.as_deref()).unwrap_or_default());
                 Tone::Label
-            }
-            PanelText::SelStatLabel(k) => {
-                s.push_str(insp.stats.get(k).map_or("", |l| l.label.as_str()));
-                Tone::Label
-            }
-            PanelText::SelStatValue(k) => {
-                let line = insp.stats.get(k);
-                s.push_str(line.map_or("", |l| l.value.as_str()));
-                line.map_or(Tone::Number, |l| l.tone)
             }
             PanelText::SelBonus(k) => {
                 s.push_str(insp.bonuses.get(k).map_or("", |b| b.as_str()));

@@ -62,10 +62,6 @@ pub struct DrydockUi {
     pub slope_turn: Option<(u8, bool)>,
     /// The part picked in the palette (content id).
     pub picked: Option<String>,
-    /// A category chip was clicked: the palette's list jumps to its section (content id; the list takes it).
-    pub jump: Option<String>,
-    /// The palette search; non-empty lists only the parts whose name contains it.
-    pub search: String,
     /// The bottom bar's open menu.
     pub menu: Option<BarMenu>,
 }
@@ -74,7 +70,7 @@ impl DrydockUi {
     /// Starts with the palette's first unlocked part picked and the armour the design's hull is made of (else the
     /// first armour material), both among what the player has unlocked.
     pub fn new(content: &Content, design: &PlayerDesign, unlocks: &Unlocks) -> Self {
-        let picked = palette_sections(content, unlocks, "").into_iter().find_map(|s| s.parts.into_iter().next().filter(|p| unlocks.has_part(p)));
+        let picked = palette_sections(content, unlocks).into_iter().find_map(|s| s.parts.into_iter().next().filter(|p| unlocks.has_part(p)));
         let open = |m: &str| unlocks.has_material(m) && armor_materials(content).any(|a| a.id == m);
         let material = design
             .blueprint()
@@ -85,7 +81,7 @@ impl DrydockUi {
             .map(str::to_string)
             .or_else(|| armor_materials(content).find(|m| unlocks.has_material(&m.id)).map(|m| m.id.clone()))
             .unwrap_or_default();
-        Self { tool: Tool::Paint, material, overlays: 0, rot: 0, slope_turn: None, picked, jump: None, search: String::new(), menu: None }
+        Self { tool: Tool::Paint, material, overlays: 0, rot: 0, slope_turn: None, picked, menu: None }
     }
 
     pub fn overlay(&self, o: Overlay) -> bool {
@@ -108,13 +104,11 @@ pub struct Section {
     pub locked: usize,
 }
 
-/// The palette's list: a section per category in content order, with its parts that match the search (empty:
-/// all; else every part whose name contains it), sections left empty dropped. A section lists the unlocked parts,
+/// The palette's list: a section per category in content order, empty ones dropped (the list's search filters it:
+/// `kit::ui_kit::GroupedList`). A section lists the unlocked parts,
 /// then the locked ones research can unlock (shown dimmed as `LOCKED · <research node>`, never picked; GDR-0065:
 /// the drydock shows what research gives). Locked parts no research node unlocks stay hidden.
-pub fn palette_sections(content: &Content, unlocks: &Unlocks, search: &str) -> Vec<Section> {
-    let search = search.to_lowercase();
-    let listed = |p: &&Part| p.name.to_lowercase().contains(&search);
+pub fn palette_sections(content: &Content, unlocks: &Unlocks) -> Vec<Section> {
     let shown = |p: &&Part| unlocks.has_part(&p.id) || unlocked_by(content, &Unlock::Part(p.id.clone())).is_some();
     content
         .categories
@@ -122,7 +116,7 @@ pub fn palette_sections(content: &Content, unlocks: &Unlocks, search: &str) -> V
         .filter_map(|c| {
             let in_section = |p: &&Part| p.category == c.id;
             let (open, locked): (Vec<&Part>, Vec<&Part>) =
-                content.parts.iter().filter(in_section).filter(listed).filter(shown).partition(|p| unlocks.has_part(&p.id));
+                content.parts.iter().filter(in_section).filter(shown).partition(|p| unlocks.has_part(&p.id));
             let n = locked.len();
             let parts: Vec<String> = open.into_iter().chain(locked).map(|p| p.id.clone()).collect();
             (!parts.is_empty()).then(|| Section { category: c.id.clone(), parts, locked: n })
@@ -188,8 +182,8 @@ mod tests {
     }
 
     /// The section of a category in the palette's list.
-    fn section(content: &Content, unlocks: &Unlocks, category: &str, search: &str) -> Option<Section> {
-        palette_sections(content, unlocks, search).into_iter().find(|s| s.category == category)
+    fn section(content: &Content, unlocks: &Unlocks, category: &str) -> Option<Section> {
+        palette_sections(content, unlocks).into_iter().find(|s| s.category == category)
     }
 
     /// The palette lists every category's parts in sections, in content order: what the career unlocked, then the
@@ -199,26 +193,22 @@ mod tests {
         let content = data::base_content();
         let in_order = |ids: &[&str]| -> Vec<String> { content.parts.iter().filter(|p| ids.contains(&p.id.as_str())).map(|p| p.id.clone()).collect() };
         let new_game = career(&[]).unlocks(&content);
-        let weapons = section(&content, &new_game, "weapons", "").unwrap();
+        let weapons = section(&content, &new_game, "weapons").unwrap();
         // The Grown's prow and thorn gun show too, locked: their research can unlock them (GDR-0103).
         let locked = ["beam_laser", "reverse_engineered_cannon", "ram_prow", "thorn_gun"];
         assert_eq!(weapons.parts, [vec!["pulse_laser".to_string()], in_order(&locked)].concat());
         assert_eq!(weapons.locked, 4);
-        let all_sections: Vec<String> = palette_sections(&content, &new_game, "").into_iter().map(|s| s.category).collect();
+        let all_sections: Vec<String> = palette_sections(&content, &new_game).into_iter().map(|s| s.category).collect();
         assert_eq!(all_sections, content.categories.iter().map(|c| c.id.clone()).collect::<Vec<_>>());
         // Research moves a part up among the unlocked ones.
         let cannon = career(&["automaton_cannon"]);
-        let weapons = section(&content, &cannon.unlocks(&content), "weapons", "").unwrap();
+        let weapons = section(&content, &cannon.unlocks(&content), "weapons").unwrap();
         assert_eq!(weapons.parts, [in_order(&["pulse_laser", "reverse_engineered_cannon"]), in_order(&["beam_laser", "ram_prow", "thorn_gun"])].concat());
         assert_eq!(weapons.locked, 3);
         assert!(cannon.fresh_parts(&content).contains("reverse_engineered_cannon"));
-        // A search filters the whole list, locked ones last in their section, empty sections dropped; free mode
-        // locks nothing.
-        let found = palette_sections(&content, &new_game, "LASER");
-        assert_eq!(found, vec![Section { category: "weapons".into(), parts: vec!["pulse_laser".to_string(), "beam_laser".to_string()], locked: 1 }]);
-        assert!(palette_sections(&content, &new_game, "no such part").is_empty());
+        // Free mode locks nothing.
         let all = Unlocks::all(&content);
-        assert!(palette_sections(&content, &all, "").iter().all(|s| s.locked == 0));
+        assert!(palette_sections(&content, &all).iter().all(|s| s.locked == 0));
         // The first part picked and the armour are unlocked ones: the Runner's composite hull gives way to steel.
         let runner = PlayerDesign::starter(&content, "halvex_runner");
         let ui = DrydockUi::new(&content, &runner, &new_game);

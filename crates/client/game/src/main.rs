@@ -101,7 +101,7 @@ fn run() {
             (world::backdrop::BackdropPlugin, world::scenery::SceneryPlugin),
             (world::flight_hud::FlightHudPlugin, world::warp_fx::WarpFxPlugin),
             world::fleet_bar::FleetBarPlugin,
-            world::hud::HudPlugin,
+            (world::hud::HudPlugin, world::part_card::PartCardPlugin),
         ))
         .add_systems(Startup, world::camera::spawn_camera);
     app.run();

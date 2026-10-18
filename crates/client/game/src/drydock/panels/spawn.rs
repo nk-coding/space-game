@@ -1,5 +1,5 @@
-//! The screen's nodes (layout v2 of GDR-0082), spawned once at start: the palette in sections, the armour swatches,
-//! the stats and the selected part, the bottom bar with its menus.
+//! The screen's nodes (layout v2 of GDR-0082), spawned once at start: the palette (the kit's grouped list; its rows
+//! come from `fill_palette`), the armour swatches, the stats and the selected part, the bottom bar with its menus.
 
 use super::*;
 use data::input::Action;
@@ -69,141 +69,29 @@ pub(in crate::drydock) fn spawn(mut commands: Commands, fonts: Res<HudFonts>, st
                     }
                 });
 
-            // Left: search, armour, category chips, every part in sections.
+            // Left: the kit's grouped list (search, armour between it and the category chips, every part in
+            // sections; the rows are filled by `fill_palette`).
             root.spawn((UiBlock, UnderShelf, ScreenPart::new(Edge::Left, 1), Node { width: px(LEFT_W), flex_direction: FlexDirection::Column, row_gap: px(10), ..abs(Some(SIDE), None, Some(74.0), Some(GRID_BOTTOM + INFO_H)) }))
                 .with_children(|lp| {
-                    lp.spawn((
-                        SearchField,
-                        TextField { placeholder: "Search parts".into(), max_chars: 24, ..default() },
-                        Hot::default(),
-                        Tip::new("SEARCH PARTS"),
-                        ActionTip(Action::Search),
-                        Node {
-                            height: px(36),
-                            flex_shrink: 0.0,
-                            flex_direction: FlexDirection::Row,
-                            align_items: AlignItems::Center,
-                            padding: UiRect::horizontal(px(14)),
-                            column_gap: px(10),
-                            border: UiRect::all(px(1.2)),
-                            border_radius: BorderRadius::MAX,
-                            ..default()
-                        },
-                        BorderColor::all(c(Tone::Label, 0.3)),
-                    ))
-                    .with_children(|f| {
-                        f.spawn(glyph(Glyph::Search, Tone::Label, 14.0));
-                        f.spawn((field_text(fonts, 12.5), Node { flex_grow: 1.0, ..default() }));
-                    });
-                    // ARMOR · <name>, then the swatches: every armour material research can unlock (a locked one
-                    // shows a lock; the keys 1–9 count every armour material, hidden ones too).
-                    lp.spawn(Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(8), margin: UiRect::new(px(4), px(0), px(4), px(0)), flex_shrink: 0.0, ..default() })
-                        .with_children(|r| {
-                            r.spawn(label(fonts, "ARMOR  ·", 9.0, c(Tone::Dim, 1.0)));
-                            r.spawn((PanelText::Armor, label(fonts, "", 10.0, c(Tone::Number, 1.0))));
-                        });
-                    let block = content.unit_hull_part(Shape::Rect);
-                    lp.spawn((
-                        SwatchStrip,
-                        ScrollPosition::default(),
-                        Scrollbar::horizontal().outside(),
-                        Node { flex_direction: FlexDirection::Row, column_gap: px(SWATCH_GAP), width: percent(100), flex_shrink: 0.0, overflow: Overflow::scroll_x(), ..default() },
-                    ))
-                    .with_children(|strip| {
-                        for (k, m) in armor_materials(content).enumerate() {
-                            let tip = Tip::new(material_tip(content, block, m));
-                            let key = Action::armour(k + 1);
-                            strip
-                                .spawn((
-                                    ActionButton(DrydockAction::Material(m.id.clone())),
-                                    Pill { bare: true, ..pill(Tone::Teal) },
-                                    Hot::default(),
-                                    tip,
-                                    // The tile's own size; the ring is an outline around it (`Pill` colours an
-                                    // `Outline` when it has one). A border plus padding around the tile came out
-                                    // thicker on one side at a fractional UI scale, as each edge rounds to whole
-                                    // pixels on its own (Niklas, 14 Oct 2026: "the border seems to be off-center");
-                                    // an outline is drawn around the rounded box, the same on every side.
-                                    Node {
-                                        width: px(SWATCH_TILE),
-                                        height: px(SWATCH_TILE),
-                                        flex_shrink: 0.0,
-                                        margin: UiRect::all(px(SWATCH_RING)),
-                                        border_radius: BorderRadius::all(px(4)),
-                                        ..default()
-                                    },
-                                    Outline { width: px(SWATCH_RING_W), offset: px(SWATCH_RING - SWATCH_RING_W), color: Color::NONE },
-                                    BorderColor::all(Color::NONE),
-                                    BackgroundColor(Color::NONE),
-                                ))
-                                .insert_if(ActionTip(key.unwrap_or(Action::Armour1)), || key.is_some())
-                                .with_children(|sw| {
-                                    let tile = UiIcon::Part { part: block.map_or(String::new(), |b| b.id.clone()), material: Some(m.id.clone()) };
-                                    sw.spawn((
-                                        SwatchTile(m.id.clone()),
-                                        tile,
-                                        Node { width: percent(100), height: percent(100), border_radius: BorderRadius::all(px(4)), ..default() },
-                                        // A light outline: the near-black armour tones are told apart by it.
-                                        Outline { width: px(1), offset: px(0), color: c(Tone::Number, 0.22) },
-                                    ))
-                                    .with_children(|t| {
-                                        if let Some(a) = Action::armour(k + 1) {
-                                            t.spawn((ActionLabel(a), label(fonts, "", 7.5, c(Tone::Number, 0.8)), Node { position_type: PositionType::Absolute, right: px(1), bottom: px(-1), ..default() }));
-                                        }
-                                    });
-                                });
-                        }
-                    });
-                    // The category chips: one line that scrolls sideways, faded at a scrolled edge.
-                    lp.spawn(Node { width: percent(100), height: px(24), flex_shrink: 0.0, ..default() }).with_children(|w| {
-                        w.spawn((
-                            ChipLine,
-                            ScrollPosition::default(),
-                            Scrollbar::horizontal().outside(),
-                            Node { flex_direction: FlexDirection::Row, column_gap: px(6), width: percent(100), height: percent(100), overflow: Overflow::scroll_x(), ..default() },
-                        ))
-                        .with_children(|cats| {
-                            for cat in content.categories.iter() {
-                                spawn_pill(cats, fonts, &cat.name.to_uppercase(), 8.5, 24.0, None, pill(Tone::Teal), ActionButton(DrydockAction::Category(cat.id.clone())));
-                            }
-                        });
-                    });
-                    lp.spawn((
-                        PaletteList,
-                        Scrollbar::vertical(),
-                        ScrollRows::default(),
-                        Node {
-                            flex_direction: FlexDirection::Column,
-                            flex_grow: 1.0,
-                            flex_basis: px(0),
-                            min_height: px(0),
-                            row_gap: px(ROW_GAP),
-                            overflow: Overflow::scroll_y(),
-                            ..default()
-                        },
-                    ))
-                    .with_children(|list| {
-                        for k in 0..SLOTS {
-                            list.spawn((Slot(k), Node { display: Display::None, flex_direction: FlexDirection::Column, flex_shrink: 0.0, ..default() })).with_children(|slot| {
-                                slot.spawn((
-                                    SlotHead(k),
-                                    Node {
-                                        height: px(HEAD_H),
-                                        flex_direction: FlexDirection::Row,
-                                        align_items: AlignItems::FlexEnd,
-                                        justify_content: JustifyContent::SpaceBetween,
-                                        padding: UiRect::new(px(6), px(12), px(0), px(5)),
-                                        ..default()
-                                    },
-                                ))
-                                .with_children(|h| {
-                                    h.spawn((PanelText::HeadName(k), label(fonts, "", 9.0, c(Tone::Label, 1.0))));
-                                    h.spawn((PanelText::HeadCount(k), label(fonts, "", 8.5, c(Tone::Dim, 1.0))));
-                                });
-                                spawn_row(slot, fonts, &c, k);
+                    let spec = ListSpec {
+                        placeholder: "Search parts".into(),
+                        max_chars: 24,
+                        groups: content.categories.iter().map(|c| (c.id.clone(), c.name.clone())).collect(),
+                        aside: "LOCKED",
+                        row_gap: ROW_GAP,
+                        pad_right: 0.0,
+                    };
+                    let list = spawn_grouped_list(lp, fonts, &ui, spec, (SearchField, Tip::new("SEARCH PARTS"), ActionTip(Action::Search)), |lp| {
+                        // ARMOR · <name>, then the swatches: every armour material research can unlock (a locked one
+                        // shows a lock; the keys 1–9 count every armour material, hidden ones too).
+                        lp.spawn(Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(8), margin: UiRect::new(px(4), px(0), px(4), px(0)), flex_shrink: 0.0, ..default() })
+                            .with_children(|r| {
+                                r.spawn(label(fonts, "ARMOR  ·", 9.0, c(Tone::Dim, 1.0)));
+                                r.spawn((PanelText::Armor, label(fonts, "", 10.0, c(Tone::Number, 1.0))));
                             });
-                        }
+                        spawn_swatches(lp, fonts, &c, content);
                     });
+                    lp.commands().entity(list).insert(PaletteList);
                 });
 
             // Right: the stats grid and the selected part.
@@ -271,22 +159,9 @@ pub(in crate::drydock) fn spawn(mut commands: Commands, fonts: Res<HudFonts>, st
                         ))
                         .with_children(|sb| {
                             sb.spawn((PanelText::SelSummary, prose(fonts, "", 11.5, c(Tone::Label, 1.0)), Node { margin: UiRect::top(px(12)), flex_shrink: 0.0, ..default() }));
-                            sb.spawn(Node {
-                                display: Display::Grid,
-                                grid_template_columns: RepeatedGridTrack::flex(3, 1.0),
-                                column_gap: px(12),
-                                row_gap: px(8),
-                                margin: UiRect::top(px(14)),
-                                flex_shrink: 0.0,
-                                ..default()
-                            })
-                            .with_children(|g| {
-                                for k in 0..SEL_STATS {
-                                    g.spawn((SelStat(k), Node { flex_direction: FlexDirection::Column, row_gap: px(4), ..default() })).with_children(|cell| {
-                                        cell.spawn((PanelText::SelStatLabel(k), label(fonts, "", 8.0, c(Tone::Label, 1.0))));
-                                        cell.spawn((PanelText::SelStatValue(k), number(fonts, "", 14.0, c(Tone::Number, 1.0))));
-                                    });
-                                }
+                            // The shared stat block (the hover card's too): two columns, a label over its value.
+                            sb.spawn(Node { flex_direction: FlexDirection::Column, margin: UiRect::top(px(14)), flex_shrink: 0.0, ..default() }).with_children(|w| {
+                                spawn_stat_block(w, fonts, &style, SEL_STATS, SelStats);
                             });
                             sb.spawn(Node { flex_direction: FlexDirection::Column, row_gap: px(8), margin: UiRect::top(px(12)), flex_shrink: 0.0, ..default() }).with_children(|b| {
                                 for k in 0..SEL_BONUSES {
@@ -451,15 +326,71 @@ pub(in crate::drydock) fn spawn(mut commands: Commands, fonts: Res<HudFonts>, st
         });
 }
 
-/// One slot's part row: icon, name and subtitle, the NEW tag, how many are left.
-pub(super) fn spawn_row(slot: &mut ChildSpawnerCommands, fonts: &HudFonts, c: &impl Fn(Tone, f32) -> Color, k: usize) {
-    slot.spawn((
-        PaletteRow(k),
-        ActionButton(DrydockAction::PickPart(String::new())),
+/// The ARMOR swatches: the armour block in every armour material research can unlock (the strip scrolls sideways).
+fn spawn_swatches(lp: &mut ChildSpawnerCommands, fonts: &HudFonts, c: &impl Fn(Tone, f32) -> Color, content: &Content) {
+    let block = content.unit_hull_part(Shape::Rect);
+    lp.spawn((
+        SwatchStrip,
+        ScrollPosition::default(),
+        Scrollbar::horizontal().outside(),
+        Node { flex_direction: FlexDirection::Row, column_gap: px(SWATCH_GAP), width: percent(100), flex_shrink: 0.0, overflow: Overflow::scroll_x(), ..default() },
+    ))
+    .with_children(|strip| {
+        for (k, m) in armor_materials(content).enumerate() {
+            let tip = Tip::new(material_tip(content, block, m));
+            let key = Action::armour(k + 1);
+            strip
+                .spawn((
+                    ActionButton(DrydockAction::Material(m.id.clone())),
+                    Pill { bare: true, ..Pill::new(Tone::Teal) },
+                    Hot::default(),
+                    tip,
+                    // The tile's own size; the ring is an outline around it (`Pill` colours an `Outline` when it has
+                    // one). A border plus padding around the tile came out thicker on one side at a fractional UI
+                    // scale, as each edge rounds to whole pixels on its own (Niklas, 14 Oct 2026: "the border seems to
+                    // be off-center"); an outline is drawn around the rounded box, the same on every side.
+                    Node {
+                        width: px(SWATCH_TILE),
+                        height: px(SWATCH_TILE),
+                        flex_shrink: 0.0,
+                        margin: UiRect::all(px(SWATCH_RING)),
+                        border_radius: BorderRadius::all(px(4)),
+                        ..default()
+                    },
+                    Outline { width: px(SWATCH_RING_W), offset: px(SWATCH_RING - SWATCH_RING_W), color: Color::NONE },
+                    BorderColor::all(Color::NONE),
+                    BackgroundColor(Color::NONE),
+                ))
+                .insert_if(ActionTip(key.unwrap_or(Action::Armour1)), || key.is_some())
+                .with_children(|sw| {
+                    let tile = UiIcon::Part { part: block.map_or(String::new(), |b| b.id.clone()), material: Some(m.id.clone()) };
+                    sw.spawn((
+                        SwatchTile(m.id.clone()),
+                        tile,
+                        Node { width: percent(100), height: percent(100), border_radius: BorderRadius::all(px(4)), ..default() },
+                        // A light outline: the near-black armour tones are told apart by it.
+                        Outline { width: px(1), offset: px(0), color: c(Tone::Number, 0.22) },
+                    ))
+                    .with_children(|t| {
+                        if let Some(a) = Action::armour(k + 1) {
+                            t.spawn((ActionLabel(a), label(fonts, "", 7.5, c(Tone::Number, 0.8)), Node { position_type: PositionType::Absolute, right: px(1), bottom: px(-1), ..default() }));
+                        }
+                    });
+                });
+        }
+    });
+}
+
+/// A part's row in the palette: icon, name and subtitle, the NEW tag, how many are left (the texts, icon and tag
+/// follow the state: `sync_rows`). A locked row keeps its part: `sync_pills` disables it, so a click opens its research.
+pub(super) fn spawn_row(list: &mut ChildSpawnerCommands, fonts: &HudFonts, c: &impl Fn(Tone, f32) -> Color, part: &str) -> Entity {
+    list.spawn((
+        PaletteRow(part.to_string()),
+        ActionButton(DrydockAction::PickPart(part.to_string())),
+        PartHover { part: part.to_string(), material: None, held: Held::Design },
         Pill { bare: true, ..Pill::new(Tone::Teal) },
         Hot::default(),
         Node {
-            display: Display::None,
             height: px(ROW_H),
             flex_shrink: 0.0,
             flex_direction: FlexDirection::Row,
@@ -474,15 +405,15 @@ pub(super) fn spawn_row(slot: &mut ChildSpawnerCommands, fonts: &HudFonts, c: &i
         BackgroundColor(Color::NONE),
     ))
     .with_children(|row| {
-        row.spawn((RowIcon(k), UiIcon::Part { part: String::new(), material: None }, Node { width: px(32), height: px(28), flex_shrink: 0.0, ..default() }));
+        row.spawn((RowIcon(part.to_string()), UiIcon::Part { part: String::new(), material: None }, Node { width: px(32), height: px(28), flex_shrink: 0.0, ..default() }));
         // Clipped to its column: a long `LOCKED · <node>` line would otherwise run into the list's glow room.
         row.spawn(Node { flex_direction: FlexDirection::Column, row_gap: px(3), flex_grow: 1.0, flex_shrink: 1.0, min_width: px(0), overflow: Overflow::clip_x(), ..default() }).with_children(|t| {
-            t.spawn((PanelText::RowName(k), prose(fonts, "", 13.5, c(Tone::Number, 1.0))));
-            t.spawn((PanelText::RowSub(k), tracked(fonts, "", 8.0, c(Tone::Dim, 1.0), 0.2), TextLayout::no_wrap()));
+            t.spawn((RowText::Name(part.to_string()), prose(fonts, "", 13.5, c(Tone::Number, 1.0))));
+            t.spawn((RowText::Sub(part.to_string()), tracked(fonts, "", 8.0, c(Tone::Dim, 1.0), 0.2), TextLayout::no_wrap()));
         });
         // The NEW tag (GDR-0065): a small gold-outlined pill.
         row.spawn((
-            RowNew(k),
+            RowNew(part.to_string()),
             Node {
                 display: Display::None,
                 height: px(18),
@@ -496,8 +427,9 @@ pub(super) fn spawn_row(slot: &mut ChildSpawnerCommands, fonts: &HudFonts, c: &i
             BorderColor::all(c(Tone::Gold, 0.85)),
         ))
         .with_child(label(fonts, "NEW", 7.5, c(Tone::Gold, 1.0)));
-        row.spawn((PanelText::RowCount(k), prose(fonts, "", 16.0, c(Tone::Label, 1.0)), Node { flex_shrink: 0.0, ..default() }));
-    });
+        row.spawn((RowText::Count(part.to_string()), prose(fonts, "", 16.0, c(Tone::Label, 1.0)), Node { flex_shrink: 0.0, ..default() }));
+    })
+    .id()
 }
 
 /// A bottom bar menu's plate over its anchor (it opens upward; aligned left for the tools, right for ⋯), filled by

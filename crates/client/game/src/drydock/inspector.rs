@@ -11,8 +11,9 @@
 //!   power tier pills and weight stepper of a part that draws power (GDR-0014, through `set_power`; the
 //!   part's defaults are no override), the GROUP pills 1 / 2 / 3 of a gun (its weapon group, GDR-0088, through
 //!   `set_group`; each pill's tooltip names the key that fires the group), and rotate, flip and delete.
-//! * **A palette part**: icon, name, footprint, category (and the armour of hull parts), its summary, its stat
-//!   lines from content and the bonuses it gives.
+//! * **A palette part**: what the hover card tells (`world::part_card::part_info`, one source): icon, name, footprint,
+//!   category (and the armour of hull parts), its summary, its stat lines from content, its recipe and stock, and the
+//!   bonuses it gives. The stat lines show in the shared stat block (`world::part_card::StatBlock`).
 //!
 //! The widgets are the panel's (`panels/` shows the texts and icon from [`Inspector`]); the controls below
 //! are spawned and kept here.
@@ -27,6 +28,7 @@ use kit::style::{Style, ui_color};
 use kit::ui_icons::{Glyph, UiIcon};
 use kit::ui_kit::{HudFonts, Pill, Tip, Tone, label, number, ring_glyph, ring_node, set_text, spawn_pill};
 use world::career::Granted;
+use world::part_card::{Held, StatLine, part_info};
 use world::player::PlayerDesign;
 use world::sim_bridge::GameContent;
 
@@ -40,14 +42,6 @@ use super::tools::{Selection, power_setting};
 /// minimum power behind its POWER LEVEL).
 const DESIGN_TIME: [&str; 4] = ["build_points", "control_cost", "heat_limit", "power_min_level"];
 
-/// One stat cell of the block.
-#[derive(Clone, Debug, PartialEq)]
-pub struct SelLine {
-    pub label: String,
-    pub value: String,
-    pub tone: Tone,
-}
-
 /// What the SELECTED PART block shows.
 #[derive(Resource, Clone, Debug, PartialEq, Default)]
 pub struct Inspector {
@@ -59,7 +53,7 @@ pub struct Inspector {
     pub sub: String,
     pub sub_tone: Tone,
     pub summary: String,
-    pub stats: Vec<SelLine>,
+    pub stats: Vec<StatLine>,
     /// Gold bonus lines (uppercase, without the diamond).
     pub bonuses: Vec<String>,
     /// The controls of a placed part; `None` for a palette part.
@@ -117,57 +111,23 @@ pub(super) fn update(
     }
 }
 
-/// The part picked in the palette, from content; a part that is not hull ends with the workshop's lines (GDR-0108):
-/// what it is fabricated from and how many are in stock against the `held` the design holds (unless every part is
-/// granted, `?unlock=all`).
+/// The part picked in the palette: its information as the hover card tells it (`world::part_card::part_info`, one
+/// source), its stock against the `held` the design holds.
 fn picked(content: &Content, ui: &DrydockUi, granted: &Granted, held: u32) -> Inspector {
     let Some(part) = ui.picked.as_deref().and_then(|p| content.parts.get(p)) else {
         return Inspector { name: "Nothing picked".into(), name_tone: Tone::Dim, sub: "PICK A PART IN THE LIST".into(), sub_tone: Tone::Dim, ..default() };
     };
-    let material = content.materials.get(&ui.material).filter(|_| part.hull);
-    let cat = content.categories.get(&part.category).map_or(String::new(), |c| c.name.to_uppercase());
-    let mut sub = format!("{}×{}  ·  {cat}", part.size.0, part.size.1);
-    if let Some(m) = material {
-        sub.push_str(&format!("  ·  {}", m.name.to_uppercase()));
-    }
-    let lines = content.part_stats(part, material);
-    let mut stats: Vec<SelLine> = lines
-        .iter()
-        .filter(|l| l.bonus.is_none())
-        .map(|l| SelLine { label: l.label.to_uppercase(), value: l.text.clone(), tone: Tone::Number })
-        .collect();
-    if !part.hull {
-        let recipe = part.recipe.as_ref().map_or_else(
-            || "SALVAGE ONLY".to_string(),
-            |r| r.materials.iter().map(|(m, n)| format!("{n} {}", content.materials.get(m).map_or(m.as_str(), |x| x.name.as_str()).to_uppercase())).collect::<Vec<_>>().join(" · "),
-        );
-        stats.push(SelLine { label: "RECIPE".into(), value: recipe, tone: Tone::Label });
-        if let Some(n) = granted.in_stock(&part.id) {
-            let tone = if held > n { Tone::Coral } else { Tone::Number };
-            stats.push(SelLine { label: "IN STOCK".into(), value: format!("{n}  ·  THE DESIGN HOLDS {held}"), tone });
-        }
-    }
-    let bonuses = lines
-        .iter()
-        .filter_map(|l| {
-            let b = l.bonus.as_ref()?;
-            let mut s = format!("{} {} TO ADJACENT {}", l.text, l.label, b.target_label).to_uppercase();
-            if let Some(n) = b.max_stacks {
-                s.push_str(&format!("  ·  MAX {n}"));
-            }
-            Some(s)
-        })
-        .collect();
+    let info = part_info(content, granted, part, content.materials.get(&ui.material), (held, Held::Design));
     Inspector {
-        part: part.id.clone(),
-        material: material.map(|m| m.id.clone()),
-        name: part.name.clone(),
+        part: info.part,
+        material: info.material,
+        name: info.name,
         name_tone: Tone::Number,
-        sub,
-        sub_tone: Tone::Dim,
-        summary: part.summary.clone(),
-        stats,
-        bonuses,
+        sub: info.sub,
+        sub_tone: info.sub_tone,
+        summary: info.summary,
+        stats: info.stats,
+        bonuses: info.bonuses,
         installed: None,
     }
 }
@@ -190,7 +150,7 @@ fn placed(content: &Content, design: &PlayerDesign, report: Option<&DesignReport
         if let (Some(def), true) = (content.stats.get("peak_heat"), limit.is_finite() && part.heat.is_some()) {
             let d = content.stats.get("heat_limit").map_or(1, |d| d.decimals);
             let tone = heat_tone(r.heat_ratio);
-            stats.push(SelLine { label: def.name.to_uppercase(), value: format!("{} / {}", format_number(r.heat, d), format_number(limit, d)), tone });
+            stats.push(StatLine::new(def.name.to_uppercase(), format!("{} / {}", format_number(r.heat, d), format_number(limit, d)), tone));
         }
         if part.power.as_ref().is_some_and(|s| s.draw > 0.0) {
             let (value, tone) = match r.power {
@@ -199,7 +159,7 @@ fn placed(content: &Content, design: &PlayerDesign, report: Option<&DesignReport
                 x if x > 0.0 => (format!("{:.0} %", x * 100.0), Tone::Gold),
                 _ => ("OFF".to_string(), Tone::Coral),
             };
-            stats.push(SelLine { label: "POWER LEVEL".into(), value, tone });
+            stats.push(StatLine::new("POWER LEVEL", value, tone));
         }
     }
     for l in content.part_stats(part, material) {
@@ -211,7 +171,7 @@ fn placed(content: &Content, design: &PlayerDesign, report: Option<&DesignReport
             Some(v) => (content.stat_line(&l.stat, v).map_or(l.text.clone(), |s| s.text), Tone::Gold),
             None => (l.text.clone(), Tone::Number),
         };
-        stats.push(SelLine { label: l.label.to_uppercase(), value, tone });
+        stats.push(StatLine::new(l.label.to_uppercase(), value, tone));
     }
 
     Inspector {
