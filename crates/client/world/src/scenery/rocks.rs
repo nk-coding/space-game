@@ -18,6 +18,11 @@
 //! (`world.rock.<tone>`: shadow, mid, lit, edge). Each rock's marks roll from the voyage's seed and its index (the
 //! same rock looks the same every time). A rock never moves (an anchored body): the rocks that spawn together (a
 //! field, a piece of a belt) are one mesh in world coordinates, drawn in one call, and one additive mesh.
+//!
+//! **Near rocks** (GDR-0107's status line of 18 Oct 2026, ninth: what you can touch reads apart from the backdrop):
+//! a rock near the ship the camera follows gets a faint bright line over its edge, full within `world.rock_near`'s
+//! `range_m` of the ship (from the rock's edge), fading out smoothly over the next `fade_m` ([`near_rocks`]: one
+//! small additive mesh, rebuilt only when what it shows changes).
 
 use std::f32::consts::{PI, TAU};
 
@@ -30,11 +35,16 @@ use kit::style::vcol;
 use sim::voyage::rocks::{OUTLINE_POINTS, curve};
 
 use super::{Scenery, SceneryPart, salted};
+use crate::camera::CameraRig;
 use crate::sim_bridge::{SimWorld, v2};
 
 /// Rocks lie under the trails and every ship (z 5 and up); their glints and embers a hair above them.
 const Z_ROCKS: f32 = 3.0;
 const Z_GLOW: f32 = 3.01;
+/// The near rocks' line, over the glints.
+const Z_NEAR: f32 = 3.02;
+/// A near rock's strength is kept in this many steps (the mesh is rebuilt when one changes).
+const NEAR_STEPS: f32 = 24.0;
 /// The edge line's half width (m): about 1.4 px at the starting zoom (18 px/m).
 const EDGE: f32 = 0.08;
 /// Where the light comes from without a sky (world, unit): the upper left.
@@ -414,4 +424,66 @@ fn mitred(pts: &[Vec2], half: f32) -> (Vec<Vec2>, Vec<Vec2>) {
             (p - d, p + d)
         })
         .unzip()
+}
+
+/// The near rocks' line mesh (a scenery part: it goes with the voyage's scenery).
+#[derive(Component)]
+pub(super) struct NearMesh;
+
+/// What the near rocks' mesh shows: each rock (index) and its strength in [`NEAR_STEPS`].
+#[derive(Resource, Default)]
+pub(super) struct NearRocks(Vec<(usize, u8)>);
+
+/// The near rocks' line (see the module docs), round the ship the camera follows.
+#[allow(clippy::too_many_arguments)]
+pub(super) fn near_rocks(
+    mut commands: Commands,
+    mut near: ResMut<NearRocks>,
+    state: Res<Scenery>,
+    world: Res<SimWorld>,
+    rig: Res<CameraRig>,
+    atlas: Res<Atlas>,
+    mut meshes: ResMut<Assets<Mesh>>,
+    shown: Query<&Mesh2d, With<NearMesh>>,
+) {
+    let (range, fade) = (atlas.token_f32("world.rock_near.range_m"), atlas.token_f32("world.rock_near.fade_m"));
+    let rocks = world.sim.voyage().filter(|_| state.key.is_some()).map_or(&[][..], |v| v.rocks());
+    let mut want: Vec<(usize, u8)> = Vec::new();
+    if let Some(ship) = rig.focus {
+        for (i, r) in rocks.iter().enumerate() {
+            let d = (v2(r.pos) - ship).length() - r.radius;
+            let t = ((d - range) / fade.max(1e-3)).clamp(0.0, 1.0);
+            let k = ((1.0 - t * t * (3.0 - 2.0 * t)) * NEAR_STEPS).round() as u8;
+            if k > 0 {
+                want.push((i, k));
+            }
+        }
+    }
+    let mesh = shown.iter().next();
+    if want == near.0 && (mesh.is_some() || want.is_empty()) {
+        return;
+    }
+    let (color, alpha, half) = (atlas.token_color("world.rock_near.color"), atlas.token_f32("world.rock_near.alpha"), atlas.token_f32("world.rock_near.half_width_m"));
+    let uv = atlas.region("fx/white").uv_center();
+    let mut m = MeshBuf::default();
+    for &(i, k) in &want {
+        let r = &rocks[i];
+        let (pos, turn) = (v2(r.pos), Vec2::from_angle(r.angle));
+        let pts: Vec<Vec2> = curve(&r.points, OUTLINE_POINTS).into_iter().map(|p| pos + turn.rotate(v2(p))).collect();
+        let c = vec![vcol(color, alpha * k as f32 / NEAR_STEPS); pts.len()];
+        let (outer, inner) = mitred(&pts, half);
+        m.band(&outer, &c, &inner, &c, true, uv);
+    }
+    let built = if m.is_empty() { MeshBuf::placeholder() } else { m.into_mesh() };
+    match mesh {
+        Some(h) => {
+            if let Some(mut slot) = meshes.get_mut(&h.0) {
+                *slot = built;
+            }
+        }
+        None => {
+            commands.spawn((SceneryPart, NearMesh, Mesh2d(meshes.add(built)), MeshMaterial2d(atlas.additive.clone()), Transform::from_xyz(0.0, 0.0, Z_NEAR)));
+        }
+    }
+    near.0 = want;
 }

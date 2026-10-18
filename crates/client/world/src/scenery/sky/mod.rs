@@ -147,7 +147,7 @@ pub(super) fn spawn(cx: &mut Build, s: &SkySpec, content: &data::Content) -> Opt
     let bg = cx.style.background.outer().to_srgba();
     let veil = Vec3::new(bg.red, bg.green, bg.blue);
     let night = mix(veil, Vec3::new(6.0, 10.0, 16.0) / 255.0, 0.5);
-    let paint = Paint { night, veil, veil_share: 1.0 - s.strength };
+    let paint = Paint { night, veil, veil_share: 1.0 - s.strength, saturation: cx.atlas.token_f32("backdrop.saturation"), limb: cx.atlas.token_f32("backdrop.limb_px") };
 
     // The hot star's side, where the light comes from (design frame, y down).
     let hot = s.star.map(|d| {
@@ -615,7 +615,7 @@ mod tests {
     #[test]
     fn three_planets_stay_within_budget() {
         let c = data::base_content();
-        let paint = Paint { night: Vec3::splat(0.02), veil: Vec3::splat(0.03), veil_share: 1.0 - STRENGTH };
+        let paint = Paint { night: Vec3::splat(0.02), veil: Vec3::splat(0.03), veil_share: 1.0 - STRENGTH, saturation: 0.8, limb: 2.6 };
         let (mut most, mut sum, mut n) = (0usize, 0usize, 0usize);
         for sky in skies(&c) {
             for seed in 0..100u64 {
@@ -641,7 +641,7 @@ mod tests {
     #[test]
     fn every_kind_paints_within_budget() {
         let c = data::base_content();
-        let paint = Paint { night: Vec3::splat(0.02), veil: Vec3::splat(0.03), veil_share: 1.0 - STRENGTH };
+        let paint = Paint { night: Vec3::splat(0.02), veil: Vec3::splat(0.03), veil_share: 1.0 - STRENGTH, saturation: 0.8, limb: 2.6 };
         for k in c.planets.iter() {
             for seed in 0..4u64 {
                 let moon = k.body == BodyClass::Moon;

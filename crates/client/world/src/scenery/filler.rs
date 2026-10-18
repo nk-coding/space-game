@@ -152,6 +152,8 @@ pub(super) fn spawn(cx: &mut Build, spec: &Spec) -> Counts {
         let n = lo + ((hi - lo + 1) as f32 * rng.next_f32()) as u32;
         let fill = cx.atlas.token_color("world.derelict");
         let edge = cx.atlas.token_color("world.derelict_edge");
+        // Out of reach, so no outline (`backdrop` in the tokens): a soft limb in its own colour, soft ribs.
+        let (soft, widen) = (cx.atlas.region("fx/dot_soft"), cx.atlas.token_f32("backdrop.line_widen"));
         let stops: Vec<Vec2> = std::iter::once(spec.entry).chain(spec.sites.iter().copied()).collect();
         for _ in 0..n {
             // Along the way between two stops (the entry and the sites), off to one side.
@@ -160,7 +162,7 @@ pub(super) fn spawn(cx: &mut Build, spec: &Spec) -> Counts {
             let along = a.lerp(b, rng.range(0.2, 0.8));
             let side = (b - a).perp().normalize_or(Vec2::X) * rng.range(20.0, 120.0) * if rng.next_f32() < 0.5 { -1.0 } else { 1.0 };
             let at = along + side;
-            let mesh = derelict(&mut rng, &white, fill, edge);
+            let mesh = derelict(&mut rng, &white, &soft, widen, (fill, edge));
             cx.commands.spawn((
                 SceneryPart,
                 Layered {
@@ -192,8 +194,8 @@ fn bit(m: &mut MeshBuf, rng: &mut Rng, c: Vec2, white: &kit::atlas::Region, tone
 }
 
 /// A dead hull shell, 16–36 m long, broken into two or three blocks along its spine with gaps between: each block a
-/// plate (the nose block tapered) with an edge, ribs across it and a dark hole or two.
-fn derelict(rng: &mut Rng, white: &kit::atlas::Region, fill: Color, edge: Color) -> Mesh {
+/// plate (the nose block tapered) with a soft limb, soft ribs across it and a dark hole or two.
+fn derelict(rng: &mut Rng, white: &kit::atlas::Region, soft: &kit::atlas::Region, widen: f32, (fill, edge): (Color, Color)) -> Mesh {
     let length = rng.range(16.0, 36.0);
     let width = length * rng.range(0.22, 0.34);
     let blocks = 2 + (rng.next_f32() * 2.0) as usize;
@@ -213,10 +215,10 @@ fn derelict(rng: &mut Rng, white: &kit::atlas::Region, fill: Color, edge: Color)
             pts.insert(3, Vec2::new(x1 - len * 0.3, w * 0.6 + lean));
         }
         m.polygon(&pts, white.uv_center(), vcol(fill, 0.95));
-        m.strip(&pts, true, 0.18, white, vcol(edge, 0.7));
+        m.strip(&pts, true, 0.18 * widen, soft, vcol(fill, 0.95));
         for r in 1..(len / 3.5) as usize {
             let rx = x0 + r as f32 * 3.5;
-            m.strip(&[Vec2::new(rx, -w * 0.8), Vec2::new(rx, w * 0.8)], false, 0.08, white, vcol(edge, 0.35));
+            m.strip(&[Vec2::new(rx, -w * 0.8), Vec2::new(rx, w * 0.8)], false, 0.08 * widen, soft, vcol(edge, 0.35));
         }
         if rng.next_f32() < 0.6 {
             let c = Vec2::new(rng.range(x0 + 1.0, x1 - 1.0), rng.range(-w * 0.4, w * 0.4));

@@ -280,12 +280,17 @@ pub(super) struct Paint {
     pub night: Rgb,
     pub veil: Rgb,
     pub veil_share: f32,
+    /// The share of a body colour's saturation kept and how far its limb fades out (design-frame px; tokens
+    /// `backdrop.saturation`, `backdrop.limb_px`): the sky recedes behind the play.
+    pub saturation: f32,
+    pub limb: f32,
 }
 
 impl Paint {
-    /// A body colour behind the veil.
+    /// A body colour, its saturation lowered, behind the veil.
     fn c(&self, c: Rgb, a: f32) -> [f32; 4] {
-        vc(mix(c, self.veil, self.veil_share), a)
+        let grey = Vec3::splat(c.dot(Vec3::new(0.2126, 0.7152, 0.0722)));
+        vc(mix(mix(grey, c, self.saturation), self.veil, self.veil_share), a)
     }
 }
 
@@ -498,12 +503,12 @@ fn disc(g: &mut Geo, b: &Body, p: &Paint, night: Rgb) {
         stitch(g, &prev, &ring);
         prev = ring;
     }
-    // the feather: the limb's colours fading out over about a pixel
+    // the feather: the limb's colours fading out (soft, never a hard edge: the sky is out of reach)
     let m = prev.len();
     let outer: Vec<u32> = (0..m)
         .map(|i| {
             let t = i as f32 / m as f32 * TAU;
-            let at = Vec2::from_angle(t) * (b.r * shape(t) + 1.1);
+            let at = Vec2::from_angle(t) * (b.r * shape(t) + p.limb);
             let c = g.col[prev[i] as usize];
             g.v(at, [c[0], c[1], c[2], 0.0])
         })

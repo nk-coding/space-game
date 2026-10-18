@@ -93,6 +93,16 @@
   pairs in turn first → second, second → core, core → first), under the same overdraw cap, at strength 0.8 (was
   0.55), and an irregular galaxy of a rolled one's size (so half the old) in a warm amber (`#ffa05a`, its clumps and knots
   from that colour), far from the shipyard's teals and blues, placed top right clear of the yard (`at: (0.9, 0.2)`). Screenshots `docs/results/home-sky-clouds.png`, `sky-galaxy-half.png`.
+  2026-10-18, ninth (Niklas: tell what you can touch from the backdrop; his picks, numbers lead's, in
+  `art/tokens.json`): **an outline means you can touch it.** Rocks, ships and wrecks keep their crisp edge line;
+  nothing behind the play plane has one. The sky's planets and moons keep 0.8 of their colours' saturation and fade
+  out at the limb over 2.6 design-frame px (was 1.1; `backdrop`); the landmarks' and the drifting derelicts' lines
+  are soft (the soft dot's profile across, 1.7 times as wide), and their outlines (panels, modules, the beacon's
+  foot, the junk ring's hub, the derelicts' plates) are gone: a soft limb in their own fill colour instead. A rock
+  near the ship the camera follows gets a faint bright line over its edge (`world.rock_near`: full within 150 m of
+  the ship, from the rock's edge, fading out smoothly over the next 40 m, alpha 0.42, `#d4ecff`; one small additive
+  mesh rebuilt only when it changes, `scenery::rocks::near_rocks`); the minimap shows them as before. Screenshot
+  `docs/results/rocks-near-planet.png`.
 - Date: 2026-10-17
 - Decided by: lead session (defaults for Niklas's play-test of 17 Oct 2026 of GDR-0104's scenery and GDR-0105's sky)
 - Related: [GDR-0104](0104-scenery-rocks-filler-landmarks.md), [GDR-0105](0105-cluster-sky-planets-nebula-galaxy.md), [GDR-0106](0106-flight-minimap.md), `docs/client.md` "Scenery"

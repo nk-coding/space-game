@@ -747,11 +747,17 @@ off, the flash and its ring where it left), `voyage-warp-emergency.png` (the eme
     (headless, 1280 × 720): `docs/results/rocks-c-field.png` (a wreck drift's iron field at the starting zoom),
     `rocks-c-iron.png`, `rocks-c-ice.png` (close-ups at 30 px/m, lit from the sky's planet),
     `rocks-c-slag-scorched.png` (a scorched deep's slag, lit from the hot star on the left; its corona at the edge).
+    **Near rocks** (18 Oct 2026, GDR-0107's ninth status line: an outline means you can touch it, so rocks, ships and
+    wrecks keep their crisp edge and nothing behind the play has one): a rock within `world.rock_near.range_m` (150 m)
+    of the ship the camera follows, measured from its edge, gets a faint bright line over its edge line (`#d4ecff`,
+    alpha 0.42, 0.07 m half width), fading out smoothly over the next 40 m (`rocks::near_rocks`: one small additive
+    mesh at z 3.02, the strengths kept in 24 steps, rebuilt only when one changes). Screenshot
+    `docs/results/rocks-near-planet.png`.
   - **Filler** (`filler.rs`, drawn only): glints and motes on a near layer (`p` 0.85, a 260 m tile repeated 3 × 3 round
     the view like the backdrop's dust, the glints twinkling as one; 130 motes and 12 glints at `dust` 1, 220 and 18
     until 18 Oct 2026), hull debris everywhere on a far tiled layer with the backdrop's far dust (`p` 0.3, a 400 m tile
     of 220 bits at `debris` 1, so a few are always in sight; `p` 0.97 and 320 bits until 18 Oct 2026, GDR-0107) and
-    thicker round each site in three drifting groups of 7–12 bits just under the play (`p` 0.97), derelict shells (16–36 m, broken in two or three, ribs and a hole) drifting
+    thicker round each site in three drifting groups of 7–12 bits just under the play (`p` 0.97), derelict shells (16–36 m, broken in two or three, soft ribs and a hole, no outline: a soft limb in their own colour since 18 Oct 2026) drifting
     and turning slowly 20–120 m off the way between the entry and the sites (`p` 0.9).
   - **Far things** (`far.rs`): each landmark the cluster rolls (its chance, from the voyage's seed) anchored within
     0.7 of the radius on its own layer (parallax 0.09–0.13, between the sky's planets and the junk, so it draws over
@@ -760,7 +766,9 @@ off, the flash and its ring where it left), `voyage-warp-emergency.png` (the eme
     0.012–0.016 behind the planets and 3–24 m they read like planets; 0.03–0.04 before): a station (a truss with
     bracing, modules along it, one or two pairs of solar panels, one sometimes torn off, a torn docking ring at a
     slant at one end, two faint lights; a hub, spokes and a ring until 18 Oct 2026), a beacon (a mast, crossbars, a light passing every 3.2 s), a junk ring at a slant
-    round a dead hub; beside a hot star the **corona**: three arcs and six loops in the corona colour at the view's
+    round a dead hub. Out of reach, so no outlines (18 Oct 2026, GDR-0107's ninth status line): every line soft (the
+    soft dot's profile across, `backdrop.line_widen` 1.7 times as wide), every fill (panels, modules, the beacon's foot,
+    the hub) with a soft limb in its own colour instead of an edge line. Beside a hot star the **corona**: three arcs and six loops in the corona colour at the view's
     edge towards the star, placed and scaled as the backdrop's star glow, flickering softly (thin strips: with the glow
     the only large translucent layers, two at most). The distant fights were removed on 17 Oct 2026 (GDR-0107).
   - Budget (a wreck drift): 18 tiles (about 9 × 1.3 k glint vertices and 9 × 1.1 k debris vertices, static meshes,
@@ -804,7 +812,7 @@ off, the flash and its ring where it left), `voyage-warp-emergency.png` (the eme
     the galaxy's crossed waves a grid); the clouds as one smooth density of noisy blobs, streaks and log-spiral swirls; the
     air's tint and haze; then the light: a terminator by the air (sharp on an airless body; under air a wide twilight and a night that
     keeps a little of the surface's colour, since 18 Oct 2026: an earth-like world's night read as a hard dark half), limb darkening, a highlight, the night side in the sky's
-    dark), a one-pixel feather at the limb, and over it thin lit geometry (streaks, craters, cracks as soft lineae: a thin core in a wide soft edge, fading in and out
+    dark; every colour kept at 0.8 of its saturation, token `backdrop.saturation`, 18 Oct 2026), a soft feather at the limb (2.6 px, `backdrop.limb_px`; one pixel until 18 Oct 2026: a backdrop body has no hard edge), and over it thin lit geometry (streaks, craters, cracks as soft lineae: a thin core in a wide soft edge, fading in and out
     along the line and swelling and thinning with the noise; an ice world's long, gently curving and tinted reddish
     brown close to the ground's colour; until 18 Oct 2026 hard lines of one width) and glowing
     geometry (rifts, vents, a garden's lights, plumes); the air's glow a strip outside the limb; rings two halves

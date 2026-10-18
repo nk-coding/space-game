@@ -53,6 +53,8 @@ pub(super) fn spawn(cx: &mut Build, spec: &Spec, content: &data::Content) -> Far
     let fill = cx.atlas.token_color("world.landmark");
     let edge = cx.atlas.token_color("world.landmark_edge");
     let light = cx.atlas.token_color("world.landmark_light");
+    // Soft lines, no outlines: out of reach (`backdrop` in the tokens).
+    let pen = Soft { white: &white, soft: &soft, widen: cx.atlas.token_f32("backdrop.line_widen") };
     for place in &spec.scenery.landmarks {
         let roll = rng.next_f32();
         let Some(l) = content.landmarks.get(&place.landmark) else { continue };
@@ -73,9 +75,9 @@ pub(super) fn spawn(cx: &mut Build, spec: &Spec, content: &data::Content) -> Far
         let mut m = MeshBuf::default();
         let mut lamp = None;
         match l.form {
-            LandmarkForm::Station => station(&mut m, &mut rng, size, &white, &hard, fill, edge, light),
-            LandmarkForm::Beacon => lamp = Some(beacon(&mut m, size, &white, fill, edge)),
-            LandmarkForm::Ring => ring(&mut m, &mut rng, size, &white, fill, edge),
+            LandmarkForm::Station => station(&mut m, &mut rng, size, &pen, &hard, fill, edge, light),
+            LandmarkForm::Beacon => lamp = Some(beacon(&mut m, size, &pen, fill, edge)),
+            LandmarkForm::Ring => ring(&mut m, &mut rng, size, &pen, fill, edge),
             LandmarkForm::Corona => unreachable!("handled above"),
         }
         let layered = Layered { anchor, drift: Vec2::ZERO, angle: rng.range(-0.4, 0.4), spin: 0.0, parallax: l.parallax };
@@ -98,17 +100,37 @@ pub(super) fn spawn(cx: &mut Build, spec: &Spec, content: &data::Content) -> Far
     out
 }
 
+/// Drawing a landmark out of reach: soft lines (the soft dot's profile across, `widen` times as wide as a hard line of
+/// the same look), and fills whose limb is a soft line of their own colour, no outline.
+struct Soft<'a> {
+    white: &'a Region,
+    soft: &'a Region,
+    widen: f32,
+}
+
+impl Soft<'_> {
+    fn line(&self, m: &mut MeshBuf, pts: &[Vec2], half_width: f32, c: [f32; 4]) {
+        m.strip(pts, false, half_width * self.widen, self.soft, c);
+    }
+
+    /// A filled polygon with a soft limb `half_width` wide.
+    fn fill(&self, m: &mut MeshBuf, pts: &[Vec2], half_width: f32, c: [f32; 4]) {
+        m.polygon(pts, self.white.uv_center(), c);
+        m.strip(pts, true, half_width * self.widen, self.soft, c);
+    }
+}
+
 /// A dead station `size` long: a truss with its bracing, modules along it, pairs of solar panels (one torn off at
 /// times), a docking ring at one end seen at a slant and torn in places, two faint lights.
 #[allow(clippy::too_many_arguments)]
-fn station(m: &mut MeshBuf, rng: &mut Rng, size: f32, white: &Region, hard: &Region, fill: Color, edge: Color, light: Color) {
+fn station(m: &mut MeshBuf, rng: &mut Rng, size: f32, pen: &Soft, hard: &Region, fill: Color, edge: Color, light: Color) {
     let (half, rail) = (size * 0.5, size * 0.025);
     for y in [-rail, rail] {
-        m.strip(&[Vec2::new(-half, y), Vec2::new(half * 0.86, y)], false, size * 0.014, white, vcol(edge, 0.9));
+        pen.line(m, &[Vec2::new(-half, y), Vec2::new(half * 0.86, y)], size * 0.014, vcol(edge, 0.9));
     }
     let braces = 14;
     let zig: Vec<Vec2> = (0..=braces).map(|k| Vec2::new(-half + k as f32 / braces as f32 * half * 1.86, if k % 2 == 0 { -rail } else { rail })).collect();
-    m.strip(&zig, false, size * 0.008, white, vcol(edge, 0.6));
+    pen.line(m, &zig, size * 0.008, vcol(edge, 0.6));
     // solar panels in pairs across the truss
     let pairs = 1 + (rng.next_f32() * 2.0) as usize;
     for k in 0..pairs {
@@ -120,9 +142,8 @@ fn station(m: &mut MeshBuf, rng: &mut Rng, size: f32, white: &Region, hard: &Reg
             let (w, len) = (size * 0.035, size * rng.range(0.18, 0.26));
             let (y0, y1) = (side * rail * 1.6, side * (rail * 1.6 + len));
             let panel = [Vec2::new(x - w, y0), Vec2::new(x + w, y0), Vec2::new(x + w, y1), Vec2::new(x - w, y1)];
-            m.polygon(&panel, white.uv_center(), vcol(fill, 1.0));
-            m.strip(&panel, true, size * 0.006, white, vcol(edge, 0.75));
-            m.strip(&[Vec2::new(x, y0), Vec2::new(x, y1)], false, size * 0.005, white, vcol(edge, 0.5));
+            pen.fill(m, &panel, size * 0.006, vcol(fill, 1.0));
+            pen.line(m, &[Vec2::new(x, y0), Vec2::new(x, y1)], size * 0.005, vcol(edge, 0.5));
         }
     }
     // modules along the truss, the largest in the middle
@@ -130,8 +151,7 @@ fn station(m: &mut MeshBuf, rng: &mut Rng, size: f32, white: &Region, hard: &Reg
     for k in 0..3 + (rng.next_f32() * 2.0) as usize {
         let (len, h) = (size * rng.range(0.08, 0.14), size * if k == 0 { 0.12 } else { rng.range(0.06, 0.09) });
         let module = [Vec2::new(x, -h / 2.0), Vec2::new(x + len, -h / 2.0), Vec2::new(x + len, h / 2.0), Vec2::new(x, h / 2.0)];
-        m.polygon(&module, white.uv_center(), vcol(fill, 1.0));
-        m.strip(&module, true, size * 0.007, white, vcol(edge, 0.8));
+        pen.fill(m, &module, size * 0.007, vcol(fill, 1.0));
         x += len + size * rng.range(0.01, 0.04);
     }
     // the docking ring at the far end, at a slant, torn in places
@@ -142,8 +162,8 @@ fn station(m: &mut MeshBuf, rng: &mut Rng, size: f32, white: &Region, hard: &Reg
         let torn = k < arcs && rng.next_f32() < 0.1;
         if torn || k == arcs {
             if arc.len() >= 2 {
-                m.strip(&arc, false, size * 0.022, white, vcol(fill, 0.95));
-                m.strip(&arc, false, size * 0.007, white, vcol(edge, 0.8));
+                pen.line(m, &arc, size * 0.022, vcol(fill, 0.95));
+                pen.line(m, &arc, size * 0.007, vcol(edge, 0.8));
             }
             arc.clear();
         }
@@ -159,22 +179,21 @@ fn station(m: &mut MeshBuf, rng: &mut Rng, size: f32, white: &Region, hard: &Reg
 }
 
 /// A beacon mast `size` tall with crossbars and a base; its lamp's spot (local) is returned.
-fn beacon(m: &mut MeshBuf, size: f32, white: &Region, fill: Color, edge: Color) -> Vec2 {
+fn beacon(m: &mut MeshBuf, size: f32, pen: &Soft, fill: Color, edge: Color) -> Vec2 {
     let (base, top) = (Vec2::new(0.0, -size * 0.5), Vec2::new(0.0, size * 0.5));
     let foot = [base + Vec2::new(-size * 0.14, 0.0), base + Vec2::new(size * 0.14, 0.0), base + Vec2::new(size * 0.06, size * 0.1), base + Vec2::new(-size * 0.06, size * 0.1)];
-    m.polygon(&foot, white.uv_center(), vcol(fill, 1.0));
-    m.strip(&foot, true, size * 0.008, white, vcol(edge, 0.8));
-    m.strip(&[base, top], false, size * 0.02, white, vcol(edge, 0.9));
+    pen.fill(m, &foot, size * 0.008, vcol(fill, 1.0));
+    pen.line(m, &[base, top], size * 0.02, vcol(edge, 0.9));
     for k in 1..4 {
         let y = base.y + size * 0.25 * k as f32;
         let w = size * (0.12 - 0.025 * k as f32);
-        m.strip(&[Vec2::new(-w, y), Vec2::new(w, y)], false, size * 0.012, white, vcol(edge, 0.75));
+        pen.line(m, &[Vec2::new(-w, y), Vec2::new(w, y)], size * 0.012, vcol(edge, 0.75));
     }
     top
 }
 
 /// A ring of junk `size` across round a dead hub, seen at a slant.
-fn ring(m: &mut MeshBuf, rng: &mut Rng, size: f32, white: &Region, fill: Color, edge: Color) {
+fn ring(m: &mut MeshBuf, rng: &mut Rng, size: f32, pen: &Soft, fill: Color, edge: Color) {
     let (rx, ry) = (size * 0.5, size * 0.17);
     for _ in 0..160 {
         let a = rng.range(-3.15, 3.15);
@@ -182,11 +201,10 @@ fn ring(m: &mut MeshBuf, rng: &mut Rng, size: f32, white: &Region, fill: Color, 
         let s = size * rng.range(0.004, 0.012);
         let turn = rng.range(-3.15, 3.15);
         let bit: Vec<Vec2> = (0..4).map(|k| c + Vec2::from_angle(turn + k as f32 * std::f32::consts::FRAC_PI_2) * s * rng.range(0.6, 1.0)).collect();
-        m.polygon(&bit, white.uv_center(), vcol(edge, rng.range(0.4, 0.9)));
+        m.polygon(&bit, pen.white.uv_center(), vcol(edge, rng.range(0.4, 0.9)));
     }
     let hub: Vec<Vec2> = (0..12).map(|k| Vec2::new((k as f32 * std::f32::consts::FRAC_PI_6).cos(), (k as f32 * std::f32::consts::FRAC_PI_6).sin()) * size * 0.06).collect();
-    m.polygon(&hub, white.uv_center(), vcol(fill, 1.0));
-    m.strip(&hub, true, size * 0.005, white, vcol(edge, 0.8));
+    pen.fill(m, &hub, size * 0.005, vcol(fill, 1.0));
 }
 
 /// The corona in unit space (placed and scaled by [`corona`]: 1 is 1.2 times the view's larger side): three arcs
