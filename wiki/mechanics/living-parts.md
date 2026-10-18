@@ -87,3 +87,14 @@ the ship stops growing back.
 [[family:grown]] research turns what you salvage from them into parts of your own:
 [[research:regrowing_tissue]] (the tissue for any hull part), then [[research:living_weapons]] (the ram prow and the
 thorn gun) and last [[research:grown_heart]]. The ganglion stays theirs.
+Beside the prows, [[research:spore_lining]] gives you the [[part:spore_radiator]]: it vents better than a plain
+radiator and heals, but feeds no reactor beside it.
+
+## Heartwood and spores
+
+The Grown give two materials of their own besides their tissue. [[material:heartwood]] is the dense core of a heart:
+a destroyed [[part:grown_heart]] leaves a fragment of it to scoop up, a dismantled one gives some back, and beating an
+[[encounter:elder_grove|elder]] at the end of its trail puts three more straight into store. Growing
+a heart takes it, and so does researching one. [[material:spores|Grove spores]] come from stripping a grove: the
+thorn guns, prows and ganglions you bring home give a share back when they are dismantled, and the growing vat takes
+them for those parts and for the spore-lined radiator.

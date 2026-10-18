@@ -23,4 +23,24 @@
             (target: Tag("reactor"), stat: "power_output", effect: Add(2), when: [SourceVenting]),
         ],
     ),
+    // The spore-lined radiator (18 Oct 2026, the Grown research's `spore_lining`): a sidegrade of the radiator that
+    // vents about a quarter better and heals like the Grown's living parts, but feeds no reactor. PLACEHOLDER.
+    (
+        id: "spore_radiator",
+        name: "Spore-lined radiator",
+        summary: "A radiator whose fins are lined with living spore mats: it vents better and heals, but feeds no reactor.",
+        description: "Sheds heat only through sides open to space, like the [[part:radiator]], and a little faster. Its living lining heals slowly while it is on a vessel. Unlike a plain radiator it raises no reactor's output.",
+        tags: ["radiator", "grown"],
+        locked: true, // the Grown research's `spore_lining` unlocks it
+        category: "heat",
+        icon: "spore-radiator",
+        size: (1, 1),
+        build_points: 3,
+        mass: 1,
+        hp: 1,
+        heal: 0.05,
+        radiator: (vent: 1.9),
+        salvage: (family: "thermal", data: 2),
+        recipe: (materials: {"ceramic": 1, "copper": 1, "spores": 2}, needs: "grown_vat"),
+    ),
 ]

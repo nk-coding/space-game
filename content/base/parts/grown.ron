@@ -4,7 +4,9 @@
 // system colour, like the automatons' parts. `salvage`: data to the Grown family (18 Oct 2026, GDR-0103; was the
 // rim's nearest families, logic, hull and kinetic).
 // `recipe`: what the workshop fabricates it from (GDR-0108; PLACEHOLDER amounts, about twice the build points);
-// `needs` names the workshop upgrade it takes. Dismantling gives a share back (facilities.ron).
+// `needs` names the workshop upgrade it takes. Dismantling gives a share back (facilities.ron). Spores in the
+// living parts' recipes and heartwood in the heart's (18 Oct 2026, materials/grown.ron): stripping a grove gives
+// spores back, a destroyed heart leaves heartwood.
 [
     (
         id: "grown_heart",
@@ -23,8 +25,9 @@
         heat: (output: 0, limit: 4),
         // One part every 2.5 s, starting at 35% of its hit points (lead default, GDR-0102).
         heart: (interval: 2.5, hp: 0.35),
-        salvage: (family: "grown", data: 6),
-        recipe: (materials: {"grown_tissue": 10, "programmable_matter": 2}, needs: "grown_vat"),
+        // A destroyed heart leaves heartwood (18 Oct 2026): the Grown's dearest material, for hearts only.
+        salvage: (family: "grown", data: 6, fragment: {"heartwood": 1}),
+        recipe: (materials: {"grown_tissue": 10, "heartwood": 2, "programmable_matter": 2}, needs: "grown_vat"),
     ),
     (
         id: "ram_prow",
@@ -43,7 +46,7 @@
         heal: 0.1,
         ram: (dealt: 2, taken: 0.5),
         salvage: (family: "grown", data: 4),
-        recipe: (materials: {"grown_tissue": 8, "steel": 2}, needs: "grown_vat"),
+        recipe: (materials: {"grown_tissue": 8, "spores": 2, "steel": 2}, needs: "grown_vat"),
     ),
     (
         id: "thorn_gun",
@@ -64,7 +67,7 @@
         // 0.4 hit points a spine, 40 m (the cannon's 1 hit point at 75 m): strongest close in.
         weapon: (family: Kinetic, damage: 1.6, range: 40, delivery: Projectile(rate: 4, speed: 110, penetration: 1, recoil: 0.5)),
         salvage: (family: "grown", data: 3),
-        recipe: (materials: {"grown_tissue": 5, "copper": 1}, needs: "grown_vat"),
+        recipe: (materials: {"copper": 1, "grown_tissue": 5, "spores": 2}, needs: "grown_vat"),
     ),
     // The Grown's mind and power (GDR-0103, lead default 18 Oct 2026): what an automaton core is to a raider, a
     // knot of nerve tissue that thinks and feeds the ship. 8 MW runs two thorn guns and two thrusters (7 MW). It
@@ -90,6 +93,6 @@
         sensor: (range: 800),
         gyro: (torque: 260),
         salvage: (family: "grown", data: 5),
-        recipe: (materials: {"grown_tissue": 6, "programmable_matter": 2}, needs: "grown_vat"),
+        recipe: (materials: {"grown_tissue": 6, "programmable_matter": 2, "spores": 3}, needs: "grown_vat"),
     ),
 ]

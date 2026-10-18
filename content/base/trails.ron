@@ -50,6 +50,7 @@
         target: "elder_grove",
         sources: ["distress_call", "old_beacon"],
         hint: "Something vast",
+        gives: (materials: {"heartwood": 3}), // an elder's heartwood (18 Oct 2026, materials/grown.ron)
     ),
     (
         id: "precursor_cache",

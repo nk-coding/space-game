@@ -1,0 +1,21 @@
+// The Grown's own materials besides their tissue (GDR-0099 and GDR-0103 left them open; concept-notes.md: "Grown
+// tissue/spores/heartwood"; 18 Oct 2026). No `armor` block: the drydock never offers them. PLACEHOLDER NUMBERS
+// (lead defaults): what gives them lives in the salvage blocks, recipes and trails that name them.
+[
+    (
+        id: "heartwood",
+        name: "Heartwood",
+        summary: "The dense living core of a Grown heart.",
+        description: "A destroyed [[part:grown_heart]] leaves a fragment of it to scoop, and a dismantled one gives some back; an [[ship:grown_elder]], with two hearts and a grove of its own, gives the most: beating one at the end of its [[trail:elder_grove|trail]] puts more straight into store. Growing a heart takes it, and so does researching one.",
+        tags: ["grown"],
+        icon: "heartwood",
+    ),
+    (
+        id: "spores",
+        name: "Grove spores",
+        summary: "The seed dust a Grown ship carries in its living parts.",
+        description: "Stripping a grove's wrecks gives it: every dismantled [[part:thorn_gun]], [[part:ram_prow]] and [[part:grown_ganglion]] gives a share back. The [[facility:grown_vat|growing vat]] takes it for those parts and for the [[part:spore_radiator]], whose spore lining sheds heat better than plain fins.",
+        tags: ["grown"],
+        icon: "spores",
+    ),
+]

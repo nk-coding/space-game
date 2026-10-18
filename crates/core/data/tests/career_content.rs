@@ -612,20 +612,22 @@ fn base_salvage_blocks() {
     }
     // A destroyed core leaves a fragment of programmable matter (GDR-0063), and its recipe takes some (GDR-0031:
     // it hosts a copy of you); nothing else leaves one, and the Grown's ganglion neither (GDR-0103: the Grown are not
-    // precursor work).
+    // precursor work). A Grown heart leaves heartwood instead (18 Oct 2026).
     for p in c
         .parts
         .iter()
         .filter_map(|p| p.salvage.as_ref().map(|s| (p, s)))
     {
         let core = p.0.logic.is_some() && !p.0.tags.iter().any(|t| t == "grown");
-        assert_eq!(!p.1.fragment.is_empty(), core, "{}", p.0.id);
+        let heart = p.0.heart.is_some();
+        assert_eq!(!p.1.fragment.is_empty(), core || heart, "{}", p.0.id);
         let pm = p.0.recipe.as_ref().is_some_and(|r| r.materials.contains_key("programmable_matter"));
         assert!(!core || pm, "{}", p.0.id);
         // Every part but hull has a recipe (GDR-0108).
         assert!(p.0.recipe.is_some(), "{}", p.0.id);
     }
     assert_eq!(part("automaton_core").fragment["programmable_matter"], 1);
+    assert_eq!(part("grown_heart").fragment.get("heartwood"), Some(&1));
     let hull = |id: &str| c.materials.get(id).unwrap().salvage.clone().unwrap();
     assert_eq!(
         (hull("steel").family.as_str(), hull("steel").data),
@@ -656,6 +658,7 @@ fn base_locks_follow_the_early_game_kit() {
             "ram_prow",
             "thorn_gun",
             "grown_ganglion",
+            "spore_radiator",
             "fusion_reactor",
             "torch_drive",
             "beam_laser",
@@ -691,6 +694,7 @@ fn base_research_nodes() {
             "regrowing_tissue",
             "living_weapons",
             "grown_heart",
+            "spore_lining",
             "automaton_cannon",
             "composite_plating",
             "beam_laser",

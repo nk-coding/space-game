@@ -105,7 +105,8 @@ Your hold is the summed [[stat:cargo_capacity]] of the cargo parts on your vesse
 A destroyed [[part:logic_core]] or [[part:automaton_core]] leaves a **fragment** of
 [[material:programmable_matter]]: a small loose item where the core was, drifting on with the speed it had. It stays
 until you collect it or the voyage ends (the test range clears old ones after a while). Only cores destroyed by
-damage leave one; a core you collect gives research data as well.
+damage leave one; a core you collect gives research data as well. A destroyed [[part:grown_heart]] leaves a fragment
+of [[material:heartwood]] the same way.
 
 ## Bringing it home
 
@@ -130,7 +131,7 @@ When the haul comes home (VOYAGE HOME · HAUL UNLOADED on the debrief, and the L
 - A **hull part** gives its armour's data for every cell of hull area, slopes counting half (steel gives
   [[material:steel.salvage_data]] per cell), and [[facility:workshop.broken]] of a unit of its armour per cell.
 - A **fragment** gives its materials: [[part:logic_core.fragment]] from a logic core, [[part:automaton_core.fragment]]
-  from an automaton core.
+  from an automaton core, [[part:grown_heart.fragment]] from a Grown heart.
 - An **intact part** comes first in the voyage's report: KEEP puts it into the [[facility:workshop]]'s stock (your
   ships can carry it), DISMANTLE takes it apart for its research data and [[facility:workshop.dismantle]] of its
   recipe's materials (point at DISMANTLE to see what it would give). Keeping is what happens if you do nothing:
