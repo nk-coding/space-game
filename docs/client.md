@@ -781,14 +781,14 @@ off, the flash and its ring where it left), `voyage-warp-emergency.png` (the eme
     view's height) and the others small (0.05–0.09; distant since the second look of 18 Oct 2026, GDR-0107: earlier
     that day 0.22–0.34 and 0.07–0.13, before it 0.34–0.56 and 0.11–0.19), 0–3 moons each (every moon of a different
     kind, 4–24 px, rings and moons scale with the planet), a nebula of soft blobs along a curve
-    (at most 3 over a point, 2 beside a hot star) with faint dust lanes, and a far galaxy (`galaxy.rs`, the backdrop
+    (at most 3 over a point, 2 beside a hot star) with faint dust lanes, and a far galaxy (`galaxy.rs`, radius 35–70 px of the design frame, half the study's since 18 Oct 2026; the backdrop
     study's version 8, 18 Oct 2026; before, a soft glowing spiral of sprites and dots) whose kind is rolled per sky: a
     spiral 60 % (variant H, M74's structure, as Niklas tuned it on the study's round 9: a broad field disc carries
     most of the light, its arms only modestly brighter than the gaps; the arms as soft strands following 38 short
     wound arm segments, a third on two main arms, large to small: two broad strands a segment, three finer ones
     within, a few soft knots; wide soft dark dust strands inside the inner segments; every strand five vertices across
     and fading to nothing at its sides and ends, so nothing reads as a hard line or a dot; no sparkles), else an
-    elliptical 12 %, an edge-on disc 16 % or an irregular 12 % (variant D: a soft field, dark splats and clumps of blue splats with pink cores). Three static meshes, at
+    elliptical 12 %, an edge-on disc 16 % or an irregular 12 % (variant D: a soft field, dark splats and clumps of blue splats with pink cores; a chosen galaxy's colour, `data::FarGalaxy`, takes the arms' and the clumps' place). Three static meshes, at
     parallax 0: the field, premultiplied (`Atlas::premultiplied`: a 31 × 128 polar grid, an edge-on disc's 110 × 25,
     every vertex sampling the light and the dust, so the dust dims what lies below and the light adds), the dust
     alpha-blended and the glow additive, each a hundredth over the last. The colours are rolled per galaxy
@@ -832,8 +832,10 @@ off, the flash and its ring where it left), `voyage-warp-emergency.png` (the eme
     94 / 73 / 73 / 71 / 62 % of a 1 / 2 / 2.5 / 3 / 4 km cluster, one or more from 95 / 78 / 78 / 80 / 64 %, three or
     more from 0 / 0 / 0 / 0.1 / 0 % (before: some planet from 100 / 89 / 72 / 57 / 37 %, at Corran Reach all three at
     once; `sky` tests, which also sample that no two planets meet from 600 m to 4 km). At home the home band's
-    (the galaxy's first) nebula and galaxy show without planets, at strength 0.55 (18 Oct 2026; screenshot
-    `docs/results/home-sky.png`, its galaxy a spiral). Z: galaxy −897 (field, dust, glow −897 / −896.99 / −896.98), the
+    (the galaxy's first) nebula colours show without planets in the galaxy's `home_sky` (18 Oct 2026, GDR-0107's eighth
+    status line: strength 0.8, was 0.55; three clouds, each along a curve of its own in its third of the view, smaller,
+    and a small amber irregular galaxy top right; screenshot `docs/results/home-sky-clouds.png`; earlier that day one cloud and a
+    rolled galaxy, `home-sky.png`). Z: galaxy −897 (field, dust, glow −897 / −896.99 / −896.98), the
     backdrop's stars −893 to −892.4, nebula −890, planets and moons −887 + 100 × their parallax (about −885 to −884,
     the nearer over the farther; a planet's rings' halves 0.0004 under and over it); the hot star's glow and its
     corona between the nebula and the planet (GDR-0107; until 17 Oct 2026 the glow lay over the

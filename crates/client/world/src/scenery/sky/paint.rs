@@ -229,14 +229,6 @@ pub(super) struct Plume {
     pub w: f32,
 }
 
-/// A faceted body: corners (angle, radius share), an off-centre core, a shade per facet, light and dark colours.
-pub(super) struct Facets {
-    pub pts: Vec<(f32, f32)>,
-    pub core: Vec2,
-    pub shades: Vec<f32>,
-    pub cols: (Rgb, Rgb),
-}
-
 /// A ring system: its tilt on screen, how flat (minor/major), its bands (inner, outer radius as shares of the
 /// body's, colour, alpha).
 pub(super) struct Ring {
@@ -262,7 +254,6 @@ pub(super) struct Look {
     pub biolum: Option<(Rgb, Vec<Vec3>)>,
     pub night_glow: Option<Rgb>,
     pub plumes: Vec<Plume>,
-    pub facets: Option<Facets>,
     pub shape: Option<Wob>,
     /// How much the ground's brightness is mottled by fine noise.
     pub mottle: f32,
@@ -472,12 +463,8 @@ pub(super) fn paint(b: &Body, p: &Paint, white: Vec2) -> Painted {
     if b.look.air.lv > 0.0 {
         air_glow(&mut g, b, p);
     }
-    if let Some(f) = &b.look.facets {
-        facets(&mut g, b, f, p);
-    } else {
-        disc(&mut g, b, p, night);
-        overlays(&mut g, b, p, night);
-    }
+    disc(&mut g, b, p, night);
+    overlays(&mut g, b, p, night);
     plumes(&mut g, b, p);
     let ring = b.look.ring.as_ref().map(|r| (ring_half(b, r, p, white, true), ring_half(b, r, p, white, false)));
     let (ring_back, ring_front) = ring.unzip();
@@ -698,33 +685,6 @@ fn air_glow(g: &mut Geo, b: &Body, p: &Paint) {
         let (a, c) = (first + i * k, first + ((i + 1) % segs) * k);
         for r in 0..rows {
             g.quad(a + r, c + r, c + r + 1, a + r + 1);
-        }
-    }
-}
-
-/// A crystal moon: a fan of facets round an off-centre core, each shaded by how it faces the light, with pale edges.
-fn facets(g: &mut Geo, b: &Body, f: &Facets, p: &Paint) {
-    let core = f.core * b.r;
-    let n = f.pts.len();
-    for i in 0..n {
-        let (t0, k0) = f.pts[i];
-        let (t1, k1) = f.pts[(i + 1) % n];
-        let mid = (t0 + t1 + if i == n - 1 { TAU } else { 0.0 }) / 2.0;
-        let br = (0.5 + 0.45 * (mid - b.light).cos() + f.shades[i]).clamp(0.0, 1.0);
-        let c = p.c(mix(f.cols.1, f.cols.0, br), 1.0);
-        let a = g.v(core, c);
-        let bb = g.v(Vec2::from_angle(t0) * b.r * k0, c);
-        let cc = g.v(Vec2::from_angle(t1) * b.r * k1, c);
-        g.tri(a, bb, cc);
-    }
-    let edge = mix(f.cols.0, WHITE, 0.4);
-    for i in 0..n {
-        let (t, k) = f.pts[i];
-        let corner = Vec2::from_angle(t) * b.r * k;
-        let next = Vec2::from_angle(f.pts[(i + 1) % n].0) * b.r * f.pts[(i + 1) % n].1;
-        for (from, to) in [(core, corner), (corner, next)] {
-            let cols = [mix(edge, p.veil, p.veil_share); 2];
-            g.soft_strip(&[from, to], &cols, &[0.45, 0.45], &[0.35, 0.35], 0.6);
         }
     }
 }

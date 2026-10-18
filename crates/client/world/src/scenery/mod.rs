@@ -69,7 +69,8 @@ struct Spec {
     sky_seed: u64,
 }
 
-/// The shipyard's sky: its seed and how strong it shows (fainter than in flight, under the station's screens).
+/// The shipyard's sky: its seed and how strong it shows without the galaxy's `home_sky` (fainter than in flight, under
+/// the station's screens).
 const HOME_SKY_SEED: u64 = 0x5eed_f00d;
 const HOME_SKY_STRENGTH: f32 = 0.55;
 
@@ -131,12 +132,12 @@ fn sync(
     parts: Query<Entity, With<SceneryPart>>,
 ) {
     let voyage = world.sim.voyage().filter(|_| *mode.get() == AppMode::Flight);
-    // the shipyard's sky: the home band's (the galaxy's first) nebula and galaxy, fainter, without planets (Niklas,
-    // 18 Oct 2026), from the packs (the running scene's content has no galaxy)
+    // the shipyard's sky: the home band's (the galaxy's first) nebula colours, fainter, without planets, in the
+    // galaxy's `home_sky` clouds and far galaxy (Niklas, 18 Oct 2026), from the packs (the running scene's content
+    // has no galaxy)
     let packs = &game.0;
-    let home_sky = (*mode.get() == AppMode::Home)
-        .then(|| packs.galaxies.iter().next().and_then(|g| g.bands.first()).and_then(|b| packs.bands.get(b)).and_then(|b| b.sky.as_ref()))
-        .flatten();
+    let first = packs.galaxies.iter().next();
+    let home_sky = (*mode.get() == AppMode::Home).then(|| first.and_then(|g| g.bands.first()).and_then(|b| packs.bands.get(b)).and_then(|b| b.sky.as_ref())).flatten();
     let key = if home_sky.is_some() { Some((String::from("home"), HOME_SKY_SEED)) } else { voyage.map(|v| (v.id().to_string(), v.seed())) };
     if key == state.key {
         return;
@@ -148,7 +149,9 @@ fn sync(
     state.rocks_drawn = 0;
     if let Some(sky) = home_sky {
         let cx = &mut Build { commands: &mut commands, atlas: &atlas, style: &style, meshes: &mut meshes, materials: &mut materials };
-        let s = sky::SkySpec { sky, seed: HOME_SKY_SEED, star: None, planet: None, over: None, strength: HOME_SKY_STRENGTH };
+        let home = first.and_then(|g| g.home_sky.as_ref());
+        let strength = home.map_or(HOME_SKY_STRENGTH, |h| h.strength);
+        let s = sky::SkySpec { sky, seed: HOME_SKY_SEED, star: None, planet: None, over: None, strength, home };
         if let Some(c) = sky::spawn(cx, &s, packs) {
             let [_, _, nebula, galaxy] = c.vertices;
             info!("sky at home: vertices nebula {nebula}, galaxy {galaxy} ({})", c.galaxy);
@@ -195,7 +198,7 @@ fn sync(
     if let Some(sky) = &spec.sky {
         let star = spec.star.map(|s| s - spec.entry);
         let over = sky::Over { radius: spec.radius, entry: spec.entry };
-        let s = sky::SkySpec { sky, seed: spec.sky_seed, star, planet: params.text("planet"), over: Some(over), strength: sky::STRENGTH };
+        let s = sky::SkySpec { sky, seed: spec.sky_seed, star, planet: params.text("planet"), over: Some(over), strength: sky::STRENGTH, home: None };
         let start = bevy::platform::time::Instant::now();
         if let Some(c) = sky::spawn(cx, &s, &world.content) {
             planet_light = c.light;

@@ -23,7 +23,7 @@ pub use behaviors::{Behavior, BehaviorNode, ChoiceOption, NodeParam, NodeRole, P
 pub use parts::{ArmorSpec, BarrelArt, Bonus, CargoSpec, Condition, Delivery, Effect, EngineSpec, ExplosionSpec, GyroSpec, HeartSpec, HeatSpec, HullSalvageSpec, LogicSpec, MAX_CONTROL_COST, MAX_POWER_WEIGHT, Material, Part, PlumeSpec, PowerOverride, PowerSpec, PowerTier, RadiatorSpec, RamSpec, RcsSpec, Recipe, SalvageSpec, ScannerSpec, Selector, SensorSpec, Shape, ShieldSpec, WeaponFamily, WeaponSpec};
 pub use progression::{Facility, Family, ResearchCost, ResearchKind, ResearchNode, Start, Unlock, WorkshopRules};
 pub use scenery::{Landmark, LandmarkForm, LandmarkPlace, RockGroup, RockKind, RockLayout, RockLook, Scenery};
-pub use sky::{Atmosphere, BodyClass, Palette, PlanetForm, PlanetKind, Rings, Sky, SkyWeight, hex_rgb};
+pub use sky::{Atmosphere, BodyClass, FarGalaxy, GalaxyKind, HomeSky, Palette, PlanetForm, PlanetKind, Rings, Sky, SkyWeight, hex_rgb};
 pub use ships::{AssistList, Blueprint, Frame, Icon, MAX_ASSIST_TOGGLES, MAX_WEAPON_GROUP, Origin, Placement};
 pub use voyages::{Encounter, EncounterShips, EncounterWrecks, Voyage, VoyageSite};
 

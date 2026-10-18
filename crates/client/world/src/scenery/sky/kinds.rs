@@ -7,7 +7,7 @@ use std::f32::consts::{PI, TAU};
 use bevy::prelude::*;
 use data::{Atmosphere, PlanetForm, PlanetKind};
 
-use super::paint::{Air, Bands, Cap, Clouds, Crater, Facets, Look, Plume, Poles, Ring, Storm, Streak, Swirl, Walk, Wave};
+use super::paint::{Air, Bands, Cap, Clouds, Crater, Look, Plume, Poles, Ring, Storm, Streak, Swirl, Walk, Wave};
 use super::roll::{Noise, Rgb, Stream, WHITE, Wob, hex, jit, mix};
 
 /// The palette's colours.
@@ -45,7 +45,6 @@ fn empty(r: &mut Stream, base: Rgb, air: Air) -> Look {
         biolum: None,
         night_glow: None,
         plumes: Vec::new(),
-        facets: None,
         shape: None,
         mottle: 0.06,
         air,
@@ -257,13 +256,6 @@ pub(super) fn look(r: &mut Stream, k: &PlanetKind, tilt: f32) -> Look {
             }
             l.vents = (0..r.int(2, 4)).map(|_| (r.facing(0.9, 1.2), r.range(0.02, 0.04))).collect();
             l.rift_cols = (Vec3::new(0.93, 0.56, 0.49), Vec3::new(1.0, 0.88, 0.63));
-        }
-        PlanetForm::Crystal => {
-            l.base = jit(r, pal.at(1), 8.0, 0.08, 0.05);
-            let n = r.int(7, 10);
-            let pts: Vec<(f32, f32)> = (0..n).map(|i| ((i as f32 + r.range(-0.3, 0.3)) / n as f32 * TAU, r.range(0.82, 1.0))).collect();
-            let shades = pts.iter().map(|_| r.range(-0.15, 0.15)).collect();
-            l.facets = Some(Facets { pts, core: Vec2::new(r.range(-0.25, 0.25), r.range(-0.25, 0.25)), shades, cols: (jit(r, pal.at(0), 8.0, 0.08, 0.05), l.base) });
         }
     }
     if let Some(rings) = &k.rings

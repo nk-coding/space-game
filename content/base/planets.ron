@@ -199,18 +199,6 @@
         palettes: [(colors: ["#d8c060", "#c07a30", "#f0e0a0", "#3a2a1a", "#9a8a40"])],
     ),
     (
-        id: "crystal_moon",
-        name: "Crystal moon",
-        summary: "Faceted, catching the light.",
-        body: Moon,
-        form: Crystal,
-        palettes: [
-            (colors: ["#7fd8e8", "#3a6a8a"]),
-            (colors: ["#b8a0f0", "#4a3a7a"]),
-            (colors: ["#9af0c8", "#2a6a5a"]),
-        ],
-    ),
-    (
         id: "rubble_moon",
         name: "Rubble moon",
         summary: "An irregular captured rock.",

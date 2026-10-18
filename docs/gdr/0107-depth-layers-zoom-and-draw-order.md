@@ -85,6 +85,14 @@
   unchanged. Screenshots `docs/results/sky-galaxy-close-before.png` / `-after.png`, `sky-rock-close-…`,
   `sky-desert-close-…`, `sky-ice-close-…` (a debugging build, galaxy and planet enlarged), `sky-station-planet.png`,
   `sky-galaxy-spiral.png`, `home-sky.png`.
+  2026-10-18, eighth (Niklas: galaxies smaller, no crystal moons, a richer shipyard sky; provisional numbers, lead):
+  a far galaxy's radius is rolled 35–70 px of the design frame (was 70–140: half the size on screen, every kind
+  alike; `galaxy::RADIUS`). The crystal moon kind is gone (content, `PlanetForm::Crystal` and its facet painter).
+  The shipyard's sky is the galaxy's `home_sky` (`galaxy.ron`, `data::HomeSky`): three nebula clouds in the rim's
+  colours, each along a curve of its own in its third of the view (blobs 0.7 the size, 3–5 washes each, the colour
+  pairs in turn first → second, second → core, core → first), under the same overdraw cap, at strength 0.8 (was
+  0.55), and an irregular galaxy of a rolled one's size (so half the old) in a warm amber (`#ffa05a`, its clumps and knots
+  from that colour), far from the shipyard's teals and blues, placed top right clear of the yard (`at: (0.9, 0.2)`). Screenshots `docs/results/home-sky-clouds.png`, `sky-galaxy-half.png`.
 - Date: 2026-10-17
 - Decided by: lead session (defaults for Niklas's play-test of 17 Oct 2026 of GDR-0104's scenery and GDR-0105's sky)
 - Related: [GDR-0104](0104-scenery-rocks-filler-landmarks.md), [GDR-0105](0105-cluster-sky-planets-nebula-galaxy.md), [GDR-0106](0106-flight-minimap.md), `docs/client.md` "Scenery"

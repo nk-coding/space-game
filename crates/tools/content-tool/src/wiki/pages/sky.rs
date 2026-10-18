@@ -22,7 +22,6 @@ pub(crate) fn planet_form_word(f: PlanetForm) -> &'static str {
         PlanetForm::Rock => "cratered rock",
         PlanetForm::Geyser => "ice with plumes",
         PlanetForm::Sulfur => "volcanic sulfur",
-        PlanetForm::Crystal => "faceted crystal",
         PlanetForm::Rubble => "irregular rubble",
     }
 }

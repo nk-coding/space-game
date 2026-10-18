@@ -44,6 +44,24 @@ impl<'a> Validator<'a> {
         }
     }
 
+    /// The shipyard's sky: one to four clouds, a strength, a galaxy no bigger than a rolled one inside the view, its colour.
+    pub(super) fn home_sky<T: Entry>(&mut self, e: &T, h: &HomeSky) {
+        if !(1..=4).contains(&h.clouds) {
+            self.err(e, "home_sky.clouds", format!("1 to 4 clouds, got {}", h.clouds));
+        }
+        if !(h.galaxy.size.is_finite() && h.galaxy.size > 0.0 && h.galaxy.size <= 1.0) {
+            self.err(e, "home_sky.galaxy.size", format!("a share above 0 and at most 1, got {}", h.galaxy.size));
+        }
+        self.hex(e, "home_sky.galaxy.color", &h.galaxy.color);
+        let (x, y) = h.galaxy.at;
+        if !((0.0..=1.0).contains(&x) && (0.0..=1.0).contains(&y)) {
+            self.err(e, "home_sky.galaxy.at", format!("shares of the view from 0 to 1, got ({x}, {y})"));
+        }
+        if !(h.strength.is_finite() && h.strength > 0.0 && h.strength <= 1.0) {
+            self.err(e, "home_sky.strength", format!("a strength above 0 and at most 1, got {}", h.strength));
+        }
+    }
+
     /// The sky of a cluster type or a band: known kinds of the right body with weights above 0, at least one moon
     /// kind, colours, strengths from 0 to 2.
     pub(super) fn sky<T: Entry>(&mut self, e: &T, s: &Sky) {

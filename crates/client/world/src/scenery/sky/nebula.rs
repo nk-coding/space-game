@@ -1,7 +1,8 @@
 //! The nebula (GDR-0105), rolled and meshed in the design frame (px of a 1600 × 900 view, y
 //! down, origin at the view's top left).
 //!
-//! The nebula is soft blobs strung along a curve across the view: wide washes in its two colours, a few brighter
+//! The nebula is soft blobs strung along a curve across the view (at the shipyard several clouds, each along a curve
+//! of its own): wide washes in its two colours, a few brighter
 //! cores with stars in them, thin faint dust lanes; each blob a fan whose alpha falls from its middle to its wobbly
 //! edge. No point of the view lies under more than [`STACK`] blobs (checked on a coarse grid; one less beside a hot
 //! star), the overdraw cap.
@@ -63,22 +64,48 @@ pub(super) struct Nebula {
     pub peak: u8,
 }
 
-/// Rolls the nebula in the sky's colours and strength, `dark` for its lanes; `hot`: beside a hot star.
-pub(super) fn nebula(r: &mut Stream, sky: &data::Sky, dark: Rgb, hot: bool) -> Nebula {
+/// Rolls the nebula in the sky's colours and strength, `dark` for its lanes; `hot`: beside a hot star. One cloud
+/// strings across the whole view; several ([`data::HomeSky::clouds`], the shipyard's) each along a shorter curve of
+/// its own in its share of the view, smaller and fewer blobs each, in turn along the sky's two colours, from its
+/// second to its core colour and from the core colour back to the first.
+pub(super) fn nebula(r: &mut Stream, sky: &data::Sky, dark: Rgb, hot: bool, clouds: u32) -> Nebula {
     let stack = if hot { STACK - 1 } else { STACK };
     let (n0, n1, core, s) = (hex(&sky.nebula.0), hex(&sky.nebula.1), hex(&sky.nebula_core), sky.nebula_strength);
-    let flip = r.chance(0.5);
-    let mut p = [
-        Vec2::new(r.range(-250.0, 350.0), r.range(-150.0, H + 150.0)),
-        Vec2::new(r.range(250.0, 800.0), r.range(-100.0, H + 100.0)),
-        Vec2::new(r.range(800.0, 1350.0), r.range(-100.0, H + 100.0)),
-        Vec2::new(r.range(1250.0, 1850.0), r.range(-150.0, H + 150.0)),
-    ];
-    if flip {
-        for q in &mut p {
-            q.x = W - q.x;
+    let mut grid = [0u8; GX * GY];
+    let mut neb = Nebula { light: Vec::new(), lanes: Vec::new(), stars: Vec::new(), peak: 0 };
+    for k in 0..clouds {
+        let flip = r.chance(0.5);
+        let (mut p, scale, colors) = if clouds == 1 {
+            let p = [
+                Vec2::new(r.range(-250.0, 350.0), r.range(-150.0, H + 150.0)),
+                Vec2::new(r.range(250.0, 800.0), r.range(-100.0, H + 100.0)),
+                Vec2::new(r.range(800.0, 1350.0), r.range(-100.0, H + 100.0)),
+                Vec2::new(r.range(1250.0, 1850.0), r.range(-150.0, H + 150.0)),
+            ];
+            (p, 1.0, (n0, n1))
+        } else {
+            let share = W / clouds as f32;
+            let mid = Vec2::new((k as f32 + r.range(0.3, 0.7)) * share, r.range(0.25, 0.75) * H);
+            let half = Vec2::from_angle(r.range(-0.9, 0.9)) * r.range(0.3, 0.45) * W;
+            let side = Vec2::new(-half.y, half.x) * r.range(-0.35, 0.35);
+            let p = [mid - half, mid - half * 0.35 + side, mid + half * 0.35 - side, mid + half];
+            let colors = [(n0, n1), (n1, core), (mix(core, n0, 0.5), n0), (n1, n0)][k as usize % 4];
+            (p, 0.7, colors)
+        };
+        if flip {
+            for q in &mut p {
+                q.x = W - q.x;
+            }
         }
+        cloud(r, &mut neb, &mut grid, stack, (p, scale), (colors, core, dark, s), clouds == 1);
     }
+    neb.peak = grid.iter().copied().max().unwrap_or(0);
+    neb
+}
+
+/// One cloud along the curve through `p` (blobs `scale` of the whole view's): washes from the first colour to the
+/// second, cores with stars, dust lanes; `whole`: the one cloud across the view (more washes).
+fn cloud(r: &mut Stream, neb: &mut Nebula, grid: &mut [u8; GX * GY], stack: u8, (p, scale): ([Vec2; 4], f32), ((c0, c1), core, dark, s): ((Rgb, Rgb), Rgb, Rgb, f32), whole: bool) {
     let bez = |t: f32| {
         let u = 1.0 - t;
         p[0] * u * u * u + p[1] * 3.0 * u * u * t + p[2] * 3.0 * u * t * t + p[3] * t * t * t
@@ -87,7 +114,6 @@ pub(super) fn nebula(r: &mut Stream, sky: &data::Sky, dark: Rgb, hot: bool) -> N
         let d = bez((t + 0.01).min(1.0)) - bez((t - 0.01).max(0.0));
         d.y.atan2(d.x)
     };
-    let mut grid = [0u8; GX * GY];
     let mut add = |list: &mut Vec<Blob>, mut b: Blob| -> bool {
         for _ in 0..5 {
             let cells = b.cells();
@@ -100,30 +126,29 @@ pub(super) fn nebula(r: &mut Stream, sky: &data::Sky, dark: Rgb, hot: bool) -> N
         }
         false
     };
-    let mut neb = Nebula { light: Vec::new(), lanes: Vec::new(), stars: Vec::new(), peak: 0 };
-    let nw = r.int(5, 7);
+    let nw = if whole { r.int(5, 7) } else { r.int(3, 5) };
     for i in 0..nw {
         let t = (i as f32 / (nw - 1) as f32 + r.range(-0.06, 0.06)).clamp(0.0, 1.0);
-        let rx = r.range(200.0, 340.0);
+        let rx = r.range(200.0, 340.0) * scale;
         let b = Blob {
-            at: bez(t) + Vec2::new(r.gauss(), r.gauss()) * 45.0,
+            at: bez(t) + Vec2::new(r.gauss(), r.gauss()) * 45.0 * scale,
             r: Vec2::new(rx, rx * r.range(0.42, 0.72)),
             rot: tan(t) + r.range(-0.35, 0.35),
             f: Wob::new(r, 0.24, 6, 1.1),
-            col: mix(n0, n1, (t + r.range(-0.2, 0.2)).clamp(0.0, 1.0)),
+            col: mix(c0, c1, (t + r.range(-0.2, 0.2)).clamp(0.0, 1.0)),
             a: r.range(0.2, 0.3) * s,
         };
         add(&mut neb.light, b);
     }
     for _ in 0..r.int(2, 4) {
         let t = r.range(0.15, 0.85);
-        let (th, off, rx) = (tan(t), r.range(-40.0, 40.0), r.range(90.0, 180.0));
+        let (th, off, rx) = (tan(t), r.range(-40.0, 40.0) * scale, r.range(90.0, 180.0) * scale);
         let b = Blob {
             at: bez(t) + Vec2::new(-th.sin(), th.cos()) * off,
             r: Vec2::new(rx, rx * r.range(0.5, 0.8)),
             rot: th + r.range(-0.5, 0.5),
             f: Wob::new(r, 0.26, 6, 1.1),
-            col: mix(core, n1, r.range(0.0, 0.4)),
+            col: mix(core, c1, r.range(0.0, 0.4)),
             a: r.range(0.22, 0.32) * s,
         };
         let (at, rr) = (b.at, b.r);
@@ -136,7 +161,7 @@ pub(super) fn nebula(r: &mut Stream, sky: &data::Sky, dark: Rgb, hot: bool) -> N
     }
     for _ in 0..r.int(1, 3) {
         let t = r.range(0.2, 0.8);
-        let (th, off, rx) = (tan(t), r.range(-50.0, 50.0), r.range(140.0, 240.0));
+        let (th, off, rx) = (tan(t), r.range(-50.0, 50.0) * scale, r.range(140.0, 240.0) * scale);
         neb.lanes.push(Blob {
             at: bez(t) + Vec2::new(-th.sin(), th.cos()) * off,
             r: Vec2::new(rx, rx * r.range(0.07, 0.13)),
@@ -146,8 +171,6 @@ pub(super) fn nebula(r: &mut Stream, sky: &data::Sky, dark: Rgb, hot: bool) -> N
             a: r.range(0.14, 0.22),
         });
     }
-    neb.peak = grid.iter().copied().max().unwrap_or(0);
-    neb
 }
 
 /// A blob as a fan: alpha `a` in the middle falling smoothly to nothing at the edge.

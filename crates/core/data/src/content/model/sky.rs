@@ -107,8 +107,6 @@ pub enum PlanetForm {
     Geyser,
     /// Yellow and volcanic: base, then patch colours.
     Sulfur,
-    /// Faceted, catching the light: light, dark.
-    Crystal,
     /// An irregular captured rock: base, maria, light.
     Rubble,
 }
@@ -123,7 +121,7 @@ impl PlanetForm {
             PlanetForm::Living | PlanetForm::Eyeball => 5,
             PlanetForm::Garden | PlanetForm::Ocean | PlanetForm::Lava => 4,
             PlanetForm::Desert | PlanetForm::Ice | PlanetForm::Rock | PlanetForm::Rubble => 3,
-            PlanetForm::Geyser | PlanetForm::Sulfur | PlanetForm::Crystal => 2,
+            PlanetForm::Geyser | PlanetForm::Sulfur => 2,
         }
     }
 }
@@ -148,6 +146,38 @@ pub struct Sky {
     /// The planet stands against its light (a thin lit crescent and a glowing limb).
     #[serde(default)]
     pub backlit: bool,
+}
+
+/// What the shipyard's sky shows besides the first band's nebula colours ([`crate::Galaxy::home_sky`], Niklas, 18 Oct
+/// 2026): several nebula clouds and a far galaxy of its own.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct HomeSky {
+    /// Nebula clouds, each strung along a curve of its own (1 to 4; a cluster's sky has one).
+    pub clouds: u32,
+    /// How strong the sky shows behind the shipyard (0 to 1; the rest veiled in its dark).
+    pub strength: f32,
+    pub galaxy: FarGalaxy,
+}
+
+/// A far galaxy chosen rather than rolled: its kind, its size as a share of a rolled one's, its colour (`#rrggbb`,
+/// the arms' or the clumps' light) and where it lies in the view (shares of its width and height from the top left).
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct FarGalaxy {
+    pub kind: GalaxyKind,
+    pub size: f32,
+    pub color: String,
+    pub at: (f32, f32),
+}
+
+/// The kinds of far galaxy a sky shows.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum GalaxyKind {
+    Spiral,
+    Elliptical,
+    EdgeOn,
+    Irregular,
 }
 
 /// A planet or moon kind (id) and its weight in a [`Sky`].

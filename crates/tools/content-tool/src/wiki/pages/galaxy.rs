@@ -87,7 +87,7 @@ impl Wiki<'_> {
     pub(crate) fn galaxy_page(&self, g: &Galaxy) -> String {
         let root = UP;
         let c = self.c;
-        let facts = vec![
+        let mut facts = vec![
             ("Bands".to_string(), g.bands.len().to_string()),
             ("Spacing".into(), format!("<span title=\"No two clusters closer\">{}</span>", self.value("galaxy_distance", g.spacing))),
             ("Jump range at the start".into(), self.value("jump_range", g.jump_range)),
@@ -99,6 +99,16 @@ impl Wiki<'_> {
             ("Trail step".into(), self.s_range(g.trail_step)),
             ("Name parts".into(), format!("{} starts, {} ends", g.names.starts.len(), g.names.ends.len())),
         ];
+        if let Some(h) = &g.home_sky {
+            let kind = match h.galaxy.kind {
+                data::GalaxyKind::Spiral => "a spiral",
+                data::GalaxyKind::Elliptical => "an elliptical",
+                data::GalaxyKind::EdgeOn => "an edge-on",
+                data::GalaxyKind::Irregular => "an irregular",
+            };
+            let what = format!("{} nebula clouds, {kind} galaxy at {} × the usual size, at {} × the base strength (drawn only)", h.clouds, format_number(h.galaxy.size, 2), format_number(h.strength, 2));
+            facts.push(("The shipyard's sky".into(), what));
+        }
         let mut bands = String::from(
             "<table class=\"list\">\n<tr><th>Band</th><th class=\"num\">Edge</th><th>Clusters</th><th>Gates</th></tr>\n",
         );

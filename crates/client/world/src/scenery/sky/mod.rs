@@ -1,7 +1,7 @@
 //! The sky behind a cluster (GDR-0105): one to four planets (by the cluster's size) (each whole, one at most large), their moons, a nebula
 //! and a far galaxy, rolled from the cluster's seed on named streams (one per layer) from its type's or its band's
 //! `sky` and the planet kinds (`planets.ron`), built once per voyage as vertex-coloured meshes and drawn far behind
-//! the play; at home the home band's nebula and galaxy alone, fainter. Client-only: the sim never sees it.
+//! the play; at home the home band's nebula colours alone, fainter, in the galaxy's `home_sky` clouds with its far galaxy. Client-only: the sim never sees it.
 //!
 //! Composed in a design frame of 1600 × 900 px (the study's), scaled to the view's height: the galaxy kept at its
 //! distance from the view's left or right edge, the nebula stretched to the view's width, each planet and its moons
@@ -120,7 +120,7 @@ pub(super) struct Over {
 
 /// The sky's inputs: the sky itself, the seed, the hot star's direction on screen from the entry (y up), a planet
 /// kind to show as the first planet (`?planet=<kind>`, for looking at kinds), the cluster (none at home: no
-/// planets) and how strong it shows.
+/// planets), how strong it shows and, at the shipyard, its clouds and galaxy ([`data::HomeSky`]).
 pub(super) struct SkySpec<'a> {
     pub sky: &'a Sky,
     pub seed: u64,
@@ -128,6 +128,7 @@ pub(super) struct SkySpec<'a> {
     pub planet: Option<&'a str>,
     pub over: Option<Over>,
     pub strength: f32,
+    pub home: Option<&'a data::HomeSky>,
 }
 
 /// A rolled planet: its body (in the design frame's middle), its kind, its anchor and its parallax.
@@ -168,8 +169,8 @@ pub(super) fn spawn(cx: &mut Build, s: &SkySpec, content: &data::Content) -> Opt
         }
         None => (Vec::new(), Vec::new()),
     };
-    let nebula = nebula::nebula(&mut Stream::new(s.seed, "nebula"), s.sky, night, hot.is_some());
-    let galaxy = galaxy::galaxy(&mut Stream::new(s.seed, "galaxy"), s.sky.galaxy, roll::hex(&s.sky.nebula.0));
+    let nebula = nebula::nebula(&mut Stream::new(s.seed, "nebula"), s.sky, night, hot.is_some(), s.home.map_or(1, |h| h.clouds));
+    let galaxy = galaxy::galaxy(&mut Stream::new(s.seed, "galaxy"), s.sky.galaxy, roll::hex(&s.sky.nebula.0), s.home.map(|h| &h.galaxy));
 
     let light = planets.first().map(|p| p.body.light);
     let mut counts = SkyCounts { planets: Vec::new(), moons: Vec::new(), vertices: [0; 4], nebula_peak: nebula.peak, galaxy: galaxy.kind.name(), light };
@@ -471,7 +472,7 @@ mod tests {
     /// The planets and moons of `seed` over a cluster of `radius`.
     fn roll(c: &data::Content, sky: &Sky, seed: u64, radius: f32) -> (Vec<Planet>, Vec<(Body, usize, String)>) {
         let over = Over { radius, entry: Vec2::new(0.0, -radius) };
-        let s = SkySpec { sky, seed, star: seed.is_multiple_of(3).then_some(Vec2::new(1.0, 0.4)), planet: None, over: Some(over), strength: STRENGTH };
+        let s = SkySpec { sky, seed, star: seed.is_multiple_of(3).then_some(Vec2::new(1.0, 0.4)), planet: None, over: Some(over), strength: STRENGTH, home: None };
         let all: Vec<(&PlanetKind, u32)> = c.planets.iter().filter(|k| k.body == BodyClass::Planet).map(|k| (k, 1)).collect();
         let pool: Vec<(&PlanetKind, u32)> = if sky.planets.is_empty() { all.clone() } else { sky.planets.iter().map(|w| (c.planets.get(&w.kind).unwrap(), w.weight)).collect() };
         let hot = s.star.map(|_| Vec2::new(W + 100.0, H / 2.0));

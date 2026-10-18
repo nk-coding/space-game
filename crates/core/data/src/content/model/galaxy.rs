@@ -45,6 +45,10 @@ pub struct Galaxy {
     /// cluster of its band that takes its name.
     #[serde(default)]
     pub set_pieces: Vec<SetPiece>,
+    /// The shipyard's sky (drawn only): its nebula clouds and far galaxy, in the first band's nebula colours; without
+    /// it the first band's sky as it is.
+    #[serde(default)]
+    pub home_sky: Option<super::HomeSky>,
     #[serde(skip_deserializing)]
     pub source: Source,
 }

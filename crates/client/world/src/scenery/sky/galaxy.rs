@@ -48,6 +48,9 @@ const ARM_HUES: [(Rgb, u32); 5] =
 const H_WIND: f32 = 0.34;
 /// Wound arm segments of a spiral.
 const SEGMENTS: usize = 38;
+/// A rolled galaxy's radius in the design frame (px, before its kind's 1.15): half the study's 70–140 (Niklas, 18 Oct
+/// 2026: at most half the size on screen).
+const RADIUS: (f32, f32) = (35.0, 70.0);
 
 /// What kind of galaxy a sky shows (spirals most common: the study's spiral and barred spiral, which variant H draws
 /// alike).
@@ -89,7 +92,8 @@ struct Segment {
 
 /// A galaxy's colours, rolled per galaxy (Niklas, 18 Oct 2026: the reference's violet was only an example): a warm
 /// core (cream to gold or pink), two arm hues from [`ARM_HUES`] nudged towards the sky's nebula and evened out in
-/// brightness, knots pink-magenta to orange-red, dust brown to deep red.
+/// brightness, knots pink-magenta to orange-red, dust brown to deep red; an irregular galaxy's clumps blue and warm.
+/// A chosen galaxy's colour ([`data::FarGalaxy`]) takes the arms' and the clumps' place.
 struct Palette {
     core: Rgb,
     core2: Rgb,
@@ -100,6 +104,8 @@ struct Palette {
     haze: Rgb,
     knot: Rgb,
     dust: Rgb,
+    clump: Rgb,
+    clump2: Rgb,
 }
 
 /// `c` scaled to the luminance `l` (no channel over 1).
@@ -109,10 +115,16 @@ fn even(c: Rgb, l: f32) -> Rgb {
 }
 
 impl Palette {
-    fn roll(r: &mut Stream, tint: Rgb) -> Palette {
+    fn roll(r: &mut Stream, tint: Rgb, own: Option<Rgb>) -> Palette {
         let near = mix(tint, WHITE, 0.45);
         let weights = ARM_HUES.map(|h| h.1);
-        let mut arm = || even(mix(ARM_HUES[r.weighted(&weights)].0, near, 0.18), 0.6);
+        let mut arm = || {
+            let hue = ARM_HUES[r.weighted(&weights)].0;
+            match own {
+                Some(c) => even(mix(c, hue, 0.15), 0.6),
+                None => even(mix(hue, near, 0.18), 0.6),
+            }
+        };
         let (arm, arm2) = (arm(), arm());
         let warm = if r.chance(0.5) { rgb(255, 222, 170) } else { rgb(255, 206, 206) };
         let core = mix(rgb(255, 238, 222), warm, r.next());
@@ -128,6 +140,8 @@ impl Palette {
             haze: even(arm, 0.5),
             knot,
             dust,
+            clump: own.map_or(BLUE, |c| even(c, 0.55)),
+            clump2: own.map_or(WARM, |c| mix(c, WARM, 0.5)),
         }
     }
 }
@@ -158,9 +172,9 @@ pub(super) struct Meshes {
 }
 
 /// Rolls the galaxy clear of the view's middle (the planets pass over it), its colours nudged towards `tint` (the
-/// sky's nebula).
-pub(super) fn galaxy(r: &mut Stream, strength: f32, tint: Rgb) -> Galaxy {
-    let rg = r.range(70.0, 140.0);
+/// sky's nebula); a `chosen` one (the shipyard's) of its kind, size and colour, where it says.
+pub(super) fn galaxy(r: &mut Stream, strength: f32, tint: Rgb, chosen: Option<&data::FarGalaxy>) -> Galaxy {
+    let rg = r.range(RADIUS.0, RADIUS.1) * chosen.map_or(1.0, |c| c.size);
     let mut best = (Vec2::ZERO, f32::MIN);
     for _ in 0..40 {
         let at = Vec2::new(r.range(rg + 30.0, W - rg - 30.0), r.range(rg * 0.6 + 30.0, H - rg * 0.6 - 30.0));
@@ -170,7 +184,13 @@ pub(super) fn galaxy(r: &mut Stream, strength: f32, tint: Rgb) -> Galaxy {
             best = (at, score);
         }
     }
-    let kind = [Kind::Spiral, Kind::Elliptical, Kind::EdgeOn, Kind::Irregular][r.weighted(&[60, 12, 16, 12])];
+    let rolled = [Kind::Spiral, Kind::Elliptical, Kind::EdgeOn, Kind::Irregular][r.weighted(&[60, 12, 16, 12])];
+    let kind = chosen.map_or(rolled, |c| match c.kind {
+        data::GalaxyKind::Spiral => Kind::Spiral,
+        data::GalaxyKind::Elliptical => Kind::Elliptical,
+        data::GalaxyKind::EdgeOn => Kind::EdgeOn,
+        data::GalaxyKind::Irregular => Kind::Irregular,
+    });
     let dir = if r.chance(0.5) { 1.0 } else { -1.0 };
     let ph0 = r.range(0.0, TAU);
     let k = match kind {
@@ -190,8 +210,9 @@ pub(super) fn galaxy(r: &mut Stream, strength: f32, tint: Rgb) -> Galaxy {
     } else {
         Vec::new()
     };
-    let pal = Palette::roll(&mut Stream::new(seed, "hpal"), tint);
-    Galaxy { at: best.0, rg: rg * 1.15, kind, dir, ph0, k, rot, seed, n1, n2, clumps, pal, strength }
+    let pal = Palette::roll(&mut Stream::new(seed, "hpal"), tint, chosen.map(|c| super::roll::hex(&c.color)));
+    let at = chosen.map_or(best.0, |c| Vec2::new(c.at.0 * W, c.at.1 * H));
+    Galaxy { at, rg: rg * 1.15, kind, dir, ph0, k, rot, seed, n1, n2, clumps, pal, strength }
 }
 
 /// Draws into a mesh in the galaxy's frame: placed (scaled by its radius, flattened by `k`, turned), every alpha
@@ -320,7 +341,7 @@ impl Galaxy {
             }
             Kind::Irregular => {
                 for c in &self.clumps {
-                    e += if c.blue { BLUE } else { WARM } * 0.45 * c.w * (-(p - c.at).length_squared() / (c.s * c.s)).exp() * (0.7 + 0.5 * n1);
+                    e += if c.blue { self.pal.clump } else { self.pal.clump2 } * 0.45 * c.w * (-(p - c.at).length_squared() / (c.s * c.s)).exp() * (0.7 + 0.5 * n1);
                 }
                 e += DISK * 0.06 * (-r / 0.35).exp();
                 0.5 * (n2 - 0.25).max(0.0) * (-r / 0.3).exp()
@@ -532,7 +553,7 @@ mod tests {
     fn meshes() {
         let mut seen = Vec::new();
         for seed in 0..60u64 {
-            let g = galaxy(&mut Stream::new(seed, "galaxy"), 0.85, Vec3::new(0.12, 0.5, 0.55));
+            let g = galaxy(&mut Stream::new(seed, "galaxy"), 0.85, Vec3::new(0.12, 0.5, 0.55), None);
             let m = g.meshes(Vec2::ZERO, 0.85);
             assert!(m.field.finite() && m.dust.finite() && m.glow.finite());
             let n = m.field.len() + m.dust.len() + m.glow.len();

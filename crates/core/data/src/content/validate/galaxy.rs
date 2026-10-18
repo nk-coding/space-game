@@ -39,6 +39,9 @@ impl<'a> Validator<'a> {
     /// numbers the generator can work with.
     pub(super) fn galaxy(&mut self, g: &'a Galaxy) {
         let c = self.c;
+        if let Some(h) = &g.home_sky {
+            self.home_sky(g, h);
+        }
         if g.bands.is_empty() {
             self.err(g, "bands", "a galaxy needs at least one band");
         }
