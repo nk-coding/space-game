@@ -322,10 +322,11 @@ impl Body {
         Vec3::new(self.light.cos() * self.phase.sin(), self.light.sin() * self.phase.sin(), self.phase.cos())
     }
 
-    /// How lit a sphere point is: 1 day, 0 night, soft across the terminator (softer with more air).
+    /// How lit a sphere point is: 1 day, 0 night, soft across the terminator: sharp on an airless body, a wide
+    /// twilight under air (Niklas, 18 Oct 2026: an earth-like world's night read as a hard dark half).
     fn lit(&self, s: Vec3) -> f32 {
         let lv = self.look.air.lv;
-        smooth(-0.1 - 0.22 * lv, 0.1 + 0.12 * lv, s.dot(self.sun()))
+        smooth(-0.1 - 0.45 * lv, 0.1 + 0.3 * lv, s.dot(self.sun()))
     }
 
     /// The light on a surface colour `c` at sphere point `s` (design frame).
@@ -339,7 +340,8 @@ impl Body {
         let hl = s.truncate() - sun.truncate().normalize_or_zero() * 0.35;
         day += WHITE * 0.07 * (1.0 - hl.length() / 1.1).max(0.0);
         day = mix(day, night, 0.45 * (1.0 - 0.4 * lv) * ((r - 0.5) / 0.5).clamp(0.0, 1.0));
-        let mut out = mix(mix(night, c, 0.07), day, self.lit(s));
+        // under air the night keeps a little of the surface's colour (light scattered round the world)
+        let mut out = mix(mix(night, c, 0.07 + 0.1 * lv), day, self.lit(s));
         if let Some(g) = self.look.night_glow {
             out += g * (1.0 - self.lit(s)) * (0.06 + 0.2 * r * r);
         }

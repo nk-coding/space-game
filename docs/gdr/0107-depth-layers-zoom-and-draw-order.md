@@ -37,6 +37,21 @@
   Three planets and their moons: 33 k vertices on average, 55 k at most (one planet with moons was 7–36 k). Home shows
   the home band's nebula and galaxy (no planets, strength 0.55). Screenshots `docs/results/sky-planets-a.png`,
   `sky-planets-b.png`, `home-sky.png`.
+  2026-10-18, fourth (Niklas: three planets and their moons still piled up in the middle of Corran Reach's view;
+  "the idea of multiple planets is that most of the time some is on screen"; provisional numbers, lead): the sky's
+  travel was too short for its planets (a planets' layer moves radius × parallax × 18 px from the centre to the
+  edge: 430 px at Corran Reach, 1 km, at 0.024, less than half a view). The planets' parallax is now set per sky
+  (`sky::depth`): the most planets, up to 4, whose 1280 × 720 views fill 0.9 of that reach at a parallax of at
+  most 0.04, never under 0.021 (planets 0.018–0.046 with their ± 15 %, above the stars and landmarks, far below the
+  junk; zoomed all the way in a planet grows by at most 12 %, was 7 %): 1 planet at 600 m, 2 at 1 km (0.038), 2–4 at
+  2–2.5 km, 4 at 3–4 km (0.021). The first planet shows in the entry's view to a side (0.16–0.26 of the width off the
+  middle, level or up to 0.16 of the height towards the centre), each other is the best of 64 anchors at least
+  900 px from the planets before it and clear of them by the share of 128 camera places that see exactly one planet,
+  kept only if it raises it. Exactly one planet is in view from 94 / 73 / 73 / 71 / 62 % of a 1 / 2 / 2.5 / 3 / 4 km
+  cluster, one or more from 95 / 78 / 78 / 80 / 64 %, three or more from 0 / 0 / 0 / 0.1 / 0 %. The night side under
+  air is softer (the terminator's twilight about twice as wide, the night keeping 7 % + 10 % × the air of the
+  surface's colour; airless bodies unchanged). Screenshots `docs/results/sky-spread-corran-start.png`,
+  `sky-spread-corran-500m.png`, `sky-spread-3km-a.png`, `sky-spread-3km-b.png`.
 - Date: 2026-10-17
 - Decided by: lead session (defaults for Niklas's play-test of 17 Oct 2026 of GDR-0104's scenery and GDR-0105's sky)
 - Related: [GDR-0104](0104-scenery-rocks-filler-landmarks.md), [GDR-0105](0105-cluster-sky-planets-nebula-galaxy.md), [GDR-0106](0106-flight-minimap.md), `docs/client.md` "Scenery"

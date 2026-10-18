@@ -196,7 +196,8 @@ fn sync(
         if let Some(c) = sky::spawn(cx, &s, &world.content) {
             let [planets, moons, nebula, galaxy] = c.vertices;
             info!(
-                "sky: planets [{}] with moons [{}]; vertices: planets {planets}, moons {moons}, nebula {nebula} (at most {} blobs over a point), galaxy {galaxy}; built in {:.0} ms",
+                "sky over {:.0} m: planets [{}] with moons [{}]; vertices: planets {planets}, moons {moons}, nebula {nebula} (at most {} blobs over a point), galaxy {galaxy}; built in {:.0} ms",
+                spec.radius,
                 c.planets.join(", "),
                 c.moons.join(", "),
                 c.nebula_peak,
