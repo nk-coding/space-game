@@ -47,3 +47,9 @@ and home) of 240 runs. ± is about 6 points (95 %).
 
 Player piloting (the runner's closing pilot only), the heat sink's and spore radiator's value on hot builds (beam
 ships), and the Grown voyages.
+
+## Screenshots (1280×720, a test save)
+
+- `sidegrades-research-1280.png`: the research screen with the new nodes (compact reactor, burst laser, long-barrel
+  cannon, wide bubble selected, heat sink).
+- `sidegrades-ammo-feeder-card-1280.png`: the drydock's hover card of the ammo feeder (+15 %, at most two).
