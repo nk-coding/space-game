@@ -75,7 +75,9 @@ Gates are hidden: each lies at the end of a trail of its own ([[trail:rim_gate]]
 the one [[encounter:the_warden]] keeps: the first four voyages are its trail, and clearing [[voyage:wardens_gate]] opens
 it. The rim's other gates are kept by a [[encounter:gate_sentinel]]. The outer reach's gates ([[trail:outer_gate]]) are
 kept by a precursor guardian of their own, the [[ship:automaton_bastion]] ([[encounter:bastion_gate]]); the Grown's
-giants are no gate guardians but rest at an [[encounter:elder_grove]] at the end of a trail of their own.
+giants are no gate guardians but rest at an [[encounter:elder_grove]] at the end of a trail of their own. Further in
+([[trail:deep_gate]]) the [[ship:automaton_keeper]] keeps the gates ([[encounter:keeper_gate]]): a ring of four
+shielded pods round a heart, each pod on a core of its own, so you open it pod by pod.
 
 ## Trails and signals
 

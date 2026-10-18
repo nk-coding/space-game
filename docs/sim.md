@@ -44,8 +44,8 @@ stripped), a hot star heats every part open to space; a `grown` determinism scen
 
 **The Grown in play on 18 Oct 2026** (GDR-0103): the `ram` behavior action (`Maneuver::Ram`); the headless voyage
 runner opens fire on a wary site it heads for (it never wakes on sight); the test range's waves leave out wary
-factions' ships; the scenarios that spawn every blueprint leave out the outer reach's (`scenario::OUTER_TAG`), so
-they run as before.
+factions' ships; the scenarios that spawn every blueprint leave out the outer reach's (`scenario::DEEP_TAGS`, since the
+Keeper of the same day also the middle band's), so they run as before.
 
 No Bevy, no graphics, no threads, no filesystem, no wall-clock. Builds for `wasm32-unknown-unknown` and
 `wasm32-wasip1`. Dependencies: `data` (content), `libm` (pinned `=0.2.16`, `arch` feature off), `rhai`
@@ -528,7 +528,7 @@ longest 71 ticks). The slice (balance harness, 120 seeds, clear % before → aft
 Warden's gate identical run for run): within the noise.
 
 Scenarios (`sim::voyage::scenario`); `core` and `flight` spawn two copies of every blueprint in the content (but
-those tagged `outer`, since 18 Oct 2026):
+those tagged `outer` or `middle`, since 18 Oct 2026, `scenario::DEEP_TAGS`):
 
 - `core`: raw throttles and fire flags (every second ship flat out), random hits, a blast every 75 ticks, a ram
   run every 600 ticks (a ship-mind vessel and an automaton or wreck launched head-on at 20 m/s each, away from the

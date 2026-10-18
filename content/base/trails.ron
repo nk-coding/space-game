@@ -5,7 +5,7 @@
 // place their own. Following a trail to its end gives its reward (GDR-0098): a gate opens, a fragment joins the
 // memory log, `gives` goes into store (a cache's research data and materials), a graveyard is salvage.
 // PLACEHOLDER NUMBERS (lead, 16 Oct 2026, from the plan's section 4.3; the rewards and targets 17 Oct 2026, track E8;
-// the outer reach's gates and elder groves 18 Oct 2026, GDR-0103).
+// the outer reach's gates and elder groves 18 Oct 2026, GDR-0103; the deeper gates' Keeper the same day, GDR-0112).
 [
     (
         id: "rim_gate",
@@ -21,11 +21,10 @@
     (
         id: "deep_gate",
         name: "A deeper gate",
-        summary: "A trail to a gate further in. Its guardian is a stand-in until the band has its own.",
-        tags: ["stub"],
+        summary: "The long trail to a gate further in, and the Keeper that guards it.",
         reward: Gate,
         length: (3, 4),
-        target: "the_warden",
+        target: "keeper_gate", // the Keeper (GDR-0112, 18 Oct 2026); the inner band's gates too until it has its own
         sources: ["hauler_log", "precursor_log", "old_beacon"],
         hint: "A gate",
         gives: (materials: {"gate_shard": 1}), // the guardian's gate shard (GDR-0031, 18 Oct 2026)

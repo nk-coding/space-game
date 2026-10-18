@@ -120,6 +120,7 @@ overview and links to both series. Format and status rules: `CLAUDE.md`, section
 | [0109](0109-a-ram-prow-and-an-engine-arm-a-ship.md) | A ram prow and a working engine arm a ship: a rammer without guns keeps its site from clearing and blocks the recall | Accepted (provisional, lead) | 2026-10-18 |
 | [0110](0110-anchored-stations.md) | Stations are anchored ships: every piece keeps its place and only turns; the first is the automaton outpost, a rim and an outer site | Accepted (provisional, lead) | 2026-10-18 |
 | [0111](0111-an-enemy-scan-calls-its-factions-sites.md) | An enemy's scan calls its own faction's sleeping sites within the scanner's range; the first caller is the automaton picket, a rim site | Accepted (provisional, lead) | 2026-10-18 |
+| [0112](0112-the-keeper-guards-the-middle-bands-gates.md) | The Keeper guards the middle band's gates: a ring of four shielded cannon pods round a beam-laser heart, each on a core of its own | Accepted (provisional, lead) | 2026-10-18 |
 <!-- index:end -->
 
 ## How to add, supersede and deprecate

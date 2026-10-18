@@ -1,5 +1,5 @@
 //! Deterministic scenarios for the determinism check (native vs wasm, later the browser) and for tests. Both
-//! spawn two copies of every ship blueprint in the content (load order) but the outer reach's ([`OUTER_TAG`]), so
+//! spawn two copies of every ship blueprint in the content (load order) but those past the rim ([`DEEP_TAGS`]), so
 //! they need no hard-coded ids and grow with the content, and both roll their inputs and hits on the `Scenario` RNG
 //! stream.
 //!
@@ -65,14 +65,15 @@ use crate::ship::{Body, Ship, ShipControls};
 use crate::ship::vessel::Owner;
 use crate::world::{DamageCommand, ShipCommand, Sim, TickInputs};
 
-/// Content ships with this tag (the outer reach's: the Grown, the bastion) are left out of the scenarios that spawn
-/// every blueprint: the `grown` scenario flies the Grown's mechanics, and two of each would outnumber the player's
-/// ships two to one (GDR-0103), so those scenarios run as before them.
-pub const OUTER_TAG: &str = "outer";
+/// Content ships with one of these tags (past the rim: the outer reach's Grown and bastion, the middle band's
+/// keeper) are left out of the scenarios that spawn every blueprint: the `grown` scenario flies the Grown's
+/// mechanics, and two of each would outnumber the player's ships two to one (GDR-0103), so those scenarios run as
+/// before them.
+pub const DEEP_TAGS: [&str; 2] = ["outer", "middle"];
 
-/// The blueprints the scenarios spawn "every blueprint" of: the content's in load order, but [`OUTER_TAG`]'s.
+/// The blueprints the scenarios spawn "every blueprint" of: the content's in load order, but [`DEEP_TAGS`]'.
 pub(super) fn scenario_blueprints(content: &Content) -> impl Iterator<Item = &data::Blueprint> {
-    content.ships.iter().filter(|b| !b.tags.iter().any(|t| t == OUTER_TAG))
+    content.ships.iter().filter(|b| !b.tags.iter().any(|t| DEEP_TAGS.contains(&t.as_str())))
 }
 
 pub use fixtures::BEHAVIOR_MIND_CAPACITY;

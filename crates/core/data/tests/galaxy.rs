@@ -40,6 +40,10 @@ fn the_base_galaxy_is_the_rim_the_outer_reach_and_three_stub_bands() {
     assert!(!outer.tags.iter().any(|t| t == "stub"));
     let gate = c.trails.get(&outer.gates.as_ref().unwrap().trail).unwrap();
     assert_eq!((gate.reward, gate.target.as_str()), (Reward::Gate, "bastion_gate"));
+    // The middle band's gates (GDR-0112): the Keeper, with a guardian's gate shard.
+    let deep = c.trails.get(&c.bands.get("middle").unwrap().gates.as_ref().unwrap().trail).unwrap();
+    assert_eq!((deep.reward, deep.target.as_str()), (Reward::Gate, "keeper_gate"));
+    assert_eq!(deep.gives.materials.get("gate_shard"), Some(&1));
     let elder = c.trails.get("elder_grove").unwrap();
     assert_eq!((elder.reward, elder.target.as_str()), (Reward::Salvage, "elder_grove"));
     assert!(outer.trails.iter().any(|t| t.trail == "elder_grove"));

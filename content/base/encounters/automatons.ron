@@ -186,6 +186,19 @@
         wake_radius: 300,
     ),
     (
+        id: "keeper_gate",
+        name: "The Keeper",
+        summary: "A gate further in, the precursor guardian that keeps it, and three hunters at its side.",
+        description: "The [[ship:automaton_keeper]] is a ring of four shielded pods round a heart: open the pods one by one, or break their bridges and fight each on its own; the heart's beams hold until its cores go dark. Beaten, its gate opens.",
+        lore: "Its pods turn to the gate before they turn to you.",
+        tags: ["boss"],
+        ships: [
+            (ship: "automaton_keeper", count: (1, 1)),
+            (ship: "automaton_hunter", count: (3, 3)),
+        ],
+        wake_radius: 300,
+    ),
+    (
         id: "the_warden",
         name: "The Warden",
         summary: "The gate's old guardian, with raiders at its side.",

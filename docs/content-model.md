@@ -751,12 +751,15 @@ counts tuned with the headless voyage runner, `docs/results/outer-balance-2026-1
 (1–2 raiders, 0–1 gunners), `bastion_gate` (the `automaton_bastion`, a gunner and a hunter: the outer gates' trail
 `outer_gate`), `elder_grove` (the `grown_elder` and a rammer, 1–2 guardian wrecks: the trail `elder_grove`). Grown
 sites are wary (they wake only when provoked, GDR-0102); the Grown fly `behaviors/grown.ron`. Ships tagged `outer`
-stay out of the determinism scenarios that spawn every blueprint. The content batch of 18 Oct 2026
+(and the middle band's, `middle`) stay out of the determinism scenarios that spawn every blueprint. The content batch of 18 Oct 2026
 (`docs/results/encounters-balance-2026-10-18.md`): `seedling_shoal` (5–6 `grown_seedling`s, GDR-0109) in the grove
 reach, `scorched_wrecks` (wrecks only, 2–3 `sample_mid`s and 1–2 hunters, `near_star`) in the scorched deep,
 `precursor_outpost` (the anchored `automaton_outpost` and a `sample_mid` wreck, `encounters/automatons.ron`, 0–1 per
 wreck drift) and `outpost_garrison` (the outpost, a gunner, a hunter, 1–2 `sample_mid` wrecks, 0–1 per border drift;
-GDR-0110); the station flies `behaviors/outpost.ron`.
+GDR-0110); the station flies `behaviors/outpost.ron`. Then `picket_post` (the unarmed `automaton_picket`, tagged
+`scout`, and a raider pair, 0–1 per wreck drift and hunting reach; it flies `behaviors/picket.ron`, and its scans
+call its faction's sites, GDR-0111) and `keeper_gate` (the `automaton_keeper`, tagged `middle`, and three hunters:
+the deeper gates' trail `deep_gate`, GDR-0112; `docs/results/picket-keeper-balance-2026-10-18.md`).
 
 ### Controls (`controls.ron`, added 15 Oct 2026, GDR-0090)
 

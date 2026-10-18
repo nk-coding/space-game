@@ -48,3 +48,29 @@ which arrived together 35 s later and were beaten for 13 % of the hull (the same
 So the runner cannot measure what the picket is for (the player's choice of fights, a quiet salvage run, not
 being caught between sites); the chosen rule is the one that wakes the most sites near the fleet without spawning
 far ones. Open in GDR-0111: whether called ships should gather on the caller first.
+
+## The Keeper (`automaton_keeper`, `keeper_gate`; [GDR-0112](../gdr/0112-the-keeper-guards-the-middle-bands-gates.md))
+
+| Test voyage | Sites (the last the goal), radius 1200 m, sites 450–800 m apart |
+|---|---|
+| t_war, t_bas, t_keep | the_warden, bastion_gate, keeper_gate alone |
+| t_bas3, t_keep3 | raider_pack, hunter_pack, then bastion_gate or keeper_gate |
+
+Runner + one skiff (S) and + two skiffs (SS), clear % / hull lost:
+
+| Voyage | Runner + S | Runner + SS | Runner + C |
+|---|---|---|---|
+| t_war (the Warden and 2–3 raiders) | 86 / 23 % | 98 / 17 % | 92 / 21 % |
+| t_bas (the bastion, a gunner and a hunter) | 82 / 30 % | 89 / 27 % | 76 / 34 % |
+| t_keep, the Keeper and 2 hunters | 56 / 41 % | 76 / 30 % | 57 / 40 % |
+| t_keep, the Keeper and 2 hunters, 2 gunners | 26 / 57 % | 42 / 52 % | — |
+| **t_keep, the Keeper and 3 hunters (chosen)** | **38 / 50 %** | **57 / 42 %** | — |
+| t_bas3 | 22 / 56 % | 39 / 55 % | — |
+| t_keep3, 2 hunters | 20 / 52 % | 33 / 50 % | — |
+| **t_keep3, 3 hunters (chosen)** | **10 / 58 %** | **20 / 61 %** | — |
+
+A gate alone is far easier for the runner than at the end of a run (the bastion gate 82 % alone, 22 % behind two
+packs, against the 52 % of GDR-0103's outer run). With two hunters the Keeper was barely harder than the bastion
+behind two packs (20 against 22 %); with three it clears about half as often in both, a clear step above it. The
+middle band's clusters are still the rim's automatons (`uncharted_deep`), and a fleet that gets this far should be
+stronger than a Runner and skiffs: re-measure when the band has its race.
