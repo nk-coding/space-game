@@ -53,6 +53,7 @@ pub struct PartRow {
 /// One family's research data.
 #[derive(Clone, Debug, PartialEq)]
 pub struct FamilyLine {
+    /// The family's name as the content writes it (`Kinetic weapons`).
     pub name: String,
     pub gained: f32,
     pub store: f32,
@@ -157,7 +158,7 @@ impl DebriefData {
             .data
             .iter()
             .map(|(f, &gained)| FamilyLine {
-                name: upper(family(f).map_or(f, |f| &f.name)),
+                name: family(f).map_or_else(|| f.clone(), |f| f.name.clone()),
                 gained,
                 store: after.data().get(f).copied().unwrap_or(0.0),
                 color: family(f).and_then(|f| f.color.clone()),
@@ -328,7 +329,7 @@ mod tests {
         assert_eq!((thruster.count, thruster.intact, thruster.gives.as_str()), (3, true, ""));
         let fragment = d.rows.iter().find(|r| r.name.ends_with("fragment")).unwrap();
         assert!(fragment.gives.contains("PROGRAMMABLE MATTER +1"), "{}", fragment.gives);
-        let kinetic = d.families.iter().find(|f| f.name == "KINETIC WEAPONS").unwrap();
+        let kinetic = d.families.iter().find(|f| f.name == "Kinetic weapons").unwrap();
         assert_eq!(kinetic.gained, kinetic.store);
         assert_eq!(d.opened, ["Halvex Drift"]);
         assert_eq!(d.signals(), [("SIGNAL FOUND  ·  HALVEX DRIFT".to_string(), Tone::Teal)]);

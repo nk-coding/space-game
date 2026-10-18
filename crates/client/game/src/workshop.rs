@@ -545,10 +545,15 @@ fn spawn_strip(p: &mut ChildSpawnerCommands, fonts: &HudFonts, style: &Style, s:
     });
 }
 
-/// A part's icon as the drydock's palette shows it (hull parts in the first armour).
+/// A part's icon as the drydock's palette shows it (hull parts in the first armour), in a list row.
 pub(crate) fn icon(content: &Content, part: &str) -> (UiIcon, Node) {
+    icon_sized(content, part, Vec2::new(32.0, 28.0))
+}
+
+/// A part's icon in a node of `size` (logical px).
+pub(crate) fn icon_sized(content: &Content, part: &str, size: Vec2) -> (UiIcon, Node) {
     let armor = content.materials.iter().find(|m| m.armor.is_some()).map_or("", |m| m.id.as_str());
-    (part_icon(content, part, armor), Node { width: px(32), height: px(28), flex_shrink: 0.0, ..default() })
+    (part_icon(content, part, armor), Node { width: px(size.x), height: px(size.y), flex_shrink: 0.0, ..default() })
 }
 
 /// The parts list: what the fleet is short of and FABRICATE MISSING, then a row per part with its stock, MAKE and

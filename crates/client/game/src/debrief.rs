@@ -43,13 +43,15 @@
 //!   is refilled whenever the career changes. What the panel leaves is kept (`Career::keep_intake`) when it is
 //!   dismissed, and at any time at home without an open report (a report never seen). Dismantling later in the
 //!   WORKSHOP is always possible.
-//! * GAINED sums what the dismantled parts gave in two columns (research data by family, materials), then a grid
-//!   of the dismantled parts' icons (`workshop::icon`, the drydock's part icons) with their counts; a tile's tooltip
-//!   is what that part gave. The icons are world meshes, so the panel's backing is one too (`UiIcon::Scrim`) and
+//! * GAINED sums what the dismantled parts gave in two columns (research data by family, materials; an empty one is
+//!   left out and the other takes the width): names in body text beside a fixed value column (a long name wraps), a
+//!   TOTAL under two lines or more; then a grid of compact tiles of the dismantled parts' icons (`workshop::icon_sized`,
+//!   the drydock's part icons) with their counts; a tile's tooltip names the part and what it gave (Niklas, 18 Oct
+//!   2026: the value ran out of the panel, a lone NONE, an oversized tile). `?debrief=sample|short` shows a sample. The icons are world meshes, so the panel's backing is one too (`UiIcon::Scrim`) and
 //!   home's words step aside while the report shows (`home::show`).
 
 use bevy::prelude::*;
-use data::career::{Outcome, dismantle_yield};
+use data::career::{Haul, HaulItem, Outcome, VoyageEnd, dismantle_yield};
 use kit::style::{Style, ui_color};
 use kit::ui_icons::UiIcon;
 use kit::ui_kit::{
@@ -62,16 +64,19 @@ use world::settings::SettingsLayer;
 use world::sim_bridge::GameContent;
 use world::storage::Storage;
 use world::voyage::clock;
-use world::voyage::debrief::{Debrief, DebriefData, amount};
+use world::voyage::debrief::{Debrief, DebriefData, DebriefStats, amount};
 
 use crate::fleet::Fleet;
 use crate::voyage_log::VoyageLog;
-use crate::workshop::{fleet_need, gave_words, icon, refusal_words, sort_rows};
+use crate::workshop::{fleet_need, gave_words, icon, icon_sized, refusal_words, sort_rows};
 
-/// Tiles per row of the dismantled parts' grid (more wrap to the next row).
-const TILES: usize = 6;
+/// A tile of the dismantled parts' grid: its width and its icon's size (logical px; more tiles wrap to the next row).
+const TILE: f32 = 62.0;
+const TILE_ICON: Vec2 = Vec2::new(46.0, 40.0);
 /// The gap between the grid's tiles (logical px).
 const TILE_GAP: f32 = 6.0;
+/// The GAINED columns' value column (logical px): names wrap beside it, never pushing a value out.
+const VALUE_W: f32 = 34.0;
 /// The panel's width (logical px).
 const WIDTH: f32 = 420.0;
 /// The gap between the report's lines, and between the report and the buttons (logical px).
@@ -111,7 +116,7 @@ impl Plugin for DebriefPlugin {
         app.init_resource::<Debrief>()
             .init_resource::<Sorted>()
             .add_systems(Startup, spawn.after(world::flight_hud::spawn_hud))
-            .add_systems(Update, (dismiss, sort, settle, rebuild, fill_intake, show).chain().after(UiInputSet).before(UiStyleSet));
+            .add_systems(Update, (sample, dismiss, sort, settle, rebuild, fill_intake, show).chain().after(UiInputSet).before(UiStyleSet));
     }
 }
 
@@ -143,6 +148,51 @@ fn spawn(mut commands: Commands, style: Res<Style>, clear: Res<ClearColor>) {
             ..default()
         },
     ));
+}
+
+/// `?debrief=sample` or `?debrief=short` with `?newgame=1` (it writes the new game's save; on another slot with
+/// `save=<name>`): at home, the report of a cleared Shipyard approach as if just recalled, for looking at the panel.
+/// `sample` is a full haul (several research families and materials, intact parts to sort, five kinds dismantled),
+/// `short` six core fragments (one material, no research data). A development fixture: the haul is here, not in the
+/// content.
+#[allow(clippy::too_many_arguments)]
+fn sample(
+    mut done: Local<bool>,
+    mode: Res<State<AppMode>>,
+    params: Res<kit::params::Params>,
+    content: Res<GameContent>,
+    mut career: ResMut<PlayerCareer>,
+    mut storage: ResMut<Storage>,
+    mut debrief: ResMut<Debrief>,
+) {
+    if *done || *mode.get() != AppMode::Home {
+        return;
+    }
+    *done = true;
+    let broken = |part: &str, n: u32| (HaulItem::Broken { part: part.into(), material: None }, n);
+    let whole = |part: &str, n: u32| (HaulItem::Part { part: part.into(), material: None }, n);
+    let fragments = |n: u32| (HaulItem::Fragment { part: "automaton_core".into() }, n);
+    let haul: Haul = match params.text("debrief") {
+        Some("sample") => [broken("automaton_cannon", 6), broken("pulse_laser", 2), broken("fission_reactor", 1), broken("radiator", 2), fragments(2), whole("thruster", 3), whole("capacitor", 1)].into_iter().collect(),
+        Some("short") => [fragments(6)].into_iter().collect(),
+        _ => return,
+    };
+    if !career.new_game() {
+        warn!("debrief: ?debrief needs ?newgame=1: it writes the save");
+        return;
+    }
+    let c = &content.0;
+    let voyage = "yard_approach";
+    let (launched, _) = career.update(&mut storage, |k| k.voyage_launched(c, voyage).is_ok());
+    let before = career.career().clone();
+    let end = VoyageEnd::Recalled { haul: haul.clone(), cleared: true, ticks: 30 * 462 };
+    let (last, written) = career.update(&mut storage, |k| k.voyage_ended(c, voyage, end).ok().cloned());
+    let (true, Some(last), Ok(())) = (launched, last, written) else {
+        warn!("debrief: the sample voyage could not be recorded");
+        return;
+    };
+    let stats = DebriefStats { sites: Some((4, 4)), kills: Some(9), ships_lost: Some(0), ..default() };
+    debrief.show(DebriefData::build(c, &before, career.career(), &last, &haul, stats));
 }
 
 /// DISMISS, Esc or Enter close the panel while it shows: not while a layer over home hides it (their Esc is
@@ -330,41 +380,44 @@ fn fill(p: &mut ChildSpawnerCommands, content: &data::Content, fonts: &HudFonts,
         };
         if !d.families.is_empty() || !d.materials.is_empty() {
             head(p, "GAINED", &format!("FROM {}", parts));
+            // A column per kind that gained something (an empty one gives the other the width): a line per family or
+            // material, its name in body text beside a fixed value column, a TOTAL under two lines or more.
+            let research: Vec<_> = d.families.iter().map(|f| (Some(fam(&f.color)), f.name.clone(), format!("+{}", amount(f.gained)))).collect();
+            let data: f32 = d.families.iter().map(|f| f.gained).sum();
+            let materials: Vec<_> = d.materials.iter().map(|(m, n)| (None, m.clone(), format!("+{n}"))).collect();
+            let units: u32 = d.materials.iter().map(|(_, n)| n).sum();
+            let columns = [("RESEARCH DATA", research, format!("+{}", amount(data)), c(Tone::Number)), ("MATERIALS", materials, format!("+{units}"), c(Tone::Gold))];
             p.spawn(Node { flex_direction: FlexDirection::Row, column_gap: px(22), flex_shrink: 0.0, ..default() }).with_children(|cols| {
-                let col = |cols: &mut ChildSpawnerCommands, title: &str, lines: Vec<(Option<Color>, Color, String, String)>, total: String, tone: Color| {
-                    cols.spawn(Node { flex_direction: FlexDirection::Column, row_gap: px(7), flex_grow: 1.0, flex_basis: px(0), ..default() }).with_children(|k| {
+                for (title, lines, total, tone) in columns.into_iter().filter(|col| !col.1.is_empty()) {
+                    cols.spawn(Node { flex_direction: FlexDirection::Column, row_gap: px(7), flex_grow: 1.0, flex_basis: px(0), min_width: px(0), ..default() }).with_children(|k| {
                         k.spawn(label(fonts, title, 8.5, c(Tone::Dim)));
-                        if lines.is_empty() {
-                            k.spawn(label(fonts, "NONE", 9.0, c(Tone::Dim)));
-                        }
-                        for (dot, color, name, value) in &lines {
-                            k.spawn(Node { justify_content: JustifyContent::SpaceBetween, ..row(8.0) }).with_children(|l| {
-                                l.spawn(row(8.0)).with_children(|l| {
-                                    match dot {
-                                        Some(f) => l.spawn((Node { width: px(7), height: px(7), border_radius: BorderRadius::MAX, flex_shrink: 0.0, ..default() }, BackgroundColor(*f))),
-                                        None => l.spawn(diamond(*color, 8.0)),
-                                    };
-                                    l.spawn(label(fonts, name, 10.0, *color));
+                        for (dot, name, value) in &lines {
+                            k.spawn(row(8.0)).with_children(|l| {
+                                match dot {
+                                    Some(f) => l.spawn((Node { width: px(7), height: px(7), border_radius: BorderRadius::MAX, flex_shrink: 0.0, ..default() }, BackgroundColor(*f))),
+                                    None => l.spawn(diamond(tone, 8.0)),
+                                };
+                                l.spawn(Node { flex_grow: 1.0, flex_shrink: 1.0, flex_basis: px(0), min_width: px(0), ..default() }).with_children(|n| {
+                                    n.spawn(prose(fonts, name, 13.0, c(Tone::Number)));
                                 });
-                                l.spawn(number(fonts, value, 15.0, *color));
+                                l.spawn(Node { width: px(VALUE_W), flex_shrink: 0.0, justify_content: JustifyContent::FlexEnd, ..default() }).with_children(|v| {
+                                    v.spawn(number(fonts, value, 15.0, tone));
+                                });
                             });
                         }
-                        if !lines.is_empty() {
+                        if lines.len() >= 2 {
                             k.spawn((Node { height: px(1), flex_shrink: 0.0, ..default() }, BackgroundColor(ui_color(ui.dim, 0.35))));
-                            k.spawn(Node { justify_content: JustifyContent::SpaceBetween, ..row(8.0) }).with_children(|l| {
-                                l.spawn(label(fonts, "TOTAL", 9.0, c(Tone::Label)));
-                                l.spawn(number(fonts, &total, 15.0, tone));
+                            k.spawn(row(8.0)).with_children(|l| {
+                                l.spawn(Node { flex_grow: 1.0, ..default() }).with_children(|n| {
+                                    n.spawn(label(fonts, "TOTAL", 9.0, c(Tone::Label)));
+                                });
+                                l.spawn(Node { width: px(VALUE_W), flex_shrink: 0.0, justify_content: JustifyContent::FlexEnd, ..default() }).with_children(|v| {
+                                    v.spawn(number(fonts, &total, 15.0, tone));
+                                });
                             });
                         }
                     });
-                };
-                let research: Vec<_> = d.families.iter().map(|f| (Some(fam(&f.color)), c(Tone::Number), f.name.clone(), format!("+{}", amount(f.gained)))).collect();
-                let data: f32 = d.families.iter().map(|f| f.gained).sum();
-                col(cols, "RESEARCH DATA", research, format!("+{}", amount(data)), c(Tone::Number));
-                let gold = c(Tone::Gold);
-                let materials: Vec<_> = d.materials.iter().map(|(m, n)| (None, gold, m.to_uppercase(), format!("+{n}"))).collect();
-                let units: u32 = d.materials.iter().map(|(_, n)| n).sum();
-                col(cols, "MATERIALS", materials, format!("+{units}"), gold);
+                }
             });
             rule(p);
         }
@@ -374,8 +427,8 @@ fn fill(p: &mut ChildSpawnerCommands, content: &data::Content, fonts: &HudFonts,
             let empty = if d.rows.is_empty() { "The holds came home empty." } else { "Every part came home intact." };
             p.spawn(prose(fonts, empty, 13.0, c(Tone::Dim)));
         }
-        // The grid: an icon and its count per part, what it gave in its tooltip; more wrap onto the next row.
-        let side = (WIDTH - 60.0 - TILE_GAP * (TILES - 1) as f32) / TILES as f32;
+        // The grid: compact tiles, a readable icon and its count under it; the part's name and what it gave in the
+        // tooltip; more wrap onto the next row.
         p.spawn(Node { flex_direction: FlexDirection::Row, flex_wrap: FlexWrap::Wrap, column_gap: px(TILE_GAP), row_gap: px(TILE_GAP), flex_shrink: 0.0, ..default() }).with_children(|grid| {
             for r in &dismantled {
                 let gave = if r.gives.is_empty() { "NOTHING".to_string() } else { r.gives.clone() };
@@ -383,10 +436,10 @@ fn fill(p: &mut ChildSpawnerCommands, content: &data::Content, fonts: &HudFonts,
                     Hot::default(),
                     Tip::key(format!("{} ×{}", r.name.to_uppercase(), r.count), gave),
                     Node {
-                        width: px(side),
+                        width: px(TILE),
                         flex_direction: FlexDirection::Column,
                         align_items: AlignItems::Center,
-                        padding: UiRect::new(px(0), px(0), px(6), px(4)),
+                        padding: UiRect::new(px(0), px(0), px(5), px(3)),
                         row_gap: px(2),
                         border: UiRect::all(px(1)),
                         border_radius: BorderRadius::all(px(4)),
@@ -401,7 +454,7 @@ fn fill(p: &mut ChildSpawnerCommands, content: &data::Content, fonts: &HudFonts,
                             BackgroundColor(fam(&r.color)),
                         ));
                     }
-                    t.spawn(icon(content, &r.part));
+                    t.spawn(icon_sized(content, &r.part, TILE_ICON));
                     t.spawn(number(fonts, &format!("×{}", r.count), 11.0, c(Tone::Label)));
                 });
             }
