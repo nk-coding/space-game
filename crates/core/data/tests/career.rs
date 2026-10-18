@@ -847,7 +847,7 @@ fn the_history_keeps_the_last_voyages() {
 fn a_hand_written_save_reads() {
     // The shape of docs/career.md: comments, `Some` left out, fields with defaults left out.
     let text = r#"
-// space-game: saves, format 2, saved 1760351234
+// space-game: saves, format 5, saved 1760351234
 (
     packs: [("base", "0.1.0")],
     start: "rim_awakening",
@@ -884,27 +884,16 @@ fn a_hand_written_save_reads() {
     assert!(u.has_part("reverse_engineered_cannon") && u.has_material("composite"));
 }
 
-/// ADR-0024: a save of an older voyage roller is migrated (nothing it stores refers to a rolled voyage, so its next
-/// launches roll with this build's version, with a note); a save of a newer build is refused, never reset.
+/// ADR-0024, ADR-0044: a save of another voyage roller version is refused, never migrated or reset.
 #[test]
-fn old_rollers_are_migrated_and_newer_ones_refused() {
-    let c = content();
-    let mut old = Career::from_ron(r#"(start: "rim_awakening", seed: 4207, generator: 1)"#).unwrap();
-    assert_eq!(old.generator(), 1);
-    assert_eq!(old.voyage_seed(FIRST), 9_993_844_787_240_758_234, "seeds are the same");
-    let notes = old.reconcile(&c);
-    assert_eq!(notes.len(), 1, "{}", show(&notes));
-    assert!(note(&notes, "generator").message.contains("version 1"));
-    assert_eq!(old.generator(), GENERATOR);
-    assert!(old.reconcile(&c).is_empty());
-    let newer = format!(r#"(start: "rim_awakening", seed: 4207, generator: {})"#, GENERATOR + 1);
-    let p = Career::from_ron(&newer).unwrap_err();
-    assert_eq!(p.len(), 1);
-    assert_eq!(
-        (p[0].severity, p[0].field.as_deref()),
-        (Severity::Error, Some("generator"))
-    );
-    assert!(p[0].message.contains("newer build"), "{}", show(&p));
+fn other_rollers_are_refused() {
+    for generator in [1, GENERATOR + 1] {
+        let text = format!(r#"(start: "rim_awakening", seed: 4207, generator: {generator})"#);
+        let p = Career::from_ron(&text).unwrap_err();
+        assert_eq!(p.len(), 1);
+        assert_eq!((p[0].severity, p[0].field.as_deref()), (Severity::Error, Some("generator")));
+        assert!(p[0].message.contains(&format!("version {generator} of the roller")), "{}", show(&p));
+    }
 }
 
 #[test]
@@ -929,7 +918,7 @@ fn reconcile_drops_what_the_content_no_longer_has() {
     packs: [("base", "0.1.0"), ("old_mod", "2.0.0")],
     start: "drone_dawn",
     seed: 9,
-    generator: 0,
+    generator: 2,
     researched: ["automaton_cannon", "warp_theory", "automaton_cannon"],
     data: {"kinetic": 4, "lasers": 2, "hull": NaN, "power": -3, "energy": 1e12, "thermal": 0, "shields": inf},
     materials: {"programmable_matter": 5000000, "unobtainium": 2, "steel": 0},
@@ -947,7 +936,6 @@ fn reconcile_drops_what_the_content_no_longer_has() {
         (Some(Kind::Start), Some("drone_dawn"))
     );
     assert!(start.message.contains("`rim_awakening`"), "{start}");
-    assert!(note(&notes, "generator").message.contains("version 0"));
     assert_eq!(
         note(&notes, "researched[1]").id.as_deref(),
         Some("warp_theory")
@@ -971,7 +959,7 @@ fn reconcile_drops_what_the_content_no_longer_has() {
         note(&notes, "materials.unobtainium").kind,
         Some(Kind::Material)
     );
-    assert_eq!(notes.len(), 14, "{}", show(&notes));
+    assert_eq!(notes.len(), 13, "{}", show(&notes));
 
     assert_eq!(career.packs(), [("base".to_string(), "0.1.0".to_string())]);
     assert_eq!((career.start(), career.generator()), (START, GENERATOR));
@@ -1013,7 +1001,7 @@ fn closing_the_game_mid_voyage_loses_it() {
 
     // Underway without a launch on record (a hand-edited save): just dropped.
     let mut odd = Career::from_ron(
-        r#"(start: "rim_awakening", seed: 1, generator: 1, underway: "yard_approach")"#,
+        r#"(start: "rim_awakening", seed: 1, generator: 2, underway: "yard_approach")"#,
     )
     .unwrap();
     let notes = odd.reconcile(&c);
@@ -1367,27 +1355,4 @@ fn the_workshop_dismantles_stock_and_counts_what_it_can_make() {
     assert_eq!(career.fabricable(&c, "capacitor"), 0);
     assert!(career.fabricate(&c, "capacitor", 1).is_err());
     assert_eq!(career.fabricable(&c, "beam_laser"), 0, "a locked part");
-}
-
-/// A format 4 save (before the workshop) reads with an empty stock; stocking its designs raises every part to what
-/// the fleet carries in all and to what any one saved design carries, so the fleet launches as before.
-#[test]
-fn an_older_save_gets_its_designs_stocked() {
-    let c = content();
-    let text = r#"(start: "rim_awakening", seed: 9, generator: 2, researched: ["automaton_cannon"], materials: {"programmable_matter": 3}, escorts: ["wing"])"#;
-    let mut career = Career::from_ron(text).unwrap();
-    assert!(career.reconcile(&c).is_empty() && career.stock().is_empty());
-    let skiff = ship(&c, "rim_skiff");
-    let runner = ship(&c, "halvex_runner");
-    let fleet = [skiff.clone(), skiff.clone()];
-    let u = Unlocks::all(&c);
-    assert!(!voyage_ready(&c, &u, 9, Some(career.stock()), &fleet[0], &fleet[1..]).is_empty());
-    let added = career.stock_designs(&c, &fleet, std::slice::from_ref(&runner));
-    assert_eq!(added["pulse_laser"], 4, "two skiffs");
-    assert_eq!(added["capacitor"], 4, "the runner's four, the fleet's four");
-    assert_eq!(added["fusion_reactor"], 1, "a saved design's");
-    assert!(!added.contains_key("armor_block"));
-    assert_eq!(voyage_ready(&c, &u, 9, Some(career.stock()), &fleet[0], &fleet[1..]), []);
-    assert!(career.stock_designs(&c, &fleet, &[runner]).is_empty(), "a second time adds nothing");
-    assert_eq!(career.materials(), &map(&[("programmable_matter", 3)]));
 }

@@ -37,8 +37,8 @@ impl Career {
     /// [`crate::content::limits::MAX_DOCUMENT_BYTES`], a leading byte order mark skipped. `Err` holds the parse error with its line and column (one problem, in a list
     /// like [`crate::parse_blueprint`]'s).
     ///
-    /// A save from a newer build (a voyage roller version above [`GENERATOR`]) is refused too: this build would
-    /// roll its voyages differently. The game keeps such a save aside and never writes over it.
+    /// A save of another voyage roller version than [`GENERATOR`] is refused too: this build would roll its voyages
+    /// differently.
     pub fn from_ron(text: &str) -> Result<Career, Vec<Problem>> {
         if text.len() > MAX_DOCUMENT_BYTES {
             return Err(vec![Problem::error(format!(
@@ -49,11 +49,10 @@ impl Career {
         let career: Career = ron_options()
             .from_str(strip_bom(text))
             .map_err(|e| vec![parse_error(&e)])?;
-        if career.generator > GENERATOR {
+        if career.generator != GENERATOR {
             return Err(vec![
                 Problem::error(format!(
-                    "the save was written by a newer build (voyage roller version {}, this build knows up to \
-                     {GENERATOR}): it is kept as it is; open it with that build",
+                    "the save rolls its voyages with version {} of the roller, this build with version {GENERATOR}",
                     career.generator
                 ))
                 .field("generator"),
@@ -223,28 +222,6 @@ impl Career {
         }
         self.history = kept;
         self.reconcile_galaxy(content, &mut notes);
-
-        // Last: the least interesting change for the status line, which shows the first.
-        if self.generator == 0 {
-            notes.push(
-                Problem::warning(format!(
-                    "unknown voyage roller version 0: voyages roll with version {GENERATOR}"
-                ))
-                .field("generator"),
-            );
-            self.generator = GENERATOR;
-        } else if self.generator < GENERATOR {
-            // No stored fact refers to a rolled voyage, so the migration loses nothing (see `GENERATOR`).
-            notes.push(
-                Problem::warning(format!(
-                    "voyages were rolled with version {} of the roller: from now on they roll with version \
-                     {GENERATOR}",
-                    self.generator
-                ))
-                .field("generator"),
-            );
-            self.generator = GENERATOR;
-        }
         notes
     }
 }

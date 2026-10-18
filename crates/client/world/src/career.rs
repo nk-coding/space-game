@@ -5,14 +5,12 @@
 //! * **The save** ([`CareerDoc`]) is `Career::to_ron` as a document `saves/<slot>` (`saves/career`, or another
 //!   slot with `?save=<slot>`), with the storage layer's header and format (`data::career::FORMAT`).
 //! * **At start** ([`load`], before the first frame, so the drydock opens the right ship): the save is read and
-//!   reconciled with the content (what changed comes back as notes, never a panic). A career without a galaxy (a
-//!   new game, a format 2 save) gets the content's first galaxy, generated once from its game seed and kept in the
-//!   save (ADR-0035, [`chart`]; a migrated save is written at once). A save from before the workshop (format 4,
-//!   GDR-0108) gets the parts of its working design, escorts and saved designs in stock ([`stock_designs`]) and is
-//!   written at once. Without a save, or with
-//!   `?newgame=1`, a new game begins from the content's first start and is written at once; the drydock then
-//!   docks a copy of the start's ship (`drydock::blueprints`). A save that doesn't read (broken, or written by a
-//!   newer build) is kept as it is: the game runs a new career in memory, never writes it, and says so.
+//!   reconciled with the content (what changed comes back as notes, never a panic). A new game gets the content's
+//!   first galaxy, generated once from its game seed and kept in the save (ADR-0035, [`chart`]). Without a save,
+//!   with a save of an older format (no save compatibility before release, ADR-0044; a log line and a note say
+//!   so), or with `?newgame=1`, a new game begins from the content's first start and is written at once; the
+//!   drydock then docks a copy of the start's ship (`drydock::blueprints`). A save that doesn't read (broken, or
+//!   written by a newer build) is kept as it is: the game runs a new career in memory, never writes it, and says so.
 //! * **Writes** (`docs/plans/first-playable-loop.md` 5.2): at a new game, after a FLEET change, when the drydock
 //!   first shows a fresh part ([`SeenPart`]); later after UNLOCK and when a voyage ends. Never during a voyage.
 //! * **`?unlock=all`** (free mode): the drydock has every part, material and frame. Only what is offered changes:
@@ -30,28 +28,29 @@ use data::{Blueprint, Career, Content, ResearchNode, Unlock};
 use kit::params::Params;
 use kit::ui_kit::Tone;
 
-use crate::player::library::{self, DesignDoc, WorkingDoc, problems_text};
+use crate::player::library::{DesignDoc, problems_text};
 use crate::mode::AppMode;
 use crate::sim_bridge::GameContent;
-use crate::storage::{Document, Storage, now_unix, valid_name};
+use crate::storage::{Document, Storage, StorageError, now_unix, valid_name};
 
 /// The save's name when `?save=` doesn't give another.
 pub const DEFAULT_SLOT: &str = "career";
 
-/// The save as a stored document: `saves/<slot>`, and the format it was read in (the current one when written).
+/// The save as a stored document: `saves/<slot>`.
 #[derive(Clone, Debug, PartialEq)]
-pub struct CareerDoc(pub Career, pub u32);
+pub struct CareerDoc(pub Career);
 
 impl Document for CareerDoc {
     const NAMESPACE: &'static str = "saves";
     const FORMAT: u32 = data::career::FORMAT;
+    const OLDEST: u32 = data::career::FORMAT;
 
     fn to_ron(&self) -> String {
         self.0.to_ron()
     }
 
-    fn from_ron(text: &str, format: u32) -> Result<Self, String> {
-        Career::from_ron(text).map(|c| CareerDoc(c, format)).map_err(|p| problems_text(&p))
+    fn from_ron(text: &str) -> Result<Self, String> {
+        Career::from_ron(text).map(CareerDoc).map_err(|p| problems_text(&p))
     }
 }
 
@@ -127,9 +126,17 @@ pub fn load(storage: &mut Storage, content: &Content, switches: Switches, seed: 
     }
     let stored = if new_game { Ok(None) } else { storage.read::<CareerDoc>(&slot) };
     let mut kept = None;
+    let mut replaced = false;
     let loaded = match stored {
-        Ok(Some(s)) => Some((s.doc.0, s.doc.1)),
+        Ok(Some(s)) => Some(s.doc.0),
         Ok(None) => None,
+        Err(e @ StorageError::Older { .. }) => {
+            // No save compatibility before release (ADR-0044): a new game in its place.
+            info!("career: {e}: a new game starts in its place");
+            notes.push(Note::new("A NEW GAME", format!("{}: a new game starts in its place.", shortened(&e.to_string(), 90)), Tone::Gold));
+            replaced = true;
+            None
+        }
         Err(e) => {
             // "saves/career doesn't read: line 1:35: …", "saves/career is from a newer version of the game (…)".
             let why = e.to_string();
@@ -143,10 +150,8 @@ pub fn load(storage: &mut Storage, content: &Content, switches: Switches, seed: 
             None
         }
     };
-    let mut before_workshop = false;
     let (mut career, new_game) = match loaded {
-        Some((mut career, format)) => {
-            before_workshop = format < 5;
+        Some(mut career) => {
             let changed = career.reconcile(content);
             for p in &changed {
                 warn!("career: {key}: {p}");
@@ -158,23 +163,9 @@ pub fn load(storage: &mut Storage, content: &Content, switches: Switches, seed: 
             (career, false)
         }
         // A stand-in for a kept save is no new game: the drydock keeps its design.
-        None => (new_career(content, seed, &mut notes, &mut kept), kept.is_none()),
+        None => (new_career(content, seed, &mut notes, &mut kept, replaced), kept.is_none()),
     };
-    let mut migrated = chart(content, &mut career, &mut notes) && !new_game && kept.is_none();
-    if before_workshop {
-        stock_designs(storage, content, &mut career, &mut notes);
-        migrated |= kept.is_none();
-    }
-    // Saved designs carrying a part the content now stands in for (GDR-0103).
-    match library::refit_saved(storage, content) {
-        Ok(names) if !names.is_empty() => {
-            info!("career: refitted {} saved designs: {}", names.len(), names.join(", "));
-            let body = format!("{} now carry the parts that replaced their old ones.", shortened(&names.join(", "), 90));
-            notes.push(Note::new("DESIGNS REFITTED", body, Tone::Teal));
-        }
-        Ok(_) => {}
-        Err(e) => warn!("career: saved designs not refitted: {e}"),
-    }
+    let charted = chart(content, &mut career, &mut notes) && !new_game && kept.is_none();
     if slot != DEFAULT_SLOT {
         let body = format!("This game is {key}; the usual one, {}/{DEFAULT_SLOT}, is untouched.", CareerDoc::NAMESPACE);
         notes.push(Note::new(format!("SAVE SLOT  ·  ?SAVE={}", slot.to_uppercase()), body, Tone::Gold));
@@ -183,26 +174,22 @@ pub fn load(storage: &mut Storage, content: &Content, switches: Switches, seed: 
         notes.push(Note::new("ALL UNLOCKED  ·  ?UNLOCK=ALL", "Every part, material and frame is in the drydock; the save is untouched.", Tone::Gold));
     }
     let mut out = PlayerCareer { career, slot, kept, free, new_game, notes };
-    if (new_game || migrated) && let Err(e) = out.write(storage, now) {
+    if (new_game || charted) && let Err(e) = out.write(storage, now) {
         out.notes.push(Note::new("NOT SAVED", e, Tone::Coral));
     }
     out
 }
 
-/// Gives a career without a galaxy the content's first galaxy, generated from its game seed (ADR-0035: once; the
-/// save keeps it): a new game charts home, a format 2 save its slice voyages too (`Career::begin_galaxy`, with a
-/// note). True when it got one. Content without a galaxy leaves it without; a galaxy that doesn't generate too, with
-/// a note.
+/// Gives a career without a galaxy (a new game) the content's first galaxy, generated from its game seed (ADR-0035:
+/// once; the save keeps it). True when it got one. Content without a galaxy leaves it without; a galaxy that doesn't
+/// generate too, with a note.
 fn chart(content: &Content, career: &mut Career, notes: &mut Vec<Note>) -> bool {
     let Some(g) = content.galaxies.iter().next().filter(|_| career.exploration().is_none()) else {
         return false;
     };
     match galaxy::generate(content, &g.id, career.seed()) {
         Ok(skeleton) => {
-            for p in career.begin_galaxy(content, skeleton) {
-                info!("career: {p}");
-                notes.push(Note::new("THE GALAXY", format!("{}.", shortened(&p.message, 110)), Tone::Teal));
-            }
+            career.begin_galaxy(content, skeleton);
             career.exploration().is_some()
         }
         Err(e) => {
@@ -211,26 +198,6 @@ fn chart(content: &Content, career: &mut Career, notes: &mut Vec<Note>) -> bool 
             false
         }
     }
-}
-
-/// A save from before the workshop (format 4, GDR-0108) has an empty stock: it gets the parts of its working
-/// design and escorts (the fleet, together) and of every saved design (each alone) in stock, so whatever the player
-/// flew still launches. A note says how many.
-fn stock_designs(storage: &Storage, content: &Content, career: &mut Career, notes: &mut Vec<Note>) {
-    let working = storage.read::<WorkingDoc>(library::WORKING).ok().flatten().map(|s| s.doc.design);
-    let saved: Vec<(String, Blueprint)> = storage
-        .list(DesignDoc::NAMESPACE)
-        .unwrap_or_default()
-        .into_iter()
-        .filter_map(|id| storage.read::<DesignDoc>(&id).ok().flatten().map(|s| (id, s.doc.0)))
-        .collect();
-    let escorts = career.escorts().iter().filter_map(|id| saved.iter().find(|(s, _)| s == id).map(|(_, b)| b.clone()));
-    let fleet: Vec<Blueprint> = working.into_iter().chain(escorts).collect();
-    let designs: Vec<Blueprint> = saved.into_iter().map(|(_, b)| b).collect();
-    let added = career.stock_designs(content, &fleet, &designs);
-    let n: u32 = added.values().sum();
-    info!("career: the workshop stocks {n} parts of the save's designs: {added:?}");
-    notes.push(Note::new("THE WORKSHOP", format!("Your designs' {n} parts are in stock; new parts are fabricated there now."), Tone::Teal));
 }
 
 /// At most `n` characters of `s`, an ellipsis when cut (notes stay a few lines; the console has them whole).
@@ -243,11 +210,11 @@ fn shortened(s: &str, n: usize) -> String {
 
 /// A new game from the content's first start. Content without a start gets a career that unlocks only what the
 /// content doesn't lock, with no mind and no voyages; it is never written.
-fn new_career(content: &Content, seed: u64, notes: &mut Vec<Note>, kept: &mut Option<String>) -> Career {
+fn new_career(content: &Content, seed: u64, notes: &mut Vec<Note>, kept: &mut Option<String>, replaced: bool) -> Career {
     if let Some(start) = content.starts.iter().next()
         && let Ok(career) = Career::new(content, &start.id, seed)
     {
-        if kept.is_none() {
+        if kept.is_none() && !replaced {
             notes.push(Note::new(format!("NEW GAME  ·  {}", start.name.to_uppercase()), start.summary.clone(), Tone::Teal));
         }
         return career;
@@ -292,7 +259,7 @@ impl PlayerCareer {
         if let Some(why) = &self.kept {
             return Err(format!("{why}: this game is not saved"));
         }
-        storage.write(&self.slot, &CareerDoc(self.career.clone(), data::career::FORMAT), now).map_err(|e| e.to_string())
+        storage.write(&self.slot, &CareerDoc(self.career.clone()), now).map_err(|e| e.to_string())
     }
 }
 
@@ -533,7 +500,7 @@ mod tests {
     #[test]
     fn a_broken_or_newer_save_is_kept_and_not_overwritten() {
         let content = data::base_content();
-        for text in ["// space-game: saves, format 2, saved 5\n(start: \"rim_awakening\", seed: ", "// space-game: saves, format 9, saved 5\n()"] {
+        for text in ["// space-game: saves, format 5, saved 5\n(start: \"rim_awakening\", seed: ", "// space-game: saves, format 9, saved 5\n()"] {
             let mut mem = MemoryBackend::default();
             crate::storage::Backend::write(&mut mem, "saves", "career", text).unwrap();
             let mut storage = Storage::new(mem);
@@ -554,29 +521,29 @@ mod tests {
         }
     }
 
-    /// A format 2 save (before the galaxy) gets its galaxy at load, with a note, and is written at once in format 3;
-    /// read again, it keeps that galaxy. A new game has one from the start.
+    /// A save of an older format (here format 2, before the galaxy) is no longer read (ADR-0044): a new game with
+    /// its galaxy starts in its place, with a note, and is written at once; read again, it keeps that galaxy.
     #[test]
-    fn a_format_2_save_is_charted_into_its_galaxy_and_written() {
+    fn an_older_save_starts_a_new_game_in_its_place() {
         let content = data::base_content();
         let mut mem = MemoryBackend::default();
         let text = "// space-game: saves, format 2, saved 5\n(start: \"rim_awakening\", seed: 3, generator: 2, voyages: {\"yard_approach\": (launched: 2, cleared: true)})";
         crate::storage::Backend::write(&mut mem, "saves", "career", text).unwrap();
         let mut storage = Storage::new(mem);
         let c = load(&mut storage, &content, switches(""), 1, 10);
-        assert!(!c.new_game());
-        let note = c.notes.iter().find(|n| n.head == "THE GALAXY").expect("a note on the migration");
-        assert!(note.body.starts_with("the galaxy is charted: 1 cluster from 1 voyage flown, 1 voyage open as a signal"), "{note:?}");
+        assert!(c.new_game());
+        let note = c.notes.iter().find(|n| n.head == "A NEW GAME").expect("a note on the new game");
+        assert!(note.body.contains("older version") && note.body.ends_with("a new game starts in its place."), "{note:?}");
+        assert_eq!(c.career().seed(), 1);
+        assert_eq!(c.career().voyage("yard_approach"), None);
         let g = c.career().exploration().expect("charted");
-        assert_eq!(*g.skeleton(), galaxy::generate(&content, "galaxy", 3).unwrap());
-        assert!(g.is_charted(g.pins()["yard_approach"]));
+        assert_eq!(*g.skeleton(), galaxy::generate(&content, "galaxy", 1).unwrap());
+        assert_eq!(g.charted().len(), 1);
         let stored = storage.read::<CareerDoc>("career").unwrap().unwrap();
         assert_eq!((&stored.doc.0, stored.saved), (c.career(), Some(10)), "written at once");
-        let again = load(&mut storage, &content, switches(""), 1, 20);
+        let again = load(&mut storage, &content, switches(""), 2, 20);
         assert!(again.notes.is_empty(), "{:?}", again.notes);
         assert_eq!(again.career(), c.career());
-        let fresh = load(&mut storage, &content, switches("?newgame=1"), 9, 30);
-        assert!(fresh.career().exploration().is_some_and(|g| g.charted().len() == 1));
     }
 
     /// Another slot, a new game over an old one, free mode leaving the save as it is.
@@ -610,7 +577,7 @@ mod tests {
     fn changed_content_and_gone_escorts_are_notes() {
         let content = data::base_content();
         let mut mem = MemoryBackend::default();
-        let text = "// space-game: saves, format 2, saved 5\n(start: \"rim_awakening\", seed: 3, generator: 1, researched: [\"warp_theory\"], escorts: [\"kept\", \"gone\"])";
+        let text = "// space-game: saves, format 5, saved 5\n(start: \"rim_awakening\", seed: 3, generator: 2, researched: [\"warp_theory\"], escorts: [\"kept\", \"gone\"])";
         crate::storage::Backend::write(&mut mem, "saves", "career", text).unwrap();
         let mut storage = Storage::new(mem);
         let skiff = content.ships.get("rim_skiff").unwrap().clone();
@@ -624,44 +591,6 @@ mod tests {
         assert!(c.notes.iter().any(|n| n.head == "FLEET" && n.body.contains("`gone`")));
         // The emptied slot is written.
         assert_eq!(storage.read::<CareerDoc>("career").unwrap().unwrap().doc.0.escorts(), ["kept"]);
-    }
-
-    /// A save from before the workshop (format 4, the fixture: a mid-game career with an escort): its working design
-    /// (the Runner), its escort (a skiff) and its other saved designs are stocked at load, so the fleet launches as
-    /// before; it is written at once in the new format, and the next load adds nothing.
-    #[test]
-    fn a_format_4_save_gets_its_designs_stocked() {
-        let content = data::base_content();
-        let mut mem = MemoryBackend::default();
-        crate::storage::Backend::write(&mut mem, "saves", "career", include_str!("fixtures/career_format_4.ron")).unwrap();
-        let mut storage = Storage::new(mem);
-        let ship = |id: &str| content.ships.get(id).unwrap().clone();
-        let runner = ship("halvex_runner");
-        storage.write(library::WORKING, &WorkingDoc { saved_as: None, unsaved: true, design: runner.clone() }, 1).unwrap();
-        storage.write("drone_wing", &DesignDoc(Blueprint { id: "drone_wing".into(), ..ship("rim_skiff") }), 1).unwrap();
-        storage.write("gunboat", &DesignDoc(Blueprint { id: "gunboat".into(), ..ship("sample_mid") }), 1).unwrap();
-        let mut c = load(&mut storage, &content, switches(""), 1, 10);
-        assert!(!c.new_game());
-        let note = c.notes.iter().find(|n| n.head == "THE WORKSHOP").expect("a note on the stock");
-        assert!(note.body.starts_with("Your designs' "), "{note:?}");
-        let stock = c.career().stock().clone();
-        // The Runner and the skiff together; the sample's six radiators alone.
-        assert_eq!((stock["pulse_laser"], stock["capacitor"], stock["fusion_reactor"], stock["radiator"]), (4, 6, 1, 8));
-        assert!(!stock.contains_key("armor_block"));
-        // The fleet launches: nothing missing.
-        let escorts = read_escorts(&mut storage, &mut c);
-        let g = c.granted(&content);
-        let ready = voyage_ready(&content, &g.unlocks, g.mind_capacity, g.launch_stock(), &runner, &escorts);
-        assert!(!ready.iter().any(|r| matches!(r, Readiness::MissingParts { .. })), "{ready:?}");
-        // Written at once in the new format, keeping what it had.
-        let doc = storage.read::<CareerDoc>("career").unwrap().unwrap().doc;
-        assert_eq!(doc.1, data::career::FORMAT);
-        let stored = doc.0;
-        assert_eq!((stored.stock(), stored.researched().len(), stored.escorts()), (&stock, 7, &["drone_wing".to_string()][..]));
-        assert_eq!(stored.materials()["programmable_matter"], 3);
-        let again = load(&mut storage, &content, switches(""), 1, 20);
-        assert!(!again.notes.iter().any(|n| n.head == "THE WORKSHOP"));
-        assert_eq!(again.career().stock(), &stock);
     }
 
     /// The voyage-ready line: ready with the cores, the first blocker with how many more, the cargo warning.

@@ -176,12 +176,6 @@ An armour material may carry a `salvage` block (what one cell of hull area in it
 (id: "composite", ..., salvage: (family: "hull", data: 1.5))
 ```
 
-`replaces` (optional on parts, added 18 Oct 2026, GDR-0103): part ids this part stands in for in the player's saved
-designs. The game refits every saved design when it loads (and the drydock's working design when it is restored):
-a placement of a replaced part becomes this one. The base pack's `reverse_engineered_cannon` replaces
-`automaton_cannon` (the player's cannon became a part of its own on 18 Oct). Validation: never the part itself, one
-part per replaced id, the same footprint (size, shape, hull).
-
 `locked` (optional, default `false`, added 13 Oct 2026), on materials, parts and frames alike: not available to
 the player until unlocked (research: an unlock of a [research node](#research-nodes-added-13-oct-2026)
 clears it per player, GDR-0063). The free drydock hides locked parts and materials (palette, armor pills, the 1–9

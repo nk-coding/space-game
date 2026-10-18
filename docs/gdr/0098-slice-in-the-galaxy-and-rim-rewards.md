@@ -4,6 +4,7 @@
   2026-10-17: Accepted (Niklas, 17 Oct 2026): the galaxy's shape and pace are kept (the set pieces' distances, areas 3–4 S narrowing
   to 60 %, 2–3 voyages to find a signal); a trail's reward still counts on a lost voyage ([GDR-0097](0097-galaxy-map-and-voyage-flow.md)).
   2026-10-18: rich salvage pays less now ([GDR-0108](0108-materials-economy-workshop.md): most stripped parts break, dismantling returns a share of a recipe); a cache that gives a part would give it intact, into the workshop.
+  2026-10-18: a format 3 save is no longer read ([ADR-0044](../adr/0044-no-save-compatibility-before-release.md)): its pins and the Warden's gate made at load are gone; the slice lies only on the skeleton's set pieces.
 - Date: 2026-10-17
 - Decided by: lead session (defaults for Niklas to review, galaxy tracks E7 and E8, and two tunings of E4)
 - Related: [GDR-0002](0002-awakened-ship-mind-light-story.md), [GDR-0026](0026-procedural-galaxy-and-bands.md), [GDR-0029](0029-mild-death-bonded-matter.md), [GDR-0075](0075-voyages-feel-like-exploration.md), [GDR-0078](0078-galaxy-exploration-v1.md), [GDR-0080](0080-exploration-searching-and-story.md), [GDR-0093](0093-galaxy-exploration-decisions-16-oct.md), [GDR-0094](0094-galaxy-generator-defaults.md), [GDR-0095](0095-sensors-hidden-sites-and-scans.md), [GDR-0096](0096-career-galaxy-format-3.md), [GDR-0097](0097-galaxy-map-and-voyage-flow.md), [GDR-0092](0092-evolution-lab-for-your-own-ships.md), `docs/plans/galaxy-voyages.md` (E7, E8, 4.1, 4.3, 4.7)

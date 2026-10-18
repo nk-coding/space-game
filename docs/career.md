@@ -25,7 +25,7 @@ only. Every question takes the `Content` it should be answered against.
 ## The save (format 5)
 
 `Career` holds **facts only**. Everything that can be derived from content is derived on demand and never stored,
-so a content rebalance (a node's cost, a part's unlock) applies to old saves without a migration. The game stores
+so a content rebalance (a node's cost, a part's unlock) applies to a save as it is. The game stores
 `Career::to_ron()` as a document in `saves/` (ADR-0031 adds the header line) and reads it back with
 `Career::from_ron(text)` followed by `Career::reconcile(&content)`. `from_ron` takes a blueprint's input limits
 (at most `limits::MAX_DOCUMENT_BYTES`, a leading byte order mark skipped).
@@ -167,27 +167,23 @@ so a content rebalance (a node's cost, a part's unlock) applies to old saves wit
 | `researched` | research node ids, in the order researched |
 | `data` | research data in store per family (f32, only amounts above 0) |
 | `materials` | materials in store (whole numbers, only amounts above 0) |
-| `stock` | the workshop's parts by id (GDR-0108, format 5): what a fleet is fitted from; only counts above 0, never hull; left out when empty |
-| `intake` | intact hauled parts waiting to be kept or dismantled (format 5; in the voyage's report since 18 Oct 2026, the rest kept when it is dismissed); left out when empty |
+| `stock` | the workshop's parts by id (GDR-0108): what a fleet is fitted from; only counts above 0, never hull; left out when empty |
+| `intake` | intact hauled parts waiting to be kept or dismantled (in the voyage's report since 18 Oct 2026, the rest kept when it is dismissed); left out when empty |
 | `escorts` | saved design ids (`designs/`) flown as escorts; the flagship is the drydock's working design |
-| `seen` | parts research unlocked that the player has since picked or selected in the drydock; left out when empty (added 13 Oct 2026, track 7F: no new format, it has a default) |
+| `seen` | parts research unlocked that the player has since picked or selected in the drydock; left out when empty |
 | `voyages` | per voyage ever launched: `launched` (count), `cleared` (the goal was cleared on a voyage that came home), `best_ticks` (the quickest such voyage, sim ticks at 30 per second) |
 | `underway` | the voyage launched and not ended; left out when none |
 | `log` | voyages launched, recalled, lost; items salvaged (parts and fragments unloaded) |
-| `history` | the last voyages, oldest first, at most `MAX_HISTORY` (50; GDR-0091, home's LOG): per voyage `voyage` (a content voyage, or a cluster's name), `cluster` (the generated cluster it went to; left out for a content voyage), `outcome` (`Recalled`, `Cleared` or `Lost`), `ticks`, `report` (`parts` (intact) and `broken` (format 5) and `fragments` by part id, `data`, `materials`, `logs`: data cores) and `new` (not shown in the LOG yet; left out when false); left out when empty. A voyage past 50 drops the oldest |
-| `galaxy` | the galaxy and what the player knows of it (format 3; format 4 the set pieces and the memory log, [below](#the-galaxy)); left out for content without a galaxy |
+| `history` | the last voyages, oldest first, at most `MAX_HISTORY` (50; GDR-0091, home's LOG): per voyage `voyage` (a content voyage, or a cluster's name), `cluster` (the generated cluster it went to; left out for a content voyage), `outcome` (`Recalled`, `Cleared` or `Lost`), `ticks`, `report` (`parts` (intact) and `broken` and `fragments` by part id, `data`, `materials`, `logs`: data cores) and `new` (not shown in the LOG yet; left out when false); left out when empty. A voyage past 50 drops the oldest |
+| `galaxy` | the galaxy and what the player knows of it ([below](#the-galaxy)); left out for content without a galaxy |
 
 The text is written with the pack loader's options (`Some(..)` left out, four-space indent) and is deterministic;
-unknown fields are errors, fields with defaults may be left out. `career::FORMAT` (2) is the format the game's
-document header carries: raise it when a field is added or its meaning changes, and migrate older formats when
-reading. Format 1 (until 15 Oct 2026) kept only the last voyage as `last_haul`; it is no longer read (16 Oct 2026),
-as every save is written again on its first change. Format 2 (15–16 Oct 2026) had no `galaxy`; it reads as it is and
-gets its galaxy when the game loads it ([The galaxy](#the-galaxy), "Migrating a slice career"), and is written at once.
-Format 3 (16–17 Oct 2026) had no set pieces in its skeleton and no memory log; it reads as it is (its pins kept, its
-Warden's cluster made a gate at load, [GDR-0098](gdr/0098-slice-in-the-galaxy-and-rim-rewards.md)). Format 4
-(17–18 Oct 2026) had no workshop; it reads with an empty stock and intake, and the game stocks its designs at load
-and writes it at once ([The workshop](#the-workshop), "Migrating"). Unknown fields are errors, so a field added without a new format would make an older build call a newer
-save damaged instead of newer; with the format raised, its storage reports `Newer`. The history's reports are
+unknown fields are errors, fields with defaults may be left out. `career::FORMAT` (5) is the format the game's
+document header carries: raise it when a field is added or its meaning changes. There is no save compatibility before
+release ([ADR-0044](adr/0044-no-save-compatibility-before-release.md), 18 Oct 2026): the game reads only this format,
+and a save of an older one starts a new game in its place ([below](#where-the-game-keeps-the-save)). Unknown fields
+are errors, so a field added without a new format would make an older build call a newer save damaged instead of
+newer; with the format raised, its storage reports `Newer`. The history's reports are
 what was credited, not derived. A save that cannot be read (newer, damaged, or from a newer voyage roller,
 below) is never written over: the game keeps it as it is ("How the game uses it" below).
 
@@ -273,10 +269,6 @@ GDR-0108 (18 Oct 2026), `career/workshop.rs`. The content's workshop is the firs
   when the stock would fall below what the fleet carries (`need`, as for `suggested`): refused rather than warned,
   since a fleet short of a part cannot launch. `spare(part, &need)`: the stock beyond the fleet's need, the most it
   allows.
-- **Migrating** (format 4): `stock_designs(&content, &fleet, &saved)` raises every known part to the most of what the
-  fleet carries together and of what any one saved design carries, and returns what it added. The game calls it at
-  load for a save read in a format below 5, with the working design and the escorts as the fleet and every saved
-  design (`world::career::stock_designs`), notes THE WORKSHOP and writes the save.
 
 ## Voyages
 
@@ -305,7 +297,7 @@ GDR-0108 (18 Oct 2026), `career/workshop.rs`. The content's workshop is the firs
 
 Galaxy track E4, 16 Oct 2026 (GDR-0093, [GDR-0096](gdr/0096-career-galaxy-format-3.md)): `Career::exploration()`
 (`data::career::Exploration`, `crates/core/data/src/career/galaxy.rs`; tests `tests/career_galaxy.rs` on a small
-hand-made skeleton, and the `galaxy` crate's `tests/career.rs` for a migrated save).
+hand-made skeleton, and the `galaxy` crate's `tests/career.rs` for a new game's generated galaxy).
 
 | Field | Meaning |
 |---|---|
@@ -314,8 +306,8 @@ hand-made skeleton, and the `galaxy` crate's `tests/career.rs` for a migrated sa
 | `signals` | the signals heard, in the order heard: `lead` (`Trail((trail, signal))`, skeleton indices, or `Voyage(id)`: a slice voyage), `cluster` (where it leads), `area` (`(centre, radius)` in S/100 now), `state` (`Fresh`, `Narrowed`, `Located`, `Done`) |
 | `logs` | data cores brought home and not decoded yet, as `(trail, signal)` |
 | `gates` | gate clusters opened (a guardian beaten) |
-| `pins` | the content's voyages on clusters (voyage id → cluster id): the skeleton's set pieces, or in a format 3 save the chain E4 pinned |
-| `memories` | the memory log: lore fragments (ids) found at the ends of their trails, in the order found (format 4; left out when empty) |
+| `pins` | the content's voyages on clusters (voyage id → cluster id): the skeleton's set pieces |
+| `memories` | the memory log: lore fragments (ids) found at the ends of their trails, in the order found (left out when empty) |
 | `underway` | the cluster a voyage was launched into and has not ended (left out when none) |
 
 - **New game**: `Career::begin_galaxy(&content, skeleton)` with the skeleton of the content's first galaxy, generated
@@ -354,17 +346,11 @@ hand-made skeleton, and the `galaxy` crate's `tests/career.rs` for a migrated sa
 - **Gates**: `open_gate(k)` records a gate of the skeleton as opened; a trail's guardian beaten and the Warden cleared
   open theirs.
 - **The slice** (E7, GDR-0098; E4 pinned it in a chain, GDR-0096): every voyage of the content lies on the cluster the
-  skeleton's set pieces put it on (a pin kept from a format 3 save stays); a launched voyage charts its cluster, an
+  skeleton's set pieces put it on; a launched voyage charts its cluster, an
   open one not cleared is a located `Voyage` signal, a cleared one's signal is done, and a cleared one on a gate (the
   Warden's) opens it: the slice is the rim's first gate trail. Kept in step at every launch and end of a voyage and at
   load. Slice voyages keep their own records and seeds and launch from the voyage map as before; the jump range does
   not gate them.
-- **Migrating a slice career** (a format 2 save): read as it is, then `begin_galaxy` charts it by the slice rules
-  above and returns a note ("the galaxy is charted: 3 clusters from 3 voyages flown, 1 voyage open as a signal"); the
-  game writes it at once.
-- **Migrating a format 3 career** (E4's): its skeleton has no set pieces, so it keeps its pins; at load a gate's set
-  piece (the Warden's) makes its pinned cluster a gate (a note: "The Warden's gate keeps a gate now: clearing its goal
-  opens the next band"), opened at once if the Warden is cleared.
 - **Loading** (`reconcile`): pins and `Voyage` signals of voyages the content no longer has go; signals and logs the
   skeleton doesn't have go (a note); memories of fragments the content lost go; a cluster still underway ends as lost
   (a note); the slice is brought in step.
@@ -407,9 +393,7 @@ path such as `researched[1]` or `data.lasers`) for the status line:
 - records of voyages the content doesn't know are dropped, and so are the history's entries of them (`history[k]`);
   a history longer than `MAX_HISTORY` (written by hand) loses its oldest;
 - a voyage still `underway` was interrupted: it ends as `Lost` (ticks 0) when its launch is on record, else the
-  mark is dropped;
-- last (the least interesting note, so the status line shows another first): a `generator` below `GENERATOR` is
-  migrated to it with a note (0, which no build writes, too).
+  mark is dropped.
 
 The queries themselves cope with content that was not reconciled (an unknown start gives mind capacity 0 plus
 research and opens only the voyages whose `opens_after` are all cleared; unknown nodes unlock nothing; research data
@@ -425,17 +409,16 @@ that is not finite counts as none, so it never pays).
 | 1 | 13 Oct 2026 (track 7E): the plan drew on a generator seeded like the sim's encounter stream; wrecks rolled their missing parts on that stream when they spawned, so a wreck depended on the order the sites were reached |
 | 2 | 13 Oct 2026 (review): the plan's generator is salted (`sim::voyage::PLAN_STREAM`), and each wreck carries its own damage seed in the plan |
 
-An older save is migrated, not replayed: nothing a save stores refers to a rolled voyage (no mid-voyage saves,
-GDR-0062; a voyage underway at load counts as lost; every launch rolls anew), so a version 1 career simply rolls its
-next launches with version 2, with a note. Its voyage seeds are the same in both versions. A save from a newer build
-(`generator` above `GENERATOR`) is refused by `Career::from_ron` (an error on `generator`), never reset: this build
-would roll its voyages differently. The game keeps it as it is and never writes over it.
+Only the current version is read (ADR-0044): `Career::from_ron` refuses a save of another `generator` (an error on
+`generator`), never resets it, since this build would roll its voyages differently. Nothing a save stores refers to
+a rolled voyage (no mid-voyage saves, GDR-0062), so a new version needs no more than raising `GENERATOR` and
+`career::FORMAT` together.
 
 ## Bounds and defaults (placeholders, 13 Oct 2026, track 7C)
 
 | Constant | Value | What |
 |---|---|---|
-| `career::FORMAT` | 5 | the save's format version (1 until 15 Oct 2026, no longer read; 2 until 16 Oct 2026, read and given its galaxy; 3 until 17 Oct, 4 until 18 Oct 2026, read and stocked) |
+| `career::FORMAT` | 5 | the save's format version, the only one read (ADR-0044) |
 | `career::GENERATOR` | 2 | the voyage roller's version, voyage seeds included |
 | `career::MAX_DATA` | 1,000,000 | research data per family a store holds (100 × the largest content cost) |
 | `career::MAX_MATERIALS` | 1,000,000 | of one material a store holds |
@@ -448,7 +431,7 @@ save, each a head and one part per generation since ADR-0041, `docs/client.md` "
 unlocked parts and materials, the mind capacity less FLEET's escorts; no part counts since GDR-0108). The lab is locked until its
 research node, the Simulation vault (`simulation_vault`, logic 3, `Unlock::Facility("evolution")`, GDR-0092 step 8, 16
 Oct 2026), is researched: `Unlocks::facilities` holds the open facilities (`content/base/facilities.ron`), derived like
-the parts, so an existing save simply lacks it until the node is paid; `?unlock=all` opens it. A design
+the parts, so a save simply lacks it until the node is paid; `?unlock=all` opens it. A design
 the lab saves is an ordinary saved design with an `origin` (designs format 2, `docs/drydock.md`): FLEET flies it and
 voyages launch it like any other.
 
@@ -459,14 +442,14 @@ Track 7F, 13 Oct 2026: `game::career` (`crates/client/world/src/career.rs`; test
 - **The document**: `saves/<slot>` in the player storage (ADR-0031: on the web the browser's IndexedDB since 16 Oct
   2026, ADR-0041, key `saves/career` in the database `space-game`, read into memory before the game starts and
   written behind it; `<data dir>/saves/career.ron` on desktop; memory where the platform has none, with a
-  note). The text is `Career::to_ron()` after the storage's header line `// space-game: saves, format 4, saved
-  <unix seconds>` (`CareerDoc`, format `career::FORMAT`). The slot is `career`; `?save=<slot>` plays another one
+  note). The text is `Career::to_ron()` after the storage's header line `// space-game: saves, format 5, saved
+  <unix seconds>` (`CareerDoc`, format `career::FORMAT`, the oldest it reads too). The slot is `career`; `?save=<slot>` plays another one
   (a storage name: `a-z 0-9 _ -`; another name falls back to `career` with a note).
 - **Loading** (`career::load`, in the plugin's build before the first frame): read → `Career::from_ron` →
   `reconcile` (the first change and how many more become a note on home) → a career without a galaxy gets the
-  content's first one (`career::chart`: `galaxy::generate` from the game seed, `begin_galaxy`; a migrated format 2 save
-  gets the note THE GALAXY and is written at once; content without a galaxy leaves it without, one that doesn't
-  generate says NO GALAXY). No save, or `?newgame=1`: a new game from
+  content's first one (`career::chart`: `galaxy::generate` from the game seed, `begin_galaxy`; content without a
+  galaxy leaves it without, one that doesn't generate says NO GALAXY). No save, a save of an older format (the
+  storage's `Older`: a log line and the note A NEW GAME, ADR-0044), or `?newgame=1`: a new game from
   the content's first start, seeded with the clock (Unix seconds), written at once; the drydock then docks a copy
   of the start's ship (`rim_skiff`), saving the last design's unsaved changes first so BLUEPRINTS keeps them.
 - **A save that doesn't read** (broken RON, unknown fields, a header from a newer build, a newer voyage roller) is
@@ -486,11 +469,6 @@ Track 7F, 13 Oct 2026: `game::career` (`crates/client/world/src/career.rs`; test
   the career's own progress (FLEET still saves its escorts).
 - **Escorts**: their saved designs are read at start and whenever home or the drydock opens (`EscortDesigns`); an
   escort whose design is gone or doesn't read leaves the fleet, the save is written and home notes it.
-- **Refits** (18 Oct 2026, GDR-0103): when the career loads, every saved design carrying a part another part
-  `replaces` (`content-model.md`) is refitted with it and written back with its saved time
-  (`world::player::library::refit_saved`); home notes DESIGNS REFITTED with their names. The drydock's working
-  design is refitted when it is restored. So designs from before 18 Oct that carry `automaton_cannon` build the
-  player's `reverse_engineered_cannon`. The save format is unchanged.
 
 ## How the game uses it
 

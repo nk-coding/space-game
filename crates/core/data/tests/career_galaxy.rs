@@ -1,9 +1,8 @@
-//! The galaxy in the career (`data::career::Exploration`, save formats 3 and 4; galaxy plan E4, E7, E8, GDR-0093,
+//! The galaxy in the career (`data::career::Exploration`; galaxy plan E4, E7, E8, GDR-0093,
 //! GDR-0096, GDR-0098) on a small hand-made skeleton: the jump range and its research, jumps from home and charted
 //! clusters, launching into a cluster and ending there, data cores and logs, hearing, decoding and narrowing signals,
 //! gates, the slice's voyages on their set pieces and kept in step (the Warden's gate opening), the trails' rewards,
-//! the save. The migrations of a format 2 and a format 3 save with a generated galaxy are in the `galaxy` crate's
-//! tests (`tests/career.rs`).
+//! the save. A career with a generated galaxy is in the `galaxy` crate's tests (`tests/career.rs`).
 
 mod common;
 
@@ -59,7 +58,7 @@ const LOG: TrailSignal = TrailSignal { trail: 0, signal: 0 };
 fn game(c: &Content, fields: &str) -> Career {
     let mut career = Career::from_ron(&format!("(start: \"rim_awakening\", seed: 4207, generator: 2{fields})")).unwrap();
     assert!(career.reconcile(c).is_empty());
-    assert!(career.begin_galaxy(c, skeleton()).is_empty(), "a new game has no voyages to chart");
+    career.begin_galaxy(c, skeleton());
     career
 }
 

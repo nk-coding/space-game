@@ -545,11 +545,12 @@ saved template copy moved to the cruiser frame).
   `behaviors/<id>` (see
   [Behaviors](#behaviors-storage-designs-and-tests)) now, `saves/<slot>` (the career), `settings/controls` and `settings/display` (GDR-0090) and `lab/<id>` (the evolution lab's runs, GDR-0092) since. Names are `a-z 0-9 _ -`
   (at most 64), safe as file names and keys everywhere.
-- A document type implements `Document` (`NAMESPACE`, `FORMAT`, `to_ron`, `from_ron(text, format)`).
+- A document type implements `Document` (`NAMESPACE`, `FORMAT`, `OLDEST` (default 1), `to_ron`, `from_ron(text)`).
   `Storage::write` puts one header line before the RON, a comment, so the document stays valid RON:
   `// space-game: designs, format 1, saved 1760351234` (namespace, format version, Unix seconds).
-  `Storage::read` refuses another namespace and formats newer than the build knows (`StorageError::Newer`) and
-  hands older ones to `from_ron`, where migrations live (ADR-0024). A file without the header reads as format 1.
+  `Storage::read` refuses another namespace, formats newer than the build knows (`StorageError::Newer`) and formats
+  older than `OLDEST` (`StorageError::Older`); nothing is migrated (ADR-0044): a format from `OLDEST` up reads as it
+  is. A file without the header reads as format 1.
   `Storage::set_aside` copies a document's text as stored to another name (a working document this build can't
   read is kept before it is written over); `Storage::keep_on_leave` keeps a document that waits for its write, and
   the web backend writes it when the page goes away or is hidden (made into text only then).

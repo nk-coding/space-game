@@ -5,6 +5,7 @@
   ([ADR-0042](0042-galaxy-generator-crate.md)); interiors by `galaxy::interior` from each cluster's seed.
   2026-10-16: the career keeps it (save format 3, `data::career::Exploration`; track E4, [GDR-0096](../gdr/0096-career-galaxy-format-3.md)): generated once
   at a new game, or when a format 2 save is loaded, from the game seed; its types moved to `data::skeleton`.
+  2026-10-18: a format 2 save is no longer given its galaxy at load ([ADR-0044](0044-no-save-compatibility-before-release.md)): only a new game generates one.
 - Date: 2026-10-14
 - Decided by: Niklas (`docs/plans/galaxy-voyages.md` question 7)
 - Related: [ADR-0024](0024-saves-seed-and-deltas.md) (refined), [ADR-0033](0033-career-model-save-and-voyage-director.md), [GDR-0078](../gdr/0078-galaxy-exploration-v1.md), [GDR-0080](../gdr/0080-exploration-searching-and-story.md)

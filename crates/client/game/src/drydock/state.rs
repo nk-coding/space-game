@@ -184,7 +184,7 @@ mod tests {
     /// A career that has researched `nodes` (the save's text, as a loaded one).
     fn career(nodes: &[&str]) -> Career {
         let list: Vec<String> = nodes.iter().map(|n| format!("{n:?}")).collect();
-        Career::from_ron(&format!("(start: \"rim_awakening\", seed: 1, generator: 1, researched: [{}])", list.join(", "))).unwrap()
+        Career::from_ron(&format!("(start: \"rim_awakening\", seed: 1, generator: 2, researched: [{}])", list.join(", "))).unwrap()
     }
 
     /// The section of a category in the palette's list.

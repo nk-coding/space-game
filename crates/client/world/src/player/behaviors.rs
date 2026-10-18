@@ -44,7 +44,7 @@ impl Document for BehaviorDoc {
         behavior_to_ron(&self.0)
     }
 
-    fn from_ron(text: &str, _format: u32) -> Result<Self, String> {
+    fn from_ron(text: &str) -> Result<Self, String> {
         parse_behavior(text).map(BehaviorDoc)
     }
 }
@@ -440,7 +440,7 @@ mod tests {
         let content = data::base_content();
         for b in content.behaviors.iter() {
             let doc = BehaviorDoc(Behavior { source: Default::default(), ..b.clone() });
-            let back = BehaviorDoc::from_ron(&doc.to_ron(), 1).unwrap();
+            let back = BehaviorDoc::from_ron(&doc.to_ron()).unwrap();
             assert_eq!(back, doc, "{}", doc.to_ron());
         }
         // Odd strings survive; a saved document reads back with its header and time.

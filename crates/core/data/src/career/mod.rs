@@ -6,7 +6,7 @@
 //! the last voyages ([`MAX_HISTORY`]) and what the player knows of the galaxy ([`Exploration`]: its skeleton, charted
 //! clusters, signals, logs, gates, memories). Everything else is derived from the content on demand ([`Career::unlocks`],
 //! [`Career::mind_capacity`], [`Career::jump_range`], [`Career::open_voyages`], [`Career::can_pay`]), so a rebalance
-//! of the content applies to old saves without a migration. The game stores it as RON ([`Career::to_ron`],
+//! of the content applies to a save as it is. The game stores it as RON ([`Career::to_ron`],
 //! [`Career::from_ron`]) in its `saves/` namespace and calls [`Career::reconcile`] after loading, which drops what
 //! the current content no longer has.
 //!
@@ -43,41 +43,16 @@ pub use voyages::{unload, voyage_ready};
 pub use workshop::{Sort, dismantle_yield, fleet_parts};
 
 /// The format version of the save's RON text ([`Career::to_ron`]). The game's storage writes it into the
-/// document header (ADR-0031). Raise it when a field is added or its meaning changes, and migrate older formats
-/// when reading: an older build refuses unknown fields, so only a new format lets its storage report the save as
-/// newer instead of damaged.
-///
-/// * 1: the last voyage only, as `last_haul`.
-/// * 2 (15 Oct 2026, GDR-0091): the last voyages as `history`. Format 1 is no longer read (16 Oct 2026: every save
-///   is written again on its first change).
-/// * 3 (16 Oct 2026, galaxy plan E4, GDR-0096; the plan's "format 2"): the galaxy as `galaxy` ([`Exploration`]). A
-///   format 2 save reads as it is (the field has a default) and gets its galaxy when the game loads it
-///   ([`Career::begin_galaxy`]: the slice's voyages pinned to clusters, the cleared and launched ones charted, the
-///   open ones signals).
-/// * 4 (17 Oct 2026, galaxy plan E7 and E8, GDR-0098): the skeleton's set pieces as `pieces`, the memory log as
-///   `galaxy.memories`. A format 3 save reads as it is: its skeleton (generator version 1) has no set pieces, so its
-///   career keeps the pins E4 gave the slice, and at load the Warden's pinned cluster becomes a gate
-///   (`Career::reconcile`), which its clearing opens.
-/// * 5 (18 Oct 2026, GDR-0108): the workshop's parts as `stock` and `intake`, broken parts in the history's reports.
-///   A format 4 save reads as it is with an empty stock; the game then stocks the parts of its fleet and saved
-///   designs ([`Career::stock_designs`]) and writes it at once.
+/// document header (ADR-0031). Raise it when a field is added or its meaning changes: there is no save compatibility
+/// before release (ADR-0044), so the game reads only this format and starts a new career in place of an older save.
 pub const FORMAT: u32 = 5;
 
 /// How many voyages the history keeps (home's LOG, GDR-0091): the oldest go first. A placeholder.
 pub const MAX_HISTORY: usize = 50;
 
-/// The version of the voyage roller a new career uses (ADR-0024: old versions must stay reproducible or be
-/// migrated). It covers [`Career::voyage_seed`] and the sim's `VoyagePlan::roll` (the draw order, the plan's own
-/// generator, the wreck seeds): changing either needs a new version.
-///
-/// * 1 (13 Oct 2026): the plan drew on a generator seeded like the sim's encounter stream, and wrecks rolled their
-///   missing parts on that stream when they spawned.
-/// * 2 (13 Oct 2026, review): the plan's generator is salted (`sim::voyage::PLAN_STREAM`) and each wreck carries a
-///   seed of its own in the plan.
-///
-/// An older save is migrated by [`Career::reconcile`]: nothing it stores refers to a rolled voyage (no mid-voyage
-/// saves, GDR-0062; a launch rolls anew), so it simply rolls its next launches with this version. A save from a
-/// newer build is refused by [`Career::from_ron`].
+/// The version of the voyage roller (ADR-0024). It covers [`Career::voyage_seed`] and the sim's `VoyagePlan::roll`
+/// (the draw order, the plan's own generator, the wreck seeds): changing either needs a new version.
+/// [`Career::from_ron`] refuses a save of another version (ADR-0044).
 pub const GENERATOR: u32 = 2;
 
 /// Most research data of one family a store holds (a sanity bound, placeholder): a hundred times the largest cost
@@ -140,7 +115,7 @@ pub struct Career {
     /// debrief, home's LOG).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     history: Vec<VoyageResult>,
-    /// The galaxy and what the player knows of it (format 3). `None` until the game generates it
+    /// The galaxy and what the player knows of it. `None` until the game generates it
     /// ([`Career::begin_galaxy`]), and for content without a galaxy.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     galaxy: Option<Exploration>,
@@ -261,7 +236,7 @@ impl FromIterator<(HaulItem, u32)> for Haul {
 #[serde(deny_unknown_fields)]
 pub struct HaulReport {
     /// Whole parts by part id (every intact part that came home, worth something or not). The ones that are not
-    /// hull went to the workshop's intake (format 5; before, every part was dismantled at once).
+    /// hull went to the workshop's intake.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub parts: BTreeMap<String, u32>,
     /// Broken parts by part id (GDR-0108), dismantled at once.

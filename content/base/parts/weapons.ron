@@ -56,8 +56,6 @@
         // the Warden about 28 % (docs/results/slice-balance-2026-10-18.md). PLACEHOLDER.
         description: "Copied from the [[part:automaton_cannon|automaton cannon]] and a little slower to fire. Needs a clear line of fire.",
         locked: true, // research unlocks it (`automaton_cannon` in research/rim.ron)
-        // Saved designs from before this part read as carrying it (18 Oct 2026, GDR-0103).
-        replaces: ["automaton_cannon"],
         category: "weapons",
         icon: "automaton-cannon",
         barrel: (width: 0.2, length: 0.6, muzzle: 0.15),

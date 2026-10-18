@@ -44,7 +44,7 @@ impl Document for DesignDoc {
         data::blueprint_to_ron(&self.0)
     }
 
-    fn from_ron(text: &str, _format: u32) -> Result<Self, String> {
+    fn from_ron(text: &str) -> Result<Self, String> {
         data::parse_blueprint(text).map(DesignDoc).map_err(|p| problems_text(&p))
     }
 }
@@ -70,7 +70,7 @@ impl Document for WorkingDoc {
         format!("(\n    saved_as: {saved_as},\n    unsaved: {},\n    design: {design},\n)\n", self.unsaved)
     }
 
-    fn from_ron(text: &str, _format: u32) -> Result<Self, String> {
+    fn from_ron(text: &str) -> Result<Self, String> {
         data::ron_options().from_str(text).map_err(|e| e.to_string())
     }
 }
@@ -266,21 +266,6 @@ pub fn list_designs(storage: &Storage, content: &Content) -> Result<Vec<Entry>, 
     Ok(out)
 }
 
-/// Refits every saved design to the content (`data::design::refit_replaced`, GDR-0103: a design carrying
-/// `automaton_cannon` from before the player's cannon became a part of its own) and writes back the ones that
-/// changed, keeping their saved time. Returns their names; a design that doesn't read is left alone.
-pub fn refit_saved(storage: &mut Storage, content: &Content) -> Result<Vec<String>, StorageError> {
-    let mut refitted = Vec::new();
-    for id in storage.list(DesignDoc::NAMESPACE)? {
-        let Ok(Some(mut s)) = storage.read::<DesignDoc>(&id) else { continue };
-        if data::design::refit_replaced(content, &mut s.doc.0) > 0 {
-            storage.write(&id, &s.doc, s.saved.unwrap_or_default())?;
-            refitted.push(s.doc.0.name);
-        }
-    }
-    Ok(refitted)
-}
-
 /// The bounding box of a blueprint's parts (unknown parts left out). Any coordinates (a stored file is
 /// untrusted): the sums are taken in `i64`, a side beyond `u32` reads as `u32::MAX`.
 pub fn parts_size(content: &Content, bp: &Blueprint) -> (u32, u32) {
@@ -356,8 +341,7 @@ pub type Restored = (PlayerDesign, DesignSlot, Option<String>);
 /// first ([`WORKING_ASIDE`]), so the autosave of the design that replaces it doesn't destroy it; the error says so.
 pub fn restore_working(storage: &mut Storage, content: &Content) -> Option<Result<Restored, String>> {
     let opened = match storage.read::<WorkingDoc>(WORKING) {
-        Ok(Some(mut s)) => {
-            data::design::refit_replaced(content, &mut s.doc.design);
+        Ok(Some(s)) => {
             PlayerDesign::open(content, &s.doc.design, s.doc.design.size).map(|d| (d, s.doc)).map_err(|e| open_error_text(&e))
         }
         Ok(None) => return None,
@@ -526,31 +510,6 @@ mod tests {
         assert_eq!(ago(1000, 100), "15 MIN AGO");
         assert_eq!(ago(4 * 3600 + 10, 0), "4 H AGO");
         assert_eq!(ago(3 * 86_400, 0), "3 D AGO");
-    }
-
-    /// GDR-0103: a saved design from before the player's cannon became a part of its own carries
-    /// `automaton_cannon`; on load it is refitted with `reverse_engineered_cannon` and written back with its time.
-    #[test]
-    fn saved_designs_are_refitted_with_the_parts_that_replaced_theirs() {
-        let content = data::base_content();
-        let mut storage = mem();
-        let mut bp = content.ships.get("rim_skiff").unwrap().clone();
-        bp.id = "old_cannon".into();
-        bp.name = "Old cannon".into();
-        for p in bp.parts.iter_mut().filter(|p| p.part == "pulse_laser") {
-            p.part = "automaton_cannon".into();
-        }
-        assert!(bp.parts.iter().any(|p| p.part == "automaton_cannon"));
-        storage.write("old_cannon", &DesignDoc(bp.clone()), 42).unwrap();
-        storage.write("plain", &DesignDoc(content.ships.get("rim_skiff").unwrap().clone()), 7).unwrap();
-        assert_eq!(refit_saved(&mut storage, &content).unwrap(), ["Old cannon"]);
-        let back = storage.read::<DesignDoc>("old_cannon").unwrap().unwrap();
-        assert_eq!(back.saved, Some(42));
-        assert!(back.doc.0.parts.iter().all(|p| p.part != "automaton_cannon"));
-        let swapped = back.doc.0.parts.iter().filter(|p| p.part == "reverse_engineered_cannon").count();
-        assert_eq!(swapped, bp.parts.iter().filter(|p| p.part == "automaton_cannon").count());
-        // Once refitted, nothing more to do.
-        assert!(refit_saved(&mut storage, &content).unwrap().is_empty());
     }
 
     #[test]

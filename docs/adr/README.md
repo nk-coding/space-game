@@ -32,7 +32,7 @@ is the overview and links to both series. Format and status rules: `CLAUDE.md`, 
 | [0021](0021-no-fixed-raster-graphics.md) | No fixed raster graphics: vector art, rasterised at runtime at display resolution | Accepted | 2026-10-11 |
 | [0022](0022-one-simulation-space-per-cluster.md) | One simulation space per cluster | Accepted | 2026-10-10 |
 | [0023](0023-host-authoritative-netcode.md) | Co-op netcode is host-authoritative, with join codes and a tiny relay | Accepted | 2026-10-10 |
-| [0024](0024-saves-seed-and-deltas.md) | Saves store seed, generator version and deltas, versioned with migrations | Accepted; refined by [ADR-0035](0035-saves-keep-the-galaxy-skeleton.md) | 2026-10-10 |
+| [0024](0024-saves-seed-and-deltas.md) | Saves store seed, generator version and deltas, versioned with migrations | Accepted; refined by [ADR-0035](0035-saves-keep-the-galaxy-skeleton.md); no migrations before release, [ADR-0044](0044-no-save-compatibility-before-release.md) | 2026-10-10 |
 | [0025](0025-main-repo-holds-only-chosen-code.md) | The main repo holds only chosen code; experiments and benchmarks live in separate local repos | Accepted | 2026-10-11 |
 | [0026](0026-behavior-programs-text-in-content.md) | Behavior programs are text lines in RON, parsed in `data`, compiled once and evaluated from one snapshot without allocation | Accepted | 2026-10-11; 2026-10-12 |
 | [0027](0027-rhai-sandbox-and-determinism.md) | Rhai runs as a raw, sandboxed engine with f32 floats, no `**`, libm math and an operation budget | Accepted | 2026-10-11; 2026-10-12 |
@@ -52,6 +52,7 @@ is the overview and links to both series. Format and status rules: `CLAUDE.md`, 
 | [0041](0041-web-storage-in-indexeddb.md) | The web build keeps its documents in IndexedDB, read into memory at start and written behind; the local storage moves in once; lab runs are stored in parts | Accepted (provisional, lead) | 2026-10-16 |
 | [0042](0042-galaxy-generator-crate.md) | The galaxy generator is an engine-free `galaxy` crate in `core/`: integer positions in S/100, PCG32 streams per step, a generation hash checked native vs wasm | Accepted (provisional, lead) | 2026-10-16 |
 | [0043](0043-lab-web-workers.md) | The web build runs the evolution lab's jobs in web workers: a second wasm binary `lab-worker`, jobs and results as RON messages, only the main thread breeds and writes | Accepted (provisional, lead) | 2026-10-17 |
+| [0044](0044-no-save-compatibility-before-release.md) | No save compatibility before release: the game reads only the current formats and starts a new career in place of an older save | Accepted | 2026-10-18 |
 <!-- index:end -->
 
 ## How to add, supersede and deprecate

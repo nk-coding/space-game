@@ -1,4 +1,4 @@
-//! The galaxy in the career (save format 3, 4 since E7 and E8; galaxy plan E4, GDR-0093, GDR-0096, GDR-0098): the
+//! The galaxy in the career (galaxy plan E4, E7 and E8, GDR-0093, GDR-0096, GDR-0098): the
 //! skeleton the game was generated with (ADR-0035), the clusters charted, the signals heard and how far they
 //! narrowed, the logs to decode, the gates opened, the memory log, the jump range, and the slice's voyages on the
 //! clusters the skeleton placed them on.
@@ -20,10 +20,9 @@
 //! * **Logs**: a data core (one hold slot, GDR-0093) brought home waits to be decoded ([`Career::decode`], free,
 //!   GDR-0080); lost with the haul, the core stays in its wreck and the next launch rolls it again.
 //! * **The slice** (galaxy plan E7, GDR-0098): every voyage of the content lies on the cluster the skeleton placed it
-//!   on (its set pieces; a skeleton from before them keeps the pins E4 gave its career, GDR-0096); a launched voyage
-//!   charts its cluster, an open one not cleared yet is a located signal, a cleared one's signal is done, and a cleared
-//!   one on a gate opens the gate (the Warden's: the rim's first gate trail). That is also how a format 2 save is
-//!   migrated ([`Career::begin_galaxy`]).
+//!   on (its set pieces); a launched voyage charts its cluster, an open one not cleared yet is a located signal, a
+//!   cleared one's signal is done, and a cleared one on a gate opens the gate (the Warden's: the rim's first gate
+//!   trail).
 //!
 //! Distances are integers in hundredths of S ([`crate::skeleton::UNITS_PER_S`]), so a save narrows the same way on
 //! every platform.
@@ -36,7 +35,7 @@ use crate::skeleton::{Area, Point, Skeleton, UNITS_PER_S};
 /// spot of the disc lies from a cluster).
 pub const BLIND_REACH: f32 = 1.5;
 
-/// What the player knows of the galaxy (save format 3).
+/// What the player knows of the galaxy.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Exploration {
@@ -54,8 +53,7 @@ pub struct Exploration {
     /// Gate clusters opened (their guardian beaten).
     #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
     gates: BTreeSet<u32>,
-    /// The content's voyages on clusters (voyage id → cluster id): the skeleton's set pieces (E7), or for a skeleton
-    /// from before them the pins E4 gave (GDR-0096).
+    /// The content's voyages on clusters (voyage id → cluster id): the skeleton's set pieces (E7).
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pins: BTreeMap<String, u32>,
     /// The memory log (GDR-0080): the lore fragments (ids) found at the ends of their trails, in the order found.
@@ -212,13 +210,12 @@ impl Career {
         self.galaxy.as_ref()
     }
 
-    /// Gives the career its galaxy, once (a new game, or a format 2 save the game loads): `skeleton` is the game's,
-    /// generated from its seed (the `galaxy` crate). Home is charted and the content's voyages are pinned and
-    /// charted ([`Exploration`]'s slice rules). Returns a note when the career had voyages already (a migrated save),
-    /// and refuses nothing: a career with a galaxy keeps it.
-    pub fn begin_galaxy(&mut self, content: &Content, skeleton: Skeleton) -> Vec<Problem> {
+    /// Gives a new game its galaxy, once: `skeleton` is the game's, generated from its seed (the `galaxy` crate).
+    /// Home is charted and the content's voyages are pinned ([`Exploration`]'s slice rules). A career with a galaxy
+    /// keeps it.
+    pub fn begin_galaxy(&mut self, content: &Content, skeleton: Skeleton) {
         if self.galaxy.is_some() || skeleton.clusters.get(skeleton.home as usize).is_none() {
-            return Vec::new();
+            return;
         }
         let home = skeleton.home;
         self.galaxy = Some(Exploration {
@@ -232,23 +229,6 @@ impl Career {
             underway: None,
         });
         self.sync_slice(content);
-        let g = self.galaxy.as_ref().expect("just set");
-        let flown = self.voyages.values().filter(|r| r.launched > 0).count();
-        if flown == 0 {
-            return Vec::new();
-        }
-        let signals = g.signals.iter().filter(|s| s.state != SignalState::Done).count();
-        let n = |k: usize, one: &str| format!("{k} {one}{}", if k == 1 { "" } else { "s" });
-        vec![
-            Problem::warning(format!(
-                "the galaxy is charted: {} from {} flown, {} open as {}",
-                n(g.charted.len() - 1, "cluster"),
-                n(flown, "voyage"),
-                n(signals, "voyage"),
-                if signals == 1 { "a signal" } else { "signals" }
-            ))
-            .field("galaxy"),
-        ]
     }
 
     /// How far a jump reaches, in S: the galaxy's `jump_range` plus every [`Unlock::JumpRange`] of the researched
@@ -561,7 +541,7 @@ impl Career {
         let open = self.open_voyages(content);
         let Some(g) = self.galaxy.as_mut() else { return };
         for v in content.voyages.iter() {
-            let Some(k) = g.pins.get(&v.id).or_else(|| g.skeleton.pieces.get(&v.id)).copied() else { continue };
+            let Some(k) = g.skeleton.pieces.get(&v.id).copied() else { continue };
             g.pins.insert(v.id.clone(), k);
             let record = self.voyages.get(&v.id);
             if record.is_some_and(|r| r.launched > 0) {
@@ -590,16 +570,6 @@ impl Career {
         let Some(g) = self.galaxy.as_mut() else { return };
         let n = g.skeleton.clusters.len() as u32;
         g.pins.retain(|id, k| content.voyages.contains(id) && *k < n);
-        // A skeleton from before the set pieces (E4's pins): a gate's piece makes its pinned cluster a gate.
-        let gated = content.galaxies.get(&g.skeleton.galaxy).map_or(&[][..], |x| &x.set_pieces).iter().filter(|p| p.gate);
-        for (p, k) in gated.filter_map(|p| Some((p, *g.pins.get(&p.voyage)?))) {
-            let c = &mut g.skeleton.clusters[k as usize];
-            if !c.gate {
-                c.gate = true;
-                let name = content.voyages.get(&p.voyage).map_or(p.voyage.as_str(), |v| v.name.as_str());
-                notes.push(Problem::warning(format!("{name} keeps a gate now: clearing its goal opens the next band")).field("galaxy.skeleton"));
-            }
-        }
         g.memories.retain(|l| content.lore.contains(l));
         let before = (g.signals.len(), g.logs.len());
         let signals = std::mem::take(&mut g.signals);

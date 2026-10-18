@@ -110,8 +110,8 @@ pub struct Skeleton {
     pub clusters: Vec<Cluster>,
     /// The home cluster (id).
     pub home: u32,
-    /// The set pieces: voyage (id) → the cluster (id) it lies on, named after it (the galaxy's `set_pieces`). A
-    /// skeleton from before them (generator version 1) has none: its career pinned the slice itself (GDR-0096).
+    /// The set pieces: voyage (id) → the cluster (id) it lies on, named after it (the galaxy's `set_pieces`; left out
+    /// when the galaxy has none).
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub pieces: BTreeMap<String, u32>,
     pub trails: Vec<TrailPlan>,

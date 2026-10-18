@@ -7,6 +7,7 @@
   `Lead::Voyage` signals stay; save format 4 adds the set pieces and the memory log (tracks E7, E8, [GDR-0098](0098-slice-in-the-galaxy-and-rim-rewards.md)).
   2026-10-17: Accepted (Niklas, 17 Oct 2026); charting kept on a lost voyage and a data core lost with the haul confirmed with the
   lost-voyage rule ([GDR-0097](0097-galaxy-map-and-voyage-flow.md)).
+  2026-10-18: the migrations are dropped ([ADR-0044](../adr/0044-no-save-compatibility-before-release.md)): a format 2 save is no longer charted into its galaxy, a format 3 one's pins and Warden gate no longer kept; an older save starts a new game.
 - Date: 2026-10-16
 - Decided by: lead session (defaults for Niklas to review, galaxy track E4)
 - Related: [GDR-0078](0078-galaxy-exploration-v1.md), [GDR-0080](0080-exploration-searching-and-story.md), [GDR-0093](0093-galaxy-exploration-decisions-16-oct.md), [GDR-0094](0094-galaxy-generator-defaults.md), [GDR-0095](0095-sensors-hidden-sites-and-scans.md), [GDR-0029](0029-mild-death-bonded-matter.md), [ADR-0033](../adr/0033-career-model-save-and-voyage-director.md), [ADR-0035](../adr/0035-saves-keep-the-galaxy-skeleton.md), [ADR-0042](../adr/0042-galaxy-generator-crate.md), `docs/plans/galaxy-voyages.md` (E4, 4.1, 4.2, 4.5, 4.7), `docs/career.md`

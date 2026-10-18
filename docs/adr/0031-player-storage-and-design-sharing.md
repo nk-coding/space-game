@@ -3,6 +3,7 @@
 - Status: Accepted (provisional, lead). Amended 2026-10-16 by [ADR-0041](0041-web-storage-in-indexeddb.md): the web
   build keeps its documents in IndexedDB (read into memory at start, written behind), not in the local storage, whose
   documents move in once; a document may have parts (`namespace/name/part`).
+  2026-10-18: nothing migrates in `Document::from_ron` any more (it takes no format); a document older than its `Document::OLDEST` is refused (`StorageError::Older`, [ADR-0044](0044-no-save-compatibility-before-release.md)).
 - Date: 2026-10-13
 - Decided by: Niklas (a storage layer, plus a sharable format to share a design with others, GDR-0054); the
   technical shape by the lead session and the wave-2 storage agent, for Niklas to review

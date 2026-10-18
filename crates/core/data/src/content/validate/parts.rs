@@ -8,16 +8,6 @@ impl<'a> Validator<'a> {
         if !self.c.categories.contains(&p.category) {
             self.err(p, "category", format!("unknown category `{}`", p.category));
         }
-        for (k, old) in p.replaces.iter().enumerate() {
-            let field = format!("replaces[{k}]");
-            if *old == p.id {
-                self.err(p, field, "a part cannot stand in for itself");
-            } else if let Some(other) = self.c.parts.iter().find(|q| q.id < p.id && q.replaces.contains(old)) {
-                self.err(p, field, format!("`{}` stands in for `{old}` already", other.id));
-            } else if let Some(q) = self.c.parts.get(old).filter(|q| q.size != p.size || q.shape != p.shape || q.hull != p.hull) {
-                self.err(p, field, format!("`{}` has another footprint: a design refitted with this part would change shape", q.id));
-            }
-        }
         if let Some(icon) = &p.icon {
             self.icon(p, "icon", icon);
         }

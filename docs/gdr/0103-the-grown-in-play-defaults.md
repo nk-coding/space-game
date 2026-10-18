@@ -1,6 +1,7 @@
 # GDR-0103: The Grown in play, lead defaults: three ship classes on a ganglion beside the heart, prows that charge from thorn range, small groves, a bastion at each outer gate, elders at the end of their own trail, one Grown research chain
 
 - Status: Accepted (provisional, lead), 18 Oct 2026, for Niklas to review
+  2026-10-18: `replaces` and the refit of saved designs are removed ([ADR-0044](../adr/0044-no-save-compatibility-before-release.md)): a design carrying `automaton_cannon` keeps it.
 - Date: 2026-10-18
 - Decided by: lead session (defaults within [GDR-0099](0099-the-grown-and-the-outer-reach.md), Niklas's decisions)
 - Related: [GDR-0099](0099-the-grown-and-the-outer-reach.md), [GDR-0102](0102-grown-mechanics-and-parts-defaults.md), [GDR-0026](0026-procedural-galaxy-and-bands.md), [GDR-0027](0027-races.md), [GDR-0031](0031-materials-and-fabrication.md), [GDR-0024](0024-tech-trees-no-mk-levels.md), [GDR-0025](0025-research-from-salvage.md), [GDR-0047](0047-ramming-crushes-inward-bumps-free.md), [GDR-0063](0063-salvage-and-research-v1.md), [GDR-0089](0089-play-test-15-oct-speed-salvage-waves-station.md), [GDR-0094](0094-galaxy-generator-defaults.md), [GDR-0100](0100-fight-balance-targets.md), `docs/results/outer-balance-2026-10-18.md`

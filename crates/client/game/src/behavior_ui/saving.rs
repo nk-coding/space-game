@@ -79,7 +79,7 @@ impl Document for WorkingBehavior {
         )
     }
 
-    fn from_ron(text: &str, _format: u32) -> Result<Self, String> {
+    fn from_ron(text: &str) -> Result<Self, String> {
         data::ron_options().from_str(text).map_err(|e| e.to_string())
     }
 }

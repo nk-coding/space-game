@@ -638,9 +638,9 @@ game keeps the save".
 - **`CareerPlugin`** (after `StoragePlugin`, before `DrydockPlugin`) loads `saves/<slot>` in its build, before the
   first frame (`career::load`): reconciled with the content, or a new game from the content's first start
   (written at once; the drydock then docks a copy of the start's ship, `rim_skiff`), or a stand-in when the save
-  doesn't read (kept as it is, never written). A career without a galaxy then gets the content's first one,
-  generated from its game seed (`career::chart`, galaxy track E4: a new game charts home; a format 2 save is charted
-  from its voyages, noted as THE GALAXY and written at once). Every problem is a note (`PlayerCareer::notes`: home's
+  doesn't read (kept as it is, never written); a save of an older format is replaced by a new game (a log line and
+  a note, ADR-0044). A new game then gets the content's first galaxy, generated from its game seed (`career::chart`,
+  galaxy track E4: home charted). Every problem is a note (`PlayerCareer::notes`: home's
   note block and the console), never a panic.
 - **Resources**: `PlayerCareer` (the `Career`, the slot, the switches, the notes; `update(storage, f)` changes and
   writes it), `Granted` (the unlocks the drydock offers: the career's, or everything with `?unlock=all`; the fresh

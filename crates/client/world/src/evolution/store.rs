@@ -31,7 +31,7 @@ impl Document for RunDoc {
         self.head.to_ron()
     }
 
-    fn from_ron(text: &str, _format: u32) -> Result<Self, String> {
+    fn from_ron(text: &str) -> Result<Self, String> {
         RunHead::from_ron(text).map(|head| RunDoc { head }).map_err(|e| e.to_string())
     }
 }
@@ -47,7 +47,7 @@ impl Document for ConfigDoc {
         self.0.to_ron()
     }
 
-    fn from_ron(text: &str, _format: u32) -> Result<Self, String> {
+    fn from_ron(text: &str) -> Result<Self, String> {
         RunConfig::from_ron(text).map(ConfigDoc).map_err(|e| e.to_string())
     }
 }
@@ -63,7 +63,7 @@ impl Document for PartDoc {
         self.0.to_ron()
     }
 
-    fn from_ron(text: &str, _format: u32) -> Result<Self, String> {
+    fn from_ron(text: &str) -> Result<Self, String> {
         RunPart::from_ron(text).map(PartDoc).map_err(|e| e.to_string())
     }
 }

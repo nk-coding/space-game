@@ -39,7 +39,7 @@
 //!   sidebar", not in the workshop's main area): under the rows, a line per part with the suggestion, KEEP (into
 //!   stock) and DISMANTLE (research data and a share of its recipe) for all of it, and SORT AS SUGGESTED; it is
 //!   refilled whenever the career changes. What the panel leaves is kept (`Career::keep_intake`) when it is dismissed,
-//!   and at any time at home without an open report (a save from before, a report never seen).
+//!   and at any time at home without an open report (a report never seen).
 
 use bevy::prelude::*;
 use data::career::Outcome;
@@ -409,8 +409,8 @@ fn sort(
     }
 }
 
-/// At home without an open report, the intake goes to the stock: what a dismissed report left unsorted, a save from
-/// before this rule, a report never seen.
+/// At home without an open report, the intake goes to the stock: what a dismissed report left unsorted, a report
+/// never seen.
 fn settle(mode: Res<State<AppMode>>, debrief: Res<Debrief>, mut career: ResMut<PlayerCareer>, mut storage: ResMut<Storage>) {
     if *mode.get() != AppMode::Home || (debrief.open && debrief.data.is_some()) || career.career().intake().is_empty() {
         return;

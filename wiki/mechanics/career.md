@@ -43,6 +43,8 @@ follows the new rules. Your designs are not part of the career: they live in BLU
 
 If a save can't be read (it is damaged, or was written by a newer version of the game), the game never writes over
 it. It runs a fresh career that is not saved, and says so in the notes at the shipyard (THE SAVE IS KEPT AS IT IS).
+Until the game is released, a save from an older version is not carried over: a new career starts in its place,
+and the notes say so (A NEW GAME).
 
 ::: details Starting over
 The launch option `?newgame=1` starts a new career in place of the old one. Your last design is saved to

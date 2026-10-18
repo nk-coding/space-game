@@ -59,7 +59,7 @@ impl Document for ControlsDoc {
         ron::ser::to_string_pretty(&self.0, ron::ser::PrettyConfig::default()).unwrap_or_default()
     }
 
-    fn from_ron(text: &str, _format: u32) -> Result<Self, String> {
+    fn from_ron(text: &str) -> Result<Self, String> {
         ron::from_str(text).map(ControlsDoc).map_err(|e| e.to_string())
     }
 }
@@ -89,7 +89,7 @@ impl Document for DisplaySettings {
         ron::ser::to_string_pretty(self, ron::ser::PrettyConfig::default()).unwrap_or_default()
     }
 
-    fn from_ron(text: &str, _format: u32) -> Result<Self, String> {
+    fn from_ron(text: &str) -> Result<Self, String> {
         ron::from_str(text).map_err(|e| e.to_string())
     }
 }

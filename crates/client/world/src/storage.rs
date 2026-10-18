@@ -1,8 +1,8 @@
 //! The player's storage: named text documents (RON) in namespaces, each with a format version, behind one small
 //! trait so the game's other crates stay free of I/O (`sim` and `data` never touch it). Written 13 Oct 2026 for
 //! the drydock's designs (`designs/<id>`, the working design `drydock/working`) and the player's behaviors
-//! (`behaviors/<id>`, `drydock/behaviors.rs`); save games since (`saves/<slot>`, ADR-0024: saves are versioned, with
-//! migrations), the settings (`settings/controls`, `settings/display`, `settings.rs`, GDR-0090) and the evolution
+//! (`behaviors/<id>`, `drydock/behaviors.rs`); save games since (`saves/<slot>`, ADR-0024: saves are versioned;
+//! no migrations before release, ADR-0044), the settings (`settings/controls`, `settings/display`, `settings.rs`, GDR-0090) and the evolution
 //! lab's runs (`lab/<id>` and its parts, `evolution/store.rs`, GDR-0092).
 //!
 //! * A **key** is `namespace/name`; both parts are `a-z`, `0-9`, `_` and `-`, starting with a letter or digit, at
@@ -12,9 +12,9 @@
 //! * A **document** ([`Document`]) is RON text. Stored, it gets one header line, a RON comment, so the rest stays
 //!   valid RON (a saved design is a content ship file):
 //!   `// space-game: designs, format 1, saved 1760351234` (namespace, format version, Unix seconds). Reading
-//!   checks the namespace, refuses formats newer than the build knows ([`StorageError::Newer`]) and hands older
-//!   ones to [`Document::from_ron`], where migrations live. A file without the header line (a ship file copied
-//!   in by hand) reads as format 1.
+//!   checks the namespace and refuses formats newer than the build knows ([`StorageError::Newer`]) or older than
+//!   the document still reads as it is ([`Document::OLDEST`], [`StorageError::Older`]); nothing is migrated
+//!   (ADR-0044). A file without the header line (a ship file copied in by hand) reads as format 1.
 //! * **Backends** ([`Backend`]): the browser's IndexedDB (web, ADR-0041: every document read into memory before the
 //!   game starts, writes kept at once and written behind),
 //!   files in the user's data directory (desktop: `<data dir>/<namespace>/<name>.ron`, a part
@@ -22,8 +22,8 @@
 //!   storage, e.g. Android until its backend lands: the files backend with the app's internal data path).
 //!   [`Storage::open`] picks one.
 //! * **Errors** ([`StorageError`]) say what went wrong in words the UI can show: storage unavailable or full
-//!   (the browser's quota), unreadable documents, documents from a newer build. A write behind that fails comes
-//!   back with the next write (and [`Storage::unsaved`] names what it left unsaved).
+//!   (the browser's quota), unreadable documents, documents from a newer or an older build. A write behind that
+//!   fails comes back with the next write (and [`Storage::unsaved`] names what it left unsaved).
 
 use std::collections::BTreeMap;
 use std::fmt;
@@ -50,6 +50,8 @@ pub enum StorageError {
     Unreadable { key: String, why: String },
     /// A document written by a newer build.
     Newer { key: String, format: u32, supported: u32 },
+    /// A document of a format this build no longer reads ([`Document::OLDEST`]).
+    Older { key: String, format: u32, oldest: u32 },
     /// Not a valid key.
     BadName(String),
 }
@@ -63,6 +65,9 @@ impl fmt::Display for StorageError {
             StorageError::Unreadable { key, why } => write!(f, "{key} doesn't read: {why}"),
             StorageError::Newer { key, format, supported } => {
                 write!(f, "{key} is from a newer version of the game (format {format}, this one reads up to {supported})")
+            }
+            StorageError::Older { key, format, oldest } => {
+                write!(f, "{key} is from an older version of the game (format {format}, this one reads from {oldest})")
             }
             StorageError::BadName(name) => write!(f, "not a valid name: {name:?}"),
         }
@@ -125,12 +130,14 @@ pub trait Backend: Send + Sync + 'static {
 pub trait Document: Sized {
     /// The namespace its documents live in (`designs`, `drydock`, ...).
     const NAMESPACE: &'static str;
-    /// The format version this build writes. Raise it when the text changes, and migrate older formats in
-    /// [`Document::from_ron`].
+    /// The format version this build writes. Raise it when the text changes.
     const FORMAT: u32;
+    /// The oldest format that still reads as it is (one that only lacks fields with defaults); an older document is
+    /// refused ([`StorageError::Older`]). Nothing is migrated (ADR-0044).
+    const OLDEST: u32 = 1;
     fn to_ron(&self) -> String;
-    /// Reads a document of `format` (1 to [`Document::FORMAT`]); older formats are migrated here.
-    fn from_ron(text: &str, format: u32) -> Result<Self, String>;
+    /// Reads a document of a format from [`Document::OLDEST`] to [`Document::FORMAT`].
+    fn from_ron(text: &str) -> Result<Self, String>;
 }
 
 /// A document as read, with its header.
@@ -182,7 +189,7 @@ impl Storage {
         self.backend.list(&format!("{}/{name}", D::NAMESPACE))
     }
 
-    /// Reads and migrates a document or a part; `None` if there is none.
+    /// Reads a document or a part; `None` if there is none.
     pub fn read<D: Document>(&self, name: &str) -> Result<Option<Stored<D>>, StorageError> {
         check_key(name)?;
         let (folder, leaf) = place(D::NAMESPACE, name);
@@ -197,7 +204,10 @@ impl Storage {
         if format > D::FORMAT {
             return Err(StorageError::Newer { key, format, supported: D::FORMAT });
         }
-        let doc = D::from_ron(body, format).map_err(unreadable)?;
+        if format < D::OLDEST {
+            return Err(StorageError::Older { key, format, oldest: D::OLDEST });
+        }
+        let doc = D::from_ron(body).map_err(unreadable)?;
         Ok(Some(Stored { doc, saved }))
     }
 
@@ -1104,19 +1114,20 @@ pub(crate) mod testing {
 mod tests {
     use super::*;
 
-    /// A document that is its text; format 2 reads format 1 by upper-casing it (a stand-in migration).
+    /// A document that is its text, in format 3; format 2 still reads, format 1 no longer does.
     #[derive(Debug, PartialEq)]
     struct Note(String);
 
     impl Document for Note {
         const NAMESPACE: &'static str = "notes";
-        const FORMAT: u32 = 2;
+        const FORMAT: u32 = 3;
+        const OLDEST: u32 = 2;
         fn to_ron(&self) -> String {
             format!("{:?}\n", self.0)
         }
-        fn from_ron(text: &str, format: u32) -> Result<Self, String> {
+        fn from_ron(text: &str) -> Result<Self, String> {
             let s = text.trim().strip_prefix('"').and_then(|t| t.strip_suffix('"')).ok_or("not a string")?;
-            Ok(Note(if format == 1 { s.to_uppercase() } else { s.to_string() }))
+            Ok(Note(s.to_string()))
         }
     }
 
@@ -1166,7 +1177,7 @@ mod tests {
         exercise(&mut storage);
         // One file per document, with the header line; no temporary files left.
         let text = std::fs::read_to_string(dir.join("notes/b.ron")).unwrap();
-        assert_eq!(text, "// space-game: notes, format 2, saved 20\n\"two\"\n");
+        assert_eq!(text, "// space-game: notes, format 3, saved 20\n\"two\"\n");
         let files: Vec<_> = std::fs::read_dir(dir.join("notes")).unwrap().map(|e| e.unwrap().file_name()).collect();
         assert_eq!(files.len(), 1);
         // Files that are not documents are not listed.
@@ -1181,20 +1192,24 @@ mod tests {
     }
 
     #[test]
-    fn headers_migrate_old_formats_and_refuse_newer_ones() {
+    fn headers_refuse_older_and_newer_formats() {
         let mut mem = MemoryBackend::default();
-        mem.write("notes", "old", "// space-game: notes, format 1, saved 5\n\"quiet\"\n").unwrap();
+        mem.write("notes", "kept", "// space-game: notes, format 2, saved 5\n\"quiet\"\n").unwrap();
+        mem.write("notes", "old", "// space-game: notes, format 1, saved 5\n\"gone\"\n").unwrap();
         mem.write("notes", "plain", "\"no header\"").unwrap();
-        mem.write("notes", "new", "// space-game: notes, format 3, saved 5, colour blue\n\"later\"\n").unwrap();
+        mem.write("notes", "new", "// space-game: notes, format 4, saved 5, colour blue\n\"later\"\n").unwrap();
         mem.write("notes", "other", "// space-game: designs, format 1\n\"x\"\n").unwrap();
-        mem.write("notes", "broken", "// space-game: notes, format 2\nnot ron").unwrap();
+        mem.write("notes", "broken", "// space-game: notes, format 3\nnot ron").unwrap();
         mem.write("notes", "unversioned", "// space-game: notes, saved 5\n\"x\"").unwrap();
         let storage = Storage::new(mem);
-        // Format 1 is migrated (upper-cased by the stand-in), a file without a header reads as format 1.
-        assert_eq!(storage.read::<Note>("old").unwrap().unwrap(), Stored { doc: Note("QUIET".into()), saved: Some(5) });
-        assert_eq!(storage.read::<Note>("plain").unwrap().unwrap(), Stored { doc: Note("NO HEADER".into()), saved: None });
+        // Format 2 reads as it is; format 1 is refused, and so is a file without a header (it reads as format 1).
+        assert_eq!(storage.read::<Note>("kept").unwrap().unwrap(), Stored { doc: Note("quiet".into()), saved: Some(5) });
+        let older = storage.read::<Note>("old").unwrap_err();
+        assert_eq!(older, StorageError::Older { key: "notes/old".into(), format: 1, oldest: 2 });
+        assert!(older.to_string().contains("older version"));
+        assert!(matches!(storage.read::<Note>("plain"), Err(StorageError::Older { .. })));
         let newer = storage.read::<Note>("new").unwrap_err();
-        assert_eq!(newer, StorageError::Newer { key: "notes/new".into(), format: 3, supported: 2 });
+        assert_eq!(newer, StorageError::Newer { key: "notes/new".into(), format: 4, supported: 3 });
         assert!(newer.to_string().contains("newer version"));
         assert!(matches!(storage.read::<Note>("other"), Err(StorageError::Unreadable { .. })));
         let broken = storage.read::<Note>("broken").unwrap_err();
@@ -1242,17 +1257,17 @@ mod tests {
         let kept = kept.lock().unwrap();
         let (ns, name, text) = &kept[0];
         assert_eq!((ns.as_str(), name.as_str()), ("notes", "a"));
-        assert!(text.starts_with("// space-game: notes, format 2, saved ") && text.ends_with("\n\"later\"\n"), "{text}");
+        assert!(text.starts_with("// space-game: notes, format 3, saved ") && text.ends_with("\n\"later\"\n"), "{text}");
     }
 
     #[test]
     fn a_document_set_aside_keeps_its_text_as_stored() {
         let mut mem = MemoryBackend::default();
-        mem.write("notes", "new", "// space-game: notes, format 3, saved 5\n\"later\"\n").unwrap();
+        mem.write("notes", "new", "// space-game: notes, format 4, saved 5\n\"later\"\n").unwrap();
         let mut storage = Storage::new(mem);
         storage.set_aside::<Note>("new", "new-unread").unwrap();
         // The copy is the same document: still from a newer build, unread.
-        assert!(matches!(storage.read::<Note>("new-unread"), Err(StorageError::Newer { format: 3, .. })));
+        assert!(matches!(storage.read::<Note>("new-unread"), Err(StorageError::Newer { format: 4, .. })));
         storage.write("new", &Note("over".into()), 6).unwrap();
         assert!(matches!(storage.read::<Note>("new-unread"), Err(StorageError::Newer { .. })));
         // Nothing there: nothing to keep; names are checked.

@@ -1,6 +1,6 @@
 //! The workshop in the career (GDR-0108): the parts in stock that ships are fitted from, the haul's intact parts that
 //! wait to be kept or dismantled (in the voyage's report; what it leaves is kept when it is dismissed), fabricating
-//! parts from materials, and stocking an older save's designs.
+//! parts from materials.
 //!
 //! Fitting takes nothing: a fleet launches when the stock holds every part its ships carry ([`voyage_ready`]), the
 //! parts come back to stock when a ship comes home, and a lost ship's bonded parts re-form at home (GDR-0029). So the
@@ -230,27 +230,5 @@ impl Career {
         }
         add_materials(&mut self.stock, part, n);
         Ok(())
-    }
-
-    /// Stocks the parts an older save's designs carry (format 4 to 5, GDR-0108): every part the content knows is
-    /// raised to what the fleet carries in all and to what any one saved design carries, so nothing the player
-    /// flew stops launching. Returns what was added, by part id.
-    pub fn stock_designs(&mut self, content: &Content, fleet: &[Blueprint], saved: &[Blueprint]) -> BTreeMap<String, u32> {
-        let mut need = fleet_parts(content, fleet);
-        for d in saved {
-            for (part, n) in content.ship_parts(d) {
-                let x = need.entry(part).or_default();
-                *x = (*x).max(n);
-            }
-        }
-        let mut added = BTreeMap::new();
-        for (part, n) in need {
-            let have = self.stock.get(&part).copied().unwrap_or(0);
-            if content.parts.contains(&part) && n > have {
-                add_materials(&mut self.stock, &part, n - have);
-                added.insert(part, n - have);
-            }
-        }
-        added
     }
 }

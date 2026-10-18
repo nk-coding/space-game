@@ -540,11 +540,6 @@ pub struct Part {
     /// drydock shows it dimmed until it is researched (GDR-0065). Content ships may still use it.
     #[serde(default)]
     pub locked: bool,
-    /// Parts (ids) this one stands in for in the player's saved designs (GDR-0103): a design that carries one reads
-    /// as carrying this part instead ([`crate::design::refit_replaced`]), so it keeps working when the player's
-    /// version of a part became a part of its own (`reverse_engineered_cannon` for `automaton_cannon`).
-    #[serde(default)]
-    pub replaces: Vec<String>,
     #[serde(skip_deserializing)]
     pub source: Source,
 }
