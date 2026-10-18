@@ -1,0 +1,28 @@
+// Automaton picket: the rim automatons' unarmed scout (GDR-0111). A raider's frame without a gun: a scanner in the
+// nose, an RCS pod on each flank, a thruster behind and one core (its control capacity, 4, runs exactly these four
+// parts), lighter than a raider and quicker to turn and slide. It flies `picket`: it runs from whatever hunts it
+// and, once clear of the guns, scans; its sweep calls the automatons' sleeping sites within the scanner's range.
+// Unarmed, it never keeps its site from clearing or the fleet from the recall. PLACEHOLDER layout (content batch of
+// 18 Oct 2026, docs/results/picket-keeper-balance-2026-10-18.md).
+(
+    id: "automaton_picket",
+    name: "Automaton picket",
+    summary: "A small 3×3 unarmed automaton with a scanner in its nose that runs and calls the others.",
+    description: "It has no gun. It runs from you, and once it is clear of your guns its [[part:scanner|scanner]] sweeps: every automaton site within the scanner's range wakes, even those you have not come near yet. Shoot it before it gets clear, or keep on its tail so it never does.",
+    lore: "The shipyard's records list it as a survey drone. It still surveys, for someone else now.",
+    tags: ["enemy"],
+    faction: "automatons",
+    behavior: "picket",
+    size: (3, 3),
+    parts: [
+        (part: "slope_1x1", x: 0, y: 0, flip: true, material: "automaton_plate"),
+        (part: "scanner", x: 1, y: 0),
+        (part: "slope_1x1", x: 2, y: 0, material: "automaton_plate"),
+        (part: "rcs_pod", x: 0, y: 1),
+        (part: "automaton_core", x: 1, y: 1),
+        (part: "rcs_pod", x: 2, y: 1),
+        (part: "slope_1x1", x: 0, y: 2, rot: 2, material: "automaton_plate"),
+        (part: "thruster", x: 1, y: 2),
+        (part: "slope_1x1", x: 2, y: 2, rot: 2, flip: true, material: "automaton_plate"),
+    ],
+)

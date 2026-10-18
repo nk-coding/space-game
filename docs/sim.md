@@ -3040,6 +3040,10 @@ Galaxy track E3, 16 Oct 2026 ([GDR-0093](gdr/0093-galaxy-exploration-decisions-1
   `SitePlan::signal`, only within `signal_reveal` as well). Signals' sites: the trail places of a generated cluster that a signal the career has heard leads to (E4: `Leads::signals`; E3 had
   every trail place; a content voyage's goal until E7, 17 Oct 2026: now an ordinary site, its voyage the signal).
   Found is final.
+- **An enemy's call** (GDR-0111, 18 Oct 2026): a sweep by a ship of the voyage's enemy owner reveals nothing and
+  gives no bearings; it marks to wake every sleeping site within the scanner's `range` (not `wake`) that has a ship
+  of the scanning ship's faction (`ShipDesign::faction` of a `SitePlan::ships` entry). Sites not spawned yet are
+  not called. Cost: per enemy sweep one test per site. Test: `an_enemy_scan_calls_its_own_factions_sleeping_sites_within_range`.
 - **Generated clusters**: `VoyagePlan::roll_interior(content, id, &galaxy::Interior, &Leads, seed)` rolls an interior
   on the same generator and draw order as `roll` (no goal; a trail place in `leads.signals` is a signal's site, one in
   `leads.cores` holds its data core, `SitePlan::core`; one without an encounter, a beacon alone, rolls no ships or wrecks

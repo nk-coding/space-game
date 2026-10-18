@@ -136,6 +136,7 @@ the sites done of all (`SITES n / m`) and the time since you arrived.
 | [[encounter:the_warden]] | [[encounter:the_warden.wake_radius]] |
 | [[encounter:seedling_shoal]] | [[encounter:seedling_shoal.wake_radius]] (wary: only a scan) |
 | [[encounter:precursor_outpost]] | [[encounter:precursor_outpost.wake_radius]] |
+| [[encounter:picket_post]] | [[encounter:picket_post.wake_radius]] |
 | [[encounter:outpost_garrison]] | [[encounter:outpost_garrison.wake_radius]] |
 
 ::: tip Pick your fights
@@ -147,6 +148,11 @@ closely and it wakes behind you. A scan is loud: it wakes sleeping sites within 
 [[encounter:outpost_garrison]] (in the outer reach) is anchored: rams, shots and plumes don't shove it, and a spoke
 you shoot off stays where it was, but it turns to bring its cannons onto you ([[behavior:outpost]]). Its guns fire
 only along their facing, so come at it from the side it is turning away from, or keep a rock between you.
+
+**Pickets** call the others. The [[ship:automaton_picket]] of a [[encounter:picket_post]] has no gun: when its site
+wakes it runs ([[behavior:picket]]), and once it is clear of your guns its scan wakes every sleeping automaton site
+within [[part:scanner.scan_range]] of it, not just those within [[part:scanner.scan_wake]]. Shoot it first, or stay
+on its tail so it never gets clear; if it gets away, the sites around you come for you together.
 
 The cluster has an **edge**, [[sim:edge_margin]] outside its radius: fly past it and your ship is pushed back
 towards the centre.

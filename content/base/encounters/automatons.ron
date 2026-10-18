@@ -78,6 +78,19 @@
         wake_radius: 300,
     ),
     (
+        id: "picket_post",
+        name: "Picket post",
+        summary: "A raider pair on watch with a picket, an unarmed scout that runs and calls the others.",
+        description: "When the site wakes, the [[ship:automaton_picket]] runs, and once clear of your guns its scan wakes every automaton site within the scanner's range. Shoot it first, or keep on its tail.",
+        lore: "Something taught the automatons to keep a lookout. Nobody at the shipyard admits to it.",
+        tags: ["raiders", "picket"],
+        ships: [
+            (ship: "automaton_picket", count: (1, 1)),
+            (ship: "automaton_raider", count: (2, 2)),
+        ],
+        wake_radius: 250,
+    ),
+    (
         id: "derelict_field",
         name: "Derelict field",
         summary: "Old shipyard hulls, long dead, among wrecked raiders; sometimes a live one is still picking at them.",

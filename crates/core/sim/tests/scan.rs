@@ -290,3 +290,67 @@ fn a_generated_interior_rolls_into_a_plan() {
     assert_eq!(wreck.cargo().count(&item), 1);
     assert_eq!(wreck.cargo().items().find(|(i, _)| **i == item).unwrap().1.units, 1);
 }
+
+/// An enemy's sweep calls its own faction's sleeping sites within the scanner's range (GDR-0111): the automatons'
+/// site within it wakes; a Grown site within it and an automaton site just beyond it sleep on, and the player
+/// learns nothing from it.
+#[test]
+fn an_enemy_scan_calls_its_own_factions_sleeping_sites_within_range() {
+    let c = content();
+    let range = c.parts.get("scanner").unwrap().scanner.clone().unwrap().range;
+    assert!((1000.0..1250.0).contains(&range), "the layout below assumes about 1200 m");
+    let site = |ship: &str, pos: Vec2| sim::SitePlan {
+        encounter: Some("test".into()),
+        goal: false,
+        signal: false,
+        core: None,
+        pos,
+        wake_radius: 250.0,
+        wary: false,
+        ships: vec![sim::Spawn { design: design(&c, ship), body: Body::at(pos, 0.0), damage: 0.0, seed: 0 }],
+        wrecks: Vec::new(),
+    };
+    // The picket at the origin; the player 360-590 m from each site (all spawn, none wakes on sight).
+    let me_at = Vec2::new(700.0, -300.0);
+    let plan = VoyagePlan {
+        voyage: "test".into(),
+        seed: 1,
+        radius: 2500.0,
+        entry: Body::at(me_at, 0.0),
+        sites: vec![
+            site("automaton_raider", Vec2::new(900.0, 0.0)),
+            site("grown_seedling", Vec2::new(500.0, 200.0)),
+            site("automaton_raider", Vec2::new(1250.0, -100.0)),
+        ],
+        star: None,
+        rocks: Vec::new(),
+    };
+    let mut w = Sim::new(3);
+    w.set_behaviors(sim::BehaviorLibrary::new(&c).unwrap());
+    w.start_voyage(plan, Owner::PLAYER, ENEMY);
+    let me = w.spawn_ship(design(&c, "rim_skiff"), Owner::PLAYER, Body::at(me_at, 0.0));
+    w.command(me, ShipCommand::Focus);
+    let picket = w.spawn_ship(design(&c, "automaton_picket"), ENEMY, Body::at(Vec2::ZERO, 0.0));
+    step(&mut w);
+    let known: Vec<bool> = w.voyage().unwrap().sites().iter().map(|s| s.known()).collect();
+    assert!(w.voyage().unwrap().sites().iter().all(|s| s.state() == SiteState::Asleep));
+    w.command(picket, ShipCommand::Scan);
+    let mut woke = Vec::new();
+    let mut swept = false;
+    for _ in 0..(3 * sim::TICK_HZ) {
+        put(&mut w, picket, Vec2::ZERO);
+        put(&mut w, me, me_at);
+        let events = step(&mut w);
+        swept |= events.iter().any(|e| matches!(e, SimEvent::Scanned { ship, .. } if *ship == picket));
+        assert!(!events.iter().any(|e| matches!(e, SimEvent::SiteRevealed { .. } | SimEvent::SiteBearing { .. })));
+        woke.extend(events.iter().filter_map(|e| match e {
+            SimEvent::SiteWoke { site } => Some(*site),
+            _ => None,
+        }));
+    }
+    assert!(swept);
+    assert_eq!(woke, [0], "only the automatons' site within range");
+    let v = w.voyage().unwrap();
+    assert_eq!([1, 2].map(|k| v.sites()[k].state()), [SiteState::Asleep; 2]);
+    assert_eq!(v.sites().iter().map(|s| s.known()).collect::<Vec<_>>(), known);
+}

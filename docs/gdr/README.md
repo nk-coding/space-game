@@ -119,6 +119,7 @@ overview and links to both series. Format and status rules: `CLAUDE.md`, section
 | [0108](0108-materials-economy-workshop.md) | The materials economy: one WORKSHOP (the fabricator and the salvage bay merged), parts cost materials (recipes, workshop upgrades) and fit a fleet from its stock (nothing consumed; lost parts re-form), hauled intact parts kept or dismantled, most stripped parts break, dismantling returns 40 % (broken 25 %) | Accepted (Niklas; numbers provisional, lead)
 | [0109](0109-a-ram-prow-and-an-engine-arm-a-ship.md) | A ram prow and a working engine arm a ship: a rammer without guns keeps its site from clearing and blocks the recall | Accepted (provisional, lead) | 2026-10-18 |
 | [0110](0110-anchored-stations.md) | Stations are anchored ships: every piece keeps its place and only turns; the first is the automaton outpost, a rim and an outer site | Accepted (provisional, lead) | 2026-10-18 |
+| [0111](0111-an-enemy-scan-calls-its-factions-sites.md) | An enemy's scan calls its own faction's sleeping sites within the scanner's range; the first caller is the automaton picket, a rim site | Accepted (provisional, lead) | 2026-10-18 |
 <!-- index:end -->
 
 ## How to add, supersede and deprecate

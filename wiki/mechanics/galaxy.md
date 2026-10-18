@@ -140,6 +140,9 @@ with the [[behavior_node:scan]] action. The scanner charges for [[part:scanner.s
   pointing straight at it. Scan again from somewhere else and the two lines cross at the place;
 - sleeping ships within [[part:scanner.scan_wake]] wake up: where you scan matters.
 
+An enemy's scan is a call: when an enemy ship scans (the [[ship:automaton_picket]] of the [[faction:automatons]]),
+every sleeping site of its own faction within [[part:scanner.scan_range]] wakes. It shows you nothing.
+
 Then it cools down for [[part:scanner.scan_cooldown]]. A banner says what the scan found, and what it did to your
 signals. [[control:cluster_map.keys]] ([[control:cluster_map]]) lays the whole cluster over your view: its edge,
 where you came in, what your scans swept, the bearings, the sites found, the rock you came near, the ships within your

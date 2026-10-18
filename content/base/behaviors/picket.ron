@@ -1,0 +1,17 @@
+// The automaton picket's tactics (GDR-0111): run, and call the others once clear of the guns. Two rules, so it fits
+// one automaton core. The scan never flies the ship, so it runs while the scan charges. PLACEHOLDER numbers
+// (content batch of 18 Oct 2026, docs/results/picket-keeper-balance-2026-10-18.md).
+[
+    (
+        id: "picket",
+        name: "Picket",
+        summary: "Run from the nearest enemy; once clear of its guns, scan to call the others.",
+        description: "Picks the nearest enemy and flees from it at top speed. While that enemy is more than 300 m off it scans whenever its [[part:scanner|scanner]] is ready; a ship of the automatons that scans calls every automaton site within the scanner's range. Keep within 300 m of it and it cannot call.",
+        tags: ["automaton", "scan"],
+        target: "nearest",
+        rules: [
+            "when not target_in_range(300m) -> scan # clear of the guns: call the others",
+            "always -> flee # never let a hunter close",
+        ],
+    ),
+]

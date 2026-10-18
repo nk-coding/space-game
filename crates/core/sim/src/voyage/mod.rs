@@ -27,7 +27,9 @@
 //!   comes within the encounter's wake radius (not at a wary site, GDR-0099 A3: every ship of a wary faction), one of
 //!   them is hit (a shot or a plume on the hull, a shot its bubble took, a ram that deals damage), one of its wrecks is
 //!   stripped (a part or its cargo collected, GDR-0102), or one of them stopped being a running vessel
-//!   (`SimEvent::SiteWoke`). Vessels that split off a site's ships belong to the site.
+//!   (`SimEvent::SiteWoke`). Vessels that split off a site's ships belong to the site. An enemy's scan calls its
+//!   own faction's sites (GDR-0111): every sleeping site within the scanner's range with a ship of the scanning
+//!   ship's faction wakes (a site not spawned yet is not called); it reveals nothing to the player.
 //! * **Clearing** (GDR-0068): an awake site is cleared when each of its ships is destroyed or disarmed: none is a
 //!   vessel (running, dark or dormant) that is still armed ([`Ship::is_armed`]) (`SimEvent::SiteCleared { goal }`);
 //!   clearing is final. A site that rolled no ships is quiet: nothing wakes there and it is never cleared.
@@ -920,7 +922,8 @@ impl Sim {
 
     /// The director's pass at the end of a step: spawn the sites near player vessels, follow the events since the
     /// last pass (split-off vessels join their site, hits wake it, the player's scans reveal sites, give bearings
-    /// and wake sites), show the sites the player's sensors reach, wake sites, clear them.
+    /// and wake sites, the enemy's call their faction's sites), show the sites the player's sensors reach, wake
+    /// sites, clear them.
     pub(crate) fn direct_voyage(&mut self) {
         let Some(mut v) = self.voyage.take() else {
             return;
@@ -958,11 +961,27 @@ impl Sim {
             }
         };
         let mut found = Vec::new();
+        let mut calls = Vec::new();
         for e in &self.events {
             if let &SimEvent::Scanned { ship, at, range, wake } = e
-                && self.ship(ship).is_some_and(|s| s.team() == Some(v.player))
+                && let Some(s) = self.ship(ship)
             {
-                found.push((at, range, wake));
+                if s.team() == Some(v.player) {
+                    found.push((at, range, wake));
+                } else if s.team() == Some(v.enemy) {
+                    calls.push((at, range, Arc::clone(s.design())));
+                }
+            }
+        }
+        // An enemy's sweep calls its own faction's sleeping sites within the scanner's range (GDR-0111).
+        for (at, range, design) in calls {
+            for site in &mut v.sites {
+                if site.state == SiteState::Asleep
+                    && (site.plan.pos - at).length_squared() <= range * range
+                    && site.plan.ships.iter().any(|s| s.design.faction == design.faction)
+                {
+                    site.hit = true;
+                }
             }
         }
         for (at, range, wake) in found {
