@@ -1,6 +1,7 @@
 # GDR-0102: The Grown's mechanics and parts, lead defaults: one regrown part every 2.5 s from a working heart, tissue that heals, a prow that deals twice and takes half, wary sites that wake on provocation and on stripped wrecks, hot stars by the inverse square
 
 - Status: Accepted (provisional, lead), 17 Oct 2026, for Niklas to review
+  2026-10-18: an encounter may lie by the hot star (`near_star`: the nearest of 64 spots in the cluster to the star, placed before the other sites); the scorched deep's `scorched_wrecks`, rich and unguarded, at 2.6–4 times the centre's heat.
   2026-10-18: the parts and tissue are unlocked by the Grown research family and their salvage goes to it; the
   Grown's ships and the outer reach's sites built on them ([GDR-0103](0103-the-grown-in-play-defaults.md)); the
   ram prow sits out in front of a Grown ship, the thorn guns a row back.

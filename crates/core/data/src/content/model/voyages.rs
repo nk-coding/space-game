@@ -101,6 +101,10 @@ pub struct Encounter {
     pub wrecks: Vec<EncounterWrecks>,
     /// Metres: the ships wake when a player vessel comes this close to the site.
     pub wake_radius: f32,
+    /// In a cluster with a hot star (GDR-0102), the site lies as near the star as the cluster's radius allows
+    /// (`sim::VoyagePlan::roll_interior`). Left out of the RON when false, so the content's fingerprint stays.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub near_star: bool,
     #[serde(skip_deserializing)]
     pub source: Source,
 }

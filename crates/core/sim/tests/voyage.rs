@@ -753,6 +753,40 @@ fn a_site_of_wary_ships_rolls_wary_and_a_hot_cluster_its_star() {
     assert_eq!(cold.sites.iter().map(|s| s.pos).collect::<Vec<_>>(), plan.sites.iter().map(|s| s.pos).collect::<Vec<_>>());
 }
 
+/// A site of a `near_star` encounter in a hot cluster lies as near the star as the radius allows, wherever the star
+/// is: nearer it than every other site, where the heat is several times the centre's. Without a star it is an
+/// ordinary site.
+#[test]
+fn a_near_star_site_lies_by_the_hot_star() {
+    let c = content();
+    assert!(c.encounters.get("scorched_wrecks").unwrap().near_star);
+    for (seed, angle) in [(1u64, 0.0f32), (2, 2.0), (3, 4.0), (4, 5.5)] {
+        let d = 2400.0 * 1.8;
+        let at = Vec2::new(d * angle.cos(), d * angle.sin());
+        let interior = galaxy::Interior {
+            kind: "scorched_deep".into(),
+            radius: 2400.0,
+            spacing: (600.0, 1400.0),
+            sites: ["grove", "grove", "grown_dead", "scorched_wrecks"]
+                .iter()
+                .map(|e| galaxy::InteriorSite { encounter: Some((*e).into()), place: None })
+                .collect(),
+            star: Some(galaxy::InteriorStar { x: at.x.round(), y: at.y.round(), heat: 0.3 }),
+        };
+        let plan = VoyagePlan::roll_interior(&c, "test", &interior, &Default::default(), seed).unwrap();
+        let star = plan.star.unwrap();
+        let wrecks = &plan.sites[3];
+        assert_eq!(wrecks.encounter.as_deref(), Some("scorched_wrecks"));
+        assert!(wrecks.pos.length() <= 2400.0);
+        let near = (wrecks.pos - star.pos).length();
+        assert!(plan.sites[..3].iter().all(|s| (s.pos - star.pos).length() > near), "seed {seed}");
+        assert!(star.heat_at(wrecks.pos) > 2.5 * star.heat, "seed {seed}: {} at {:?}", star.heat_at(wrecks.pos), wrecks.pos);
+        for s in &plan.sites[..3] {
+            assert!((s.pos - wrecks.pos).length() >= 600.0, "the spacing's min holds");
+        }
+    }
+}
+
 /// A blueprint in two cored pieces (13 Oct 2026 review): the second forms a vessel of its own at spawn. Its
 /// vessels join the site in id order, hold where they are, and a hit on one wakes the site.
 #[test]

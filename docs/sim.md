@@ -2328,6 +2328,9 @@ runner, the scenario and the tests seed the `Sim` with the voyage seed too). The
    **entry** at `(0, −radius)`) is at least `spacing.0` and at most `spacing.1` away. Every other site is placed
    first, in order; the goal last, as the farthest from the entry of the first 8 good spots. With no good spot in 64
    tries, the spot that misses the spacing least (none of the base voyages needs it for seeds 1–20, a test checks).
+   In a cluster with a hot star (`roll_interior`), the sites of a `near_star` encounter go before every other site:
+   of all 64 tries at least `spacing.0` from every placed spot, the one nearest the star (18 Oct 2026; the
+   `scorched_wrecks` lie where the heat is 2.6–4 times the centre's, `tests/voyage.rs`).
 2. Then **per site, in plan order**, all of its draws before the next site's:
    1. **Counts**: each ship entry of its encounter, then each wreck entry, rolls its count in `(min, max)`, both
       included.

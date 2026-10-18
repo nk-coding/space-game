@@ -227,7 +227,7 @@ impl VoyagePlan {
             })?;
             list.extend((0..s.count).map(|_| (Some(e), s.goal, false, None)));
         }
-        let mut plan = Self::roll_sites(content, &voyage.id, voyage.radius, voyage.spacing, &list, seed)?;
+        let mut plan = Self::roll_sites(content, &voyage.id, voyage.radius, voyage.spacing, &list, None, seed)?;
         plan.roll_rocks(content, &voyage.scenery)?;
         Ok(plan)
     }
@@ -263,7 +263,8 @@ impl VoyagePlan {
                 Ok((e, false, signal, s.place.filter(|p| leads.cores.contains(p))))
             })
             .collect::<Result<Vec<_>, String>>()?;
-        let mut plan = Self::roll_sites(content, id, interior.radius, interior.spacing, &list, seed)?;
+        let star = interior.star.as_ref().map(|s| Vec2::new(s.x, s.y));
+        let mut plan = Self::roll_sites(content, id, interior.radius, interior.spacing, &list, star, seed)?;
         plan.star = interior.star.as_ref().map(|s| {
             let pos = Vec2::new(s.x, s.y);
             Star { pos, heat: s.heat, reach: pos.length() }
@@ -273,25 +274,37 @@ impl VoyagePlan {
         Ok(plan)
     }
 
-    /// The roll of both: `list` holds each site to roll ([`SiteRoll`]).
+    /// The roll of both: `list` holds each site to roll ([`SiteRoll`]); `star` is the hot star's position, if any.
     fn roll_sites(
         content: &Content,
         id: &str,
         radius: f32,
         spacing: (f32, f32),
         list: &[SiteRoll],
+        star: Option<Vec2>,
         seed: u64,
     ) -> Result<VoyagePlan, String> {
         let rng = &mut Pcg32::new(splitmix64(seed ^ splitmix64(PLAN_STREAM)), PLAN_STREAM);
         let entry = Vec2::new(0.0, -radius);
 
-        // Positions: every other site first, in order, then the goal.
+        // Positions: the sites by the hot star first (a `near_star` encounter in a cluster with one), then every
+        // other site, in order, then the goal.
         let mut pos = vec![Vec2::ZERO; list.len()];
         let mut placed = vec![entry];
-        for goal in [false, true] {
-            for (k, &(_, g, _, _)) in list.iter().enumerate() {
-                if g == goal {
-                    pos[k] = place_site(rng, radius, spacing, &placed, entry, goal);
+        let pass = |&(e, goal, _, _): &SiteRoll| {
+            if goal {
+                2
+            } else if star.is_some() && e.is_some_and(|e| e.near_star) {
+                0
+            } else {
+                1
+            }
+        };
+        for n in 0..3 {
+            for (k, s) in list.iter().enumerate() {
+                if pass(s) == n {
+                    let near = star.filter(|_| n == 0);
+                    pos[k] = place_site(rng, radius, spacing, &placed, entry, n == 2, near);
                     placed.push(pos[k]);
                 }
             }
@@ -409,7 +422,9 @@ fn in_disc(rng: &mut Pcg32, centre: Vec2, radius: f32) -> Vec2 {
 
 /// Where one site goes: a spot inside the radius whose nearest placed spot (sites and the entry) lies within
 /// `spacing`. A plain site takes the first good spot, the goal the farthest from the entry of up to
-/// [`GOAL_CHOICES`]; with no good spot in [`PLACE_TRIES`] the one that misses the spacing least.
+/// [`GOAL_CHOICES`]; with no good spot in [`PLACE_TRIES`] the one that misses the spacing least. A site by the hot
+/// star (`star`: an encounter's `near_star` in a cluster with one) takes, of all the tries no closer to a placed
+/// spot than the spacing's min, the nearest to the star: it need not lie within the max of another.
 fn place_site(
     rng: &mut Pcg32,
     radius: f32,
@@ -417,6 +432,7 @@ fn place_site(
     placed: &[Vec2],
     entry: Vec2,
     goal: bool,
+    star: Option<Vec2>,
 ) -> Vec2 {
     let mut best: Option<(f32, Vec2)> = None; // (miss, spot): the least miss so far
     let mut good: Option<(f32, Vec2)> = None; // (distance from the entry, spot): the farthest good spot
@@ -427,6 +443,18 @@ fn place_site(
             .iter()
             .map(|&q| (p - q).length())
             .fold(f32::INFINITY, f32::min);
+        if let Some(s) = star {
+            let miss = (near - nearest).max(0.0);
+            if miss == 0.0 {
+                let d = (p - s).length();
+                if good.is_none_or(|(g, _)| d < g) {
+                    good = Some((d, p));
+                }
+            } else if best.is_none_or(|(m, _)| miss < m) {
+                best = Some((miss, p));
+            }
+            continue;
+        }
         let miss = (near - nearest).max(nearest - far).max(0.0);
         if miss == 0.0 {
             if !goal {

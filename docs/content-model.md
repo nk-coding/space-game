@@ -726,6 +726,7 @@ gone (`Sim::spawn_wreck`). Variants by count (a pair, a pack, a den) are entries
 | `ships` | optional: a known ship with a logic core (one without would spawn as salvage) and `count` `(min, max)`, `min ≤ max ≤ 32` (`MAX_ENCOUNTER_COUNT`). A ship without a behavior (its own or its faction's) is a warning: it would only hold |
 | `wrecks` | optional: any known ship, `count` as above, `damage` 0 to below 1 (default 0) |
 | `wake_radius` | m, above 0 and at most 20000 |
+| `near_star` | optional, default `false` (18 Oct 2026): in a cluster with a hot star the site lies as near the star as the cluster's radius allows (placed before the other sites, the nearest of 64 tries to the star); elsewhere an ordinary site |
 
 An encounter needs ships or wrecks. Base encounters (placeholders, `../space-game-archive/plans/slice-content.md` 3.2, counts tuned
 by GDR-0073, re-measured 17 Oct 2026): `raider_pair` (2 raiders), `raider_pack` (3), `raider_den` (2–3, wakes at 300 m), `gunner_pair`
@@ -747,7 +748,9 @@ counts tuned with the headless voyage runner, `docs/results/outer-balance-2026-1
 (1–2 raiders, 0–1 gunners), `bastion_gate` (the `automaton_bastion`, a gunner and a hunter: the outer gates' trail
 `outer_gate`), `elder_grove` (the `grown_elder` and a rammer, 1–2 guardian wrecks: the trail `elder_grove`). Grown
 sites are wary (they wake only when provoked, GDR-0102); the Grown fly `behaviors/grown.ron`. Ships tagged `outer`
-stay out of the determinism scenarios that spawn every blueprint.
+stay out of the determinism scenarios that spawn every blueprint. The content batch of 18 Oct 2026
+(`docs/results/encounters-balance-2026-10-18.md`): `seedling_shoal` (5–6 `grown_seedling`s, GDR-0109) in the grove
+reach, `scorched_wrecks` (wrecks only, 2–3 `sample_mid`s and 1–2 hunters, `near_star`) in the scorched deep.
 
 ### Controls (`controls.ron`, added 15 Oct 2026, GDR-0090)
 

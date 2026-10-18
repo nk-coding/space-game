@@ -3,7 +3,8 @@
 // automatons stood in until then), and their hearts overheat on the star's side like any part. PLACEHOLDER NUMBERS (lead, 17 Oct 2026, GDR-0102): the star lies 1.8 radii out, so a
 // part takes 0.3 heat a second per open side at the centre, about 1.5 at the cluster's edge nearest the star and 0.12
 // at the far edge; a shield emitter open on two sides runs at two thirds of its limit at the centre and overheats
-// on the star's side unless a radiator beside it vents the heat (`sim/tests/living.rs`).
+// on the star's side unless a radiator beside it vents the heat (`sim/tests/living.rs`). Sun-scorched wrecks lie as
+// near the star as the cluster goes (content batch of 18 Oct 2026, the encounter's `near_star`).
 (
     id: "scorched_deep",
     name: "Scorched deep",
@@ -17,6 +18,7 @@
         (encounter: "grove_pair", count: (0, 1)),
         (encounter: "grown_dead", count: (0, 1)),
         (encounter: "precursor_wrecks", count: (0, 1)),
+        (encounter: "scorched_wrecks", count: (1, 1)),
     ],
     star: (heat: 0.3, distance: 1.8),
     scenery: (

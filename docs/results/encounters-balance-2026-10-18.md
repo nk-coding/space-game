@@ -34,3 +34,12 @@ researched handles it.
 
 With GDR-0109 a rammer or guardian whose thorn guns are gone stays armed while its prow and thrusters work. The grove
 run hardly moved: t_grove Runner 40 → 42 %, Runner + C 55 → 52 % (seeds 1–120).
+
+## Sun-scorched wrecks (`scorched_wrecks`)
+
+Wrecks only (2–3 `sample_mid`s 20 % gone, 1–2 `automaton_hunter`s 30 % gone), one per scorched deep, `near_star`:
+placed before the other sites, the nearest to the star of 64 spots in the disc that keep the spacing's min. The
+voyage runner has no star (a voyage has none), so no runs: the placement test (`sim/tests/voyage.rs`,
+`a_near_star_site_lies_by_the_hot_star`, a 2400 m cluster, the star 1.8 radii out in four directions) puts the
+wrecks where a part takes 2.6, 3.9 and twice 4.0 (`STAR_HEAT_CAP`) times the centre's heat a second per open side:
+0.8–1.2 instead of 0.3, where GDR-0102's shield emitter open on two sides overheats without a radiator.

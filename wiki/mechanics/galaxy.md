@@ -38,7 +38,7 @@ The outer reach is the [[faction:grown]]'s ([living parts](/mechanics/living-par
 
 - [[cluster_type:grove_reach]] ([[cluster_type:grove_reach.radius]]): the Grown's groves, calm until provoked;
 - [[cluster_type:scorched_deep]] ([[cluster_type:scorched_deep.radius]]): groves beside a hot star whose heat soaks
-  into every part open to space;
+  into every part open to space, and [[encounter:scorched_wrecks]] as near the star as the cluster goes;
 - [[cluster_type:border_drift]] ([[cluster_type:border_drift.radius]]): only near the rim's border, where automaton
   stragglers run into the first groves.
 
