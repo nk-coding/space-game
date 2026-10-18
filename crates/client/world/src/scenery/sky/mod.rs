@@ -8,11 +8,12 @@
 //! round the view's middle. Every piece also hangs at an anchor in the cluster on a layer of its own parallax like
 //! the rest of the scenery (`camera + (anchor − camera) · p · depth_scale(p)`, GDR-0107; true parallax since
 //! Niklas's look of 18 Oct 2026, no cap, so a planet leaves the view): the galaxy 0, the nebula 0.003, the planets
-//! 0.020–0.028 (the bigger the nearer and faster) and their moons a third more, above the stars (0.005–0.017) and
+//! 0.020–0.028 (the bigger the nearer and faster) and their moons a tenth more, above the stars (0.005–0.017) and
 //! below the junk (0.3 and up, `backdrop.rs`, `filler.rs`). A planet's anchor is where the camera sees it in the
-//! view's middle: the first between the entry and the centre, the others round the centre, so some planet is in
-//! view from most of the cluster. Everything is drawn at [`STRENGTH`] (veiled towards the sky's dark), so it stays
-//! quiet behind a fight.
+//! view's middle: the first between the entry and the centre, the others round the centre and farther out until no
+//! two planets (with their rings and moons) can meet on screen from anywhere the camera goes ([`clear`]), so some
+//! planet is in view from most of the cluster. The planets and moons draw by their parallax, the nearer over the
+//! farther. Everything is drawn at [`STRENGTH`] (veiled towards the sky's dark), so it stays quiet behind a fight.
 
 mod kinds;
 mod nebula;
@@ -40,21 +41,34 @@ pub(super) const STRENGTH: f32 = 0.85;
 const PARALLAX_NEBULA: f32 = 0.003;
 const PARALLAX_PLANET: f32 = 0.024;
 const PLANET_SPREAD: f32 = 0.15;
-/// A moon's parallax over its planet's.
-const MOON_DEPTH: f32 = 4.0 / 3.0;
+/// A moon's parallax over its planet's: a tenth more, so it stays by its planet as the camera moves (a third more
+/// swung it hundreds of px off; 18 Oct 2026).
+const MOON_DEPTH: f32 = 1.1;
+/// A planet's radius as a share of the view's height: small, or (one at most) large; distant (Niklas, 18 Oct 2026:
+/// a large planet of 0.22–0.34 filled half the view at Corran Reach's entry).
+const SMALL: (f32, f32) = (0.05, 0.09);
+const LARGE: (f32, f32) = (0.10, 0.12);
+/// The clearance between planets: how far past the cluster's radius the camera may go, the view heights checked
+/// (as scales of the design frame: 720 to 1125 px), the least gap between two bodies on screen (px) and the tries
+/// for a clear anchor, each a little farther out (a planet that finds none is left out).
+const CAMERA_REACH: f32 = 1.15;
+const SCALES: [f32; 3] = [0.8, 1.0, 1.25];
+const GAP: f32 = 24.0;
+const ANCHOR_TRIES: u32 = 48;
 /// The planets: two or three by weight.
 const PLANET_COUNTS: [(usize, u32); 2] = [(2, 3), (3, 7)];
 /// The share of a planet's place towards the cluster's centre from the entry (the first planet) and from the centre
 /// (the others, round it).
 const FIRST_AT: f32 = 0.3;
 const OTHERS_AT: (f32, f32) = (0.4, 0.6);
-/// Draw order: the galaxy over the gradient, the far stars (−893, `backdrop.rs`), the nebula, the rings' back
-/// halves, the planets, the rings' front halves, the moons. The hot star's glow (−889), its corona and the landmarks
-/// (−888.5) lie between the nebula and the planets: nothing farther off draws over a planet (GDR-0107).
+/// Draw order: the galaxy over the gradient, the far stars (−893, `backdrop.rs`), the nebula, then the planets and
+/// moons by their parallax (`Z_BODIES + parallax · DEPTH_Z`, −885 to −884), a planet's rings' back half just under
+/// it and the front half just over it. The hot star's glow (−889), its corona and the landmarks (−888.5) lie between
+/// the nebula and the planets: nothing farther off draws over a planet (GDR-0107).
 const Z_GALAXY: f32 = -897.0;
 const Z_NEBULA: f32 = -890.0;
-const Z_PLANET: f32 = -886.0;
-const Z_MOONS: f32 = -883.0;
+const Z_BODIES: f32 = -887.0;
+const DEPTH_Z: f32 = 100.0;
 
 /// Where a piece sits across the view: at its distance from the left or the right edge, round the middle, or
 /// stretched to the view's width (the nebula).
@@ -127,7 +141,7 @@ pub(super) fn spawn(cx: &mut Build, s: &SkySpec, content: &data::Content) -> Opt
         let t = (W / 2.0 / d.x.abs().max(1e-3)).min(H / 2.0 / d.y.abs().max(1e-3)) * 1.1;
         Vec2::new(W, H) / 2.0 + d * t
     });
-    let planets = match s.over {
+    let (planets, moons) = match s.over {
         Some(over) => {
             let all: Vec<(&PlanetKind, u32)> = content.planets.iter().filter(|k| k.body == BodyClass::Planet).map(|k| (k, 1)).collect();
             let pool: Vec<(&PlanetKind, u32)> =
@@ -135,11 +149,12 @@ pub(super) fn spawn(cx: &mut Build, s: &SkySpec, content: &data::Content) -> Opt
             if pool.is_empty() {
                 return None;
             }
-            roll_planets(&mut Stream::new(s.seed, "planet"), s, &pool, &all, hot, over)
+            let planets = roll_planets(&mut Stream::new(s.seed, "planet"), s, &pool, &all, hot);
+            let moons = roll_moons(&mut Stream::new(s.seed, "moons"), s, content, &planets, hot);
+            anchor_planets(&mut Stream::new(s.seed, "anchors"), planets, moons, over)
         }
-        None => Vec::new(),
+        None => (Vec::new(), Vec::new()),
     };
-    let moons = roll_moons(&mut Stream::new(s.seed, "moons"), s, content, &planets, hot);
     let nebula = nebula::nebula(&mut Stream::new(s.seed, "nebula"), s.sky, night, hot.is_some());
     let galaxy = nebula::galaxy(&mut Stream::new(s.seed, "galaxy"), s.sky.galaxy);
 
@@ -152,22 +167,21 @@ pub(super) fn spawn(cx: &mut Build, s: &SkySpec, content: &data::Content) -> Opt
     for (i, p) in planets.iter().enumerate() {
         let painted = paint::paint(&p.body, &paint, white);
         let part = || SkyPart { at: p.body.at, edge: Edge::Mid, anchor: p.anchor, parallax: p.parallax };
-        // nearer planets over farther ones
-        let z = Z_PLANET + p.parallax / PARALLAX_PLANET * 0.1 + i as f32 * 0.01;
+        let z = depth_z(p.parallax, i);
         counts.vertices[0] += put(cx, painted.body, part(), z);
         if let Some(g) = painted.ring_back {
-            counts.vertices[0] += put(cx, g, part(), z - 1.0);
+            counts.vertices[0] += put(cx, g, part(), z - 4e-4);
         }
         if let Some(g) = painted.ring_front {
-            counts.vertices[0] += put(cx, g, part(), z + 1.0);
+            counts.vertices[0] += put(cx, g, part(), z + 4e-4);
         }
         counts.planets.push(format!("{} (r {:.0} px, p {:.3}{})", p.kind, p.body.r, p.parallax, if p.body.look.ring.is_some() { ", ringed" } else { "" }));
     }
-    for (k, (m, of, name)) in moons.iter().enumerate() {
+    for (m, of, name) in &moons {
         let painted = paint::paint(m, &paint, white);
         let p = &planets[*of];
         let part = SkyPart { at: m.at, edge: Edge::Mid, anchor: p.anchor, parallax: p.parallax * MOON_DEPTH };
-        counts.vertices[1] += put(cx, painted.body, part, Z_MOONS + k as f32 * 0.1);
+        counts.vertices[1] += put(cx, painted.body, part, depth_z(p.parallax * MOON_DEPTH, *of));
         counts.moons.push(name.clone());
     }
     let neb = nebula::nebula_mesh(&nebula, white, dot, s.strength);
@@ -179,17 +193,20 @@ pub(super) fn spawn(cx: &mut Build, s: &SkySpec, content: &data::Content) -> Opt
     Some(counts)
 }
 
+/// The z of a planet or moon of parallax `parallax` (the nearer over the farther), the `i`th planet's a hair over
+/// an earlier one's of the same parallax.
+fn depth_z(parallax: f32, i: usize) -> f32 {
+    Z_BODIES + parallax * DEPTH_Z + i as f32 * 1e-3
+}
+
 /// Two or three planets of different kinds by weight (the first `?planet=`'s if given), each in the design frame's
-/// middle, small (0.07–0.13 of the view's height) or at most one large (25 %: 0.22–0.34; Niklas, 18 Oct 2026,
-/// planets read too near), its parallax by its size; lit from the hot star, from behind (a backlit sky) or from a
-/// side. The first is anchored between the entry and the cluster's centre, so it greets the fleet, the others round
-/// the centre a turn's share apart from it.
-fn roll_planets(r: &mut Stream, s: &SkySpec, pool: &[(&PlanetKind, u32)], all: &[(&PlanetKind, u32)], hot: Option<Vec2>, over: Over) -> Vec<Planet> {
+/// middle, [`SMALL`] or at most one [`LARGE`] (25 %), its parallax by its size; lit from the hot star, from behind
+/// (a backlit sky) or from a side. Their anchors come after their moons ([`anchor_planets`]).
+fn roll_planets(r: &mut Stream, s: &SkySpec, pool: &[(&PlanetKind, u32)], all: &[(&PlanetKind, u32)], hot: Option<Vec2>) -> Vec<Planet> {
     let n = PLANET_COUNTS[r.weighted(&PLANET_COUNTS.map(|c| c.1))].0;
     let mid = Vec2::new(W, H) / 2.0;
     let mut pool = pool.to_vec();
     let mut big_left = true;
-    let first = Vec2::from_angle(over.entry.to_angle() + r.range(-0.4, 0.4)) * over.radius * (1.0 - FIRST_AT);
     let mut out = Vec::new();
     for i in 0..n {
         let weights: Vec<u32> = pool.iter().map(|p| p.1).collect();
@@ -198,7 +215,7 @@ fn roll_planets(r: &mut Stream, s: &SkySpec, pool: &[(&PlanetKind, u32)], all: &
         pool.retain(|p| p.0.id != kind.id);
         let big = big_left && r.chance(0.25);
         big_left &= !big;
-        let mut rad = if big { r.range(0.22, 0.34) } else { r.range(0.07, 0.13) } * H;
+        let mut rad = if big { r.range(LARGE.0, LARGE.1) } else { r.range(SMALL.0, SMALL.1) } * H;
         let (light, phase) = match hot {
             Some(h) => ((h.y - mid.y).atan2(h.x - mid.x), r.range(0.35, 0.95)),
             None if s.sky.backlit => (r.range(0.0, TAU), r.range(2.3, 2.65)),
@@ -211,22 +228,68 @@ fn roll_planets(r: &mut Stream, s: &SkySpec, pool: &[(&PlanetKind, u32)], all: &
             // a large ringed planet is smaller, so its rings fit the view
             rad *= 0.75;
         }
-        let size = ((rad / H - 0.07) / (0.34 - 0.07)).clamp(0.0, 1.0);
+        let size = ((rad / H - SMALL.0) / (LARGE.1 - SMALL.0)).clamp(0.0, 1.0);
         let parallax = PARALLAX_PLANET * (1.0 - PLANET_SPREAD + 2.0 * PLANET_SPREAD * size);
-        let anchor = if i == 0 {
-            first
-        } else {
-            let turn = first.to_angle() + TAU * i as f32 / n as f32 + r.range(-0.3, 0.3);
-            Vec2::from_angle(turn) * over.radius * r.range(OTHERS_AT.0, OTHERS_AT.1)
-        };
         let mut body = Body { r: rad, at: mid, light, phase, tilt, moon: false, look };
         aim(&mut body);
-        out.push(Planet { body, kind: kind.id.clone(), anchor, parallax });
+        out.push(Planet { body, kind: kind.id.clone(), anchor: Vec2::ZERO, parallax });
         if pool.is_empty() {
             break;
         }
     }
     out
+}
+
+/// Anchors the planets: the first between the entry and the cluster's centre, so it greets the fleet, the others
+/// round the centre a turn's share apart from it, each tried farther out until it is [`clear`] of every planet
+/// anchored before it; a planet that finds no clear anchor is left out with its moons.
+fn anchor_planets(r: &mut Stream, planets: Vec<Planet>, moons: Vec<(Body, usize, String)>, over: Over) -> (Vec<Planet>, Vec<(Body, usize, String)>) {
+    let n = planets.len();
+    let first = over.entry.to_angle() + r.range(-0.4, 0.4);
+    let bodies: Vec<Vec<Disc>> = planets.iter().enumerate().map(|(i, p)| discs(p, &moons, i)).collect();
+    let mut kept: Vec<(Planet, usize)> = Vec::new();
+    for (i, mut p) in planets.into_iter().enumerate() {
+        for t in 0..ANCHOR_TRIES {
+            p.anchor = if i == 0 {
+                Vec2::from_angle(first) * over.radius * (1.0 - FIRST_AT)
+            } else {
+                let turn = first + TAU * i as f32 / n as f32 + r.range(-0.6, 0.6);
+                Vec2::from_angle(turn) * over.radius * r.range(OTHERS_AT.0, OTHERS_AT.1) * (1.0 + t as f32 / 12.0)
+            };
+            if kept.iter().all(|(q, j)| clear((p.anchor, &bodies[i]), (q.anchor, &bodies[*j]), over.radius)) {
+                kept.push((p, i));
+                break;
+            }
+        }
+    }
+    let moons = moons.into_iter().filter_map(|(m, of, id)| Some((m, kept.iter().position(|(_, i)| *i == of)?, id))).collect();
+    (kept.into_iter().map(|(p, _)| p).collect(), moons)
+}
+
+/// A planet or moon as the clearance sees it: its offset from its planet's anchor point (design px, y up), its
+/// radius (a ringed planet's out to its rings) and its parallax.
+type Disc = (Vec2, f32, f32);
+
+/// The `i`th planet's discs: itself and its moons.
+fn discs(p: &Planet, moons: &[(Body, usize, String)], i: usize) -> Vec<Disc> {
+    let ring = p.body.look.ring.as_ref().map_or(1.0, |g| g.subs.iter().fold(1.0_f32, |a, s| a.max(s.1)));
+    let own = moons.iter().filter(|m| m.1 == i).map(|(m, _, _)| (Vec2::new(m.at.x - p.body.at.x, p.body.at.y - m.at.y), m.r, p.parallax * MOON_DEPTH));
+    std::iter::once((Vec2::ZERO, p.body.r * ring, p.parallax)).chain(own).collect()
+}
+
+/// Can two planets, each at its anchor with its discs, never meet on screen? A disc lies at `offset · s + (anchor −
+/// camera) · parallax · REF_ZOOM` px from the view's middle at the starting zoom (other zooms scale both alike, by
+/// `zoom^parallax`), so two discs come at least `|fixed part| − camera reach · |Δparallax| · REF_ZOOM` close for any
+/// camera in the cluster; that must leave [`GAP`] between them at every scale of [`SCALES`].
+fn clear((a, ours): (Vec2, &[Disc]), (b, theirs): (Vec2, &[Disc]), radius: f32) -> bool {
+    ours.iter().all(|&(o, r, p)| {
+        theirs.iter().all(|&(o2, r2, p2)| {
+            SCALES.iter().all(|&s| {
+                let fixed = (o - o2) * s + (a * p - b * p2) * REF_ZOOM;
+                fixed.length() - radius * CAMERA_REACH * (p - p2).abs() * REF_ZOOM >= (r + r2) * s + GAP
+            })
+        })
+    })
 }
 
 /// An eyeball world's sea faces its light: its rings centred on the point under it.
@@ -250,7 +313,7 @@ fn roll_moons(r: &mut Stream, s: &SkySpec, content: &data::Content, planets: &[P
                 break;
             }
             for _ in 0..50 {
-                let mr = (p.r * r.range(0.05, 0.14)).clamp(7.0, 40.0);
+                let mr = (p.r * r.range(0.08, 0.2)).clamp(4.0, 24.0);
                 let a = r.range(0.0, TAU);
                 let d = p.r * if p.look.ring.is_some() { r.range(2.2, 2.9) } else { r.range(1.35, 2.4) } + mr;
                 let at = p.at + Vec2::from_angle(a) * d;
@@ -319,6 +382,7 @@ pub(super) fn place(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::camera::{MAX_PX_PER_M, MIN_PX_PER_M};
 
     fn skies(c: &data::Content) -> Vec<Sky> {
         c.cluster_types.iter().filter_map(|t| t.sky.clone()).chain(c.bands.iter().filter_map(|b| b.sky.clone())).collect()
@@ -331,9 +395,9 @@ mod tests {
         let all: Vec<(&PlanetKind, u32)> = c.planets.iter().filter(|k| k.body == BodyClass::Planet).map(|k| (k, 1)).collect();
         let pool: Vec<(&PlanetKind, u32)> = if sky.planets.is_empty() { all.clone() } else { sky.planets.iter().map(|w| (c.planets.get(&w.kind).unwrap(), w.weight)).collect() };
         let hot = s.star.map(|_| Vec2::new(W + 100.0, H / 2.0));
-        let planets = roll_planets(&mut Stream::new(seed, "planet"), &s, &pool, &all, hot, over);
+        let planets = roll_planets(&mut Stream::new(seed, "planet"), &s, &pool, &all, hot);
         let moons = roll_moons(&mut Stream::new(seed, "moons"), &s, c, &planets, hot);
-        (planets, moons)
+        anchor_planets(&mut Stream::new(seed, "anchors"), planets, moons, over)
     }
 
     /// Every sky rolls two or three planets of different kinds of its pool, at most one large, their parallax between
@@ -349,9 +413,9 @@ mod tests {
                 kinds.sort();
                 kinds.dedup();
                 assert_eq!(kinds.len(), planets.len(), "seed {seed}: a planet kind twice");
-                assert!(planets.iter().filter(|p| p.body.r > 0.15 * H).count() <= 1);
+                assert!(planets.iter().filter(|p| p.body.r > SMALL.1 * H).count() <= 1);
                 for p in &planets {
-                    assert!(p.parallax > 0.017 && p.parallax * MOON_DEPTH < 0.3 && p.anchor.length() < 2500.0);
+                    assert!(p.body.r <= LARGE.1 * H && p.parallax > 0.017 && p.parallax * MOON_DEPTH < 0.3);
                 }
                 let mut ids: Vec<&String> = moons.iter().map(|m| &m.2).collect();
                 ids.sort();
@@ -365,12 +429,12 @@ mod tests {
     }
 
     /// Some planet is in a 1280 × 720 view at the starting zoom from most of the cluster: camera places sampled
-    /// evenly over clusters of 2–3 km (the cluster types' radii; 4 km at most) and over many seeds.
+    /// evenly over clusters of 2–3 km (the cluster types' radii; 1 km like Corran Reach, 4 km at most) and over many seeds.
     #[test]
     fn a_planet_is_in_view_from_most_of_the_cluster() {
         let c = data::base_content();
         let (view, s) = (Vec2::new(1280.0, 720.0), 720.0 / H);
-        for radius in [2000.0, 2500.0, 3000.0, 4000.0] {
+        for radius in [1000.0, 2000.0, 2500.0, 3000.0, 4000.0] {
             let (mut seen, mut all) = (0usize, 0usize);
             for sky in skies(&c) {
                 for seed in 0..100u64 {
@@ -382,7 +446,7 @@ mod tests {
                         // at the starting zoom a layer's offset is its share of the camera's offset times 18 px a metre
                         seen += usize::from(planets.iter().any(|p| {
                             let off = ((p.anchor - cam) * p.parallax * REF_ZOOM).abs();
-                            let reach = p.body.r * s * if p.body.look.ring.is_some() { 1.6 } else { 1.0 };
+                            let reach = discs(p, &[], 0)[0].1 * s;
                             off.x < view.x / 2.0 + reach && off.y < view.y / 2.0 + reach
                         }));
                     }
@@ -391,9 +455,57 @@ mod tests {
             let share = seen as f32 / all as f32;
             println!("radius {radius} m: a planet in view from {:.0} % of the cluster", share * 100.0);
             if radius <= 3000.0 {
-                assert!(share > 0.6, "radius {radius}: {share}");
+                // smaller, clear planets: 89 / 72 / 57 % at 2 / 2.5 / 3 km (96 / 82 / 67 % before, 18 Oct 2026)
+                assert!(share > 0.5, "radius {radius}: {share}");
             }
         }
+    }
+
+    /// No two planets meet on screen, rings and moons included: cameras sampled over the cluster and a little past
+    /// its edge, at the smallest and the largest zoom, at 720 and 1125 px high views, over many seeds and cluster
+    /// radii from the first voyage's 600 m to 4 km (Corran Reach is 1 km); and how many planets each keeps.
+    #[test]
+    fn planets_never_meet_on_screen() {
+        let c = data::base_content();
+        for radius in [600.0, 1000.0, 2500.0, 4000.0] {
+            let mut counts = [0usize; 4];
+            for sky in skies(&c) {
+                for seed in 0..60u64 {
+                    let (planets, moons) = roll(&c, &sky, seed, radius);
+                    counts[planets.len()] += 1;
+                    let discs: Vec<(Vec2, Vec<Disc>)> = planets.iter().enumerate().map(|(i, p)| (p.anchor, discs(p, &moons, i))).collect();
+                    let mut r = Stream::new(seed, "cameras");
+                    for _ in 0..60 {
+                        let cam = Vec2::from_angle(r.range(0.0, TAU)) * radius * CAMERA_REACH * r.next().sqrt();
+                        for (zoom, s) in [(MIN_PX_PER_M, 0.8), (MAX_PX_PER_M, 1.25)] {
+                            let zr = zoom / REF_ZOOM;
+                            let at = |a: Vec2, &(o, rad, p): &Disc| (o * s + (a - cam) * p * REF_ZOOM, rad * s, zr.powf(p));
+                            for (i, (a, ours)) in discs.iter().enumerate() {
+                                for (b, theirs) in &discs[i + 1..] {
+                                    for d in ours {
+                                        for e in theirs {
+                                            let ((x, rx, gx), (y, ry, gy)) = (at(*a, d), at(*b, e));
+                                            assert!((x * gx).distance(y * gy) > rx * gx + ry * gy, "radius {radius}, seed {seed}: two planets meet");
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            println!("radius {radius} m: skies of 0 / 1 / 2 / 3 planets: {counts:?}");
+            assert_eq!(counts[0] + counts[1], 0, "radius {radius}: a sky with fewer than two planets");
+        }
+    }
+
+    /// Zoomed all the way in or out, a planet's size on screen changes by `zoom^parallax`: under a tenth.
+    #[test]
+    fn zoom_hardly_changes_a_planet() {
+        let most = PARALLAX_PLANET * (1.0 + PLANET_SPREAD) * MOON_DEPTH;
+        let (out, inn) = ((MIN_PX_PER_M / REF_ZOOM).powf(most), (MAX_PX_PER_M / REF_ZOOM).powf(most));
+        println!("a planet's size zoomed out {out:.3}, zoomed in {inn:.3}");
+        assert!(out > 0.9 && inn < 1.1);
     }
 
     /// The vertices of the planets and moons together, at most and on average, over skies of three planets.

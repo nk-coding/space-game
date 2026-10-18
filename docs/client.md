@@ -763,10 +763,10 @@ off, the flash and its ring where it left), `voyage-warp-emergency.png` (the eme
     everything, from the cluster type's `sky` (else its band's; a content voyage its band's), rolled from the
     cluster's own seed (`ClusterLaunch::sky_seed`, the skeleton's; a content voyage's from its id) on named streams
     (`roll.rs`: `planet`, `moons`, `nebula`, `galaxy`, one per body's look): two or three planets (30 / 70 %; one until
-    18 Oct 2026) of different kinds of the sky's weights (`planets.ron`), at most one large (25 %, 0.22–0.34 of the
-    view's height; large ones were cut by a corner until 18 Oct 2026) and the others small (0.07–0.13; 60 %, 0.34–0.56
-    and 0.11–0.19 until 18 Oct 2026: planets read too near, GDR-0107), 0–3 moons each (every moon of a different kind,
-    7–40 px, rings and moons scale with the planet), a nebula of soft blobs along a curve
+    18 Oct 2026) of different kinds of the sky's weights (`planets.ron`), at most one large (25 %, 0.10–0.12 of the
+    view's height) and the others small (0.05–0.09; distant since the second look of 18 Oct 2026, GDR-0107: earlier
+    that day 0.22–0.34 and 0.07–0.13, before it 0.34–0.56 and 0.11–0.19), 0–3 moons each (every moon of a different
+    kind, 4–24 px, rings and moons scale with the planet), a nebula of soft blobs along a curve
     (at most 3 over a point, 2 beside a hot star) with faint dust lanes, and a spiral galaxy: a smooth core, a soft
     glow along each arm (36 wide faint sprites an arm) and fine faint dots over it (18 Oct 2026: it read as a dot
     cloud). Composed in a 1600 × 900 design frame scaled to the view's height, a planet and its moons round the view's
@@ -781,14 +781,21 @@ off, the flash and its ring where it left), `voyage-warp-emergency.png` (the eme
     of feathered elliptical bands (the back under the body, darkened in its shadow). Colours are veiled 15 % towards
     the sky's dark (strength 85 %). Depth: each piece hangs at an anchor in the cluster with true parallax, like the
     other scenery (`sky::place`; galaxy 0, nebula 0.003 anchored at the entry, planets 0.024 ± 15 % by size, the bigger
-    the nearer, moons a third over their planet's and anchored with it, between the stars and the junk; until 18 Oct
-    2026 one shift of the layer kept within 0.3 of the view's height, planet 0.09, moons 0.12, nebula 0.005). A
-    planet is in the view's middle with the camera at its anchor: the first 0.7 of the radius from the centre towards
-    the entry, the others 0.4–0.6 round the centre a turn's share apart, so some planet is in a 1280 × 720 view at the
-    starting zoom from 96 / 82 / 67 / 44 % of a cluster of 2 / 2.5 / 3 / 4 km (`sky` tests). At home the home band's
+    the nearer, moons a tenth over their planet's (a third until the second look of 18 Oct 2026: they swung hundreds
+    of px off) and anchored with it, between the stars and the junk; until 18 Oct 2026 one shift of the layer kept
+    within 0.3 of the view's height, planet 0.09, moons 0.12, nebula 0.005). A planet is in the view's middle with
+    the camera at its anchor (stream `anchors`, after the moons): the first 0.7 of the radius from the centre towards
+    the entry, the others 0.4–0.6 round the centre a turn's share apart, each tried farther out (up to 5 ×) until it
+    is clear of the planets before it: no two planets' discs (a ringed one out to its rings, and every moon) come
+    within 24 px of each other for any camera within 1.15 of the radius at view heights of 720–1125 px
+    (`sky::clear`, exact for the parallax drift; at other zooms all scale by `zoom^parallax`, 0.95–1.07). Since then
+    (Corran Reach, 1 km, piled three planets at its entry) some planet is in a 1280 × 720 view at the starting zoom from
+    100 / 89 / 72 / 57 / 37 % of a cluster of 1 / 2 / 2.5 / 3 / 4 km (96 / 82 / 67 / 44 % of 2–4 km before; `sky`
+    tests, which also sample that no two planets meet from 600 m to 4 km). At home the home band's
     (the galaxy's first) nebula and galaxy show without planets, at strength 0.55 (18 Oct 2026; screenshot
     `docs/results/home-sky.png`). Z: galaxy −897, the
-    backdrop's stars −893 to −892.4, nebula −890, rings −887 / −885, planet −886, moons −883; the hot star's glow, its
+    backdrop's stars −893 to −892.4, nebula −890, planets and moons −887 + 100 × their parallax (about −885 to −884,
+    the nearer over the farther; a planet's rings' halves 0.0004 under and over it); the hot star's glow, its
     corona and the landmarks between the nebula and the planet (GDR-0107; until 17 Oct 2026 the glow lay over the
     planet). Each piece's size also goes with the zoom to the power of its parallax (GDR-0107: hardly).
     The log line `sky: …` names the planets (radius, parallax) and moons and counts vertices (a large planet 21–33 k

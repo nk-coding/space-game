@@ -23,6 +23,17 @@
   planets); junk and play unchanged. Sampled over 100 seeds of every sky and 200 camera places each at the starting
   zoom in a 1280 × 720 view, a planet is in view from 96 % of a 2 km cluster, 82 % at 2.5 km, 67 % at 3 km, 44 % at
   4 km (the stars' "a tad slower" became about a third: with planets near the old speeds three planets cover 13–25 %).
+  2026-10-18, third (Niklas: three planets piled on each other at Corran Reach's entry, a 1 km cluster, a large one
+  filling half the view; provisional numbers, lead): planets distant and small, 0.05–0.09 of the view's height and
+  the one large at most 0.10–0.12 (were 0.07–0.13 and 0.22–0.34), moons 4–24 px; moons a tenth over their planet's
+  parallax (were a third: they swung hundreds of px off it). Anchors are rolled after the moons and pushed farther
+  out (up to 5 × the old distance) until no two planets' discs, rings and moons included, come within 24 px on
+  screen for any camera within 1.15 of the radius at view heights of 720–1125 px (exact for the parallax drift; a
+  zoom changes every size by `zoom^p`, 0.95–1.07, so zooming in never blows a planet up); a planet that finds no
+  clear place is left out (none in 300 skies sampled at 0.6–4 km). Planets and moons draw by parallax, the nearer
+  over the farther (rings just under and over their planet; the ring halves were a whole step apart). A planet is
+  in view from 100 / 89 / 72 / 57 / 37 % of a 1 / 2 / 2.5 / 3 / 4 km cluster (was 96 / 82 / 67 / 44 % of 2–4 km).
+  Screenshots `docs/results/sky-corran-start.png`, `sky-corran-zoom.png`, `sky-clear-a.png`, `sky-clear-b.png`.
   Three planets and their moons: 33 k vertices on average, 55 k at most (one planet with moons was 7–36 k). Home shows
   the home band's nebula and galaxy (no planets, strength 0.55). Screenshots `docs/results/sky-planets-a.png`,
   `sky-planets-b.png`, `home-sky.png`.
