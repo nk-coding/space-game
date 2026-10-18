@@ -40,6 +40,7 @@
             (encounter: "grove_pair", count: (0, 1)),
             (encounter: "grown_dead", count: (0, 1)),
             (encounter: "precursor_wrecks", count: (0, 1)),
+            (encounter: "outpost_garrison", count: (0, 1)),
         ],
         scenery: (
             rocks: [

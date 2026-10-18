@@ -139,6 +139,7 @@ pub(super) fn heat_stress_blueprint() -> data::Blueprint {
         ],
         behavior: None,
         assists: None,
+        anchored: false,
         origin: None,
         source: Default::default(),
     }
@@ -185,6 +186,7 @@ pub(super) fn burner_blueprint() -> data::Blueprint {
         parts,
         behavior: None,
         assists: None,
+        anchored: false,
         origin: None,
         source: Default::default(),
     }

@@ -401,6 +401,9 @@ toggle1)"])`. An assist list has no target: its assists act on the pilot's lock 
 unknown fields (the `target` of the first lists, step 3) are refused. None (the
 default) is no assists: the ship coasts when let go. The drydock writes it with the design; the BEHAVIOR screen's
 PILOT ASSISTS tab edits it (its graph, or its TEXT view in exactly this rule text) (`docs/behavior-format.md` "Pilot assists").
+`anchored` (optional, default `false`, 18 Oct 2026, GDR-0110) makes the ship a **station**: every piece of it,
+broken-off ones too, keeps its place (its bodies turn but never move: no ram, shot or plume shoves it); left out of
+the RON when false. The base's one station is the `automaton_outpost`.
 
 Base ships: `halvex_runner`, `automaton_raider` (from `../space-game-archive/ships/automaton-raider.svg`), `sample_early` and
 `sample_mid` (from the concept-board drafts), and `rim_skiff` (13 Oct 2026, the starter ship of `rim_awakening`:
@@ -750,7 +753,10 @@ counts tuned with the headless voyage runner, `docs/results/outer-balance-2026-1
 sites are wary (they wake only when provoked, GDR-0102); the Grown fly `behaviors/grown.ron`. Ships tagged `outer`
 stay out of the determinism scenarios that spawn every blueprint. The content batch of 18 Oct 2026
 (`docs/results/encounters-balance-2026-10-18.md`): `seedling_shoal` (5–6 `grown_seedling`s, GDR-0109) in the grove
-reach, `scorched_wrecks` (wrecks only, 2–3 `sample_mid`s and 1–2 hunters, `near_star`) in the scorched deep.
+reach, `scorched_wrecks` (wrecks only, 2–3 `sample_mid`s and 1–2 hunters, `near_star`) in the scorched deep,
+`precursor_outpost` (the anchored `automaton_outpost` and a `sample_mid` wreck, `encounters/automatons.ron`, 0–1 per
+wreck drift) and `outpost_garrison` (the outpost, a gunner, a hunter, 1–2 `sample_mid` wrecks, 0–1 per border drift;
+GDR-0110); the station flies `behaviors/outpost.ron`.
 
 ### Controls (`controls.ron`, added 15 Oct 2026, GDR-0090)
 

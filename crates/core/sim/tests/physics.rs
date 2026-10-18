@@ -430,3 +430,73 @@ fn sleeping_bodies_wake_on_thrust_and_on_hits() {
     assert!(all.iter().any(|c| (c.a, c.b) == (kp, ko)), "{all:?}");
     assert!(w.ship(other).unwrap().pieces()[0].body.linvel.x > 1.0);
 }
+
+/// GDR-0110: an anchored ship (a station) keeps its place: a rammer at speed bounces off it and none of its pieces
+/// ever moves (a centre of mass shifts only as parts break), a spoke shot off keeps its place too, and it still turns
+/// on its gyros to face a target.
+#[test]
+fn an_anchored_station_is_never_shoved_but_turns() {
+    let c = content();
+    let station = design(&c, "automaton_outpost");
+    assert!(station.anchored);
+    let mut w = sim::Sim::new(1);
+    let s = w.spawn_ship(station.clone(), Owner(1), Body::at(Vec2::ZERO, 0.0));
+    // The fastest any piece of these ships moves this tick (m/s).
+    let fastest = |w: &sim::Sim, ships: &[ShipId]| {
+        ships
+            .iter()
+            .filter_map(|&x| w.ship(x))
+            .flat_map(|x| x.pieces().iter().map(|p| p.body.linvel.length()))
+            .fold(0.0f32, f32::max)
+    };
+    let skiff = |w: &mut sim::Sim, at: Vec2| {
+        w.spawn_ship(
+            design(&c, "rim_skiff"),
+            Owner::PLAYER,
+            Body { pos: at, angle: -PI / 2.0, linvel: Vec2::new(15.0, 0.0), angvel: 0.0 },
+        )
+    };
+    let rams = |w: &mut sim::Sim, by: ShipId, on: ShipId, ticks: u32| {
+        let mut hit = false;
+        let mut moved = 0.0f32;
+        for _ in 0..ticks {
+            w.step(&TickInputs::default());
+            hit |= w.events().iter().any(|e| {
+                matches!(e, SimEvent::Impact(i) if (i.a.ship == by && i.b.ship == on) || (i.b.ship == by && i.a.ship == on))
+            });
+            moved = moved.max(fastest(w, &[on]));
+        }
+        (hit, moved)
+    };
+    // A rim skiff at 15 m/s straight into the hub's side.
+    let r = skiff(&mut w, Vec2::new(-20.0, 1.0));
+    let (hit, moved) = rams(&mut w, r, s, 60);
+    assert!(hit, "the skiff hit the station");
+    // A free one would take 4.6 m/s from this ram.
+    assert!(moved < 1e-4, "the station moved at {moved} m/s");
+    assert!(fastest(&w, &[s]) < 1e-4);
+    assert!(w.ship(r).unwrap().pieces()[0].body.linvel.x < 5.0, "the skiff bounced");
+    // Shoot the west spoke's bridge through: the spoke, a vessel of its own (its own core), keeps its place too.
+    w.apply_damage(s, DamageTarget::Part(find(&station, "armor_block", 3, 6)), 100.0);
+    w.resolve_breakage();
+    w.step(&TickInputs::default());
+    let spoke = w.ships().iter().map(|x| x.id()).find(|&x| x != s && x != r).expect("the spoke broke off");
+    let p0 = w.ship(spoke).unwrap().pieces()[0].com_world();
+    let r2 = skiff(&mut w, p0 + Vec2::new(-15.0, 0.0));
+    let (hit, moved) = rams(&mut w, r2, spoke, 45);
+    assert!(hit, "the second skiff hit the spoke");
+    assert!(moved < 1e-4, "the spoke moved at {moved} m/s");
+    assert!(fastest(&w, &[spoke]) < 1e-4);
+    // Under its behavior it turns its front onto a target off its side.
+    fight(&mut w, &c, s);
+    let hub = |w: &sim::Sim| {
+        let ship = w.ship(s).unwrap();
+        ship.piece(ship.control_piece().unwrap()).unwrap().body
+    };
+    let angle = hub(&w).angle;
+    for _ in 0..30 * 5 {
+        w.step(&TickInputs::default());
+    }
+    assert!((hub(&w).angle - angle).abs() > 0.1, "the station never turned");
+    assert!(fastest(&w, &[s, spoke]) < 1e-4);
+}

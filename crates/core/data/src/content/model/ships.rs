@@ -118,6 +118,10 @@ pub struct Blueprint {
     /// Its pilot assists (GDR-0088); none: the ship coasts when the player lets go.
     #[serde(default)]
     pub assists: Option<AssistList>,
+    /// A station (GDR-0110): every piece of it keeps its place (it turns, but nothing moves it: no ram, shot or
+    /// plume shoves it). Left out of the RON when false, so the content's fingerprint stays.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub anchored: bool,
     /// Where an evolved design came from (GDR-0092); none for a design built by hand. Left out of the RON when
     /// none, so the content's fingerprint and every fight code of before stay as they were.
     #[serde(default, skip_serializing_if = "Option::is_none")]

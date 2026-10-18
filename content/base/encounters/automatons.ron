@@ -149,6 +149,17 @@
         wake_radius: 300,
     ),
     (
+        id: "precursor_outpost",
+        name: "Precursor outpost",
+        summary: "An old precursor station the automatons keep, fixed in place, its cannon spokes turning to cover every approach.",
+        description: "The [[ship:automaton_outpost]] cannot chase you, and nothing shoves it. Take its spokes off one at a time from where only one can reach you, or dive for the hub. The hub and the old hull still docked beside it are rich salvage.",
+        lore: "Its docking lights still blink in the old pattern, for ships that stopped coming.",
+        tags: ["station"],
+        ships: [(ship: "automaton_outpost", count: (1, 1))],
+        wrecks: [(ship: "sample_mid", count: (1, 1), damage: 0.2)],
+        wake_radius: 250,
+    ),
+    (
         id: "gate_sentinel",
         name: "Gate sentinel",
         summary: "Another of the Warden's kind, keeping another of the rim's gates, with a hunter at its side.",

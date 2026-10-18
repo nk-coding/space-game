@@ -39,6 +39,7 @@ fn fixture(id: &str, faction: &str, behavior: Option<&str>, size: (u32, u32), pa
         parts,
         behavior: behavior.map(Into::into),
         assists: None,
+        anchored: false,
         origin: None,
         source: Default::default(),
     }

@@ -133,6 +133,7 @@ fn machines_take_the_tone_of_the_hull_around_them() {
         ],
         behavior: None,
         assists: None,
+        anchored: false,
         origin: None,
         source: Default::default(),
     };

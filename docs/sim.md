@@ -1854,6 +1854,9 @@ means rewriting `physics.rs` (about 620 lines with docs, plus about 190 lines of
   keeps the frame origin when the centre of mass moves and does not correct the velocity, so the sim hands over
   `v + ω × (com_new − com_old)` (`ship::inherited_velocity`) for the kept piece and every new one, as the
   benchmark adapter did.
+- **Stations** (GDR-0110, 18 Oct 2026): every body of an `anchored` design (`ShipDesign::anchored`; its split-off
+  pieces and vessels too) has its translation locked (`Physics::anchor`, Rapier's `lock_translations`): it turns on
+  its gyros, but no force, contact or impulse moves it, and a breakage gives its pieces no velocity.
 - Read-back after each step: `Body.pos` = Rapier's translation (the frame origin), `Body.angle` =
   `atan2(sin, cos)` of Rapier's rotation (libm), `Body.linvel` = velocity of the centre of mass.
 - Wrenches: each tick's force (world frame, at the centre of mass) and torque replace the last tick's (Rapier

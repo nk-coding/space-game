@@ -37,6 +37,7 @@ pub enum DamageTarget {
 }
 
 impl Ship {
+
     /// Applies damage to a part. A destroyed part is removed from the grid at once; its piece is
     /// re-checked for splits in the next [`Ship::resolve_breakage`].
     pub fn apply_damage(&mut self, target: DamageTarget, amount: f32) -> DamageOutcome {
@@ -193,6 +194,7 @@ impl Ship {
             let mut comps = self.components(&alive);
             let parent_id = self.pieces[k].id;
             let parent_body = self.pieces[k].body;
+            let anchored = self.design.anchored;
             let parent_origin = self.pieces[k].origin;
             let com_old = self.pieces[k].mass.com;
             let rot = Rot::from_angle(parent_body.angle);
@@ -202,7 +204,8 @@ impl Ship {
                 self.rebuild_piece(k);
                 let lost = self.check_control(k);
                 let p = &mut self.pieces[k];
-                p.body.linvel = inherited_velocity(
+                p.body.linvel = inherit(
+                    anchored,
                     parent_body.linvel,
                     parent_body.angvel,
                     rot.apply(com_old),
@@ -238,7 +241,8 @@ impl Ship {
             let lost = self.check_control(k);
             {
                 let p = &mut self.pieces[k];
-                p.body.linvel = inherited_velocity(
+                p.body.linvel = inherit(
+                    anchored,
                     parent_body.linvel,
                     parent_body.angvel,
                     rot.apply(com_old),
@@ -255,7 +259,8 @@ impl Ship {
                 let body = Body {
                     pos: parent_body.pos + rot.apply(d),
                     angle: parent_body.angle,
-                    linvel: inherited_velocity(
+                    linvel: inherit(
+                        anchored,
                         parent_body.linvel,
                         parent_body.angvel,
                         rot.apply(com_old),
@@ -294,4 +299,10 @@ fn snapshot(p: &Piece, offset: Vec2) -> PieceSnapshot {
         body: p.body,
         salvage: p.salvage(),
     }
+}
+
+/// The velocity of a piece's new centre of mass after a breakage ([`inherited_velocity`]); none on a station
+/// (GDR-0110: an anchored ship's pieces never move, they only turn).
+fn inherit(anchored: bool, v: Vec2, omega: f32, com_old: Vec2, com_new: Vec2) -> Vec2 {
+    if anchored { Vec2::ZERO } else { inherited_velocity(v, omega, com_old, com_new) }
 }

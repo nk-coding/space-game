@@ -135,11 +135,18 @@ the sites done of all (`SITES n / m`) and the time since you arrived.
 | [[encounter:core_graveyard]] | [[encounter:core_graveyard.wake_radius]] |
 | [[encounter:the_warden]] | [[encounter:the_warden.wake_radius]] |
 | [[encounter:seedling_shoal]] | [[encounter:seedling_shoal.wake_radius]] (wary: only a scan) |
+| [[encounter:precursor_outpost]] | [[encounter:precursor_outpost.wake_radius]] |
+| [[encounter:outpost_garrison]] | [[encounter:outpost_garrison.wake_radius]] |
 
 ::: tip Pick your fights
 Sleeping ships wait. Come in from one side, shoot first, and you fight one site at a time. Fly past a site too
 closely and it wakes behind you. A scan is loud: it wakes sleeping sites within [[part:scanner.scan_wake]].
 :::
+
+**Stations** never move. The [[ship:automaton_outpost]] of a [[encounter:precursor_outpost]] (in the rim) or an
+[[encounter:outpost_garrison]] (in the outer reach) is anchored: rams, shots and plumes don't shove it, and a spoke
+you shoot off stays where it was, but it turns to bring its cannons onto you ([[behavior:outpost]]). Its guns fire
+only along their facing, so come at it from the side it is turning away from, or keep a rock between you.
 
 The cluster has an **edge**, [[sim:edge_margin]] outside its radius: fly past it and your ship is pushed back
 towards the centre.

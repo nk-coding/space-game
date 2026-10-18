@@ -92,10 +92,12 @@ pub fn build_points(design: &ShipDesign) -> f32 {
     design.parts.iter().map(|p| p.build_points).sum()
 }
 
-/// Does a wave send this content ship? Tagged [`ENEMY_TAG`] and of no wary faction (GDR-0099 A3, GDR-0103: the Grown
-/// wait to be provoked, they never come at a ship in waves).
+/// Does a wave send this content ship? Tagged [`ENEMY_TAG`], of no wary faction (GDR-0099 A3, GDR-0103: the Grown
+/// wait to be provoked, they never come at a ship in waves) and no station (GDR-0110: it never moves).
 pub fn wave_ship(content: &Content, ship: &data::Blueprint) -> bool {
-    ship.tags.iter().any(|t| t == ENEMY_TAG) && !content.factions.get(&ship.faction).is_some_and(|f| f.wary)
+    ship.tags.iter().any(|t| t == ENEMY_TAG)
+        && !ship.anchored
+        && !content.factions.get(&ship.faction).is_some_and(|f| f.wary)
 }
 
 /// The content's enemy ships ([`wave_ship`], those that compile) with their build points, smallest first: what

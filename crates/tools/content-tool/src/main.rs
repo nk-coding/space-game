@@ -1072,19 +1072,19 @@ mod tests {
         );
         assert_eq!(find("ships", "rim_skiff")["in_encounters"], json!([]));
         // The raider is almost everywhere in the rim: fighting in every encounter but the hunters' den, the gate
-        // sentinel, the memory wreck and the gunners' pair and den, lying as a wreck in some; in the outer reach
-        // only among the stragglers (the five and the outer reach's eight without it: Grown sites, the scorched
-        // wrecks and the bastion's).
+        // sentinel, the memory wreck, the gunners' pair and den and the outpost, lying as a wreck in some; in the
+        // outer reach only among the stragglers (the six and the outer reach's nine without it: Grown sites, the
+        // scorched wrecks, the outpost garrison and the bastion's).
         assert_eq!(
             find("ships", "automaton_raider")["in_encounters"]
                 .as_array()
                 .unwrap()
                 .len(),
-            c.encounters.len() - 13
+            c.encounters.len() - 15
         );
         assert_eq!(
             find("ships", "automaton_gunner")["in_encounters"],
-            json!(["gunner_pair", "raiding_party", "gunner_den", "rim_stragglers", "bastion_gate"])
+            json!(["gunner_pair", "raiding_party", "gunner_den", "rim_stragglers", "outpost_garrison", "bastion_gate"])
         );
         assert_eq!(v["texts"]["encounter.the_warden.name"], json!("The Warden"));
         // f32 numbers export as written, without the noise of widening them to f64.

@@ -416,6 +416,7 @@ fn header(bp: &Blueprint) -> Blueprint {
         parts: Vec::new(),
         behavior: None,
         assists: None,
+        anchored: false,
         origin: None,
         source: Default::default(),
     }

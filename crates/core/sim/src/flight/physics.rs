@@ -320,6 +320,16 @@ impl Physics {
         self.refresh_bvh(collider);
     }
 
+    /// Locks a body's position (an anchored ship's piece, GDR-0110): it still turns, but no force or contact moves
+    /// it, and it keeps no velocity it was created with.
+    pub(crate) fn anchor(&mut self, key: BodyKey) {
+        if let Some(h) = self.handles.get(&key) {
+            let rb = &mut self.world.bodies[h.body];
+            rb.lock_translations(true, true);
+            rb.set_linvel(Vector::ZERO, true);
+        }
+    }
+
     /// Adds an anchored rock (GDR-0104): a fixed body with the rock's convex pieces (one shape, or a compound of two
     /// or three), hull friction and bounce.
     pub(crate) fn create_rock(&mut self, key: BodyKey, rock: &crate::voyage::rocks::Rock) {

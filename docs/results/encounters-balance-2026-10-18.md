@@ -43,3 +43,32 @@ voyage runner has no star (a voyage has none), so no runs: the placement test (`
 `a_near_star_site_lies_by_the_hot_star`, a 2400 m cluster, the star 1.8 radii out in four directions) puts the
 wrecks where a part takes 2.6, 3.9 and twice 4.0 (`STAR_HEAT_CAP`) times the centre's heat a second per open side:
 0.8–1.2 instead of 0.3, where GDR-0102's shield emitter open on two sides overheats without a radiator.
+
+## Precursor outpost (`automaton_outpost`, `precursor_outpost`, `outpost_garrison`)
+
+| Test voyage | Sites (the last the goal) |
+|---|---|
+| t_den | raider_pair, precursor_wrecks, hunter_den (the rim's, for scale) |
+| t_out1 | precursor_outpost |
+| t_out | raider_pair, precursor_wrecks, precursor_outpost |
+| t_outg | rim_stragglers, grown_dead, outpost_garrison |
+
+The station is anchored ([GDR-0110](../gdr/0110-anchored-stations.md)): it turns under the `outpost` behavior
+(`face` the nearest enemy within 110 % of reach, else `hold`) and never moves. Runner + plain skiff (S) and Runner +
+cannon skiff (C), clear %, seeds 1–120 unless noted:
+
+| Outpost | t_out S | t_out C | t_outg S | t_outg C |
+|---|---|---|---|---|
+| 2 cannons per spoke, 2 on the hub (8), spokes not yet fixed after a split | 12 | 13 | — | — |
+| 1 per spoke (3), spokes not yet fixed | 71 | 68 | 58 (1–2 gunners) | 61 |
+| 3, spokes fixed (a breakage now gives an anchored piece no velocity) | 48 | 42 | 51 (1–2 gunners) | 44 |
+| 3, one or no shield emitter | 46–49 | 45–49 | 48 | 47–48 |
+| **2 (a scanner mast in front)** | 69 | 66 | 52 (1–2 gunners + a hunter) | 52 |
+| **the same with the docked wrecks (final)** | **64** | **58** | **53** (1 gunner + a hunter, seeds 1–240) | **54** |
+
+For scale: t_den 72 / 72 %; the Warden 42 % and the outer grove run 52–55 % (Runner + one escort). The shields
+hardly matter: the hub has no gun, so the site clears once the two cannon spokes are disarmed; most runs that fail
+end "home" (the pilot gave up after three minutes without progress), few lost (3–11 %). With the Runner alone t_out
+clears 45 %, t_outg 20 %. The final rim outpost alone (t_out1): 60 / 74 / 69 % (Runner / + S / + C); its haul home
+(*now*) 3.6–5.4 against a hunter den's 7–9, the docked wrecks counted (the pilot strips what it can reach and its
+hold fills).

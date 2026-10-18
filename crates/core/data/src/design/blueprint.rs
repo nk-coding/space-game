@@ -32,7 +32,7 @@ pub fn export_text(ship: &Blueprint, behavior: Option<&Behavior>) -> String {
 
 /// Writes a blueprint as RON: the header fields, `size`, then `parts` with one placement per line, four-space
 /// indent. Defaults are left out: `rot: 0`, `flip: false`, a placement's `material` and `power` when absent,
-/// `description`, `lore`, `behavior` and `assists` when absent, `tags` when empty; a `power` override writes only the
+/// `description`, `lore`, `behavior` and `assists` when absent, `tags` when empty, `anchored` when false; a `power` override writes only the
 /// fields it sets; `origin` is one line, when set. `source` is never written. Strings escape `"`, `\` and control
 /// characters (`\n`, `\t`, `\u{..}`); other characters, unicode included, are written as they are.
 ///
@@ -63,6 +63,9 @@ pub fn blueprint_to_ron(bp: &Blueprint) -> String {
             let _ = writeln!(s, "            {},", string(r));
         }
         s.push_str("        ],\n    ),\n");
+    }
+    if bp.anchored {
+        field(&mut s, "anchored", "true");
     }
     if let Some(o) = &bp.origin {
         let from: Vec<String> = o.from.iter().map(|f| string(f)).collect();

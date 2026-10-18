@@ -17,6 +17,7 @@
             (encounter: "derelict_field", count: (1, 2)),
             (encounter: "precursor_wrecks", count: (0, 1)),
             (encounter: "raider_den", count: (0, 1)),
+            (encounter: "precursor_outpost", count: (0, 1)),
         ],
         scenery: (
             rocks: [

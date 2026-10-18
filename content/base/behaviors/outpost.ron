@@ -1,0 +1,16 @@
+// A station's tactics (GDR-0110): it has no engines and never moves, so it only turns. Two rules, so it fits an
+// automaton core. PLACEHOLDER (content batch of 18 Oct 2026, docs/results/encounters-balance-2026-10-18.md).
+[
+    (
+        id: "outpost",
+        name: "Outpost",
+        summary: "Hold in place and turn the guns onto the nearest enemy in reach.",
+        description: "Picks the nearest enemy. While it is within reach of the guns the station turns its front onto it (it has no engines, so it only turns); otherwise it holds. Each gun fires when the target passes in front of it.",
+        tags: ["station", "attack"],
+        target: "nearest",
+        rules: [
+            "when target_in_range(110%) -> face",
+            "always -> hold",
+        ],
+    ),
+]

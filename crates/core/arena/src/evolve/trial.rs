@@ -612,14 +612,15 @@ impl TrialSpec {
 pub const BOSS_TAG: &str = "boss";
 
 /// The ships an ARMS RACE starts THE ENEMY from by default (GDR-0092 "Co-evolution", lead default): the content ships
-/// tagged `enemy` of the first faction that has any, its bosses left out, in content order (at most four).
+/// tagged `enemy` of the first faction that has any, its bosses and stations (GDR-0110: they cannot fly) left out, in
+/// content order (at most four).
 pub fn enemy_starts(content: &Content) -> Vec<String> {
     let enemy = |s: &&data::Blueprint| s.tags.iter().any(|t| t == sim::voyage::waves::ENEMY_TAG);
     let Some(faction) = content.ships.iter().find(enemy).map(|s| s.faction.clone()) else { return Vec::new() };
     content
         .ships
         .iter()
-        .filter(|s| enemy(s) && s.faction == faction && !s.tags.iter().any(|t| t == BOSS_TAG))
+        .filter(|s| enemy(s) && s.faction == faction && !s.anchored && !s.tags.iter().any(|t| t == BOSS_TAG))
         .take(super::config::MAX_STARTS)
         .map(|s| s.id.clone())
         .collect()

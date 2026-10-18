@@ -1165,6 +1165,7 @@ mod tests {
             parts,
             behavior: None,
             assists: None,
+            anchored: false,
             origin: None,
             source: Default::default(),
         };

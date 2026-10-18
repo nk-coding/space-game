@@ -340,17 +340,21 @@ impl Sim {
     pub(crate) fn add_ship(&mut self, ship: Ship) -> usize {
         let id = ship.id();
         for p in ship.pieces() {
+            let key = BodyKey {
+                ship: id,
+                piece: p.id,
+            };
             self.physics.create_body(
-                BodyKey {
-                    ship: id,
-                    piece: p.id,
-                },
+                key,
                 &BodyDesc {
                     body: p.body,
                     mass: p.mass,
                     colliders: &p.colliders,
                 },
             );
+            if ship.design().anchored {
+                self.physics.anchor(key);
+            }
         }
         self.ships.push(ship);
         self.events.push(SimEvent::ShipSpawned { ship: id });
@@ -654,6 +658,9 @@ impl Sim {
                             self.physics.update_body(key, &desc);
                         } else {
                             self.physics.create_body(key, &desc);
+                            if ship.design().anchored {
+                                self.physics.anchor(key);
+                            }
                         }
                         if self.config.split_ghost_ticks > 0 {
                             self.physics.set_ghost(key, Some(sid));

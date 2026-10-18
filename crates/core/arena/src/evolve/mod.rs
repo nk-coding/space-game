@@ -590,6 +590,7 @@ fn resolve_start(content: &Content, start: &Start) -> Result<StartText, String> 
                 parts: Vec::new(),
                 behavior: None,
                 assists: None,
+                anchored: false,
                 origin: None,
                 source: Default::default(),
             };

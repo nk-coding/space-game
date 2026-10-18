@@ -370,6 +370,8 @@ pub struct ShipDesign {
     /// The behavior (content id) this ship flies under when nobody pilots it: the blueprint's own, else its
     /// faction's default. Look it up with `BehaviorLibrary::default_for`.
     pub behavior: Option<String>,
+    /// A station (the blueprint's `anchored`, GDR-0110): its pieces' bodies turn but never move.
+    pub anchored: bool,
 }
 
 /// Heat capacity per cell of area. PLACEHOLDER.
@@ -680,6 +682,7 @@ impl ShipDesign {
             warnings,
             hp_total,
             behavior: content.ship_behavior(ship).map(|b| b.id.clone()),
+            anchored: ship.anchored,
         })
     }
 

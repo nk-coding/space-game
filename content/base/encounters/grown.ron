@@ -91,6 +91,21 @@
         wake_radius: 250,
     ),
     (
+        id: "outpost_garrison",
+        name: "Outpost garrison",
+        summary: "A precursor outpost past the rim's gates, its spokes covering every approach, a gunner and a hunter on watch beside it.",
+        description: "The [[ship:automaton_outpost]] never moves, but its [[ship:automaton_gunner|gunner]] and [[ship:automaton_hunter|hunter]] do: draw them off before you take on the spokes. The hub and the hulls docked beside it are rich salvage.",
+        lore: "The automatons that wandered out this far found it first and never left.",
+        tags: ["station"],
+        ships: [
+            (ship: "automaton_outpost", count: (1, 1)),
+            (ship: "automaton_gunner", count: (1, 1)),
+            (ship: "automaton_hunter", count: (1, 1)),
+        ],
+        wrecks: [(ship: "sample_mid", count: (1, 2), damage: 0.2)],
+        wake_radius: 250,
+    ),
+    (
         id: "bastion_gate",
         name: "Bastion gate",
         summary: "A gate to the middle band, the precursor guardian that keeps it, and a gunner and a hunter at its side.",
