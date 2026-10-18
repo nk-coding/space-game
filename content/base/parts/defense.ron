@@ -29,4 +29,26 @@
         salvage: (family: "shields", data: 3),
         recipe: (materials: {"copper": 2, "crystal": 3, "steel": 1}),
     ),
+    // The wide-bubble emitter (18 Oct 2026, GDR-0024's variant; the `wide_bubble` node): a bubble half again as
+    // wide that holds a little more but refills slower and draws more. PLACEHOLDER (lead defaults).
+    (
+        id: "wide_shield_emitter",
+        name: "Wide-bubble emitter",
+        summary: "A shield emitter with a bubble half again as wide that refills slowly.",
+        description: "Covers far more of the hull than a [[part:shield_emitter]] and holds a little more, but it refills at about half the speed and draws more power. Overlapping bubbles stack.",
+        tags: ["shield"],
+        locked: true, // the shields research's `wide_bubble` unlocks it
+        category: "defense",
+        icon: "wide-shield-emitter",
+        size: (1, 1),
+        build_points: 4,
+        mass: 2.5,
+        hp: 1,
+        power: (draw: 4, tier: High, min_level: 0.25),
+        heat: (output: 1, limit: 3.2),
+        shield: (radius: 3.4, capacity: 2.4, regen: 0.12, absorb: {Energy: 1.0, Kinetic: 0.5, Missile: 1.0}),
+        explosion: (damage: 1, radius: 0.6),
+        salvage: (family: "shields", data: 4),
+        recipe: (materials: {"copper": 3, "crystal": 4, "steel": 1}),
+    ),
 ]

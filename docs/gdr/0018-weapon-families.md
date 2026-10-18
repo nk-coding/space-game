@@ -1,6 +1,7 @@
 # GDR-0018: All six weapon families; the capacitor bonus is for lasers only; guns fire along their facing
 
 - Status: Accepted
+  2026-10-18: the kinetic weapons' own support part (lead, content batch): the ammo feeder gives +20 % fire rate to adjacent parts tagged `cannon` (the reverse-engineered and long-barrel cannons; not the automatons' own), at most two per cannon, unlocked by the utility node `ammo_feeder`. The capacitor stays lasers only.
 - Date: concept phase (families; exact day not recorded, settled by 2026-10-11); 2026-10-11 (capacitor, facing)
 - Decided by: Niklas
 - Related: [GDR-0004](0004-grid-ship-building-no-wiring.md), [GDR-0016](0016-combat-pace-and-aiming.md), [GDR-0019](0019-damage-model.md), [GDR-0020](0020-damage-v1-defaults.md), [GDR-0021](0021-shields.md), `docs/content-model.md` "Adjacency bonuses"

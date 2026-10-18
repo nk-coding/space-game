@@ -65,4 +65,25 @@
             (target: Tag("laser"), stat: "fire_rate", effect: Percent(15), max_stacks: 3),
         ],
     ),
+    // The compact reactor (18 Oct 2026, GDR-0024's variant; the `compact_reactor` node): less power, but light,
+    // cool and a small blast. PLACEHOLDER.
+    (
+        id: "compact_reactor",
+        name: "Compact reactor",
+        summary: "A light, cool reactor with less output and a small blast.",
+        description: "About two thirds of a [[part:fission_reactor]]'s output for a little over half its heat and weight, and it goes off more gently. Each venting [[part:radiator]] beside it raises its output.",
+        tags: ["reactor"],
+        locked: true, // the power research's `compact_reactor` unlocks it
+        category: "power",
+        icon: "compact-reactor",
+        size: (1, 1),
+        build_points: 3,
+        mass: 2.5,
+        hp: 1,
+        power: (output: 7),
+        heat: (output: 1.6, limit: 6),
+        explosion: (damage: 0.8, radius: 1),
+        salvage: (family: "power", data: 3),
+        recipe: (materials: {"ceramic": 2, "copper": 2, "steel": 2}),
+    ),
 ]

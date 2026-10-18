@@ -654,15 +654,21 @@ fn base_locks_follow_the_early_game_kit() {
         [
             "automaton_core",
             "automaton_cannon",
+            "wide_shield_emitter",
             "grown_heart",
             "ram_prow",
             "thorn_gun",
             "grown_ganglion",
             "spore_radiator",
+            "heat_sink",
             "fusion_reactor",
+            "compact_reactor",
             "torch_drive",
             "beam_laser",
-            "reverse_engineered_cannon"
+            "reverse_engineered_cannon",
+            "burst_laser",
+            "long_cannon",
+            "ammo_feeder"
         ]
     );
     let locked_materials: Vec<&str> = c
@@ -710,6 +716,12 @@ fn base_research_nodes() {
             "reactive_plating",
             "automaton_forge",
             "capital_drydock",
+            "wide_bubble",
+            "heat_sink",
+            "ammo_feeder",
+            "burst_laser",
+            "long_cannon",
+            "compact_reactor",
         ]
     );
     // The gate shards open the rim's three dead ends (GDR-0031): only the automaton plate stays the automatons' own.
@@ -726,6 +738,11 @@ fn base_research_nodes() {
     for id in ["reactive_plating", "automaton_forge", "capital_drydock"] {
         assert!(c.research.get(id).unwrap().cost.materials.contains_key("gate_shard"), "{id}");
     }
+    // The ammo feeder speeds guns tagged `cannon` (GDR-0018): the player's cannons, never the automatons' own.
+    let tagged = |id: &str| c.parts.get(id).unwrap().tags.iter().any(|t| t == "cannon");
+    assert!(tagged("reverse_engineered_cannon") && tagged("long_cannon") && !tagged("automaton_cannon"));
+    let feeder = &c.parts.get("ammo_feeder").unwrap().bonuses[0];
+    assert_eq!((feeder.stat.as_str(), feeder.max_stacks), ("fire_rate", Some(2)));
     // Every unlock target is locked in content, so every node changes something.
     for n in c.research.iter() {
         for u in &n.unlocks {

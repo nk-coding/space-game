@@ -166,6 +166,20 @@ beam burns harder. Damage per second rises either way, the damage per shot does 
 needs no power, and is gone when the capacitor is destroyed. A capacitor explodes when destroyed, so keep it off the
 outer hull.
 
+### Ammo feeders
+
+An [[part:ammo_feeder]] does the same for the cannons beside it ([[part:reverse_engineered_cannon]],
+[[part:long_cannon]]): [[part:ammo_feeder.bonus.fire_rate]] [[stat:fire_rate]] each, at most
+[[part:ammo_feeder.bonus.fire_rate.max_stacks]] per cannon. Its rounds go off when it is destroyed.
+
+### Sidegrades
+
+Research adds parts beside the ones you start with, each with a trade-off instead of a straight upgrade: the
+[[part:burst_laser]] hits harder than the pulse laser but reaches less far and runs hot; the [[part:long_cannon]]
+reaches far with a heavy, piercing shell but fires slowly. Elsewhere: the [[part:wide_shield_emitter]] (a wider bubble
+that refills slowly), the [[part:heat_sink]] (a 1×2 radiator), the [[part:compact_reactor]] (less power, less heat)
+and the [[part:spore_radiator]] (vents better, feeds no reactor).
+
 ## Firepower in the drydock
 
 The drydock's [[stat:firepower]] cell adds up the damage per second of every gun on the main piece that can fire: a

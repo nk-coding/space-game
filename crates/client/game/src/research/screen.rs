@@ -814,7 +814,7 @@ mod tests {
     use super::*;
 
     /// The base pack's tree fits the 1280 × 720 layout: three columns of full-width cards end before the detail
-    /// panel, seven lanes (nine rows) fit without scrolling.
+    /// panel; its sixteen rows (ten lanes) are more than fit, so they keep the smallest row pitch and the lanes scroll.
     #[test]
     fn the_tree_fits_the_layout() {
         let content = data::base_content();
@@ -826,7 +826,7 @@ mod tests {
         const { assert!(TREE_RIGHT < PANEL_X - 20.0) };
         assert!(right <= TREE_RIGHT, "{right}");
         let bottom = placed.lanes.last().map(|l| l.0 + l.1).unwrap();
-        assert!(bottom <= TREE_BOTTOM - TREE_TOP, "{bottom}");
+        assert!(bottom > TREE_BOTTOM - TREE_TOP && m.row_pitch == ROW_PITCH.0, "{bottom}");
         // More columns: narrower cards, still inside.
         let wide = Tree { columns: 5, ..tree.clone() };
         let m = metrics(&wide);

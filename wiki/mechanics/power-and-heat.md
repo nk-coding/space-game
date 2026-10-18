@@ -212,8 +212,10 @@ The base parts grant these:
 
 | From | To | Bonus | Limit |
 |---|---|---|---|
-| [[part:capacitor]] | each laser beside it ([[part:pulse_laser]], [[part:beam_laser]]) | [[part:capacitor.bonus.fire_rate]] [[stat:fire_rate]] | at most [[part:capacitor.bonus.fire_rate.max_stacks]] per laser |
+| [[part:capacitor]] | each laser beside it ([[part:pulse_laser]], [[part:burst_laser]], [[part:beam_laser]]) | [[part:capacitor.bonus.fire_rate]] [[stat:fire_rate]] | at most [[part:capacitor.bonus.fire_rate.max_stacks]] per laser |
 | [[part:radiator]] | each reactor beside it, while the radiator vents | [[part:radiator.bonus.power_output]] [[stat:power_output]] | none |
+| [[part:heat_sink]] | each reactor beside it, while the heat sink vents | [[part:heat_sink.bonus.power_output]] [[stat:power_output]] | none |
+| [[part:ammo_feeder]] | each cannon beside it ([[part:reverse_engineered_cannon]], [[part:long_cannon]]) | [[part:ammo_feeder.bonus.fire_rate]] [[stat:fire_rate]] | at most [[part:ammo_feeder.bonus.fire_rate.max_stacks]] per cannon |
 
 A faster fire rate raises a pulse laser's shots per second and a beam's damage per second; a shot still hits as hard.
 The drydock's BONUS overlay draws a gold link between every pair that boost each other, and SELECTED PART lists each

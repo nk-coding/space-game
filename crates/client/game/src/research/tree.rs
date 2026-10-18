@@ -411,15 +411,16 @@ mod tests {
         (tree.lanes[c.lane].family.clone(), c.row, c.column)
     }
 
-    /// The base pack's fifteen nodes: seven lanes (families with nodes, content order), three columns (the mind
-    /// expansions' chain, the Grown's), connectors along the chains; the simulation vault under the tamed core and the
-    /// first jump calibration under the torch drive (both need nothing).
+    /// The base pack's nodes: a lane per family with nodes (all ten, content order), three columns (the mind
+    /// expansions' chain, the Grown's, the drydock's), connectors along the chains; the simulation vault under the
+    /// tamed core and the first jump calibration under the torch drive (both need nothing), the sidegrades under the
+    /// parts they vary.
     #[test]
     fn lanes_follow_the_families_and_columns_the_requirement_depth() {
         let content = data::base_content();
         let tree = Tree::new(&content);
         let lanes: Vec<&str> = tree.lanes.iter().map(|l| l.family.as_str()).collect();
-        assert_eq!(lanes, ["hull", "power", "energy", "kinetic", "propulsion", "logic", "grown"]);
+        assert_eq!(lanes, ["hull", "power", "energy", "kinetic", "shields", "thermal", "propulsion", "logic", "utility", "grown"]);
         assert_eq!(tree.columns, 3);
         assert_eq!(tree.cards.len(), content.research.len());
         assert_eq!(at(&tree, "composite_plating"), ("hull".into(), 0, 0));
@@ -431,19 +432,31 @@ mod tests {
         assert_eq!(at(&tree, "jump_calibration_1"), ("propulsion".into(), 1, 0));
         assert_eq!(at(&tree, "jump_calibration_2"), ("propulsion".into(), 0, 1));
         assert_eq!(at(&tree, "grown_heart"), ("grown".into(), 0, 2));
+        assert_eq!(at(&tree, "spore_lining"), ("grown".into(), 1, 2));
+        assert_eq!(at(&tree, "reactive_plating"), ("hull".into(), 1, 1));
+        assert_eq!(at(&tree, "capital_drydock"), ("hull".into(), 0, 2));
+        assert_eq!(at(&tree, "automaton_forge"), ("logic".into(), 1, 1));
+        assert_eq!(at(&tree, "long_cannon"), ("kinetic".into(), 0, 1));
+        assert_eq!(at(&tree, "burst_laser"), ("energy".into(), 1, 0));
         let link = |a: &str, b: &str| Link { from: tree.card_of(a).unwrap(), to: tree.card_of(b).unwrap() };
         assert_eq!(
             tree.links,
             [
                 link("regrowing_tissue", "living_weapons"),
                 link("living_weapons", "grown_heart"),
+                link("living_weapons", "spore_lining"),
                 link("jump_calibration_1", "jump_calibration_2"),
                 link("tamed_core", "mind_expansion_1"),
                 link("mind_expansion_1", "mind_expansion_2"),
-                link("composite_plating", "cruiser_drydock")
+                link("composite_plating", "cruiser_drydock"),
+                link("composite_plating", "reactive_plating"),
+                link("tamed_core", "automaton_forge"),
+                link("cruiser_drydock", "capital_drydock"),
+                link("automaton_cannon", "long_cannon")
             ]
         );
-        assert!(tree.lanes.iter().all(|l| l.rows == if matches!(l.family.as_str(), "logic" | "propulsion") { 2 } else { 1 }));
+        let one_row = ["kinetic", "shields", "thermal", "utility"];
+        assert!(tree.lanes.iter().all(|l| l.rows == if one_row.contains(&l.family.as_str()) { 1 } else { 2 }));
     }
 
     /// Nodes of one lane in one column stack in rows; a requirement in another lane still sets the column; the
@@ -459,10 +472,10 @@ mod tests {
         twin.id = "beam_twin".into();
         content.research.upsert(twin);
         let tree = Tree::new(&content);
-        assert_eq!(at(&tree, "beam_twin"), ("energy".into(), 1, 0), "a second root of the lane goes under the first");
+        assert_eq!(at(&tree, "beam_twin"), ("energy".into(), 2, 0), "another root of the lane goes under the others");
         assert_eq!(at(&tree, "beam_focus"), ("energy".into(), 0, 2), "one past the deepest requirement (mind expansion I)");
         let energy = tree.lanes.iter().find(|l| l.family == "energy").unwrap();
-        assert_eq!(energy.rows, 2);
+        assert_eq!(energy.rows, 3);
         let into = |to: &str| tree.links.iter().filter(|l| l.to == tree.card_of(to).unwrap()).count();
         assert_eq!(into("beam_focus"), 2);
     }
@@ -483,7 +496,7 @@ mod tests {
         assert_eq!(rect("composite_plating"), Rect::new(150.0, 100.0, 350.0, 140.0));
         assert_eq!(rect("cruiser_drydock").min, Vec2::new(400.0, 100.0));
         assert_eq!(placed.lanes.len(), tree.lanes.len());
-        assert_eq!(placed.lanes[1], (190.0, 90.0));
+        assert_eq!(placed.lanes[1], (280.0, 180.0), "the hull's lane has two rows");
         let link = |a: &str, b: &str| {
             let k = tree.links.iter().position(|l| *l == Link { from: tree.card_of(a).unwrap(), to: tree.card_of(b).unwrap() }).unwrap();
             placed.links[k].clone()
@@ -491,7 +504,7 @@ mod tests {
         assert_eq!(link("composite_plating", "cruiser_drydock"), [Vec2::new(350.0, 120.0), Vec2::new(400.0, 120.0)]);
         // Power (lane 1) to energy (lane 2): across, down halfway in the gap, across.
         let elbow = link("fusion_reactor", "beam_focus");
-        assert_eq!(elbow, [Vec2::new(350.0, 210.0), Vec2::new(375.0, 210.0), Vec2::new(375.0, 300.0), Vec2::new(400.0, 300.0)]);
+        assert_eq!(elbow, [Vec2::new(350.0, 300.0), Vec2::new(375.0, 300.0), Vec2::new(375.0, 480.0), Vec2::new(400.0, 480.0)]);
     }
 
     /// Card states follow the model: done, ready, locked by requirements, short of data (with what is held).
@@ -504,7 +517,7 @@ mod tests {
         assert_eq!(state(&content, &c, "mind_expansion_1"), CardState::Short(vec![Shortfall::Material { material: "programmable_matter".into(), have: 1, cost: 3 }]));
         assert_eq!(cost_chips(content.research.get("mind_expansion_1").unwrap()), [Chip { material: false, text: "LOGIC 10".into(), payable: true }, Chip { material: true, text: "3".into(), payable: true }]);
         let ready: Vec<&str> = ready(&content, &c).iter().map(|n| n.id.as_str()).collect();
-        assert_eq!(ready, ["beam_laser", "simulation_vault"]);
+        assert_eq!(ready, ["beam_laser", "simulation_vault", "burst_laser"]);
         let chips_of = |n: &str| chips(&c, content.research.get(n).unwrap());
         assert_eq!(chips_of("composite_plating"), [Chip { material: false, text: "HULL 6 / 8".into(), payable: false }]);
         assert_eq!(chips_of("beam_laser"), [Chip { material: false, text: "ENERGY 10".into(), payable: true }]);

@@ -1,6 +1,7 @@
 # GDR-0024: Big tech trees per family, with node kinds instead of Mk levels
 
 - Status: Accepted
+  2026-10-18: the first sidegrade pack (lead, content batch): variants with trade-offs (wide-bubble emitter, burst laser, long-barrel cannon, compact reactor, spore-lined radiator), a size class (the 1×2 heat sink) and the ammo feeder; the shields, thermal and utility families get their first nodes (`wide_bubble`, `heat_sink`, `ammo_feeder`), so every family now has research. The research screen's lanes now scroll (sixteen rows).
 - Date: concept phase (exact day not recorded; settled by 2026-10-11)
 - Decided by: Niklas
 - Related: [GDR-0025](0025-research-from-salvage.md), [GDR-0027](0027-races.md), [GDR-0032](0032-balancing-arena-evolution.md), [ADR-0015](../adr/0015-ron-content-packs-and-mods.md)

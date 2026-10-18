@@ -3,7 +3,7 @@
 [
     (id: "hull", name: "Hull", summary: "Armor blocks and slopes that hold the ship together."),
     (id: "power", name: "Power", summary: "Reactors that feed each piece's shared power pool, and capacitors that make the lasers beside them fire faster.", color: "power"),
-    (id: "weapons", name: "Weapons", summary: "Fixed guns, each firing straight out of its own forward side, and prows built for ramming.", color: "weapons"),
+    (id: "weapons", name: "Weapons", summary: "Fixed guns, each firing straight out of its own forward side, the feeders that make cannons fire faster, and prows built for ramming.", color: "weapons"),
     (id: "defense", name: "Defense", summary: "Shields that soak up hits before they reach the hull, and hearts that grow back what the hull loses.", color: "shields"),
     (id: "heat", name: "Heat", summary: "Radiators that dump heat into space.", color: "heat"),
     (id: "propulsion", name: "Propulsion", summary: "Engines that push and turn the ship.", color: "propulsion"),

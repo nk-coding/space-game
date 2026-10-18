@@ -620,6 +620,6 @@ mod tests {
         let free = Granted { unlocks: Unlocks::all(&content), free: true, ..g.clone() };
         assert_eq!(voyage_line(&content, &free, runner, &[]).1, Tone::Teal);
         assert_eq!(unlocked_by(&content, &Unlock::Part("beam_laser".into())).map(|n| n.id.as_str()), Some("beam_laser"));
-        assert!(unlocked_by(&content, &Unlock::Material("reactive".into())).is_none());
+        assert!(unlocked_by(&content, &Unlock::Material("automaton_plate".into())).is_none());
     }
 }

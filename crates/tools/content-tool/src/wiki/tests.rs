@@ -441,10 +441,7 @@ fn career_pages_link_both_ways() {
         "families/hull.html",
         "href=\"../research/cruiser_drydock.html\"",
     );
-    has(
-        "families/shields.html",
-        "<h2>Research</h2>\n<p class=\"none\">",
-    );
+    has("families/shields.html", "href=\"../research/wide_bubble.html\"");
     // A node: family, kind, cost in data and materials, what it needs, what needs it, what it unlocks.
     let node = "research/mind_expansion_1.html";
     has(node, "<dt>Kind</dt><dd><span title=");
@@ -507,7 +504,7 @@ fn career_pages_link_both_ways() {
     // List pages: research grouped by family, families with counts, starts as cards.
     has("research.html", "href=\"../families/logic.html\"");
     has("research.html", "href=\"../research/cruiser_drydock.html\"");
-    lacks("research.html", "href=\"../families/shields.html\"");
+    has("research.html", "href=\"../families/shields.html\"");
     has("families.html", "href=\"../families/utility.html\"");
     has("families.html", "4 research nodes");
     // A facility: the research that opens it, and back.

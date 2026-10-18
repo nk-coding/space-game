@@ -404,6 +404,6 @@ mod tests {
         assert_eq!(research, [&DrydockAction::Research("beam_laser".into()), &DrydockAction::Research("composite_plating".into())]);
         let content = data::base_content();
         assert_eq!(locked_research(&content, &DrydockAction::PickPart(String::new())), None);
-        assert_eq!(locked_research(&content, &DrydockAction::Material("reactive".into())), None, "no research unlocks it");
+        assert_eq!(locked_research(&content, &DrydockAction::Material("automaton_plate".into())), None, "no research unlocks it");
     }
 }

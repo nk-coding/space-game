@@ -1,0 +1,61 @@
+// Sidegrades (GDR-0024's variants and size classes, 18 Oct 2026): parts with a trade-off beside the ones you have, and
+// the first nodes of the shields, thermal and utility families. PLACEHOLDER NUMBERS (lead defaults): about one
+// voyage's salvage of the family each; thermal and utility data come mostly from dismantling your own spare parts.
+[
+    (
+        id: "wide_bubble",
+        name: "Wide bubble",
+        summary: "A shield emitter whose bubble covers half again as much, refilling slower.",
+        family: "shields",
+        kind: Variant,
+        cost: (data: {"shields": 5}),
+        unlocks: [Part("wide_shield_emitter")],
+    ),
+    (
+        id: "heat_sink",
+        name: "Heat sink",
+        summary: "A long 1×2 radiator: more open sides, less vent per side.",
+        family: "thermal",
+        kind: SizeClass,
+        cost: (data: {"thermal": 4}),
+        unlocks: [Part("heat_sink")],
+    ),
+    (
+        id: "ammo_feeder",
+        name: "Ammo feeder",
+        summary: "The cannons' own support part: feeders beside a cannon make it fire faster.",
+        description: "Unlocks the [[part:ammo_feeder]], which does for guns tagged `cannon` what the [[part:capacitor]] does for lasers.",
+        family: "utility",
+        kind: NewPart,
+        cost: (data: {"utility": 4, "kinetic": 2}),
+        unlocks: [Part("ammo_feeder")],
+    ),
+    (
+        id: "burst_laser",
+        name: "Burst laser",
+        summary: "A pulse laser that fires faster and harder, but reaches less far and runs hot.",
+        family: "energy",
+        kind: Variant,
+        cost: (data: {"energy": 6}),
+        unlocks: [Part("burst_laser")],
+    ),
+    (
+        id: "long_cannon",
+        name: "Long-barrel cannon",
+        summary: "A 1×2 cannon that trades rate of fire for reach and a heavy, piercing shell.",
+        family: "kinetic",
+        kind: Variant,
+        cost: (data: {"kinetic": 6}),
+        requires: ["automaton_cannon"],
+        unlocks: [Part("long_cannon")],
+    ),
+    (
+        id: "compact_reactor",
+        name: "Compact reactor",
+        summary: "A light, cool reactor with less output and a gentler blast.",
+        family: "power",
+        kind: Variant,
+        cost: (data: {"power": 6}),
+        unlocks: [Part("compact_reactor")],
+    ),
+]
