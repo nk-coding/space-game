@@ -1,9 +1,9 @@
 // Landmarks (GDR-0104): something big seen far off in a cluster, drawn behind the play on a layer of its own
-// (`parallax`: the share of the camera's motion it follows; below the sky's planet, 0.09, so it hangs behind it and
+// (`parallax`: the share of the camera's motion it follows; below the sky's planets, 0.020 and up, so it hangs behind them and
 // keeps about its size on screen at any zoom, GDR-0107), never a body. A cluster type's or a voyage's
 // `scenery.landmarks` gives each a chance per cluster; the client draws its `form` in vector shapes, `size` metres of
 // its layer (18 px each at the camera's starting zoom). A corona belongs beside a hot star only. PLACEHOLDER NUMBERS
-// (lead defaults, 17 Oct 2026).
+// (lead defaults, 17 Oct 2026; the parallaxes 0.03–0.04 until 18 Oct 2026, slower with the sky, GDR-0107).
 [
     (
         id: "derelict_station",
@@ -11,7 +11,7 @@
         summary: "A dead station far off: a hub, broken spokes and a torn ring, every window dark.",
         form: Station,
         size: (9, 14),
-        parallax: 0.035,
+        parallax: 0.014,
     ),
     (
         id: "silent_beacon",
@@ -19,7 +19,7 @@
         summary: "An old navigation mast, its light still turning slowly with nobody to guide.",
         form: Beacon,
         size: (3, 4.5),
-        parallax: 0.04,
+        parallax: 0.016,
     ),
     (
         id: "junk_ring",
@@ -27,7 +27,7 @@
         summary: "A ring of wreckage circling a dead hub, the slow remains of an old fight.",
         form: Ring,
         size: (16, 24),
-        parallax: 0.03,
+        parallax: 0.012,
     ),
     (
         id: "star_corona",

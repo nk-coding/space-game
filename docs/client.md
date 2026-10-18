@@ -483,7 +483,7 @@ PostUpdate            ship_view::sync_piece_views (render_pose(alpha) → Transf
 - **Smaller modules**: `params.rs` (launch parameters: the page URL's query, natively `GAME_PARAMS`;
   `Params::flag` / `f32` / `text`), `controls.rs` (keyboard, mouse and touch → `PlayerInput`: stick, A/D ramp and
   nudge, lock, fire, drift, V / Tab / Esc; the touch widgets), `backdrop.rs` (the radial gradient, two parallax dust
-  layers drifting slowly outside flight (0.16 m/s in the far layer), three layers of stars, each twinkling on its own (18 Oct 2026, GDR-0107: far 0.01, mid 0.03 and a sparse near 0.06, 36 / 24 / 10 stars a 60 m tile, all behind a cluster's planet; 0.02 / 0.07 / 0.2 and 70 / 30 / 12 from 17 Oct; one layer of 0.12 until GDR-0105, then 0.02 alone, which felt static; the dust layers 0.3 (far junk, 2800 motes a 240 m tile) and 0.7 (near dust, 700), 0.35 and 3600 / 1200 before), every layer at its depth's scale (`camera::depth_scale`), dotted range rings around
+  layers drifting slowly outside flight (0.16 m/s in the far layer), three layers of stars, each twinkling on its own (18 Oct 2026, GDR-0107: far 0.005, mid 0.011 and a sparse near 0.017, 0.01 / 0.03 / 0.06 earlier that day, 36 / 24 / 10 stars a 60 m tile, all behind a cluster's planet; 0.02 / 0.07 / 0.2 and 70 / 30 / 12 from 17 Oct; one layer of 0.12 until GDR-0105, then 0.02 alone, which felt static; the dust layers 0.3 (far junk, 2800 motes a 240 m tile) and 0.7 (near dust, 700), 0.35 and 3600 / 1200 before), every layer at its depth's scale (`camera::depth_scale`), dotted range rings around
   the followed ship whose dots keep at least 2.6 px across and 11 px apart at any zoom, rebuilt per zoom step), `meshbuf.rs` (`MeshBuf`, the CPU builder for
   atlas-textured, vertex-coloured 2D meshes; index order = draw order; their data lives only on the GPU, so a
   PostUpdate system that replaces one runs before `TransformSystems::Propagate`, where `atlas.rs` moves Bevy's mesh
@@ -744,7 +744,7 @@ off, the flash and its ring where it left), `voyage-warp-emergency.png` (the eme
     thicker round each site in three drifting groups of 7–12 bits just under the play (`p` 0.97), derelict shells (16–36 m, broken in two or three, ribs and a hole) drifting
     and turning slowly 20–120 m off the way between the entry and the sites (`p` 0.9).
   - **Far things** (`far.rs`): each landmark the cluster rolls (its chance, from the voyage's seed) anchored within
-    0.7 of the radius on its own layer (parallax 0.03–0.04, behind the sky's planet at 0.09; sizes in metres of the layer at
+    0.7 of the radius on its own layer (parallax 0.012–0.016, behind the sky's planets at 0.020 and up; 0.03–0.04 until 18 Oct 2026; sizes in metres of the layer at
     18 px/m): a station (hub, spokes, a torn ring
     with modules, two faint lights), a beacon (a mast, crossbars, a light passing every 3.2 s), a junk ring at a slant
     round a dead hub; beside a hot star the **corona**: three arcs and six loops in the corona colour at the view's
@@ -762,14 +762,16 @@ off, the flash and its ring where it left), `voyage-warp-emergency.png` (the eme
   - **The sky** (`sky/`, 17 Oct 2026, [GDR-0105](gdr/0105-cluster-sky-planets-nebula-galaxy.md)): behind
     everything, from the cluster type's `sky` (else its band's; a content voyage its band's), rolled from the
     cluster's own seed (`ClusterLaunch::sky_seed`, the skeleton's; a content voyage's from its id) on named streams
-    (`roll.rs`: `planet`, `moons`, `nebula`, `galaxy`, one per body's look): a planet of the sky's weighted kinds
-    (`planets.ron`), large and cut by a corner (a quarter of skies, 0.22–0.34 of the view's height) or small and
-    whole (0.07–0.13; 60 %, 0.34–0.56 and 0.11–0.19 until 18 Oct 2026: planets read too near, GDR-0107), 0–3 moons
-    each of a different kind (7–40 px, rings and moons scale with the planet), a nebula of soft blobs along a curve
+    (`roll.rs`: `planet`, `moons`, `nebula`, `galaxy`, one per body's look): two or three planets (30 / 70 %; one until
+    18 Oct 2026) of different kinds of the sky's weights (`planets.ron`), at most one large (25 %, 0.22–0.34 of the
+    view's height; large ones were cut by a corner until 18 Oct 2026) and the others small (0.07–0.13; 60 %, 0.34–0.56
+    and 0.11–0.19 until 18 Oct 2026: planets read too near, GDR-0107), 0–3 moons each (every moon of a different kind,
+    7–40 px, rings and moons scale with the planet), a nebula of soft blobs along a curve
     (at most 3 over a point, 2 beside a hot star) with faint dust lanes, and a spiral galaxy: a smooth core, a soft
     glow along each arm (36 wide faint sprites an arm) and fine faint dots over it (18 Oct 2026: it read as a dot
-    cloud). Composed in a 1600 × 900 design frame scaled to the view's height, each body at its distance from the
-    view's left or right edge, the nebula stretched to its width; about the same size at any zoom. `paint.rs` builds a
+    cloud). Composed in a 1600 × 900 design frame scaled to the view's height, a planet and its moons round the view's
+    middle, the galaxy at its distance from the view's left or right edge, the nebula stretched to its width; about
+    the same size at any zoom. `paint.rs` builds a
     body: an even polar mesh (40–84 rings for a planet, 10–26 for a moon) whose every vertex is coloured on the CPU
     like a shader (the surface of its form, `kinds.rs`: bands and ripples, storms, land caps with rough coasts,
     patches, ice caps, mottling; the clouds as one smooth density of noisy blobs, streaks and log-spiral swirls; the
@@ -777,16 +779,24 @@ off, the flash and its ring where it left), `voyage-warp-emergency.png` (the eme
     dark), a one-pixel feather at the limb, and over it thin lit geometry (streaks, craters, cracks) and glowing
     geometry (rifts, vents, a garden's lights, plumes); the air's glow a strip outside the limb; rings two halves
     of feathered elliptical bands (the back under the body, darkened in its shadow). Colours are veiled 15 % towards
-    the sky's dark (strength 85 %). Depth: the layer shifts against the camera's motion on screen (galaxy 0, nebula
-    0.005, planet 0.09, moons 0.12, between the stars and the junk; 0.05 and 0.075 until 18 Oct 2026; `sky::place`),
-    kept within 0.3 of the view's height. Z: galaxy −897, the
+    the sky's dark (strength 85 %). Depth: each piece hangs at an anchor in the cluster with true parallax, like the
+    other scenery (`sky::place`; galaxy 0, nebula 0.003 anchored at the entry, planets 0.024 ± 15 % by size, the bigger
+    the nearer, moons a third over their planet's and anchored with it, between the stars and the junk; until 18 Oct
+    2026 one shift of the layer kept within 0.3 of the view's height, planet 0.09, moons 0.12, nebula 0.005). A
+    planet is in the view's middle with the camera at its anchor: the first 0.7 of the radius from the centre towards
+    the entry, the others 0.4–0.6 round the centre a turn's share apart, so some planet is in a 1280 × 720 view at the
+    starting zoom from 96 / 82 / 67 / 44 % of a cluster of 2 / 2.5 / 3 / 4 km (`sky` tests). At home the home band's
+    (the galaxy's first) nebula and galaxy show without planets, at strength 0.55 (18 Oct 2026; screenshot
+    `docs/results/home-sky.png`). Z: galaxy −897, the
     backdrop's stars −893 to −892.4, nebula −890, rings −887 / −885, planet −886, moons −883; the hot star's glow, its
     corona and the landmarks between the nebula and the planet (GDR-0107; until 17 Oct 2026 the glow lay over the
     planet). Each piece's size also goes with the zoom to the power of its parallax (GDR-0107: hardly).
-    The log line `sky: …` names the planet and moons and counts vertices (a large planet 21–33 k with rings, a small
-    one 7–10 k, moons 0.5–3 k, nebula about 2.9 k, galaxy 6.6 k) and the build time. `?planet=<kind>` shows that
-    planet kind instead (for looking at kinds). Screenshots (1280 × 720): `docs/results/sky-rim.png`,
-    `sky-grove.png`, `sky-scorched.png`, `sky-uncharted.png`, `sky-clouds.png` (a cloudy world close up).
+    The log line `sky: …` names the planets (radius, parallax) and moons and counts vertices (a large planet 21–33 k
+    with rings, a small one 7–10 k, moons 0.5–3 k; three planets and their moons 33 k on average, 55 k at most; nebula
+    about 2.9 k, galaxy 6.6 k) and the build time. `?planet=<kind>` shows that
+    planet kind as the first planet (for looking at kinds). Screenshots (1280 × 720): `docs/results/sky-rim.png`,
+    `sky-grove.png`, `sky-scorched.png`, `sky-uncharted.png`, `sky-clouds.png` (a cloudy world close up); with two or
+    three planets, two camera places in one cluster: `sky-planets-a.png`, `sky-planets-b.png`.
 - **Hot stars and living parts** (17 Oct 2026, [GDR-0102](gdr/0102-grown-mechanics-and-parts-defaults.md)): in a
   cluster beside a hot star (`Voyage::star`) a soft glow in the heat colour rises at the edge of the view towards the
   star (`backdrop.rs`, a camera child over the gradient and the nebula, behind the planet, GDR-0107; a disc as wide as the view centred just past

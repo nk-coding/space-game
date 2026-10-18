@@ -6,9 +6,9 @@
 //!   drifting about (thicker round the sites), derelict shells drifting slowly along the way a little below the play.
 //! * **Far things** (`far.rs`): landmarks far off on layers of their own (a derelict station, a beacon, a junk ring),
 //!   and a hot star's corona at the edge of the view towards it.
-//! * **The sky** (`sky/`, GDR-0105): a planet, its moons, a nebula and a far galaxy behind everything, from the cluster
-//!   type's or the band's `sky`, rolled from the cluster's own seed (the same sky at every visit), drawn the same size
-//!   at any zoom.
+//! * **The sky** (`sky/`, GDR-0105): two or three planets, their moons, a nebula and a far galaxy behind everything,
+//!   from the cluster type's or the band's `sky`, rolled from the cluster's own seed (the same sky at every visit),
+//!   drawn about the same size at any zoom; at home the home band's nebula and galaxy alone, fainter.
 //!
 //! Everything but the rocks is seeded from the voyage's seed in the client and never touches the sim; it moves with
 //! the sim's clock (paused with it). Each piece sits at an anchor in the world with a parallax `p` (GDR-0107): it is
@@ -26,7 +26,7 @@ use kit::style::Style;
 
 use crate::camera::{CameraSet, MainCamera, depth_scale};
 use crate::mode::AppMode;
-use crate::sim_bridge::{SimWorld, v2};
+use crate::sim_bridge::{GameContent, SimWorld, v2};
 use crate::voyage::VoyageRun;
 
 pub struct SceneryPlugin;
@@ -34,7 +34,6 @@ pub struct SceneryPlugin;
 impl Plugin for SceneryPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<Scenery>()
-            .init_resource::<sky::SkyDrift>()
             .add_systems(Update, (sync, rocks::draw_rocks).chain())
             .add_systems(
                 PostUpdate,
@@ -66,6 +65,10 @@ struct Spec {
     sky: Option<data::Sky>,
     sky_seed: u64,
 }
+
+/// The shipyard's sky: its seed and how strong it shows (fainter than in flight, under the station's screens).
+const HOME_SKY_SEED: u64 = 0x5eed_f00d;
+const HOME_SKY_STRENGTH: f32 = 0.55;
 
 /// Every entity of the scenery (despawned when the voyage changes or the flight ends).
 #[derive(Component)]
@@ -114,18 +117,24 @@ fn sync(
     mut commands: Commands,
     mut state: ResMut<Scenery>,
     world: Res<SimWorld>,
+    game: Res<GameContent>,
     run: Res<VoyageRun>,
     mode: Res<State<AppMode>>,
     atlas: Res<Atlas>,
     style: Res<Style>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<AtlasMaterial>>,
-    mut drift: ResMut<sky::SkyDrift>,
     params: Res<kit::params::Params>,
     parts: Query<Entity, With<SceneryPart>>,
 ) {
     let voyage = world.sim.voyage().filter(|_| *mode.get() == AppMode::Flight);
-    let key = voyage.map(|v| (v.id().to_string(), v.seed()));
+    // the shipyard's sky: the home band's (the galaxy's first) nebula and galaxy, fainter, without planets (Niklas,
+    // 18 Oct 2026), from the packs (the running scene's content has no galaxy)
+    let packs = &game.0;
+    let home_sky = (*mode.get() == AppMode::Home)
+        .then(|| packs.galaxies.iter().next().and_then(|g| g.bands.first()).and_then(|b| packs.bands.get(b)).and_then(|b| b.sky.as_ref()))
+        .flatten();
+    let key = if home_sky.is_some() { Some((String::from("home"), HOME_SKY_SEED)) } else { voyage.map(|v| (v.id().to_string(), v.seed())) };
     if key == state.key {
         return;
     }
@@ -134,6 +143,16 @@ fn sync(
     }
     state.key = key;
     state.rocks_drawn = 0;
+    if let Some(sky) = home_sky {
+        let cx = &mut Build { commands: &mut commands, atlas: &atlas, style: &style, meshes: &mut meshes, materials: &mut materials };
+        let s = sky::SkySpec { sky, seed: HOME_SKY_SEED, star: None, planet: None, over: None, strength: HOME_SKY_STRENGTH };
+        if let Some(c) = sky::spawn(cx, &s, packs) {
+            let [_, _, nebula, galaxy] = c.vertices;
+            info!("sky at home: vertices nebula {nebula}, galaxy {galaxy}");
+        }
+        state.spec = None;
+        return;
+    }
     state.spec = voyage.and_then(|v| {
         // A generated cluster flies its type's scenery; a content voyage (also one replayed) its own. The sky is the
         // cluster type's or else its band's, a content voyage's its band's.
@@ -171,13 +190,14 @@ fn sync(
     );
     if let Some(sky) = &spec.sky {
         let star = spec.star.map(|s| s - spec.entry);
-        let s = sky::SkySpec { sky, seed: spec.sky_seed, star, planet: params.text("planet") };
+        let over = sky::Over { radius: spec.radius, entry: spec.entry };
+        let s = sky::SkySpec { sky, seed: spec.sky_seed, star, planet: params.text("planet"), over: Some(over), strength: sky::STRENGTH };
         let start = bevy::platform::time::Instant::now();
-        if let Some(c) = sky::spawn(cx, &s, &world.content, &mut drift) {
-            let [planet, moons, nebula, galaxy] = c.vertices;
+        if let Some(c) = sky::spawn(cx, &s, &world.content) {
+            let [planets, moons, nebula, galaxy] = c.vertices;
             info!(
-                "sky: {} with moons [{}]; vertices: planet {planet}, moons {moons}, nebula {nebula} (at most {} blobs over a point), galaxy {galaxy}; built in {:.0} ms",
-                c.planet,
+                "sky: planets [{}] with moons [{}]; vertices: planets {planets}, moons {moons}, nebula {nebula} (at most {} blobs over a point), galaxy {galaxy}; built in {:.0} ms",
+                c.planets.join(", "),
                 c.moons.join(", "),
                 c.nebula_peak,
                 start.elapsed().as_secs_f32() * 1000.0

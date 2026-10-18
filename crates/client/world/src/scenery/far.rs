@@ -20,7 +20,7 @@ use super::{Build, Layered, Scenery, SceneryPart, Spec, clock, salted, view};
 use crate::camera::MainCamera;
 use crate::sim_bridge::SimWorld;
 
-/// Landmarks hang farther off than the sky's planet (their parallax below its 0.09, GDR-0107): over the backdrop's
+/// Landmarks hang farther off than the sky's planets (their parallax below their 0.020, GDR-0107): over the backdrop's
 /// stars (−893 to −892) and the nebula (−890), under the planet's rings and the planet (−887 to −885).
 const Z_LANDMARKS: f32 = -888.5;
 /// The corona round the hot star: over its glow (−889, `backdrop.rs`), under the landmarks.

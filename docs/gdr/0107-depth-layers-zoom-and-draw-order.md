@@ -12,6 +12,20 @@
   planet. The galaxy a soft glowing spiral: 36 wide faint sprites along each arm under 2200 finer, fainter dots (were
   1250), a core of five smooth rings. Landmarks stay at 0.03–0.04. Screenshots `docs/results/backdrop-before.png`,
   `backdrop-after.png`.
+  2026-10-18, later (Niklas: the planet could not leave the view; provisional numbers, lead): the drift cap is gone,
+  every piece of the sky hangs at an anchor in the cluster with true parallax like the rest of the scenery, and a sky
+  has two or three planets (30 / 70 %) of different kinds, at most one large (25 %), each with its own moons (moon
+  kinds still once a sky). The first is anchored 0.7 of the radius from the centre towards the entry, the others
+  0.4–0.6 of it round the centre a turn's share apart, each in the view's middle when the camera is at its anchor.
+  Slower, so the planets' share of the sky is in view from most of a cluster: stars 0.005 / 0.011 / 0.017 (were
+  0.01 / 0.03 / 0.06), nebula 0.003 (was 0.005), planets 0.024 ± 15 % by size (bigger nearer and faster; was 0.09),
+  moons a third over their planet's (was 0.12), landmarks 0.012–0.016 (were 0.03–0.04, so they stay behind the
+  planets); junk and play unchanged. Sampled over 100 seeds of every sky and 200 camera places each at the starting
+  zoom in a 1280 × 720 view, a planet is in view from 96 % of a 2 km cluster, 82 % at 2.5 km, 67 % at 3 km, 44 % at
+  4 km (the stars' "a tad slower" became about a third: with planets near the old speeds three planets cover 13–25 %).
+  Three planets and their moons: 33 k vertices on average, 55 k at most (one planet with moons was 7–36 k). Home shows
+  the home band's nebula and galaxy (no planets, strength 0.55). Screenshots `docs/results/sky-planets-a.png`,
+  `sky-planets-b.png`, `home-sky.png`.
 - Date: 2026-10-17
 - Decided by: lead session (defaults for Niklas's play-test of 17 Oct 2026 of GDR-0104's scenery and GDR-0105's sky)
 - Related: [GDR-0104](0104-scenery-rocks-filler-landmarks.md), [GDR-0105](0105-cluster-sky-planets-nebula-galaxy.md), [GDR-0106](0106-flight-minimap.md), `docs/client.md` "Scenery"

@@ -206,14 +206,14 @@ pub(super) struct Galaxy {
     strength: f32,
 }
 
-/// Rolls the galaxy away from the planet (`planet`: its centre and the radius it and its rings fill) and the view's
-/// middle.
-pub(super) fn galaxy(r: &mut Stream, planet: (Vec2, f32), strength: f32) -> Galaxy {
+/// Rolls the galaxy clear of the view's middle (the planets pass over it).
+pub(super) fn galaxy(r: &mut Stream, strength: f32) -> Galaxy {
     let rg = r.range(70.0, 140.0);
     let mut best = (Vec2::ZERO, f32::MIN);
     for _ in 0..40 {
         let at = Vec2::new(r.range(rg + 30.0, W - rg - 30.0), r.range(rg * 0.6 + 30.0, H - rg * 0.6 - 30.0));
-        let score = (at.distance(planet.0) - planet.1 - rg).min(at.distance(Vec2::new(W, H) / 2.0) - 260.0 - rg);
+        // the first place clear of the middle, else the clearest
+        let score = (at.distance(Vec2::new(W, H) / 2.0) - 260.0 - rg).min(0.0);
         if score > best.1 {
             best = (at, score);
         }

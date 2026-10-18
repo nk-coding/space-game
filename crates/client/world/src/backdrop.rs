@@ -84,13 +84,14 @@ struct DustLayer {
 /// Two layers of dust (the far junk and the near dust, drawn over the sky), then three layers of stars: far, mid and a
 /// sparse near one, each twinkling on its own, for a sense of motion (GDR-0105's 0.02 alone felt static; 17 Oct 2026).
 /// Every layer by parallax behind or in front of the sky's bodies as it moves (Niklas, 18 Oct 2026: the stars
-/// 0.01 / 0.03 / 0.06 below the planet's 0.09, the junk 0.3 and 0.7 above it; 0.02 / 0.07 / 0.2 and 0.35 before).
+/// 0.005 / 0.011 / 0.017 below the planets' 0.020–0.028, the junk 0.3 and 0.7 above them; the stars 0.01 / 0.03 / 0.06
+/// under a planet's 0.09 earlier that day, 0.02 / 0.07 / 0.2 and junk 0.35 before).
 const LAYERS: [DustLayer; 5] = [
     DustLayer { parallax: 0.3, tile: TILE },
     DustLayer { parallax: 0.7, tile: TILE },
-    DustLayer { parallax: 0.01, tile: STAR_TILE },
-    DustLayer { parallax: 0.03, tile: STAR_TILE },
-    DustLayer { parallax: 0.06, tile: STAR_TILE },
+    DustLayer { parallax: 0.005, tile: STAR_TILE },
+    DustLayer { parallax: 0.011, tile: STAR_TILE },
+    DustLayer { parallax: 0.017, tile: STAR_TILE },
 ];
 const STAR_LAYER: usize = 2;
 /// Each star layer's stars a tile, their sizes and brightness (layer metres, alpha), far to near.
