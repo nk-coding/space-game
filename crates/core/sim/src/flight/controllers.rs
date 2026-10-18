@@ -162,7 +162,13 @@ pub(crate) fn execute(ship: &mut Ship, plan: &Plan, cfg: &SimConfig) {
                 }
             }
         };
-        let error = target.map_or(0.0, |t| wrap_angle(t - kin.angle));
+        let error = match target {
+            Some(t) => piece.assist.error(wrap_angle(t - kin.angle), kin.omega),
+            None => {
+                (piece.assist.still, piece.assist.long_way) = (0, 0);
+                0.0
+            }
+        };
         // Turning the thrust towards where it is needed: burn only once roughly aligned (flip, then burn), so
         // slow-turning ships do not chase their own velocity vector.
         let force = match goal.heading {

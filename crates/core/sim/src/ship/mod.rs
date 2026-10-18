@@ -691,6 +691,8 @@ impl StateHash for Piece {
         }
         h.u32(self.assist.ticks);
         h.bool(self.assist.on);
+        h.u32(self.assist.still);
+        h.i32(self.assist.long_way.into());
         for &t in &self.act.torque {
             h.f32(t);
         }

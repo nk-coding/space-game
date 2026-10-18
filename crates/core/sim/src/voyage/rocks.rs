@@ -70,6 +70,8 @@ const MOST_PIECES: usize = 3;
 const CUT_APART: usize = 16;
 /// Below this speed (m/s) a ship's own motion is no threat ([`Mover::heading_into`]).
 const MOMENTUM_SPEED: f32 = 2.0;
+/// A ship at rest against a rock (its circle within the rock's) is pushed off at this speed (m/s) ([`steer`]).
+const PUSH_OFF: f32 = 2.0;
 
 /// One rock: its kind (content id), where it lies, how it is turned, its outline's control points ([`outline`],
 /// counter-clockwise round its position; the outline is [`curve`] through them), the convex pieces it collides as
@@ -383,6 +385,12 @@ pub struct Mover {
 }
 
 impl Mover {
+    /// Is the ship against a rock (its circle within the rock's)? Then a pilot under a lock lets go of it, so it can
+    /// push off sideways (the scripted pilot, `runner.rs`).
+    pub fn against(&self, rocks: &[Rock]) -> bool {
+        rocks.iter().any(|r| (r.pos - self.pos).length_squared() < (r.radius + self.radius) * (r.radius + self.radius))
+    }
+
     /// Is the ship's own motion carrying it into a rock's gap before it could stop (its stopping distance, half a
     /// second more and [`STEER_CLEAR`])? Then [`steer`] bends that motion first, and a pilot that can only push along
     /// its nose under a lock lets go of it (the scripted pilot, `runner.rs`).
@@ -417,9 +425,29 @@ fn tangent(dir: Vec2, d: Vec2, gap: f32) -> Vec2 {
     }
 }
 
+/// The rock whose gap (its radius, the ship's and [`STEER_CLEAR`]) the ship is deepest inside, the way to its centre and
+/// the gap's radius. The deepest, not the first in the list: between two rocks, pushed out of the farther one's gap
+/// the ship was pushed onto the nearer one (the balance harness's stuck check of 18 Oct 2026).
+fn deepest_gap(m: &Mover, rocks: &[Rock]) -> Option<(Vec2, f32)> {
+    let mut best: Option<(f32, Vec2, f32)> = None;
+    for r in rocks {
+        let reach = r.radius + m.radius + STEER_CLEAR;
+        let d = r.pos - m.pos;
+        let dist = sqrt(d.length_squared());
+        if dist < reach && best.is_none_or(|b| dist - reach < b.0) {
+            best = Some((dist - reach, d, reach));
+        }
+    }
+    best.map(|(_, d, reach)| (d, reach))
+}
+
 /// The rock gap the straight way from `m` along `dir` enters first within `ahead` metres: how far (`None` inside
-/// one), the way to the rock's centre and the gap's radius (the rock's, the ship's and [`STEER_CLEAR`]).
+/// one, the deepest, [`deepest_gap`]), the way to the rock's centre and the gap's radius (the rock's, the ship's
+/// and [`STEER_CLEAR`]).
 fn first_gap(m: &Mover, dir: Vec2, ahead: f32, rocks: &[Rock]) -> Option<(Option<f32>, Vec2, f32)> {
+    if let Some((d, reach)) = deepest_gap(m, rocks) {
+        return Some((None, d, reach));
+    }
     let mut first: Option<(f32, Vec2, f32)> = None;
     for r in rocks {
         let reach = r.radius + m.radius + STEER_CLEAR;
@@ -433,13 +461,12 @@ fn first_gap(m: &Mover, dir: Vec2, ahead: f32, rocks: &[Rock]) -> Option<(Option
         if half <= 0.0 {
             continue;
         }
-        let inside = d.length_squared() <= reach * reach;
-        let enter = if inside { f32::NEG_INFINITY } else { along - sqrt(half) };
-        if (inside || (enter > 0.0 && enter <= ahead)) && first.is_none_or(|f| enter < f.0) {
+        let enter = along - sqrt(half);
+        if enter > 0.0 && enter <= ahead && first.is_none_or(|f| enter < f.0) {
             first = Some((enter, d, reach));
         }
     }
-    first.map(|(e, d, r)| ((e > f32::NEG_INFINITY).then_some(e), d, r))
+    first.map(|(e, d, r)| (Some(e), d, r))
 }
 
 /// Bends the velocity goal `v` of the ship `m` round the rocks it would meet within its look-ahead (at least
@@ -448,14 +475,22 @@ fn first_gap(m: &Mover, dir: Vec2, ahead: f32, rocks: &[Rock]) -> Option<(Option
 /// again for the way that gives, at most [`STEER_PASSES`] times. When the way is still blocked after that (a gap too
 /// narrow between two rocks), it slows to what it can stop from before the gap, so it never rams at speed. A ship
 /// already inside a rock's gap is pushed out first, and one whose own motion carries it into a gap before it could
-/// stop bends that motion ([`Mover::heading_into`]) whatever its goal. Only `+ − × ÷` and `sqrt` (deterministic).
+/// stop bends that motion ([`Mover::heading_into`]) whatever its goal; one at rest against a rock (a goal under
+/// half a metre a second) is pushed off it at [`PUSH_OFF`] (it drifted there braking or holding and stayed; 18 Oct
+/// 2026). Only `+ − × ÷` and `sqrt` (deterministic).
 pub fn steer(m: &Mover, v: Vec2, rocks: &[Rock]) -> Vec2 {
     if let Some(w) = m.heading_into(rocks) {
         return w;
     }
     let speed = v.length();
-    if rocks.is_empty() || speed < 0.5 {
+    if rocks.is_empty() {
         return v;
+    }
+    if speed < 0.5 {
+        return match deepest_gap(m, rocks) {
+            Some((d, _)) if m.against(rocks) => d * (-PUSH_OFF / sqrt(d.length_squared()).max(1e-3)),
+            _ => v,
+        };
     }
     let fast = speed.max(m.vel.length());
     let secs = if m.accel > 0.0 { STEER_AHEAD.max(1.0 + fast / m.accel) } else { STEER_AHEAD };

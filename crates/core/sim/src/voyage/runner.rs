@@ -685,8 +685,9 @@ fn pilot_input(sim: &mut Sim, ship: ShipId, mut input: PilotInput, pilot: &mut P
         if top > 0.0 && !rocks.is_empty() {
             let kin = crate::flight::Kin::of(p, s.parts());
             let m = crate::voyage::rocks::Mover { pos: p.body.pos, radius: p.radius, vel: kin.vel, accel: kin.stop_accel() };
-            // Carried into a rock: let go of the lock (under one it pushes only along its nose) and turn aside.
-            if m.heading_into(rocks).is_some() {
+            // Carried into a rock, or against one: let go of the lock (under one it pushes only along its nose) and
+            // turn aside.
+            if m.heading_into(rocks).is_some() || m.against(rocks) {
                 input.lock = None;
             }
             input.stick = crate::voyage::rocks::steer(&m, input.stick * top, rocks) * (1.0 / top);

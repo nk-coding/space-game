@@ -29,7 +29,7 @@ pub mod maneuver;
 pub mod physics;
 pub mod stand_in;
 
-use core::f32::consts::{FRAC_PI_2, PI};
+use core::f32::consts::{FRAC_PI_2, PI, TAU};
 
 use crate::DT;
 use crate::ship::alloc::{allocate, assist, couples, group_of, lasting, translate, wrench_of};
@@ -176,13 +176,29 @@ pub(crate) const TURNING: f32 = 0.05;
 /// can use it too; then it is off again. Differential thrust itself helps only while the flight computer steers
 /// to a heading, never to stop a spin without one. Keyboard rotation (`HeadingGoal::Rate`) never uses it
 /// (GDR-0058): the gate is closed and reset while a key turns the ship. While it is on, the turn planning counts
-/// the differential thrust in. Kept per piece (`Piece::assist`), part of the state hash.
+/// the differential thrust in. A turn that makes no headway with the last resort on (the heading error over
+/// [`BLOCKED_TURN`], the ship hardly turning, under [`STILL`] for [`STILL_TICKS`] ticks in a row) is blocked the
+/// short way, as a ship pressed against a rock whose hull would swing into it (the balance harness's stuck check,
+/// 18 Oct 2026: a flagship pinned to a rock for 5000 ticks): it turns the long way round (`long_way`, the sense)
+/// until the error is under [`BLOCKED_TURN`] again or the last resort is off. Kept per piece (`Piece::assist`),
+/// part of the state hash.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct TurnAssist {
     /// Ticks in a row the first line has been at its limit (up to `assist_after`).
     pub ticks: u32,
     pub on: bool,
+    /// Ticks in a row the turn was blocked (up to [`STILL_TICKS`]).
+    pub still: u32,
+    /// Turning the long way round, counter-clockwise (+1) or clockwise (−1); 0 the short way.
+    pub long_way: i8,
 }
+
+/// A heading error (rad) over which a turn that does not turn is blocked ([`TurnAssist`]) ...
+const BLOCKED_TURN: f32 = 2.0;
+/// ... at a turn rate under this (rad/s) ...
+const STILL: f32 = 0.005;
+/// ... this many ticks in a row (a spin reversing passes through the still rate in a tick).
+const STILL_TICKS: u32 = 10;
 
 impl TurnAssist {
     /// The state after a tick in which the first line was at its limit or not (`saturated`) while the ship was
@@ -199,10 +215,26 @@ impl TurnAssist {
             TurnAssist {
                 ticks,
                 on: ticks >= after,
+                ..TurnAssist::default()
             }
         } else {
             TurnAssist::default()
         }
+    }
+
+    /// The heading error to steer by: the short way's (`short`, wrapped), or the long way round while the short way
+    /// is blocked. Latches and clears `long_way` (at the turn rate `omega`).
+    pub fn error(&mut self, short: f32, omega: f32) -> f32 {
+        if short.abs() <= BLOCKED_TURN || !self.on {
+            (self.still, self.long_way) = (0, 0);
+        } else if self.long_way == 0 {
+            self.still = if omega.abs() < STILL { (self.still + 1).min(STILL_TICKS) } else { 0 };
+            if self.still >= STILL_TICKS {
+                self.long_way = if short > 0.0 { -1 } else { 1 };
+            }
+        }
+        let sense = f32::from(self.long_way);
+        if short * sense < 0.0 { short + sense * TAU } else { short }
     }
 }
 /// Translation thrust fades in as the heading error drops from 25° (cos = ALIGN_NONE) to 8° (ALIGN_FULL)

@@ -229,3 +229,37 @@ fn steer_slows_for_a_gap_too_narrow_and_bends_a_ship_carried_into_a_rock() {
     let out = steer(&m, Vec2::ZERO, &one);
     assert!(out.x.abs() > 1.0, "across the rock's way: {out:?}");
 }
+
+#[test]
+fn steer_pushes_a_ship_off_a_rock_it_rests_on_and_out_of_the_nearest_gap() {
+    let rock = |y: f32| Rock { kind: "iron_rock".into(), ram: 0.5, pos: Vec2::new(0.0, y), angle: 0.0, points: Vec::new(), parts: Vec::new(), radius: 10.0 };
+    // At rest against a rock (the circles overlap) with the goal to stop: pushed straight off it.
+    let m = Mover { pos: Vec2::new(0.0, 14.0), radius: 5.0, vel: Vec2::ZERO, accel: 10.0 };
+    let out = steer(&m, Vec2::ZERO, &[rock(0.0)]);
+    assert!(out.y > 1.0 && out.x.abs() < 1e-3, "off the rock: {out:?}");
+    // Clear of it, only inside its gap: left to stop.
+    let clear = Mover { pos: Vec2::new(0.0, 18.0), ..m };
+    assert_eq!(steer(&clear, Vec2::ZERO, &[rock(0.0)]), Vec2::ZERO);
+    // Inside two rocks' gaps, the farther listed first: out of the nearer one's, not pushed onto it.
+    let out = steer(&m, Vec2::new(0.0, -10.0), &[rock(35.0), rock(0.0)]);
+    assert!(out.y > 0.0, "away from the nearer rock: {out:?}");
+}
+
+#[test]
+fn a_turn_blocked_the_short_way_turns_the_long_way_round() {
+    let mut a = sim::flight::TurnAssist { on: true, ..Default::default() };
+    // Not turning with the last resort on and the target 2.5 rad clockwise: the short way for a while ...
+    for _ in 0..9 {
+        assert_eq!(a.error(-2.5, 0.0), -2.5);
+    }
+    // ... then the long way round, counter-clockwise, also once past the half turn (the short way flips sides).
+    let tau = core::f32::consts::TAU;
+    assert!((a.error(-2.5, 0.0) - (tau - 2.5)).abs() < 1e-5);
+    assert!((a.error(-3.1, 0.4) - (tau - 3.1)).abs() < 1e-5);
+    assert!((a.error(2.9, 0.4) - 2.9).abs() < 1e-5);
+    // Near the target the short way again; a spin passing through the still rate for a tick is no block.
+    assert_eq!(a.error(1.5, 0.4), 1.5);
+    assert_eq!(a.error(-2.5, 0.0), -2.5);
+    assert_eq!(a.error(-2.5, 0.3), -2.5);
+    assert_eq!(a.long_way, 0);
+}

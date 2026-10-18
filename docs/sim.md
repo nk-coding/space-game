@@ -507,6 +507,26 @@ vessel stayed on a rock 90 ticks or more, 5 of 1920 before and 6 after (the play
 to 4814 and 1700 ticks): not new with the pieces, but the 17 Oct report's "none" (100 runs) does not hold over the
 whole slice.
 
+**Ships stuck on rocks** ([GDR-0104](gdr/0104-scenery-rocks-filler-landmarks.md)'s status line of 18 Oct 2026,
+later; release builds), native x86_64 vs wasm32-wasip1 **identical** everywhere. Every hash moves (the state hash
+takes `TurnAssist`'s two new fields): core `a507dc7f755d6c5b`, flight `31d0b078d31d5fd3`, assists
+`473dccf621efe088`, behavior `73757eb9f7a75ac5`, salvage `513e4b0abdedc8bd`, voyage (seed 42, 900 ticks)
+`7df2b24eb295c37b`, seeds 42 and 7 at 1800 ticks `ec8926a4f3c39e8b` / `bcc0b8f3d47557c2`, grown `aa137bbf58678fdf`
+(seed 7 `427d8b7d1a3fc349`), `runner_vs_raiders` `0c35df8b8dc33b15` (still 1247 ticks), the probes
+`close_quarters` (seed 1, 300 ticks) `7434cb1e81578dd0`, `warden` (seed 2) `14bf8d9de2726373`; `--run mixed_trials`
+and `two_starts_locked` (seed 1) last lines `bcce1ac59362efc9`, `82e357e38e1f8140`, resumed = straight. The six
+stuck runs of the slice (seeds reproducible) had four causes: a ship braking or holding at rest drifted onto a
+rock and stayed (steering left goals under 0.5 m/s alone); a ship inside two rocks' gaps was pushed out of the
+first listed, onto the nearer one; the scripted pilot under a lock pushed only along its nose into the rock; and,
+the last one left after those fixes, a damaged Runner whose turn the short way was blocked by the rock it lay
+against (its thrust waiting for the turn) for 5106 ticks. Fixed in `rocks::steer` (the deepest gap, a push off
+at rest), the runner (`Mover::against` lets go of the lock) and the flight computer (a blocked turn turns the long
+way, [The last resort](#the-last-resort)). Runs with a vessel 90 ticks or more on a rock: 6 of 1920 → **0** (the
+longest 71 ticks). The slice (balance harness, 120 seeds, clear % before → after; ± about 8 points): rim_skiff
+56 / 30 / 18 / 18 → 54 / 30 / 18 / 18, the cannon starter 86 / 62 / 32 / 26 → 85 / 63 / 30 / 26, the Runner
+63 / 56 / 32 / 20 → 63 / 56 / 34 / 20, the Runner with an escort 75 / 78 / 47 / 39 → 73 / 76 / 47 / 39 (the
+Warden's gate identical run for run): within the noise.
+
 Scenarios (`sim::voyage::scenario`); `core` and `flight` spawn two copies of every blueprint in the content (but
 those tagged `outer`, since 18 Oct 2026):
 
@@ -864,6 +884,12 @@ Code: `flight::TurnAssist`, `Piece::assist`, the end of `flight::execute`.
   `Rate` goal): the keys close a gate that a lock, `Auto` or behavior turn left open, and never open it (13 Oct 2026
   review fix: a lock turn's open gate raised the key rate of the sample mid to about 1.15 rad/s with differential
   thrust).
+- **A blocked turn** (18 Oct 2026, GDR-0104's status line): while the gate is on and the heading error is over
+  2 rad, a ship that turns slower than 0.005 rad/s for 10 ticks in a row is blocked the short way (a hull pressed
+  against a rock that would swing into it: the balance harness found a damaged Runner pinned to a rock for 5000
+  ticks, its turn blocked and its thrust waiting for the turn), so it turns the long way round
+  (`TurnAssist { still, long_way }`, hashed; `TurnAssist::error`) until the error is under 2 rad again or the gate
+  closes. A spin reversing passes through the still rate in a tick and does not count.
 - **What it adds**: gimbals of firing engines whenever it is on (they also hold a heading against uneven thrust),
   and differential thrust only while the flight computer steers to a heading: never to stop a spin without one
   (`Keep`, a settled `Auto`), which kept a released Runner from pushing itself into a flip-and-burn loop in
@@ -2422,14 +2448,18 @@ defaults throughout.
   and a second more than it takes to stop (`Kin::stop_accel`); for the rock whose gap (its radius, the ship's and
   8 m) the straight way enters first it takes the tangent past the near side at the same speed, then again for the
   way that gives (three passes); a way still blocked (a gap too narrow between two rocks) slows to what it can stop
-  from before the gap; a ship already inside a gap is pushed out, and one whose own motion carries it into a gap
-  before it could stop (`Mover::heading_into`) is bent aside first whatever its goal. The pilot assist
+  from before the gap; a ship already inside a gap is pushed out (out of the gap it is deepest in, not the first
+  listed: between two rocks it was pushed onto the nearer one), one at rest against a rock (the circles overlap, a
+  goal under 0.5 m/s) is pushed off it at 2 m/s (it had drifted there braking and stayed), and one whose own motion
+  carries it into a gap before it could stop (`Mover::heading_into`) is bent aside first whatever its goal (18 Oct
+  2026, the stuck check below). The pilot assist
   `avoid_collisions` takes rocks as anchored circles on its course test (`AssistState::avoiding` gives a rock as
   `(BodyKey::ROCKS, k)`). `Sim::rock_between(a, b)`: is a rock on the line (the voyage runner's fire check).
 - **Checked** (`tests/rocks.rs`): the roll's clearances and determinism, sites unmoved by rocks, outlines star-shaped
   and inside their convex pieces (and some rocks cut), a ray through the gap between two pieces passing,
   lazy spawning, shots stopping and rams hurting only the ship, a held maneuver reaching a point behind a rock
-  without touching it, the narrow gap and the momentum bend. Over 20 seeds each of Corran Reach and four cluster types
+  without touching it, the narrow gap and the momentum bend, the push off a rock at rest and out of the nearest of two
+  gaps, and a blocked turn turning the long way. Over 20 seeds each of Corran Reach and four cluster types
   flown by the voyage runner (`docs/results/scenery-2026-10-17.md`) no ship stayed pressed on a rock for 3 s.
 
 ### State hash
@@ -2494,7 +2524,8 @@ haul items and research data per family (`data::career::unload`; every player ve
 the step time. `--design` and `--escort` also take a blueprint file (`*.ron`, a saved or exported drydock design),
 for ships a player would build that are not content. With asteroid rock (17 Oct 2026, GDR-0104) the pilot steers round it as a player who sees
 it would: its maneuvers bend as every maneuver does, its stick through `rocks::steer`, it holds fire with a rock in its
-line of fire and slides aside, and lets go of its lock when its motion carries it into a rock.
+line of fire and slides aside, and lets go of its lock when its motion carries it into a rock or it is against
+one (`Mover::against`, 18 Oct 2026: under a lock it pushes only along its nose and stayed pressed to the rock).
 
 The pilot and the run are a library since 14 Oct 2026 (`sim::voyage::runner`, for the evolution lab's voyage fitness,
 `arena::voyage`): `VoyageRunner::new(content, voyage, Flagship { design, reach, behavior }, behaviors, escorts,
