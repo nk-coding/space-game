@@ -1,23 +1,29 @@
 //! The WORKSHOP (GDR-0108): a layer over home at the workshop under the bottom wall. Left, the haul's intact parts
 //! that wait to be sorted: per part KEEP (into stock) or DISMANTLE (research data and a share of its recipe's
-//! materials), the workshop's suggestion beside it and SORT AS SUGGESTED for all. Right, fabricating: what the fleet
-//! is short of (FABRICATE MISSING) and every unlocked part with a recipe (MAKE), its stock and its recipe, the
-//! materials it lacks in coral. Top right: the materials in store. Every row leads with the part's icon as the
-//! drydock's palette draws it (`drydock::panels::part_icon`; Niklas, 18 Oct 2026).
+//! materials), the workshop's suggestion beside it and SORT AS SUGGESTED for all. Right, the stock and fabricating:
+//! what the fleet is short of (FABRICATE MISSING) and every unlocked part with a recipe, and every part with a recipe
+//! in stock: its stock, its recipe (the materials it lacks in coral), MAKE and DISMANTLE (a share of its recipe, no
+//! data; never below what the fleet carries). Top right: the materials in store. Every row leads with the part's icon
+//! as the drydock's palette draws it (`drydock::panels::part_icon`; Niklas, 18 Oct 2026).
+//!
+//! How many (Niklas, 18 Oct 2026): MAKE and DISMANTLE (and KEEP and DISMANTLE of a part the intake holds more than
+//! one of) open a strip under the row: − n + (shift: five at a time) and MAX, what it costs or gives in all, then the
+//! confirming pill (MAKE 3) or CANCEL (Esc). It opens at the suggestion's count, the fleet's shortfall or one.
 //!
 //! ```text
 //! (o) SHIPYARD › WORKSHOP                         COPPER 7  CRYSTAL 4  STEEL 6  …   [CLOSE]
 //!     Workshop
 //!   TO SORT · 6 PARTS                              FABRICATE · THE FLEET IS SHORT OF 2   [FABRICATE MISSING]
-//!   Thruster   ×5  IN STOCK 2  KEEP 0 · DISMANTLE 5  Pulse laser  2 / 4  COPPER 3 · CRYSTAL 2 · STEEL 1  [MAKE]
-//!     [KEEP] [DISMANTLE]                            Thruster     4      CERAMIC 2 · COPPER 1 · STEEL 3  [MAKE]
-//!   [SORT AS SUGGESTED]                             …
+//!   Thruster   ×5  IN STOCK 2  KEEP 0 · DISMANTLE 5  Pulse laser  2 / 4  COPPER 3 · CRYSTAL 2  [MAKE] [DISMANTLE]
+//!     [KEEP] [DISMANTLE]                              (−) 2 (+) [MAX]                  [MAKE 2] [CANCEL]
+//!   [SORT AS SUGGESTED]                               COSTS COPPER 6 · CRYSTAL 4
+//!                                                   Thruster     4      CERAMIC 2 · COPPER 1  [MAKE] [DISMANTLE]
 //!   DISMANTLED 5 THRUSTERS  ·  PROPULSION +15  ·  STEEL +6
 //! ```
 //!
 //! * Home's workshop (W, once the camera has flown there) opens it; the ring button, CLOSE and Esc close it.
-//! * Every action is the career's (`data::career::Career::keep`, `dismantle`, `sort_suggested`, `fabricate`) and
-//!   writes the save; the lists are built again after each.
+//! * Every action is the career's (`data::career::Career::keep`, `dismantle`, `sort_suggested`, `fabricate`,
+//!   `dismantle_stock`) and writes the save; the lists are built again after each (and after each step of a count).
 //! * The fleet is the drydock's working design and the escorts: what it carries is what the suggestion keeps and
 //!   what FABRICATE MISSING makes.
 //!
@@ -26,11 +32,11 @@
 use std::collections::BTreeMap;
 
 use bevy::prelude::*;
-use data::career::{Refusal, Shortfall, fleet_parts};
+use data::career::{HaulReport, Refusal, Shortfall, dismantle_yield, fleet_parts};
 use data::{Career, Content};
 use kit::style::{Style, ui_color};
 use kit::ui_icons::{Glyph, UiIcon};
-use kit::ui_kit::{Edge, HudFonts, Pill, ScreenFx, ScreenPart, Scrollbar, Tip, Tone, UiClick, UiInputSet, UiStyleSet, label, number, prose, ring_node, show_screen, spawn_pill, tracked};
+use kit::ui_kit::{Edge, HudFonts, Pill, Ring, ScreenFx, ScreenPart, Scrollbar, Tip, Tone, UiClick, UiInputSet, UiStyleSet, label, number, prose, ring_glyph, ring_node, show_screen, spawn_pill, tracked};
 use world::career::{EscortDesigns, Note, PlayerCareer};
 use world::mode::AppMode;
 use world::player::PlayerDesign;
@@ -47,6 +53,9 @@ const STAGE: Vec2 = Vec2::new(1280.0, 720.0);
 const SORT: (Vec2, Vec2) = (Vec2::new(40.0, 104.0), Vec2::new(560.0, 540.0));
 const MAKE: (Vec2, Vec2) = (Vec2::new(640.0, 104.0), Vec2::new(600.0, 540.0));
 const ROW: f32 = 44.0;
+/// The most a count goes to, and a shift-click's step.
+const COUNT_MAX: u32 = 99;
+const COUNT_STEP: u32 = 5;
 
 /// One part of the intake as the workshop shows it.
 #[derive(Clone, Debug, PartialEq)]
@@ -59,8 +68,8 @@ pub struct SortRow {
     pub dismantle: u32,
 }
 
-/// One part the workshop can fabricate: its stock, what the fleet carries, its recipe (material name, amount, short
-/// of it) and why it can't be made now.
+/// One part the workshop can fabricate or holds in stock: its stock, what the fleet carries, its recipe (material
+/// name, amount, short of it), why it can't be made now, and the most it can make and dismantle.
 #[derive(Clone, Debug, PartialEq)]
 pub struct MakeRow {
     pub part: String,
@@ -69,6 +78,69 @@ pub struct MakeRow {
     pub need: u32,
     pub recipe: Vec<(String, u32, bool)>,
     pub why: Option<String>,
+    pub make: u32,
+    pub spare: u32,
+}
+
+/// What a count is chosen for: keeping or dismantling the intake's parts, fabricating, dismantling stock.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Act {
+    Keep,
+    Dismantle,
+    Make,
+    Scrap,
+}
+
+/// A count being chosen: for what, of which part, how many.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Choice {
+    pub act: Act,
+    pub part: String,
+    pub n: u32,
+}
+
+/// The most a count may reach (pure): the intake's parts to keep or dismantle, what the materials pay for, the
+/// stock beyond what the fleet carries; at most [`COUNT_MAX`].
+pub fn most(content: &Content, career: &Career, need: &BTreeMap<String, u32>, act: Act, part: &str) -> u32 {
+    match act {
+        Act::Keep | Act::Dismantle => career.intake().get(part).copied().unwrap_or(0),
+        Act::Make => career.fabricable(content, part),
+        Act::Scrap => career.spare(part, need),
+    }
+    .min(COUNT_MAX)
+}
+
+/// The count a choice opens at: the suggestion's for the intake, the fleet's shortfall for MAKE, else one; within
+/// one and [`most`].
+pub fn first_count(content: &Content, career: &Career, need: &BTreeMap<String, u32>, act: Act, part: &str) -> u32 {
+    let sort = career.suggested(content, need).get(part).copied().unwrap_or_default();
+    let want = match act {
+        Act::Keep => sort.keep,
+        Act::Dismantle => sort.dismantle,
+        Act::Make => need.get(part).copied().unwrap_or(0).saturating_sub(career.stock().get(part).copied().unwrap_or(0)),
+        Act::Scrap => 1,
+    };
+    want.clamp(1, most(content, career, need, act, part).max(1))
+}
+
+/// What confirming a choice costs or gives in all, in words: `COSTS COPPER 6  ·  STEEL 2`, `GIVES PROPULSION +6  ·
+/// STEEL +2`, `GIVES STEEL +2  ·  NO DATA` (stock), `IN STOCK THEN 4`.
+pub fn choice_words(content: &Content, career: &Career, c: &Choice) -> String {
+    let share = content.workshop().map_or(0.0, |(_, r)| r.dismantle);
+    match c.act {
+        Act::Keep => format!("IN STOCK THEN {}", career.stock().get(&c.part).copied().unwrap_or(0) + c.n),
+        Act::Dismantle => format!("GIVES {}", gave_words(content, &dismantle_yield(content, &c.part, c.n, share))),
+        Act::Make => {
+            let cost: Vec<String> = content.parts.get(&c.part).and_then(|p| p.recipe.as_ref()).map_or_else(Vec::new, |r| {
+                r.materials.iter().map(|(m, &a)| format!("{} {}", content.materials.get(m).map_or(m.as_str(), |x| x.name.as_str()).to_uppercase(), a * c.n)).collect()
+            });
+            format!("COSTS {}", cost.join("  ·  "))
+        }
+        Act::Scrap => {
+            let got = HaulReport { materials: dismantle_yield(content, &c.part, c.n, share).materials, ..HaulReport::default() };
+            format!("GIVES {}  ·  NO DATA", gave_words(content, &got))
+        }
+    }
 }
 
 /// What the fleet carries (the working design and the escorts), by part id.
@@ -96,13 +168,13 @@ pub fn sort_rows(content: &Content, career: &Career, need: &BTreeMap<String, u32
         .collect()
 }
 
-/// The unlocked parts with a recipe: those the fleet is short of first, then in content order.
+/// The parts with a recipe that are unlocked or in stock: those the fleet is short of first, then in content order.
 pub fn make_rows(content: &Content, career: &Career, need: &BTreeMap<String, u32>) -> Vec<MakeRow> {
     let unlocks = career.unlocks(content);
     let mut rows: Vec<MakeRow> = content
         .parts
         .iter()
-        .filter(|p| !p.hull && p.recipe.is_some() && unlocks.has_part(&p.id))
+        .filter(|p| !p.hull && p.recipe.is_some() && (unlocks.has_part(&p.id) || career.stock().contains_key(&p.id)))
         .map(|p| {
             let have = |m: &str| career.materials().get(m).copied().unwrap_or(0);
             let recipe = p.recipe.as_ref().map_or_else(Vec::new, |r| {
@@ -115,6 +187,8 @@ pub fn make_rows(content: &Content, career: &Career, need: &BTreeMap<String, u32
                 need: need.get(&p.id).copied().unwrap_or(0),
                 recipe,
                 why: career.can_fabricate(content, &p.id, 1).err().map(|r| refusal_words(content, &r)),
+                make: most(content, career, need, Act::Make, &p.id),
+                spare: most(content, career, need, Act::Scrap, &p.id),
             }
         })
         .collect();
@@ -152,24 +226,27 @@ pub fn refusal_words(content: &Content, r: &Refusal) -> String {
             format!("SHORT OF {}", words.join("  ·  "))
         }
         Refusal::NotInIntake(p) => format!("NO {} LEFT TO SORT", part(p)),
+        Refusal::NotInStock(p) => format!("NO {} IN STOCK", part(p)),
+        Refusal::FleetNeeds { part: p, need, stock } => format!("THE FLEET CARRIES {need} {}  ·  {stock} IN STOCK", part(p)),
         Refusal::NoWorkshop => "THE CONTENT HAS NO WORKSHOP".into(),
         other => format!("{other:?}").to_uppercase(),
     }
 }
 
 /// What a dismantling gave, in words: `PROPULSION +15  ·  STEEL +6`.
-fn gave_words(content: &Content, got: &data::career::HaulReport) -> String {
+fn gave_words(content: &Content, got: &HaulReport) -> String {
     let data = got.data.iter().map(|(f, x)| format!("{} +{}", content.families.get(f).map_or(f.as_str(), |f| f.name.as_str()).to_uppercase(), amount(*x)));
     let mats = got.materials.iter().map(|(m, n)| format!("{} +{n}", content.materials.get(m).map_or(m.as_str(), |m| m.name.as_str()).to_uppercase()));
     let all: Vec<String> = data.chain(mats).collect();
     if all.is_empty() { "NOTHING".into() } else { all.join("  ·  ") }
 }
 
-/// The WORKSHOP's state (a resource): open or not, and what the last action said.
+/// The WORKSHOP's state (a resource): open or not, what the last action said and the count being chosen.
 #[derive(Resource, Debug, Default)]
 pub struct WorkshopLayer {
     pub open: bool,
     said: Option<(String, Tone)>,
+    choice: Option<Choice>,
 }
 
 /// Is the WORKSHOP open (home's input waits then)?
@@ -195,13 +272,24 @@ struct Said;
 #[derive(Component)]
 struct CloseButton;
 
-/// A button's action.
+/// A button's action: a row's KEEP, DISMANTLE or MAKE (a count to choose, or at once for the intake's only one of a
+/// part), the count's − and + (by one, shift by five), MAX, the confirming pill and CANCEL, and the two for all.
 #[derive(Component, Clone, Debug, PartialEq)]
 enum Do {
-    Keep(String),
-    Dismantle(String),
+    Choose(Act, String),
+    Less,
+    More,
+    Max,
+    Confirm,
+    Cancel,
     SortAll,
-    Make(String),
+    MakeMissing,
+}
+
+/// What changes the career: a chosen count, sorting as suggested, fabricating what the fleet lacks.
+enum Work {
+    Count(Choice),
+    SortAll,
     MakeMissing,
 }
 
@@ -237,8 +325,9 @@ fn open(
         return;
     }
     layer.said = None;
+    layer.choice = None;
     let need = fleet_need(&content.0, &design, &escorts);
-    refill(&mut commands, &lists, &fonts, &style, &content.0, career.career(), &need, &layer.said);
+    refill(&mut commands, &lists, &fonts, &style, &content.0, career.career(), &need, &layer);
     layer.open = true;
 }
 
@@ -270,19 +359,63 @@ fn input(
     if !layer.open {
         return;
     }
-    if let Some(d) = todo {
-        let c = &content.0;
-        let need = fleet_need(c, &design, &escorts);
+    let c = &content.0;
+    let need = fleet_need(c, &design, &escorts);
+    // Esc cancels a count being chosen first, then closes.
+    let esc = keys.just_pressed(KeyCode::Escape);
+    let cancel = esc && layer.choice.is_some();
+    let acted = todo.is_some() || cancel;
+    if cancel {
+        layer.choice = None;
+    }
+    let work = match todo {
+        Some(Do::Choose(act, part)) => {
+            // the intake's only one goes at once; none to make or spare tries one, so the career says why not
+            let one = matches!(act, Act::Keep | Act::Dismantle) && career.career().intake().get(&part) == Some(&1);
+            if one || most(c, career.career(), &need, act, &part) == 0 {
+                Some(Work::Count(Choice { act, part, n: 1 }))
+            } else {
+                layer.choice = Some(Choice { n: first_count(c, career.career(), &need, act, &part), act, part });
+                None
+            }
+        }
+        Some(d @ (Do::Less | Do::More | Do::Max)) => {
+            let step = if keys.any_pressed([KeyCode::ShiftLeft, KeyCode::ShiftRight]) { COUNT_STEP } else { 1 };
+            if let Some(ch) = layer.choice.as_mut() {
+                let top = most(c, career.career(), &need, ch.act, &ch.part).max(1);
+                ch.n = match d {
+                    Do::Less => ch.n.saturating_sub(step),
+                    Do::More => ch.n + step,
+                    _ => top,
+                }
+                .clamp(1, top);
+            }
+            None
+        }
+        Some(Do::Confirm) => layer.choice.take().map(Work::Count),
+        Some(Do::Cancel) => {
+            layer.choice = None;
+            None
+        }
+        Some(Do::SortAll) => Some(Work::SortAll),
+        Some(Do::MakeMissing) => Some(Work::MakeMissing),
+        None => None,
+    };
+    if let Some(w) = work {
+        layer.choice = None;
         let name = |p: &str| c.parts.get(p).map_or_else(|| p.to_uppercase(), |x| x.name.to_uppercase());
-        let (said, written) = career.update(&mut storage, |career| match &d {
-            Do::Keep(p) => career.keep(p, 1).map(|()| (format!("KEPT 1 {}  ·  IN STOCK", name(p)), Tone::Teal)),
-            Do::Dismantle(p) => career.dismantle(c, p, 1).map(|got| (format!("DISMANTLED 1 {}  ·  {}", name(p), gave_words(c, &got)), Tone::Gold)),
-            Do::SortAll => {
+        let (said, written) = career.update(&mut storage, |career| match &w {
+            Work::Count(Choice { act, part: p, n }) => match act {
+                Act::Keep => career.keep(p, *n).map(|()| (format!("KEPT {n} {}  ·  IN STOCK", name(p)), Tone::Teal)),
+                Act::Dismantle => career.dismantle(c, p, *n).map(|got| (format!("DISMANTLED {n} {}  ·  {}", name(p), gave_words(c, &got)), Tone::Gold)),
+                Act::Make => career.fabricate(c, p, *n).map(|()| (format!("FABRICATED {n} {}  ·  IN STOCK", name(p)), Tone::Teal)),
+                Act::Scrap => career.dismantle_stock(c, p, *n, &need).map(|got| (format!("DISMANTLED {n} {} FROM STOCK  ·  {}", name(p), gave_words(c, &got)), Tone::Gold)),
+            },
+            Work::SortAll => {
                 let kept: u32 = career.suggested(c, &need).values().map(|s| s.keep).sum();
                 career.sort_suggested(c, &need).map(|got| (format!("SORTED  ·  KEPT {kept}  ·  {}", gave_words(c, &got)), Tone::Gold))
             }
-            Do::Make(p) => career.fabricate(c, p, 1).map(|()| (format!("FABRICATED 1 {}  ·  IN STOCK", name(p)), Tone::Teal)),
-            Do::MakeMissing => {
+            Work::MakeMissing => {
                 let mut made = 0;
                 let mut stop = None;
                 for (p, n, have) in missing(career, &need) {
@@ -306,9 +439,11 @@ fn input(
             warn!("workshop: not saved: {e}");
             career.notes.push(Note::new("NOT SAVED", e, Tone::Coral));
         }
-        refill(&mut commands, &lists, &fonts, &style, c, career.career(), &need, &layer.said);
     }
-    if closed || keys.just_pressed(KeyCode::Escape) {
+    if acted {
+        refill(&mut commands, &lists, &fonts, &style, c, career.career(), &need, &layer);
+    }
+    if closed || (esc && !cancel) {
         layer.open = false;
     }
 }
@@ -320,17 +455,19 @@ fn show(mode: Res<State<AppMode>>, layer: Res<WorkshopLayer>, mut root: Single<&
 
 /// Both lists, the materials in store and the last action's words, anew.
 #[allow(clippy::too_many_arguments)]
-fn refill(commands: &mut Commands, lists: &Lists, fonts: &HudFonts, style: &Style, content: &Content, career: &Career, need: &BTreeMap<String, u32>, said: &Option<(String, Tone)>) {
+fn refill(commands: &mut Commands, lists: &Lists, fonts: &HudFonts, style: &Style, content: &Content, career: &Career, need: &BTreeMap<String, u32>, layer: &WorkshopLayer) {
     let ui = style.ui;
     let c = |tone: Tone| ui_color(tone.color(&ui), 1.0);
     let (sort, make, mats, line) = (*lists.0, *lists.1, *lists.2, *lists.3);
+    let strip = layer.choice.as_ref().map(|ch| Strip { choice: ch, top: most(content, career, need, ch.act, &ch.part), words: choice_words(content, career, ch) });
+    let ui_rows = Rows { fonts, style, content, strip: strip.as_ref() };
     let rows = sort_rows(content, career, need);
     commands.entity(sort).despawn_children();
-    commands.entity(sort).with_children(|p| fill_sort(p, fonts, style, content, &rows));
+    commands.entity(sort).with_children(|p| fill_sort(p, &ui_rows, &rows));
     let short = missing(career, need);
     let rows = make_rows(content, career, need);
     commands.entity(make).despawn_children();
-    commands.entity(make).with_children(|p| fill_make(p, fonts, style, content, &short, &rows));
+    commands.entity(make).with_children(|p| fill_make(p, &ui_rows, &short, &rows));
     commands.entity(mats).despawn_children();
     commands.entity(mats).with_children(|p| {
         if career.materials().is_empty() {
@@ -342,13 +479,74 @@ fn refill(commands: &mut Commands, lists: &Lists, fonts: &HudFonts, style: &Styl
         }
     });
     commands.entity(line).despawn_children();
-    if let Some((words, tone)) = said {
+    if let Some((words, tone)) = &layer.said {
         commands.entity(line).with_child(tracked(fonts, words, 9.5, c(*tone), 0.18));
     }
 }
 
+/// The count being chosen as its strip shows it: the choice, the most it may reach, what it costs or gives.
+struct Strip<'a> {
+    choice: &'a Choice,
+    top: u32,
+    words: String,
+}
+
+/// What filling the lists needs besides the rows.
+struct Rows<'a> {
+    fonts: &'a HudFonts,
+    style: &'a Style,
+    content: &'a Content,
+    strip: Option<&'a Strip<'a>>,
+}
+
+impl Rows<'_> {
+    /// The open strip if it belongs to `part` and one of `acts`.
+    fn strip_for(&self, part: &str, acts: &[Act]) -> Option<&Strip<'_>> {
+        self.strip.filter(|s| s.choice.part == part && acts.contains(&s.choice.act))
+    }
+}
+
+/// A list row: a bordered column holding the row's line and, while a count is chosen for it, its strip.
+fn row_node(ui: &kit::style::UiPalette) -> impl Bundle {
+    (
+        Node { flex_shrink: 0.0, flex_direction: FlexDirection::Column, border: UiRect::bottom(px(1)), ..default() },
+        BorderColor::all(ui_color(ui.dim, 0.25)),
+    )
+}
+
+/// A row's line: icon, words and pills, side by side.
+fn line_node() -> Node {
+    Node { min_height: px(ROW), flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(12), ..default() }
+}
+
+/// The strip under a row whose count is being chosen: − n + and MAX, the confirming pill (MAKE 3) and CANCEL, and
+/// under them what it costs or gives in all.
+fn spawn_strip(p: &mut ChildSpawnerCommands, fonts: &HudFonts, style: &Style, s: &Strip) {
+    let ui = style.ui;
+    let c = |tone: Tone| ui_color(tone.color(&ui), 1.0);
+    let (verb, tone) = match s.choice.act {
+        Act::Keep => ("KEEP", Tone::Teal),
+        Act::Make => ("MAKE", Tone::Teal),
+        Act::Dismantle | Act::Scrap => ("DISMANTLE", Tone::Gold),
+    };
+    let n = s.choice.n;
+    p.spawn(Node { flex_direction: FlexDirection::Column, row_gap: px(6), padding: UiRect { left: px(44), bottom: px(10), ..default() }, ..default() }).with_children(|col| {
+        col.spawn(Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(8), ..default() }).with_children(|r| {
+            r.spawn((ring_node(22.0), Do::Less, Tip::new("ONE LESS  ·  SHIFT: FIVE"))).insert(Ring { disabled: n <= 1, active: false }).with_child(ring_glyph(Glyph::Minus, 10.0));
+            r.spawn((number(fonts, &n.to_string(), 14.0, c(Tone::Number)), Node { min_width: px(26), justify_content: JustifyContent::Center, ..default() }));
+            r.spawn((ring_node(22.0), Do::More, Tip::new("ONE MORE  ·  SHIFT: FIVE"))).insert(Ring { disabled: n >= s.top, active: false }).with_child(ring_glyph(Glyph::Plus, 10.0));
+            spawn_pill(r, fonts, "MAX", 8.5, 22.0, None, Pill { disabled: n >= s.top, ..Pill::new(Tone::Teal) }, (Do::Max, Tip::new(format!("AS MANY AS CAN BE  ·  {}", s.top))));
+            r.spawn(Node { flex_grow: 1.0, ..default() });
+            spawn_pill(r, fonts, &format!("{verb} {n}"), 9.0, 26.0, None, Pill { active: true, disabled: s.top == 0, ..Pill::new(tone) }, (Do::Confirm, Tip::new("CONFIRM")));
+            spawn_pill(r, fonts, "CANCEL", 9.0, 26.0, None, Pill::new(Tone::Teal), (Do::Cancel, Tip::key("CANCEL", "ESC")));
+        });
+        col.spawn(tracked(fonts, &s.words, 8.5, c(tone), 0.16));
+    });
+}
+
 /// The intake's rows (or the empty state) and SORT AS SUGGESTED.
-fn fill_sort(p: &mut ChildSpawnerCommands, fonts: &HudFonts, style: &Style, content: &Content, rows: &[SortRow]) {
+fn fill_sort(p: &mut ChildSpawnerCommands, cx: &Rows, rows: &[SortRow]) {
+    let (fonts, style, content) = (cx.fonts, cx.style, cx.content);
     let ui = style.ui;
     let c = |tone: Tone| ui_color(tone.color(&ui), 1.0);
     let total: u32 = rows.iter().map(|r| r.count).sum();
@@ -359,19 +557,23 @@ fn fill_sort(p: &mut ChildSpawnerCommands, fonts: &HudFonts, style: &Style, cont
         return;
     }
     for r in rows {
-        p.spawn((
-            Node { min_height: px(ROW), flex_shrink: 0.0, flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(12), border: UiRect::bottom(px(1)), ..default() },
-            BorderColor::all(ui_color(ui.dim, 0.25)),
-        ))
-        .with_children(|row| {
-            row.spawn(icon(content, &r.part));
-            row.spawn(Node { flex_direction: FlexDirection::Column, row_gap: px(3), width: px(150), flex_shrink: 0.0, ..default() }).with_children(|col| {
-                col.spawn(prose(fonts, &r.name, 15.0, c(Tone::Number)));
-                col.spawn(label(fonts, &format!("×{}  ·  IN STOCK {}", r.count, r.stock), 8.5, c(Tone::Label)));
+        let strip = cx.strip_for(&r.part, &[Act::Keep, Act::Dismantle]);
+        let on = |act: Act| strip.is_some_and(|s| s.choice.act == act);
+        let (keep, dismantle) = if r.count > 1 { ("KEEP  ·  HOW MANY", "DISMANTLE  ·  HOW MANY") } else { ("KEEP  ·  INTO STOCK", "DISMANTLE  ·  DATA AND MATERIALS") };
+        p.spawn(row_node(&ui)).with_children(|wrap| {
+            wrap.spawn(line_node()).with_children(|row| {
+                row.spawn(icon(content, &r.part));
+                row.spawn(Node { flex_direction: FlexDirection::Column, row_gap: px(3), width: px(150), flex_shrink: 0.0, ..default() }).with_children(|col| {
+                    col.spawn(prose(fonts, &r.name, 15.0, c(Tone::Number)));
+                    col.spawn(label(fonts, &format!("×{}  ·  IN STOCK {}", r.count, r.stock), 8.5, c(Tone::Label)));
+                });
+                row.spawn((label(fonts, &format!("KEEP {}  ·  DISMANTLE {}", r.keep, r.dismantle), 8.5, c(Tone::Dim)), Node { flex_grow: 1.0, ..default() }));
+                spawn_pill(row, fonts, "KEEP", 9.0, 26.0, None, Pill { active: on(Act::Keep), ..Pill::new(Tone::Teal) }, (Do::Choose(Act::Keep, r.part.clone()), Tip::new(keep)));
+                spawn_pill(row, fonts, "DISMANTLE", 9.0, 26.0, None, Pill { active: on(Act::Dismantle), ..Pill::new(Tone::Gold) }, (Do::Choose(Act::Dismantle, r.part.clone()), Tip::new(dismantle)));
             });
-            row.spawn((label(fonts, &format!("KEEP {}  ·  DISMANTLE {}", r.keep, r.dismantle), 8.5, c(Tone::Dim)), Node { flex_grow: 1.0, ..default() }));
-            spawn_pill(row, fonts, "KEEP", 9.0, 26.0, None, Pill::new(Tone::Teal), (Do::Keep(r.part.clone()), Tip::new("KEEP ONE  ·  INTO STOCK")));
-            spawn_pill(row, fonts, "DISMANTLE", 9.0, 26.0, None, Pill::new(Tone::Gold), (Do::Dismantle(r.part.clone()), Tip::new("DISMANTLE ONE  ·  DATA AND MATERIALS")));
+            if let Some(s) = strip {
+                spawn_strip(wrap, fonts, style, s);
+            }
         });
     }
     p.spawn(Node { height: px(14), flex_shrink: 0.0, ..default() });
@@ -386,8 +588,9 @@ fn icon(content: &Content, part: &str) -> (UiIcon, Node) {
     (part_icon(content, part, armor), Node { width: px(32), height: px(28), flex_shrink: 0.0, ..default() })
 }
 
-/// What the fleet is short of, FABRICATE MISSING, and the parts to make.
-fn fill_make(p: &mut ChildSpawnerCommands, fonts: &HudFonts, style: &Style, content: &Content, short: &[(String, u32, u32)], rows: &[MakeRow]) {
+/// What the fleet is short of, FABRICATE MISSING, and the parts to make or dismantle.
+fn fill_make(p: &mut ChildSpawnerCommands, cx: &Rows, short: &[(String, u32, u32)], rows: &[MakeRow]) {
+    let (fonts, style, content) = (cx.fonts, cx.style, cx.content);
     let ui = style.ui;
     let c = |tone: Tone| ui_color(tone.color(&ui), 1.0);
     p.spawn(Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(14), margin: UiRect::bottom(px(8)), flex_shrink: 0.0, ..default() }).with_children(|h| {
@@ -407,27 +610,39 @@ fn fill_make(p: &mut ChildSpawnerCommands, fonts: &HudFonts, style: &Style, cont
         p.spawn((tracked(fonts, &words.join("  ·  "), 8.5, c(Tone::Coral), 0.16), Node { margin: UiRect::bottom(px(10)), flex_shrink: 0.0, ..default() }));
     }
     for r in rows {
-        p.spawn((
-            Node { min_height: px(ROW), flex_shrink: 0.0, flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(12), border: UiRect::bottom(px(1)), ..default() },
-            BorderColor::all(ui_color(ui.dim, 0.25)),
-        ))
-        .with_children(|row| {
-            row.spawn(icon(content, &r.part));
-            row.spawn((prose(fonts, &r.name, 15.0, c(Tone::Number)), Node { width: px(130), flex_shrink: 0.0, ..default() }));
-            let (stock, tone) = if r.need > 0 { (format!("{} / {}", r.stock, r.need), if r.stock < r.need { Tone::Coral } else { Tone::Teal }) } else { (r.stock.to_string(), Tone::Number) };
-            row.spawn((number(fonts, &stock, 14.0, c(tone)), Node { width: px(48), flex_shrink: 0.0, ..default() }));
-            row.spawn(Node { flex_direction: FlexDirection::Column, row_gap: px(3), flex_grow: 1.0, flex_shrink: 1.0, ..default() }).with_children(|col| {
-                col.spawn(Node { flex_direction: FlexDirection::Row, column_gap: px(8), flex_wrap: FlexWrap::Wrap, ..default() }).with_children(|m| {
-                    for (name, n, lacks) in &r.recipe {
-                        m.spawn(label(fonts, &format!("{} {n}", name.to_uppercase()), 8.5, c(if *lacks { Tone::Coral } else { Tone::Label })));
+        let strip = cx.strip_for(&r.part, &[Act::Make, Act::Scrap]);
+        let on = |act: Act| strip.is_some_and(|s| s.choice.act == act);
+        p.spawn(row_node(&ui)).with_children(|wrap| {
+            wrap.spawn(Node { column_gap: px(10), ..line_node() }).with_children(|row| {
+                row.spawn(icon(content, &r.part));
+                row.spawn((prose(fonts, &r.name, 15.0, c(Tone::Number)), Node { width: px(118), flex_shrink: 0.0, ..default() }));
+                let (stock, tone) = if r.need > 0 { (format!("{} / {}", r.stock, r.need), if r.stock < r.need { Tone::Coral } else { Tone::Teal }) } else { (r.stock.to_string(), Tone::Number) };
+                row.spawn((number(fonts, &stock, 14.0, c(tone)), Node { width: px(44), flex_shrink: 0.0, ..default() }));
+                row.spawn(Node { flex_direction: FlexDirection::Column, row_gap: px(3), flex_grow: 1.0, flex_shrink: 1.0, ..default() }).with_children(|col| {
+                    col.spawn(Node { flex_direction: FlexDirection::Row, column_gap: px(8), flex_wrap: FlexWrap::Wrap, ..default() }).with_children(|m| {
+                        for (name, n, lacks) in &r.recipe {
+                            m.spawn(label(fonts, &format!("{} {n}", name.to_uppercase()), 8.5, c(if *lacks { Tone::Coral } else { Tone::Label })));
+                        }
+                    });
+                    if let Some(why) = r.why.as_ref().filter(|w| !w.starts_with("SHORT OF")) {
+                        col.spawn(label(fonts, why, 8.0, c(Tone::Dim)));
                     }
                 });
-                if let Some(why) = r.why.as_ref().filter(|w| !w.starts_with("SHORT OF")) {
-                    col.spawn(label(fonts, why, 8.0, c(Tone::Dim)));
-                }
+                let make = Pill { disabled: r.make == 0, active: on(Act::Make), ..Pill::new(Tone::Teal) };
+                spawn_pill(row, fonts, "MAKE", 9.0, 26.0, None, make, (Do::Choose(Act::Make, r.part.clone()), Tip::new("FABRICATE  ·  HOW MANY")));
+                let tip = if r.spare > 0 {
+                    "DISMANTLE FROM STOCK  ·  MATERIALS, NO DATA".to_string()
+                } else if r.stock > 0 {
+                    format!("THE FLEET CARRIES ALL {}", r.stock)
+                } else {
+                    "NONE IN STOCK".to_string()
+                };
+                let scrap = Pill { disabled: r.spare == 0, active: on(Act::Scrap), ..Pill::new(Tone::Gold) };
+                spawn_pill(row, fonts, "DISMANTLE", 9.0, 26.0, None, scrap, (Do::Choose(Act::Scrap, r.part.clone()), Tip::new(tip)));
             });
-            let pill = Pill { disabled: r.why.is_some(), ..Pill::new(Tone::Teal) };
-            spawn_pill(row, fonts, "MAKE", 9.0, 26.0, None, pill, (Do::Make(r.part.clone()), Tip::new("FABRICATE ONE")));
+            if let Some(s) = strip {
+                spawn_strip(wrap, fonts, style, s);
+            }
         });
     }
 }
@@ -512,5 +727,32 @@ mod tests {
         assert_eq!(refusal_words(&content, &Refusal::NeedsFacility("fusion_workshop".into())), "NEEDS THE FUSION WORKSHOP");
         let short = Refusal::CannotPay(vec![Shortfall::Material { material: "copper".into(), have: 1, cost: 3 }]);
         assert_eq!(refusal_words(&content, &short), "SHORT OF COPPER 1 / 3");
+        let fleet = Refusal::FleetNeeds { part: "thruster".into(), need: 2, stock: 2 };
+        assert_eq!(refusal_words(&content, &fleet), "THE FLEET CARRIES 2 THRUSTER  ·  2 IN STOCK");
+    }
+
+    /// A count opens at the suggestion's or the shortfall, reaches at most what the intake holds, the materials pay
+    /// for or the fleet spares, and says what it costs or gives in all.
+    #[test]
+    fn counts_and_their_words() {
+        let content = data::base_content();
+        let mut c = Career::new(&content, "rim_awakening", 4207).unwrap();
+        c.voyage_launched(&content, "yard_approach").unwrap();
+        let haul: Haul = [(HaulItem::Part { part: "thruster".into(), material: None }, 3)].into_iter().collect();
+        c.voyage_ended(&content, "yard_approach", VoyageEnd::Recalled { haul, cleared: false, ticks: 30 }).unwrap();
+        let skiff = content.ships.get("rim_skiff").unwrap();
+        let need = fleet_parts(&content, [skiff, skiff]);
+        assert_eq!((most(&content, &c, &need, Act::Keep, "thruster"), first_count(&content, &c, &need, Act::Keep, "thruster")), (3, 2));
+        assert_eq!(first_count(&content, &c, &need, Act::Dismantle, "thruster"), 1);
+        let cap = need["capacitor"] - c.stock()["capacitor"];
+        assert_eq!(first_count(&content, &c, &need, Act::Make, "capacitor"), cap.min(c.fabricable(&content, "capacitor")).max(1));
+        assert_eq!(most(&content, &c, &need, Act::Scrap, "thruster"), 0, "the fleet carries every thruster in stock");
+        assert_eq!(most(&content, &c, &BTreeMap::new(), Act::Scrap, "thruster"), 2);
+        let make = Choice { act: Act::Make, part: "pulse_laser".into(), n: 2 };
+        assert_eq!(choice_words(&content, &c, &make), "COSTS COPPER 6  ·  LATTICE CRYSTAL 4  ·  STEEL 2");
+        let scrap = Choice { act: Act::Scrap, part: "thruster".into(), n: 2 };
+        assert_eq!(choice_words(&content, &c, &scrap), "GIVES CERAMIC +2  ·  COPPER +1  ·  STEEL +2  ·  NO DATA");
+        let keep = Choice { act: Act::Keep, part: "thruster".into(), n: 3 };
+        assert_eq!(choice_words(&content, &c, &keep), "IN STOCK THEN 5");
     }
 }

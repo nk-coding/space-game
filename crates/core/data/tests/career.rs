@@ -1320,6 +1320,49 @@ fn the_workshop_sorts_the_intake() {
     assert_eq!(loaded.stock(), career.stock());
 }
 
+/// Stock parts dismantle for the workshop's share of their recipe and no data, never below what the fleet carries;
+/// the most the workshop can fabricate is what its scarcest material pays for.
+#[test]
+fn the_workshop_dismantles_stock_and_counts_what_it_can_make() {
+    let c = content();
+    let mut career = new_game(&c);
+    let (data, before) = (career.data().clone(), career.materials().clone());
+    assert_eq!(career.stock()["thruster"], 2);
+    // The fleet carries two thrusters: none spare, dismantling one is refused and changes nothing.
+    let need = map(&[("thruster", 2)]);
+    assert_eq!(career.spare("thruster", &need), 0);
+    assert_eq!(
+        career.dismantle_stock(&c, "thruster", 1, &need),
+        Err(Refusal::FleetNeeds { part: "thruster".into(), need: 2, stock: 2 })
+    );
+    assert_eq!(career.stock()["thruster"], 2);
+    // The fleet carries one: one spare; two would leave it short.
+    let need = map(&[("thruster", 1)]);
+    assert_eq!(career.spare("thruster", &need), 1);
+    assert!(matches!(career.dismantle_stock(&c, "thruster", 2, &need), Err(Refusal::FleetNeeds { .. })));
+    // Without a fleet both go: a thruster's recipe (ceramic 2, copper 1, steel 3) times two at 0.4, rounded.
+    let got = career.dismantle_stock(&c, "thruster", 2, &BTreeMap::new()).unwrap();
+    assert_eq!(got.materials, map(&[("ceramic", 2), ("copper", 1), ("steel", 2)]));
+    assert!(got.data.is_empty(), "a stock part gives no research data");
+    assert_eq!(career.data(), &data);
+    for (m, n) in &got.materials {
+        assert_eq!(career.materials()[m], before.get(m).copied().unwrap_or(0) + n);
+    }
+    assert!(!career.stock().contains_key("thruster"));
+    assert_eq!(career.dismantle_stock(&c, "thruster", 1, &BTreeMap::new()), Err(Refusal::NotInStock("thruster".into())));
+    assert_eq!(career.dismantle_stock(&c, "gyro", 0, &BTreeMap::new()), Err(Refusal::NotInStock("gyro".into())));
+    assert_eq!(career.dismantle_stock(&c, "armor_block", 1, &BTreeMap::new()), Err(Refusal::NoRecipe("armor_block".into())));
+    // A capacitor costs ceramic 1 and copper 3: the most is what the scarcer pays for, and exactly that is made.
+    let most = career.fabricable(&c, "capacitor");
+    let have = |m: &str| career.materials().get(m).copied().unwrap_or(0);
+    assert_eq!(most, have("ceramic").min(have("copper") / 3));
+    assert!(most > 0);
+    career.fabricate(&c, "capacitor", most).unwrap();
+    assert_eq!(career.fabricable(&c, "capacitor"), 0);
+    assert!(career.fabricate(&c, "capacitor", 1).is_err());
+    assert_eq!(career.fabricable(&c, "beam_laser"), 0, "a locked part");
+}
+
 /// A format 4 save (before the workshop) reads with an empty stock; stocking its designs raises every part to what
 /// the fleet carries in all and to what any one saved design carries, so the fleet launches as before.
 #[test]

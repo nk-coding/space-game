@@ -1088,17 +1088,26 @@ there). Screenshots:
 
 `workshop.rs`, 18 Oct 2026 ([GDR-0108](gdr/0108-materials-economy-workshop.md)): a layer over home at the workshop
 (W). Left **TO SORT**: the haul's intact parts (`Career::intake`) a row each with the count, the stock and the
-suggestion (`KEEP 2 · DISMANTLE 1`), KEEP and DISMANTLE (one at a time), and SORT AS SUGGESTED for all. Right
-**FABRICATE**: what the fleet (the working design and the escorts) is short of, with FABRICATE MISSING, then every
-unlocked part with a recipe (those the fleet lacks first): its stock (`1 / 2` against what the fleet carries, coral
-when short), its recipe (the materials it lacks in coral, an upgrade it needs in words) and MAKE. Top right the
+suggestion (`KEEP 2 · DISMANTLE 1`), KEEP and DISMANTLE, and SORT AS SUGGESTED for all. Right **FABRICATE**: what
+the fleet (the working design and the escorts) is short of, with FABRICATE MISSING, then every unlocked part with a
+recipe and every part with a recipe in stock (those the fleet lacks first): its stock (`1 / 2` against what the
+fleet carries, coral when short), its recipe (the materials it lacks in coral, an upgrade it needs in words), MAKE
+(disabled when not even one can be made) and DISMANTLE (stock parts, `Career::dismantle_stock`: the workshop's share
+of the recipe, no data; disabled with the tip `THE FLEET CARRIES ALL 2` when the fleet carries every one in stock).
+**How many** (18 Oct 2026, later): MAKE, a stock DISMANTLE, and KEEP or DISMANTLE of a part the intake holds more than
+one of (one alone goes at once) open a strip under the row (the row's pill lit): − n + (rings, shift-click steps
+five), MAX (`most`: the intake's count, what the scarcest material pays for, the stock beyond the fleet; at most
+99), the confirming pill (`MAKE 3`, `DISMANTLE 2`) and CANCEL (Esc cancels the strip before it closes the layer);
+under them the total (`choice_words`: `COSTS COPPER 6 · LATTICE CRYSTAL 4 · STEEL 2`, `GIVES PROPULSION +6 · STEEL
++2`, `GIVES STEEL +2 · NO DATA`, `IN STOCK THEN 5`). It opens at the suggestion's count (intake), the fleet's
+shortfall (MAKE) or one (`first_count`); one strip at a time, any action closes it. Top right the
 materials in store; bottom left what the last action did (`DISMANTLED 1 THRUSTER · PROPULSION +3 · STEEL +1`, a
 refusal in coral). Every action is the career's and writes the save. Every row leads with the part's icon as the
 drydock's palette draws it (`drydock::panels::part_icon`, hull parts in the first armour; Niklas, 18 Oct 2026).
 Screenshots: `docs/results/workshop-layer.png`, `workshop-home.png`, `workshop-drydock.png`; with the icons
 `workshop-icons.png`, and the redrawn cargo icons in the palette `drydock-cargo-icons.png` (the cargo bay, 1 × 1, a
 single crate, was a 2 × 2 grid of boxes; the cargo hold, 2 × 2, four crates, was a 3 × 3 grid; the other part icons
-suggest no footprint).
+suggest no footprint). Choosing a count: `workshop-count-make.png`, `workshop-count-dismantle.png`.
 
 ## LOG
 

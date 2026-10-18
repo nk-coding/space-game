@@ -252,7 +252,8 @@ GDR-0108 (18 Oct 2026), `career/workshop.rs`. The content's workshop is the firs
 (`Content::workshop`: `dismantle` 0.4, `broken` 0.25, `keep` 2, placeholders).
 
 - **Stock**: `stock()`, the parts a fleet is fitted from. A new game has its start ship's non-hull parts
-  (`Content::ship_parts`) and the start's `materials`. Fitting takes nothing: the stock only grows.
+  (`Content::ship_parts`) and the start's `materials`. Fitting takes nothing: the stock grows by keeping and
+  fabricating and shrinks only by dismantling stock.
 - **Sorting the intake**: `keep(part, n)` moves `n` into stock; `dismantle(&content, part, n)` gives the part's data
   and `dismantle` × its recipe (rounded to the nearest unit over the `n`; `dismantle_yield` is the same, pure) and
   returns it; both refuse with `NotInIntake` for more than wait. `suggested(&content, &need)` per intake part: keep
@@ -261,7 +262,15 @@ GDR-0108 (18 Oct 2026), `career/workshop.rs`. The content's workshop is the firs
 - **Fabricating**: `can_fabricate(&content, part, n)` / `fabricate`: refused in this order with `UnknownPart`,
   `LockedPart` (not unlocked), `NoRecipe` (salvage only), `NeedsFacility(upgrade)` (the recipe's `needs` not open),
   `CannotPay(shortfalls)` (every material short, in id order); else the recipe × `n` leaves the store and `n` go into
-  stock.
+  stock. `fabricable(&content, part)`: the most it can make now (0 when one is refused, else what the scarcest
+  material pays for).
+- **Dismantling stock** (18 Oct 2026, later): `dismantle_stock(&content, part, n, &need)` gives `dismantle` × the
+  recipe like an intact hauled part but **no research data** (the stock is the workshop's own: nothing new to study,
+  and fabricating then dismantling would otherwise turn materials into data) and returns it. Refused with `NoRecipe`
+  (it would give nothing), `NotInStock` (more than the stock holds, or none), and `FleetNeeds { part, need, stock }`
+  when the stock would fall below what the fleet carries (`need`, as for `suggested`): refused rather than warned,
+  since a fleet short of a part cannot launch. `spare(part, &need)`: the stock beyond the fleet's need, the most it
+  allows.
 - **Migrating** (format 4): `stock_designs(&content, &fleet, &saved)` raises every known part to the most of what the
   fleet carries together and of what any one saved design carries, and returns what it added. The game calls it at
   load for a save read in a format below 5, with the working design and the escorts as the fleet and every saved

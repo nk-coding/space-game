@@ -389,6 +389,10 @@ pub enum Refusal {
     NeedsFacility(String),
     /// The workshop's intake holds fewer of this part than asked for.
     NotInIntake(String),
+    /// The workshop's stock holds fewer of this part than asked for.
+    NotInStock(String),
+    /// Dismantling would leave the stock short of what the fleet carries: the part, the fleet's need, the stock.
+    FleetNeeds { part: String, need: u32, stock: u32 },
     /// The content has no workshop.
     NoWorkshop,
     /// The galaxy has no cluster with this id.

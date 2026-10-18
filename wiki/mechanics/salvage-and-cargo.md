@@ -153,3 +153,9 @@ intact salvage.
 
 Fitting takes nothing from the stock: the parts come back when a ship comes home, and when a ship is lost its
 bonded parts re-form at home with it. Only the haul is at stake.
+
+Parts in stock that your fleet does not carry can be dismantled again for [[facility:workshop.dismantle]] of their
+recipe's materials, like an intact part from a haul but without research data: the workshop learns nothing from
+its own parts. It never dismantles below what your fleet carries. For MAKE and DISMANTLE (and KEEP or DISMANTLE of
+several hauled parts of one kind) you choose how many with − and + (shift-click: five at a time) or MAX, and the
+workshop shows what it costs or gives in all before you confirm.

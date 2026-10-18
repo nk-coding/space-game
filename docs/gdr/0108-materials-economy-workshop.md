@@ -2,6 +2,15 @@
 
 - Status: Accepted (Niklas, 18 Oct 2026) for the decisions; Accepted (provisional, lead) for the numbers and the
   details below marked *lead*
+  2026-10-18, later (Niklas: quantities and dismantling stock; the details provisional, lead): stock parts can be
+  dismantled (`Career::dismantle_stock`) for the same `dismantle` share of the recipe as a hauled part (40 %) but
+  **no research data** (the workshop's own parts teach nothing, and data from fabricate-then-dismantle would turn
+  materials into research), and **never below what the fleet carries** (refused, `FleetNeeds`; the pill is
+  disabled with the reason, rather than a warning, since a short fleet cannot launch). A part without a recipe is
+  not dismantled (it would give nothing). The stock no longer only grows. MAKE and DISMANTLE (and KEEP / DISMANTLE
+  of an intake part held more than once) choose a count in a strip under the row: − n + (shift: five), MAX, the
+  total cost or return, then confirm or cancel; it opens at the suggestion, the fleet's shortfall or one.
+  Screenshots `docs/results/workshop-count-make.png`, `workshop-count-dismantle.png`.
 - Date: 2026-10-18
 - Decided by: Niklas (the five decisions); lead session (names, numbers, the rules marked *lead*)
 - Related: [GDR-0029](0029-mild-death-bonded-matter.md), [GDR-0031](0031-materials-and-fabrication.md), [GDR-0063](0063-salvage-and-research-v1.md), [GDR-0071](0071-shipyard-home-long-u.md), [GDR-0082](0082-drydock-layout-v2-and-part-availability.md), [GDR-0089](0089-play-test-15-oct-speed-salvage-waves-station.md), [GDR-0098](0098-slice-in-the-galaxy-and-rim-rewards.md), [GDR-0104](0104-scenery-rocks-filler-landmarks.md), `docs/career.md` "The workshop", `docs/results/materials-inflow-2026-10-18.md`
@@ -91,9 +100,10 @@ voyages), most of it programmable matter from fragments; fabrication materials (
 
 - Screenshots (1280 × 720): `docs/results/workshop-layer.png` (the WORKSHOP after a dismantle),
   `workshop-drydock.png` (a part the design holds more of than the stock), `workshop-home.png` (7 TO SORT).
-- The stock only grows (keeping, fabricating); nothing is lost but the haul, as GDR-0029 wants.
+- The stock grows by keeping and fabricating (and shrinks only when the player dismantles stock parts the fleet
+  does not carry); nothing is lost but the haul, as GDR-0029 wants.
 - The research flow is nearly unchanged (broken parts give their data at once; intact ones when dismantled).
 - `SalvageSpec::materials` is gone: a part's materials come from its recipe.
 - The sim's state hash changes with the intact roll (the debris stream, the new item); the determinism check passes.
-- Later: hull plating as stock, dismantling stock parts (refitting returns matter, GDR-0029), installing salvaged
+- Later: hull plating as stock, installing salvaged
   parts "as is" with a bonding cost, harvesting (GDR-0104's ores), more upgrades, the inflow re-tuned after play.
