@@ -354,3 +354,51 @@ fn an_enemy_scan_calls_its_own_factions_sleeping_sites_within_range() {
     assert_eq!([1, 2].map(|k| v.sites()[k].state()), [SiteState::Asleep; 2]);
     assert_eq!(v.sites().iter().map(|s| s.known()).collect::<Vec<_>>(), known);
 }
+
+/// Called ships rally where the scanner saw its target (GDR-0111, 19 Oct 2026): a called raider with no one in sight
+/// flies there instead of waiting at its site.
+#[test]
+fn called_ships_out_of_sight_rally_where_the_scanner_saw_its_target() {
+    let c = content();
+    let site_at = Vec2::new(1000.0, 0.0);
+    let plan = VoyagePlan {
+        voyage: "test".into(),
+        seed: 1,
+        radius: 3000.0,
+        entry: Body::at(Vec2::new(450.0, 0.0), 0.0),
+        sites: vec![sim::SitePlan {
+            encounter: Some("test".into()),
+            goal: false,
+            signal: false,
+            core: None,
+            pos: site_at,
+            wake_radius: 250.0,
+            wary: false,
+            ships: vec![sim::Spawn { design: design(&c, "automaton_raider"), body: Body::at(site_at, 0.0), damage: 0.0, seed: 0 }],
+            wrecks: Vec::new(),
+        }],
+        star: None,
+        rocks: Vec::new(),
+    };
+    let mut w = Sim::new(3);
+    w.set_behaviors(sim::BehaviorLibrary::new(&c).unwrap());
+    w.start_voyage(plan, Owner::PLAYER, ENEMY);
+    // Near enough to spawn the site (not to wake it), then 1400 m off: out of the raider's sight (800 m).
+    let me = w.spawn_ship(design(&c, "rim_skiff"), Owner::PLAYER, Body::at(Vec2::new(450.0, 0.0), 0.0));
+    step(&mut w);
+    let raider = w.voyage().unwrap().sites()[0].ships()[0];
+    put(&mut w, me, Vec2::new(-400.0, 0.0));
+    // The picket (no behavior: no target) scans at the origin, so its ships rally there.
+    let picket = w.spawn_ship(design(&c, "automaton_picket"), ENEMY, Body::at(Vec2::ZERO, 0.0));
+    w.command(picket, ShipCommand::Scan);
+    for _ in 0..(20 * sim::TICK_HZ) {
+        put(&mut w, me, Vec2::new(-400.0, 0.0));
+        put(&mut w, picket, Vec2::ZERO);
+        step(&mut w);
+    }
+    assert_eq!(w.voyage().unwrap().sites()[0].state(), SiteState::Awake);
+    let s = w.ship(raider).unwrap();
+    let at = s.piece(s.control_piece().unwrap()).unwrap().com_world();
+    assert!((at - site_at).length() > 150.0, "it left its site: at {at:?}");
+    assert!(at.x < site_at.x, "towards the call: at {at:?}");
+}

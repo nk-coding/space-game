@@ -29,7 +29,8 @@
 //!   stripped (a part or its cargo collected, GDR-0102), or one of them stopped being a running vessel
 //!   (`SimEvent::SiteWoke`). Vessels that split off a site's ships belong to the site. An enemy's scan calls its
 //!   own faction's sites (GDR-0111): every sleeping site within the scanner's range with a ship of the scanning
-//!   ship's faction wakes (a site not spawned yet is not called); it reveals nothing to the player.
+//!   ship's faction wakes (a site not spawned yet is not called); it reveals nothing to the player. The called
+//!   ships rally where the scanner saw its target (its behavior's focus) until they have a target in sight.
 //! * **Clearing** (GDR-0068): an awake site is cleared when each of its ships is destroyed or disarmed: none is a
 //!   vessel (running, dark or dormant) that is still armed ([`Ship::is_armed`]) (`SimEvent::SiteCleared { goal }`);
 //!   clearing is final. A site that rolled no ships is quiet: nothing wakes there and it is never cleared.
@@ -567,6 +568,9 @@ pub struct Site {
     /// One of its ships was hit, or a scan swept close enough to wake it, since the last pass (scratch, always
     /// false between steps).
     hit: bool,
+    /// An enemy's scan called it since the last pass: where its ships rally (GDR-0111; scratch, always `None`
+    /// between steps).
+    rally: Option<Vec2>,
 }
 
 impl Site {
@@ -824,6 +828,7 @@ impl Sim {
                 wrecks: Vec::new(),
                 known: false,
                 hit: false,
+                rally: None,
             })
             .collect();
         self.voyage = Some(Box::new(Voyage {
@@ -969,18 +974,28 @@ impl Sim {
                 if s.team() == Some(v.player) {
                     found.push((at, range, wake));
                 } else if s.team() == Some(v.enemy) {
-                    calls.push((at, range, Arc::clone(s.design())));
+                    // Where the scanner saw its target (its behavior's focus), else where it scanned.
+                    let seen = s
+                        .behavior
+                        .as_ref()
+                        .and_then(|b| b.focus)
+                        .and_then(|t| self.ship(t))
+                        .and_then(|t| t.control_piece().and_then(|c| t.piece(c)))
+                        .map_or(at, |p| p.com_world());
+                    calls.push((at, range, seen, Arc::clone(s.design())));
                 }
             }
         }
-        // An enemy's sweep calls its own faction's sleeping sites within the scanner's range (GDR-0111).
-        for (at, range, design) in calls {
+        // An enemy's sweep calls its own faction's sleeping sites within the scanner's range (GDR-0111): they
+        // wake, and their ships rally where the scanner saw its target until they have one in sight.
+        for (at, range, seen, design) in calls {
             for site in &mut v.sites {
                 if site.state == SiteState::Asleep
                     && (site.plan.pos - at).length_squared() <= range * range
                     && site.plan.ships.iter().any(|s| s.design.faction == design.faction)
                 {
                     site.hit = true;
+                    site.rally = Some(seen);
                 }
             }
         }
@@ -1063,12 +1078,18 @@ impl Sim {
                     if behavior.is_some() {
                         self.command(id, ShipCommand::Behavior(behavior));
                     }
+                    if let Some(at) = site.rally
+                        && let Some(b) = self.ship_mut(id).and_then(|s| s.behavior.as_mut())
+                    {
+                        b.rally = Some(at);
+                    }
                 }
                 v.sites[k].state = SiteState::Awake;
                 self.events.push(SimEvent::SiteWoke { site: k as u32 });
             }
             let site = &mut v.sites[k];
             site.hit = false;
+            site.rally = None;
             if site.state == SiteState::Awake && !site.ships.iter().any(|&s| self.fights(s)) {
                 site.state = SiteState::Cleared;
                 self.events.push(SimEvent::SiteCleared {

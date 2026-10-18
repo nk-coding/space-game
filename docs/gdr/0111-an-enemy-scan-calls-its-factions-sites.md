@@ -1,6 +1,7 @@
 # GDR-0111: An enemy's scan calls its own faction's sleeping sites within the scanner's range; the first caller is the automaton picket, a rim site
 
 - Status: Accepted (provisional, lead), 18 Oct 2026, for Niklas to review
+  2026-10-19: called ships rally where the scanner saw its target until they have one in sight; still no penalty in the voyage runner, which fights every site (`docs/results/picket-keeper-balance-2026-10-18.md`).
 - Date: 2026-10-18
 - Decided by: lead session (content batch of 18 Oct 2026, the automaton picket; default for Niklas to review)
 - Related: [GDR-0080](0080-exploration-searching-and-story.md) (scans wake enemies), [GDR-0095](0095-sensors-hidden-sites-and-scans.md) (scans and their wake radius), [GDR-0062](0062-first-playable-loop.md) (sites wake), [GDR-0068](0068-voyage-sites-clear-when-enemies-are-disarmed.md), `docs/results/picket-keeper-balance-2026-10-18.md`

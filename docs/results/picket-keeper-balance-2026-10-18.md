@@ -49,6 +49,31 @@ So the runner cannot measure what the picket is for (the player's choice of figh
 being caught between sites); the chosen rule is the one that wakes the most sites near the fleet without spawning
 far ones. Open in GDR-0111: whether called ships should gather on the caller first.
 
+## Follow-up, 19 Oct 2026: called ships rally
+
+Called ships now fly to where the picket saw the fleet (its behavior's target) while they have no target in sight
+(`BehaviorState::rally`), instead of waiting at their site. The aim was a call costing 5–15 points of clear %
+against the picket killed first (never scanning). Clear %, t_pick / t_hpick, Runner and Runner + S, call / no call:
+
+| Variant | t_pick R | t_pick R+S | t_hpick R | t_hpick R+S |
+|---|---|---|---|---|
+| rally, post = picket + 2 raiders (kept) | 42 / 38 | 62 / 48 | 54 / 44 | 69 / 62 |
+| post + 3 raiders | 33 / 20 | 48 / 45 | 52 / 45 | 60 / 55 |
+| post + 4 raiders | 21 / 19 | 23 / 20 | 27 / 27 | 38 / 45 |
+| the call also spawns sites not spawned yet | 52 / 38 | 70 / 48 | 65 / 44 | 78 / 62 |
+| the same, the goal never called | 48 / 38 | 61 / 48 | 66 / 44 | 74 / 62 |
+| the goal never called (no spawning) | 38 / 38 | 58 / 48 | 58 / 44 | 68 / 62 |
+| calls at once, + 2 raiders | 42 / 38 | 68 / 48 | 61 / 44 | 69 / 62 |
+| calls at once, + 3 raiders | 28 / 20 | 53 / 45 | 52 / 45 | 61 / 55 |
+| calls at once, + 3 raiders, spawns | 26 / 20 | 45 / 45 | 54 / 45 | 56 / 55 |
+
+The rally changed no run of the kept row: sites spawn within 600 m of the fleet, so a called site's ships nearly
+always have it within their 800 m sensors and came already. No group size or timing makes the call a penalty
+here (only + 4 raiders with a skiff on t_hpick, 38 against 45). The runner fights every site of a voyage anyway,
+so a call can only bring its fights forward, and its pilot fights ships that come to it better than it flies
+into a sleeping site. A call that costs needs ships the fleet would not otherwise meet (reinforcements answering
+it), or a measure of the player's choices that the runner does not make. Open for Niklas.
+
 ## The Keeper (`automaton_keeper`, `keeper_gate`; [GDR-0112](../gdr/0112-the-keeper-guards-the-middle-bands-gates.md))
 
 | Test voyage | Sites (the last the goal), radius 1200 m, sites 450–800 m apart |

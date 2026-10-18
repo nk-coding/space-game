@@ -77,6 +77,9 @@ pub struct BehaviorState {
     pub(crate) status: Vec<RuleStatus>,
     /// Message of the last failing Rhai condition, if any failed at the last think.
     pub(crate) script_error: Option<String>,
+    /// Where a call sent it (GDR-0111: an enemy's scan, where the scanner saw its target): with no target in
+    /// sight it flies there and holds; the first target it picks clears it.
+    pub(crate) rally: Option<Vec2>,
 }
 
 impl BehaviorState {
@@ -94,6 +97,7 @@ impl BehaviorState {
             thought: None,
             status: vec![RuleStatus::Skipped; n],
             script_error: None,
+            rally: None,
         }
     }
 
@@ -230,6 +234,11 @@ impl StateHash for BehaviorState {
         self.maneuver.hash_state(h);
         h.u32(self.slots);
         h.u64(self.thought.unwrap_or(u64::MAX));
+        // Only when set, so streams without a call hash as before.
+        if let Some(r) = self.rally {
+            h.u8(1);
+            h.vec2(r);
+        }
     }
 }
 
@@ -369,6 +378,9 @@ pub(crate) fn think_all(
         }
         if let Some(st) = ships[k].behavior.as_mut() {
             st.focus = out.focus;
+            if out.focus.is_some() {
+                st.rally = None;
+            }
             st.aim_part = out.aim_part;
             st.acquired = out.acquired;
             st.active = out.active;
@@ -749,9 +761,11 @@ impl Ctx<'_> {
                 }
             };
         }
-        let maneuver = match (active, focus_id) {
-            (Some(i), focus) => self.maneuver(code.rules[i].action, focus),
-            (None, _) => Maneuver::Brake,
+        let maneuver = match (active, focus_id, st.rally) {
+            // Called with no one in sight: to the rally point (GDR-0111).
+            (_, None, Some(at)) => Maneuver::Hold { at },
+            (Some(i), focus, _) => self.maneuver(code.rules[i].action, focus),
+            (None, _, _) => Maneuver::Brake,
         };
         out.valid = true;
         out.focus = focus_id;
