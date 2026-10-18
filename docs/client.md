@@ -1086,8 +1086,12 @@ suggestion (`KEEP 2 · DISMANTLE 1`), KEEP and DISMANTLE (one at a time), and SO
 unlocked part with a recipe (those the fleet lacks first): its stock (`1 / 2` against what the fleet carries, coral
 when short), its recipe (the materials it lacks in coral, an upgrade it needs in words) and MAKE. Top right the
 materials in store; bottom left what the last action did (`DISMANTLED 1 THRUSTER · PROPULSION +3 · STEEL +1`, a
-refusal in coral). Every action is the career's and writes the save. Screenshots:
-`docs/results/workshop-layer.png`, `workshop-home.png`, `workshop-drydock.png`.
+refusal in coral). Every action is the career's and writes the save. Every row leads with the part's icon as the
+drydock's palette draws it (`drydock::panels::part_icon`, hull parts in the first armour; Niklas, 18 Oct 2026).
+Screenshots: `docs/results/workshop-layer.png`, `workshop-home.png`, `workshop-drydock.png`; with the icons
+`workshop-icons.png`, and the redrawn cargo icons in the palette `drydock-cargo-icons.png` (the cargo bay, 1 × 1, a
+single crate, was a 2 × 2 grid of boxes; the cargo hold, 2 × 2, four crates, was a 3 × 3 grid; the other part icons
+suggest no footprint).
 
 ## LOG
 

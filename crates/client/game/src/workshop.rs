@@ -2,7 +2,8 @@
 //! that wait to be sorted: per part KEEP (into stock) or DISMANTLE (research data and a share of its recipe's
 //! materials), the workshop's suggestion beside it and SORT AS SUGGESTED for all. Right, fabricating: what the fleet
 //! is short of (FABRICATE MISSING) and every unlocked part with a recipe (MAKE), its stock and its recipe, the
-//! materials it lacks in coral. Top right: the materials in store.
+//! materials it lacks in coral. Top right: the materials in store. Every row leads with the part's icon as the
+//! drydock's palette draws it (`drydock::panels::part_icon`; Niklas, 18 Oct 2026).
 //!
 //! ```text
 //! (o) SHIPYARD › WORKSHOP                         COPPER 7  CRYSTAL 4  STEEL 6  …   [CLOSE]
@@ -37,6 +38,7 @@ use world::sim_bridge::GameContent;
 use world::storage::Storage;
 use world::voyage::debrief::amount;
 
+use crate::drydock::panels::part_icon;
 use crate::home::HomeAction;
 
 /// The layout's size (logical px), like the LOG's.
@@ -324,7 +326,7 @@ fn refill(commands: &mut Commands, lists: &Lists, fonts: &HudFonts, style: &Styl
     let (sort, make, mats, line) = (*lists.0, *lists.1, *lists.2, *lists.3);
     let rows = sort_rows(content, career, need);
     commands.entity(sort).despawn_children();
-    commands.entity(sort).with_children(|p| fill_sort(p, fonts, style, &rows));
+    commands.entity(sort).with_children(|p| fill_sort(p, fonts, style, content, &rows));
     let short = missing(career, need);
     let rows = make_rows(content, career, need);
     commands.entity(make).despawn_children();
@@ -346,7 +348,7 @@ fn refill(commands: &mut Commands, lists: &Lists, fonts: &HudFonts, style: &Styl
 }
 
 /// The intake's rows (or the empty state) and SORT AS SUGGESTED.
-fn fill_sort(p: &mut ChildSpawnerCommands, fonts: &HudFonts, style: &Style, rows: &[SortRow]) {
+fn fill_sort(p: &mut ChildSpawnerCommands, fonts: &HudFonts, style: &Style, content: &Content, rows: &[SortRow]) {
     let ui = style.ui;
     let c = |tone: Tone| ui_color(tone.color(&ui), 1.0);
     let total: u32 = rows.iter().map(|r| r.count).sum();
@@ -362,6 +364,7 @@ fn fill_sort(p: &mut ChildSpawnerCommands, fonts: &HudFonts, style: &Style, rows
             BorderColor::all(ui_color(ui.dim, 0.25)),
         ))
         .with_children(|row| {
+            row.spawn(icon(content, &r.part));
             row.spawn(Node { flex_direction: FlexDirection::Column, row_gap: px(3), width: px(150), flex_shrink: 0.0, ..default() }).with_children(|col| {
                 col.spawn(prose(fonts, &r.name, 15.0, c(Tone::Number)));
                 col.spawn(label(fonts, &format!("×{}  ·  IN STOCK {}", r.count, r.stock), 8.5, c(Tone::Label)));
@@ -375,6 +378,12 @@ fn fill_sort(p: &mut ChildSpawnerCommands, fonts: &HudFonts, style: &Style, rows
     p.spawn(Node { flex_direction: FlexDirection::Row, flex_shrink: 0.0, ..default() }).with_children(|b| {
         spawn_pill(b, fonts, "SORT AS SUGGESTED", 9.5, 30.0, None, Pill { primary: true, ..Pill::new(Tone::Teal) }, (Do::SortAll, Tip::new("KEEP AND DISMANTLE AS SUGGESTED")));
     });
+}
+
+/// A part's icon as the drydock's palette shows it (hull parts in the first armour).
+fn icon(content: &Content, part: &str) -> (UiIcon, Node) {
+    let armor = content.materials.iter().find(|m| m.armor.is_some()).map_or("", |m| m.id.as_str());
+    (part_icon(content, part, armor), Node { width: px(32), height: px(28), flex_shrink: 0.0, ..default() })
 }
 
 /// What the fleet is short of, FABRICATE MISSING, and the parts to make.
@@ -403,6 +412,7 @@ fn fill_make(p: &mut ChildSpawnerCommands, fonts: &HudFonts, style: &Style, cont
             BorderColor::all(ui_color(ui.dim, 0.25)),
         ))
         .with_children(|row| {
+            row.spawn(icon(content, &r.part));
             row.spawn((prose(fonts, &r.name, 15.0, c(Tone::Number)), Node { width: px(130), flex_shrink: 0.0, ..default() }));
             let (stock, tone) = if r.need > 0 { (format!("{} / {}", r.stock, r.need), if r.stock < r.need { Tone::Coral } else { Tone::Teal }) } else { (r.stock.to_string(), Tone::Number) };
             row.spawn((number(fonts, &stock, 14.0, c(tone)), Node { width: px(48), flex_shrink: 0.0, ..default() }));

@@ -46,6 +46,8 @@
 mod spawn;
 mod sync;
 
+pub(crate) use sync::part_icon;
+
 use std::fmt::Write as _;
 
 use bevy::prelude::*;

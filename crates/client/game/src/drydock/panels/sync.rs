@@ -378,7 +378,7 @@ pub(super) fn locked_sub(content: &Content, part: &Part) -> String {
 }
 
 /// A part's icon: hull parts in the chosen armour.
-pub(super) fn part_icon(content: &Content, part: &str, material: &str) -> UiIcon {
+pub(crate) fn part_icon(content: &Content, part: &str, material: &str) -> UiIcon {
     let hull = content.parts.get(part).is_some_and(|p| p.hull);
     UiIcon::Part { part: part.to_string(), material: hull.then(|| material.to_string()) }
 }
