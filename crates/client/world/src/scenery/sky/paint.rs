@@ -7,7 +7,7 @@
 //! the vertices, so every edge is a gradient. What must stay crisp is drawn over the disc as thin geometry, lit the
 //! same way: craters, cracks (soft lineae of varying width), the turbulent streaks between bands; glowing things (lava rifts, vents, a garden's
 //! lights, plumes) are not darkened at night. The air's glow is a strip round the limb fading outwards, the rings
-//! two halves of feathered ellipses, one behind the disc and one in front.
+//! two halves of one annulus (behind the disc and in front) with the bands' filtered radial profile.
 //!
 //! Everything is in the design frame (px of a 1600 × 900 view, y down like the design study), centred on the body;
 //! `mod.rs` flips and scales it.
@@ -721,35 +721,64 @@ fn plumes(g: &mut Geo, b: &Body, p: &Paint) {
     }
 }
 
-/// One half of the rings (`back`: the half behind the body, drawn under it): each band an elliptical annulus with
-/// feathered edges; the back half darkened where the body's shadow falls.
+/// One half of the rings (`back`: the half behind the body, drawn under it): one elliptical annulus whose colour and
+/// alpha follow the bands' radial profile, box-filtered over [`RING_FILTER`] of the limb's feather on screen, so no
+/// band or gap is thinner than a pixel and nothing stair-steps or shimmers (Niklas, 18 Oct 2026). The filter is as
+/// wide in screen px all round: wider in radius where the ellipse is flat (by `k` at its minor axis), so the fine
+/// bands blend there and on a small planet. The rims fade over the limb's whole feather, like the disc's. Each
+/// spoke's vertices sit at the profile's kinks (every band edge ± half the filter, the rims ± half the feather; as
+/// many as the bands' feathered strips had), so the linear blend between them is the filtered profile. The back half is darkened where the body's shadow falls.
 fn ring_half(b: &Body, r: &Ring, p: &Paint, white: Vec2, back: bool) -> Geo {
     let mut g = Geo::new(white);
-    let segs = 72;
+    let segs = 72u32;
     let (rs, rc) = r.rot.sin_cos();
     let (ls, lc) = (-b.light).sin_cos();
-    let feather = 0.8 / b.r;
-    for (r0, r1, col, a) in &r.subs {
-        let rows = [(r0 - feather, 0.0), (*r0, *a), (*r1, *a), (r1 + feather, 0.0)];
-        let first = g.len() as u32;
-        for i in 0..=segs {
-            let t = if back { PI + PI * i as f32 / segs as f32 } else { PI * i as f32 / segs as f32 };
-            for (rad, alpha) in rows {
-                let local = Vec2::new(t.cos() * rad, t.sin() * rad * r.k) * b.r;
-                let at = Vec2::new(local.x * rc - local.y * rs, local.x * rs + local.y * rc);
-                // the body's shadow: behind it, away from the light
-                let l = Vec2::new(at.x * lc - at.y * ls, at.x * ls + at.y * lc);
-                let shadow = if back { smooth(0.0, -0.08 * b.r, l.x) * (1.0 - smooth(0.9 * b.r, 1.0 * b.r, l.y.abs())) } else { 0.0 };
-                let c = mix(*col, p.night, 0.82 * shadow);
-                g.v(at, vc(mix(c, p.veil, p.veil_share), alpha));
-            }
+    let (Some(inner), Some(outer)) = (r.subs.first().map(|s| s.0), r.subs.iter().map(|s| s.1).reduce(f32::max)) else { return g };
+    let mut row_count = 0;
+    for i in 0..=segs {
+        let t = if back { PI + PI * i as f32 / segs as f32 } else { PI * i as f32 / segs as f32 };
+        // design px per unit of the ring's radius across the ellipse here: 1 on the major axis, k on the minor
+        let px = b.r * r.k / (r.k * r.k * t.cos() * t.cos() + t.sin() * t.sin()).sqrt();
+        let (w, rim) = (RING_FILTER * p.limb / px, p.limb / px);
+        // every band edge ± half the filter, the rims (wider) ± half the feather instead
+        let kinks = |e: f32| if e == inner || e == outer { [e - rim / 2.0, e + rim / 2.0] } else { [e - w / 2.0, e + w / 2.0] };
+        let mut at_r: Vec<f32> = r.subs.iter().flat_map(|s| kinks(s.0).into_iter().chain(kinks(s.1))).collect();
+        at_r.sort_by(f32::total_cmp);
+        row_count = at_r.len() as u32;
+        for rad in at_r {
+            let (col, alpha) = ring_profile(r, rad, w);
+            let fade = smooth(inner - rim / 2.0, inner + rim / 2.0, rad) * (1.0 - smooth(outer - rim / 2.0, outer + rim / 2.0, rad));
+            let local = Vec2::new(t.cos() * rad, t.sin() * rad * r.k) * b.r;
+            let at = Vec2::new(local.x * rc - local.y * rs, local.x * rs + local.y * rc);
+            // the body's shadow: behind it, away from the light
+            let l = Vec2::new(at.x * lc - at.y * ls, at.x * ls + at.y * lc);
+            let shadow = if back { smooth(0.0, -0.08 * b.r, l.x) * (1.0 - smooth(0.9 * b.r, 1.0 * b.r, l.y.abs())) } else { 0.0 };
+            let c = mix(col, p.night, 0.82 * shadow);
+            g.v(at, vc(mix(c, p.veil, p.veil_share), alpha * fade));
         }
-        for i in 0..segs {
-            let (s0, s1) = (first + i * 4, first + (i + 1) * 4);
-            for k in 0..3 {
-                g.quad(s0 + k, s1 + k, s1 + k + 1, s0 + k + 1);
-            }
+    }
+    for i in 0..segs {
+        let (s0, s1) = (i * row_count, (i + 1) * row_count);
+        for k in 0..row_count - 1 {
+            g.quad(s0 + k, s1 + k, s1 + k + 1, s0 + k + 1);
         }
     }
     g
+}
+
+/// The rings' box filter as a share of the limb's feather (`backdrop.limb_px`): the bands blur over about a pixel and a half.
+const RING_FILTER: f32 = 0.6;
+
+/// The rings' colour and alpha at radius `rad` (shares of the body's), box-filtered over `w`: each band adds its
+/// alpha by how much of the filter it covers, its colour weighted alike.
+fn ring_profile(r: &Ring, rad: f32, w: f32) -> (Rgb, f32) {
+    let (lo, hi) = (rad - w / 2.0, rad + w / 2.0);
+    let (mut col, mut alpha) = (Vec3::ZERO, 0.0);
+    for (r0, r1, c, a) in &r.subs {
+        let cover = (hi.min(*r1) - lo.max(*r0)).max(0.0) / w;
+        col += *c * cover * a;
+        alpha += cover * a;
+    }
+    let col = if alpha > 0.0 { col / alpha } else { r.subs.first().map_or(Vec3::ZERO, |s| s.2) };
+    (col, alpha)
 }

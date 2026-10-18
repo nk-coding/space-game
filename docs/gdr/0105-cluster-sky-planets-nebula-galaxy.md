@@ -6,6 +6,10 @@
   alone felt static; the stars are three layers now (far 0.02, mid 0.07, a sparse near 0.2; 70 / 30 / 12 a 60 m tile,
   all behind the planet), the sky's pieces scale with the zoom to the power of their parallax (hardly), and the hot
   star's glow, its corona and the landmarks draw behind the planet.
+  2026-10-18 (Niklas: ringed planets' rings shimmered and stair-stepped): a ring half is one annulus whose colour and
+  alpha follow the bands' radial profile box-filtered over about a pixel and a half on screen (wider in radius where
+  the ellipse is flat, so fine bands blend there and on small planets), its vertices at the profile's kinks; the rims
+  fade over the limb's feather. No sub-pixel strips or gaps any more; the bands and colours are rolled as before.
 - Date: 2026-10-17
 - Decided by: Niklas (style B; planets "too simple", clouds "stepped blobs" in the study: they must be soft and
   gradual) and lead session (numbers, layout, content shape)
