@@ -149,7 +149,7 @@ impl RunEntry {
             generations: config.schedule().map_or(0, |s| s.iter().map(|g| g.1).sum()),
             best: generations.last().map(|g| g.stats.archive_best),
             first: generations.first().map(|g| g.stats.best),
-            starts: config.all_starts().map(|s| start_name(content, s)).collect(),
+            starts: config.starts.iter().map(|s| start_name(content, s)).collect(),
             race: config.enemy.as_ref().map(|_| {
                 let preset = config.trials.iter().find(|t| matches!(t.kind, arena::evolve::Trial::CoEvolution)).and_then(|t| t.preset.as_deref());
                 preset.and_then(|id| content.lab.trial(id)).map_or_else(|| "Co-evolution".into(), |p| p.name.clone())
@@ -546,11 +546,9 @@ impl Setup {
             evolve: Evolve::MayChange(self.may_change.clone()),
             generations: Some(self.size.generations),
             population,
-            fitness: None,
             trials,
             goals: self.goals,
             limits,
-            start: None,
             starts: starts.iter().zip(&self.starts).map(|(s, (_, locks))| s.start(locks.clone())).collect(),
             archive,
             crossover: arena::evolve::DEFAULT_CROSSOVER,
@@ -1268,7 +1266,7 @@ pub enum SaveTo<'a> {
 /// design's (its blueprint's id; an unsaved working design's the slug of its name), a random start's faction.
 fn start_ids(run: &Run, camp: Camp) -> Vec<String> {
     let starts: Vec<&Start> = match camp {
-        Camp::Yours => run.config().all_starts().collect(),
+        Camp::Yours => run.config().starts.iter().collect(),
         Camp::Enemy => run.config().enemy.iter().flat_map(|e| &e.starts).collect(),
     };
     starts
@@ -1285,7 +1283,7 @@ fn start_ids(run: &Run, camp: Camp) -> Vec<String> {
 /// id and name). A template or a random start has none.
 pub fn replace_target(storage: &Storage, loaded: &Loaded, genome: u32) -> Option<(String, String)> {
     let root = loaded.run.table().get(genome as usize)?.root as usize;
-    let Start::Design { design: DesignRef::Blueprint(_), .. } = loaded.run.config().all_starts().nth(root)? else { return None };
+    let Start::Design { design: DesignRef::Blueprint(_), .. } = loaded.run.config().starts.iter().nth(root)? else { return None };
     let id = start_ids(&loaded.run, Camp::Yours).into_iter().nth(root).filter(|id| !id.is_empty())?;
     let doc = storage.read::<DesignDoc>(&id).ok()??;
     Some((id, doc.doc.0.name))
@@ -2129,7 +2127,7 @@ mod tests {
         // hall of fame, each a lab.ron preset; WIN alone.
         let ids: Vec<(&str, f32)> = cfg.trials.iter().map(|t| (t.preset.as_deref().unwrap(), t.weight)).collect();
         assert_eq!(ids, [("enemies_you_meet", 2.0), ("test_range_waves", 1.0), ("beat_your_start", 1.0), ("hall_of_fame", 1.0)]);
-        assert!(cfg.goals.is_default() && cfg.fitness.is_none());
+        assert!(cfg.goals.is_default());
         // GDR-0092 step 6: everything may change, and every fight is flown by the behavior on odd seeds and lab.ron's
         // first stand-in on even ones.
         assert_eq!(cfg.evolve, Evolve::MayChange(MayChange::default()));

@@ -538,10 +538,9 @@ fn evolve(o: &Opts) -> Result<(), String> {
             set_trials(&content, &mut config, o)?;
             let locks = locks_of(&o.locks)?;
             if !o.from.is_empty() {
-                config.start = None;
                 config.starts = o.from.iter().map(|a| start_of(a, &locks)).collect::<Result<_, _>>()?;
             } else if !o.locks.is_empty() {
-                for s in config.start.iter_mut().chain(&mut config.starts) {
+                for s in config.starts.iter_mut() {
                     if let Start::Design { locks: l, .. } = s {
                         *l = locks.clone();
                     }
@@ -729,7 +728,7 @@ fn generations(content: &data::Content, run: &mut Run, label: &str, save: Option
     Ok(())
 }
 
-/// `--trial`, `--goal` and `--goals`: the run's trials from `lab.ron`'s presets (they replace its `fitness` and
+/// `--trial`, `--goal` and `--goals`: the run's trials from `lab.ron`'s presets (they replace its
 /// `trials`) and its goals, the presets filled in from `--open`, `--fleet`, `--champion` and `--escort`.
 fn set_trials(content: &data::Content, config: &mut arena::RunConfig, o: &Opts) -> Result<(), String> {
     let lab = &content.lab;
@@ -774,7 +773,6 @@ fn set_trials(content: &data::Content, config: &mut arena::RunConfig, o: &Opts) 
             }
             None => None,
         };
-        config.fitness = None;
         config.trials = trials;
     } else if !o.enemy.is_empty() {
         return Err("--enemy picks the enemy of --trial arms_race".into());
@@ -807,10 +805,6 @@ fn set_trials(content: &data::Content, config: &mut arena::RunConfig, o: &Opts) 
             "both" => FlownBy::Both(pilot),
             _ => return Err(format!("--flown-by {arg}: behavior, stand-in or both")),
         };
-        // The old `fitness` form is one trial: it becomes one of `trials` to carry the pilot.
-        if let Some(f) = config.fitness.take() {
-            config.trials.insert(0, TrialSpec::of_fitness(&f));
-        }
         for t in config.trials.iter_mut() {
             t.flown_by = flown_by.clone();
         }

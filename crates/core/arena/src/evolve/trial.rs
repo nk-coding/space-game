@@ -22,7 +22,7 @@ use serde::{Deserialize, Serialize};
 use crate::spec::{BehaviorRef, DEFAULT_START_DISTANCE, DEFAULT_TIME_LIMIT, DesignRef, Entry, FightSpec, Formation, Pilot, Side};
 use crate::voyage::{DEFAULT_VOYAGE_MINUTES, VoyageSpec};
 
-use super::config::{DEFAULT_SEEDS, Fitness, Population, Start, VoyagePilot};
+use super::config::{DEFAULT_SEEDS, Population, Start, VoyagePilot};
 use super::eval::Job;
 use super::RunError;
 
@@ -96,7 +96,7 @@ impl FlownBy {
 #[serde(deny_unknown_fields)]
 pub enum Trial {
     /// ENEMY SHIPS: fixed opponents, each entry a fight per seed, and the run's best `hall_of_fame` with them in the
-    /// same mean (the arena pool of the runs before GDR-0092 step 5: their `fitness: ArenaPool` reads as this).
+    /// same mean.
     EnemyShips {
         opponents: Vec<Entry>,
         #[serde(default)]
@@ -121,8 +121,7 @@ pub enum Trial {
     HallOfFame { count: u32 },
     /// CHAMPIONS: the best designs of earlier runs, each a fight.
     Champions { designs: Vec<Entry> },
-    /// VOYAGES: these voyages flown by the headless voyage runner (`docs/arena.md` "Voyage fitness"); the runs
-    /// before GDR-0092 step 5 had them as `fitness: Voyages`.
+    /// VOYAGES: these voyages flown by the headless voyage runner (`docs/arena.md` "Voyage fitness").
     Voyages {
         ids: Vec<String>,
         #[serde(default = "default_minutes")]
@@ -467,23 +466,6 @@ impl TrialSpec {
             time_limit: DEFAULT_TIME_LIMIT,
             escorts: Vec::new(),
             flown_by: FlownBy::Behavior,
-        }
-    }
-
-    /// A run's `fitness` before GDR-0092 step 5, as the one trial it is.
-    pub fn of_fitness(f: &Fitness) -> TrialSpec {
-        match f {
-            Fitness::ArenaPool { opponents, seeds, hall_of_fame, count, start_distance, time_limit } => TrialSpec {
-                seeds: *seeds,
-                count: *count,
-                start_distance: *start_distance,
-                time_limit: *time_limit,
-                ..TrialSpec::new(Trial::EnemyShips { opponents: opponents.clone(), hall_of_fame: *hall_of_fame })
-            },
-            Fitness::Voyages { ids, seeds, minutes, pilot } => TrialSpec {
-                seeds: *seeds,
-                ..TrialSpec::new(Trial::Voyages { ids: ids.clone(), minutes: *minutes, pilot: *pilot })
-            },
         }
     }
 

@@ -126,7 +126,7 @@ fn weights_and_goals_combine_as_specified() {
     // One trial and WIN alone: the mean of its jobs' scores, exactly.
     let one = r#"(seed: 2, evolve: Behavior, generations: 1, population: 3,
         trials: [(kind: EnemyShips(opponents: [(design: Ship("automaton_raider"))]), seeds: 3, time_limit: 8)],
-        start: Design(design: Ship("rim_skiff")))"#;
+        starts: [Design(design: Ship("rim_skiff"))])"#;
     let run = stepped(&c, config(one), u64::MAX);
     for rec in &run.state().records[0].children {
         let mean = (rec.jobs.iter().map(|j| j.score as f64).sum::<f64>() / rec.jobs.len() as f64) as f32;
@@ -196,7 +196,7 @@ fn rescore_is_deterministic_and_goes_on() {
         trials: [(kind: EnemyShips(opponents: [(design: Ship("automaton_raider"))]), seeds: 2, time_limit: 10),
                  (kind: HallOfFame(count: 1), seeds: 1, time_limit: 10)],
         goals: (win: 1, unhurt: 1),
-        start: Design(design: Ship("rim_skiff")))"#;
+        starts: [Design(design: Ship("rim_skiff"))])"#;
     let mut run = Run::new(&c, config(text)).unwrap();
     while run.generation() < 2 {
         run.step(u64::MAX);
@@ -328,7 +328,7 @@ fn the_labs_presets_become_trials() {
     let cfg = RunConfig {
         trials: trials.into_iter().map(|t| TrialSpec { seeds: 1, ..t }).collect(),
         enemy: Some(arena::evolve::Population::from_preset(&c, race, &arena::evolve::enemy_starts(&c), 2).unwrap()),
-        ..config(r#"(seed: 1, evolve: Both, generations: 1, population: 2, start: Design(design: Ship("rim_skiff")))"#)
+        ..config(r#"(seed: 1, evolve: Both, generations: 1, population: 2, starts: [Design(design: Ship("rim_skiff"))])"#)
     };
     Run::new(&c, cfg).unwrap();
     // Every kind and measure the arena has is named in lab.ron's ids, and the lab's design spread is the arena's own

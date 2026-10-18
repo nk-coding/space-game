@@ -6,8 +6,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
 
-use crate::spec::{BehaviorRef, DEFAULT_START_DISTANCE, DEFAULT_TIME_LIMIT, DesignRef, Entry};
-use crate::voyage::DEFAULT_VOYAGE_MINUTES;
+use crate::spec::{BehaviorRef, DesignRef};
 
 use super::RunError;
 use super::archive::ArchiveShape;
@@ -51,11 +50,7 @@ pub struct RunConfig {
     /// Children per generation (generation 0: the start and its mutants).
     #[serde(default = "default_population")]
     pub population: u32,
-    /// How a genome was scored before GDR-0092 step 5 (still read and written as it was): one trial, taken as the
-    /// first of the trials.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub fitness: Option<Fitness>,
-    /// What a genome is scored against (with `fitness`, at least one): each trial with its weight (`trial.rs`).
+    /// What a genome is scored against (at least one): each trial with its weight (`trial.rs`).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub trials: Vec<TrialSpec>,
     /// What a score weighs: WIN alone when left out (the score of the runs before step 5).
@@ -63,10 +58,7 @@ pub struct RunConfig {
     pub goals: Goals,
     #[serde(default)]
     pub limits: Limits,
-    /// One start, the form of runs before GDR-0092 (still read): taken as the first of the starts.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub start: Option<Start>,
-    /// The starts (with `start`, one to [`MAX_STARTS`]). Generation 0 is every start and mutants of each, shared
+    /// The starts (one to [`MAX_STARTS`]). Generation 0 is every start and mutants of each, shared
     /// out evenly; every genome descends from one of them (its root) and keeps that start's locks.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub starts: Vec<Start>,
@@ -350,41 +342,6 @@ pub struct Stage {
     pub generations: u32,
 }
 
-/// How a genome was scored, 0..1, before GDR-0092 step 5's trials: each form reads as one trial
-/// (`TrialSpec::of_fitness`: `ArenaPool` as ENEMY SHIPS with its hall of fame, `Voyages` as VOYAGES).
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub enum Fitness {
-    /// Fights against a pool: the fixed opponents (archetypes) plus the best `hall_of_fame` elites so far, each
-    /// over `seeds` seeds (1, 2, ...).
-    /// The score is the mean arena score of the genome's side.
-    ArenaPool {
-        opponents: Vec<Entry>,
-        #[serde(default = "default_seeds")]
-        seeds: u32,
-        #[serde(default)]
-        hall_of_fame: u32,
-        /// Ships of the genome on its side.
-        #[serde(default = "one")]
-        count: u32,
-        #[serde(default = "default_start_distance")]
-        start_distance: f32,
-        #[serde(default = "default_time_limit")]
-        time_limit: f32,
-    },
-    /// The slice's voyages flown by the headless voyage runner, each over `seeds` seeds (1, 2, ...); the score is
-    /// the mean voyage score (`arena::voyage_score`).
-    Voyages {
-        ids: Vec<String>,
-        #[serde(default = "default_seeds")]
-        seeds: u32,
-        #[serde(default = "default_minutes")]
-        minutes: f32,
-        #[serde(default)]
-        pilot: VoyagePilot,
-    },
-}
-
 /// Who flies a voyage's fights.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum VoyagePilot {
@@ -403,7 +360,7 @@ pub struct Limits {
     #[serde(default)]
     pub frame: Option<String>,
     /// The most build points a design may cost: by default its start's ("same cost, better ship", GDR-0092), a
-    /// number (`build_points: 60`), or `Off`.
+    /// number (`build_points: At(60)`), or `Off`.
     #[serde(default)]
     pub build_points: Bound,
     /// The smallest cargo hold a design may have (`Content::ship_hold`, cargo units): by default its start's, so
@@ -428,40 +385,14 @@ pub struct Limits {
     pub mirror: bool,
 }
 
-/// A limit taken from the start (the default), a number, or none. A plain number reads as `At` (`build_points:
-/// 60`, the form of runs before GDR-0092).
+/// A limit taken from the start (the default), a number (`At(60)`), or none.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
-#[serde(from = "BoundText")]
 pub enum Bound {
     /// The start's own value (each genome its own start's).
     #[default]
     Start,
     Off,
     At(f32),
-}
-
-#[derive(Deserialize)]
-#[serde(untagged)]
-enum BoundText {
-    Number(f32),
-    Named(BoundName),
-}
-
-#[derive(Deserialize)]
-enum BoundName {
-    Start,
-    Off,
-    At(f32),
-}
-
-impl From<BoundText> for Bound {
-    fn from(t: BoundText) -> Bound {
-        match t {
-            BoundText::Number(v) | BoundText::Named(BoundName::At(v)) => Bound::At(v),
-            BoundText::Named(BoundName::Start) => Bound::Start,
-            BoundText::Named(BoundName::Off) => Bound::Off,
-        }
-    }
 }
 
 impl Bound {
@@ -533,26 +464,11 @@ impl Locks {
 fn default_population() -> u32 {
     DEFAULT_POPULATION
 }
-fn default_seeds() -> u32 {
-    DEFAULT_SEEDS
-}
 fn default_crossover() -> f32 {
     DEFAULT_CROSSOVER
 }
 fn default_mutations() -> u32 {
     DEFAULT_MUTATIONS
-}
-fn default_start_distance() -> f32 {
-    DEFAULT_START_DISTANCE
-}
-fn default_time_limit() -> f32 {
-    DEFAULT_TIME_LIMIT
-}
-fn default_minutes() -> f32 {
-    DEFAULT_VOYAGE_MINUTES
-}
-fn one() -> u32 {
-    1
 }
 fn yes() -> bool {
     true
@@ -623,22 +539,12 @@ impl RunConfig {
         Ok(stages)
     }
 
-    /// Every trial: `fitness` (the old form), then `trials`.
-    pub fn all_trials(&self) -> Vec<TrialSpec> {
-        self.fitness.iter().map(TrialSpec::of_fitness).chain(self.trials.iter().cloned()).collect()
-    }
-
-    /// Every start: `start` (the old form), then `starts`.
-    pub fn all_starts(&self) -> impl Iterator<Item = &Start> + '_ {
-        self.start.iter().chain(&self.starts)
-    }
-
     /// The numbers are in range (references are checked when the run is built).
     pub(crate) fn check(&self) -> Result<(), RunError> {
         let bad = |m: String| Err(RunError::Config(m));
-        let starts = self.all_starts().count();
+        let starts = self.starts.len();
         if !(1..=MAX_STARTS).contains(&starts) {
-            return bad(format!("a run needs one to {MAX_STARTS} starts (`start` or `starts`)"));
+            return bad(format!("a run needs one to {MAX_STARTS} starts"));
         }
         if !(1..=MAX_POPULATION).contains(&self.population) {
             return bad(format!("`population` must be 1 to {MAX_POPULATION}"));
@@ -652,9 +558,9 @@ impl RunConfig {
         if !(1..=MAX_MUTATIONS).contains(&self.mutations) {
             return bad(format!("`mutations` must be 1 to {MAX_MUTATIONS}"));
         }
-        let trials = self.all_trials();
+        let trials = &self.trials;
         if trials.is_empty() {
-            return bad("a run needs at least one trial (`trials`, or the old `fitness`)".into());
+            return bad("a run needs at least one trial".into());
         }
         for (k, t) in trials.iter().enumerate() {
             t.check().map_err(|e| RunError::Config(format!("trial {}: {e}", k + 1)))?;

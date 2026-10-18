@@ -204,6 +204,7 @@ running the fight again.
   (`BEFORE ITS LAST CHANGE`), and BLUEPRINTS' preview card shows a design's LADDER. Every fight, run file and run
   hash is unchanged (`mixed_trials` seed 1 still `12dc217c6b728149`; the lab and its ladder are outside the rules'
   fingerprint).
+  2026-10-18: the run files' old forms no longer read ([ADR-0044](../adr/0044-no-save-compatibility-before-release.md)): one-trial `fitness`, one `start` and a plain number as a bound; every run keeps its jobs' goals.
 - Date: 2026-10-15
 - Decided by: Niklas (the requirements quoted below, and four answers on 15 Oct 2026: a research node unlocks the
   building and runs are free; runs compute at home and on every screen and pause in flight; as many trials as

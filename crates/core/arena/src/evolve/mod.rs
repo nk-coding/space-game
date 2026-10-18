@@ -29,8 +29,8 @@
 //!     evolve: Behavior,
 //!     generations: 1,
 //!     population: 2,
-//!     fitness: ArenaPool(opponents: [(design: Ship("automaton_raider"))], seeds: 1, time_limit: 5),
-//!     start: Design(design: Ship("rim_skiff")),
+//!     trials: [(kind: EnemyShips(opponents: [(design: Ship("automaton_raider"))]), seeds: 1, time_limit: 5)],
+//!     starts: [Design(design: Ship("rim_skiff"))],
 //! )"#).unwrap();
 //! let mut run = arena::Run::new(&content, config).unwrap();
 //! while !run.step(10_000).finished {}
@@ -69,7 +69,7 @@ use crate::voyage::start_voyage;
 pub use archive::{Archive, ArchiveShape, Axis, Elite, MAX_CELLS, Measure};
 pub use config::{
     Bound, DEFAULT_CHAMPIONS_EVERY, DEFAULT_CHECK_EVERY, DEFAULT_CROSSOVER, DEFAULT_ELITES, DEFAULT_HALL,
-    DEFAULT_MUTATIONS, DEFAULT_POPULATION, DEFAULT_SEEDS, Evolve, Fitness, Gene, Genes, Limits, Locks, MayChange,
+    DEFAULT_MUTATIONS, DEFAULT_POPULATION, DEFAULT_SEEDS, Evolve, Gene, Genes, Limits, Locks, MayChange,
     MAX_GENERATIONS, MAX_MUTATIONS, MAX_PAIRING, MAX_POPULATION, MAX_SEEDS, MAX_STARTS, Population, RunConfig, Stage,
     Start, VoyagePilot,
 };
@@ -404,7 +404,7 @@ pub struct Run {
     content: Content,
     config: RunConfig,
     kit: Kit,
-    /// The trials (`RunConfig::all_trials`) resolved against the content, in order.
+    /// The trials (`RunConfig::trials`) resolved against the content, in order.
     trials: Vec<(TrialSpec, Box<dyn TrialKind>)>,
     /// The starts as fight entries under their own behaviors (BEAT YOUR START).
     start_entries: Vec<Entry>,
@@ -539,7 +539,7 @@ fn header_of(start: &Blueprint, camp: Camp) -> Blueprint {
 
 /// The headers of a configuration's starts (yours, then THE ENEMY's), as a run gives its genomes.
 fn headers_of(content: &Content, config: &RunConfig) -> Result<Vec<Blueprint>, RunError> {
-    let yours = config.all_starts().map(|s| (s, Camp::Yours));
+    let yours = config.starts.iter().map(|s| (s, Camp::Yours));
     let enemy = config.enemy.iter().flat_map(|e| &e.starts).map(|s| (s, Camp::Enemy));
     yours.chain(enemy).map(|(s, camp)| resolve_start(content, s).map(|t| header_of(&t.header, camp)).map_err(RunError::Start)).collect()
 }
@@ -776,7 +776,7 @@ impl Run {
         config.check()?;
         let stages = config.schedule()?;
         let generations = stages.iter().map(|s| s.1).sum();
-        let specs = config.all_trials();
+        let specs = config.trials.clone();
         if !specs.iter().any(TrialSpec::fights) && config.archive.axes.iter().any(|a| a.measure.needs_fights()) {
             return Err(RunError::Config(
                 "`EngageDistance` is measured in fights, and no trial fights".into(),
@@ -788,7 +788,7 @@ impl Run {
             .collect::<Result<Vec<_>, _>>()?;
         let mut rng = Pcg32::new(sim::rng::splitmix64(config.seed ^ RUN_STREAM), RUN_STREAM);
         let texts = config
-            .all_starts()
+            .starts.iter()
             .map(|s| resolve_start(content, s))
             .collect::<Result<Vec<_>, _>>()
             .map_err(RunError::Start)?;
@@ -878,7 +878,7 @@ impl Run {
         &self.config
     }
 
-    /// The run's trials in order (`RunConfig::all_trials`): what a [`Breakdown`]'s trial index names.
+    /// The run's trials in order (`RunConfig::trials`): what a [`Breakdown`]'s trial index names.
     pub fn trials(&self) -> Vec<&TrialSpec> {
         self.trials.iter().map(|(t, _)| t).collect()
     }
@@ -899,7 +899,7 @@ impl Run {
     }
 
     pub fn start_config(&self, root: u32) -> Option<&Start> {
-        self.config.all_starts().chain(self.config.enemy.iter().flat_map(|e| &e.starts)).nth(root as usize)
+        self.config.starts.iter().chain(self.config.enemy.iter().flat_map(|e| &e.starts)).nth(root as usize)
     }
 
     /// The population start `root` is of.
@@ -1241,12 +1241,6 @@ impl Run {
         let score = if wsum > 0.0 { (total / wsum) as f32 } else { 0.0 };
         let [win, unhurt, quick, cheap] = all.map(|a| if wsum > 0.0 { (a / wsum) as f32 } else { 0.0 });
         (score, Breakdown { trials, goals: GoalScores { win, unhurt, quick, cheap } })
-    }
-
-    /// Runs of GDR-0092 step 5's form (trials or goals) keep every job's score per goal; the old form's files stay as
-    /// they were.
-    fn keeps_goals(&self) -> bool {
-        !self.config.trials.is_empty() || !self.config.goals.is_default()
     }
 
     /// Job `job` of child `child` of generation `generation`, rebuilt, with its record.
@@ -1874,13 +1868,13 @@ impl Run {
                 score,
                 measures,
                 took,
-                jobs: rs.iter().map(|r| JobRecord::of(r, self.keeps_goals())).collect(),
+                jobs: rs.iter().map(|r| JobRecord::of(r, true)).collect(),
             });
         }
         let check = b.rivalry.as_ref().and_then(|r| r.check.clone()).map(|(mut check, range)| {
             let rs: Vec<JobResult> = b.results[range].iter().map(|r| r.expect("every job done")).collect();
             ticks += rs.iter().map(|r| r.ticks).sum::<u64>();
-            check.jobs = rs.iter().map(|r| JobRecord::of(r, self.keeps_goals())).collect();
+            check.jobs = rs.iter().map(|r| JobRecord::of(r, true)).collect();
             check
         });
         let evaluated = [first as u32, (b.ranges.len() - first) as u32];

@@ -336,9 +336,8 @@ Since step 7 (16 Oct 2026) an enemy population can evolve against yours in the s
 ### Trials and goals
 
 Since GDR-0092 step 5 (16 Oct 2026) a run is scored against any number of **trials**, each with a weight, and its
-score weighs four **goals** (`src/evolve/trial.rs`). `RunConfig` gets `trials: [...]` and `goals: (...)`; the old
-`fitness` still reads (and writes) as it was, as one trial, so the runs before step 5 and their files are unchanged:
-`two_starts_locked` seeds 1 and 7 still hash `4f126e780aff05c0` and `887374c2560c32e7`.
+score weighs four **goals** (`src/evolve/trial.rs`). `RunConfig` has `trials: [...]` and `goals: (...)` (the old
+one-trial `fitness` and one-`start` forms and a plain number as a bound no longer read, 18 Oct 2026, ADR-0044).
 
 ```ron
 trials: [
@@ -366,7 +365,7 @@ the run is self-contained (player designs inlined as text, content by id).
 
 | Kind | What it fights |
 |---|---|
-| `EnemyShips(opponents, hall_of_fame)` | ENEMY SHIPS: each entry a fight per seed, and the run's best `hall_of_fame` in the same mean (the old `fitness: ArenaPool` reads as this) |
+| `EnemyShips(opponents, hall_of_fame)` | ENEMY SHIPS: each entry a fight per seed, and the run's best `hall_of_fame` in the same mean  |
 | `Encounters(voyages)` | THE ENEMIES YOU MEET: every encounter of these voyages that has ships (each once, in their sites' order), its ships at their largest counts, a fight each; the guardian with its voyage (`evolve::encounters`) |
 | `Waves(target)` | TEST-RANGE WAVES: a gauntlet of `target` (5) equal waves as the test range sends them, sized from the contestant's build points (`sim::voyage::waves::wave`); WIN is the waves cleared of `target` |
 | `Gauntlet(waves)` | fixed waves, one after the other (`lab.ron`'s raider gauntlet) |
@@ -374,7 +373,7 @@ the run is self-contained (player designs inlined as text, content by id).
 | `Fleet(designs)` | YOUR FLEET: the player's designs, inlined |
 | `HallOfFame(count)` | the run's best `count` so far (frozen per generation; none in generation 0, so it leaves the sums there) |
 | `Champions(designs)` | CHAMPIONS: the best designs of earlier runs, inlined |
-| `Voyages(ids, minutes, pilot)` | VOYAGES: headless voyages (the old `fitness: Voyages` reads as this) |
+| `Voyages(ids, minutes, pilot)` | VOYAGES: headless voyages  |
 | `Ladder(rungs)` | THE LADDER (step 9): fixed rungs of opponents, the weakest first, each a fight per seed (`lab.ron`'s THE LADDER: seven rungs from one raider to the warden, 3 seeds, 90 s; placeholders) |
 | `CoEvolution` | CO-EVOLUTION, the ARMS RACE (step 7): the run's `enemy` population's frozen best and past champions, each in a pack sized to the contestant ([Co-evolution](#co-evolution-the-arms-race)); its settings are the enemy's fights too |
 
@@ -383,8 +382,7 @@ the share of side 0's build points lost; of the hull, on a voyage), QUICK (one l
 took, 0 otherwise), CHEAP (one less the design's build points over its build-point limit, else its start's). A child's
 score: per trial, Σ goal weight × the goal's mean over the trial's jobs ÷ Σ goal weight; then Σ trial weight × that ÷ Σ
 trial weight, trials without jobs and of weight 0 left out. One trial with WIN alone is the mean score of its jobs, bit
-for bit the score before step 5. Records of runs with trials or goals keep every job's goals (`JobRecord::goals`; the
-old form's files stay as they were); `Run::breakdown(generation, child)` takes a score apart by trial and goal,
+for bit the score before step 5. Records of runs with trials or goals keep every job's goals (`JobRecord::goals`); `Run::breakdown(generation, child)` takes a score apart by trial and goal,
 `Run::tagged_jobs` says which trial each job is of.
 
 **Presets** come from `lab.ron` (`content/base/lab.ron`, `data::Lab`: the goals' words and default weights, the goal
@@ -450,18 +448,17 @@ unknown fields are errors, comments are fine). Examples in `crates/core/arena/ru
     evolve: Design,                   // Behavior | Design | Both | Stages([...]), below
     generations: 30,                  // left out with Stages
     population: 32,                   // children per generation (default 32)
-    fitness: ArenaPool(
-        opponents: [
+    trials: [(                        // one or more, below
+        kind: EnemyShips(opponents: [
             (design: Ship("automaton_raider"), count: 2),   // fight spec entries (docs above)
             (design: Ship("automaton_raider"), count: 3),
             (design: Ship("automaton_hunter")),
-        ],
+        ]),                           // optional: hall_of_fame (0)
         seeds: 4,                     // seeds 1..=4 against each opponent (default 4)
-        time_limit: 60,               // optional: start_distance, time_limit (fight defaults), count (1),
-                                      // hall_of_fame (0)
-    ),
-    limits: (frame: "frigate", build_points: 60, mirror: true),  // all optional, below
-    start: Design(design: Ship("rim_skiff"), behavior: Content("skirmisher")),  // or starts: [...], below
+        time_limit: 60,               // optional: start_distance, time_limit (fight defaults), count (1)
+    )],
+    limits: (frame: "frigate", build_points: At(62), mirror: true),  // all optional, below
+    starts: [Design(design: Ship("rim_skiff"), behavior: Content("skirmisher"))],  // one to four, below
     // archive: (axes: [...]),        // default: acceleration × firepower, 8 × 8
     // crossover: 0.2, mutations: 3,  // the defaults
 )
@@ -470,9 +467,9 @@ unknown fields are errors, comments are fine). Examples in `crates/core/arena/ru
 | Field | What |
 |---|---|
 | `evolve` | `MayChange((...))`: the genes a run may change (GDR-0092 "MAY CHANGE", step 6), each left out on, so `MayChange(())` is everything ([Genomes, mutation and crossover](#genomes-mutation-and-crossover)); `Behavior` (the behavior's genes: numbers and rules), `Design` (the design's: layout, parts, armour, power), `Both` (both, not the assists); or `Stages([(evolve: Behavior, generations: 10), (evolve: Design, generations: 10), (evolve: MayChange(()), generations: 10)])`: one after the other, one archive throughout. Nothing to change is an error |
-| `fitness` | `ArenaPool(opponents, seeds, hall_of_fame, count, start_distance, time_limit)`: the genome (`count` ships of it, side 0) fights each opponent entry and the best `hall_of_fame` elites so far over seeds 1..=`seeds`; the mean arena score. `Voyages(ids, seeds, minutes, pilot)`: each voyage over seeds 1..=`seeds`, the mean voyage score; `pilot: Behavior` (default: the genome's behavior flies the fights) or `Closing` (the runner's scripted pilot) |
-| `limits` | Each optional. `frame`: a content frame id (24, 40 or 64 cells; default the smallest every start fits). `build_points`: the most a design may cost: `Start` (the default since GDR-0092: its own start's build points, "same cost, better ship"), a number (`build_points: 60`) or `Off`. `min_hold`: the smallest cargo hold (`Content::ship_hold`): `Start` (the default: its start's, so every result still brings salvage home), a number or `Off`. `max_cores`: the most logic cores (VOYAGE-READY: the career's mind capacity less the escorts' cores; default any). `counts`: how many of a part a design may hold (`{"pulse_laser": 2}`, `Career::available`; the drydock refuses more with `NoneLeft`). `parts`, `materials`: only these (e.g. a career's `Unlocks`; default all, locked ones too). `mirror`: the mirror lock (every edit mirrored, designs stay symmetric; a start's parts without a mirror image, `evolve::unmatched`, are locked where they are: the starter's single scanner and the cargo bay across from it, 16 Oct 2026, GDR-0095) |
-| `start`, `starts` | One start (`start`, the old form) or a list (`starts: [...]`), one to four in all. `Design(design, behavior, locks)`: a content ship or blueprint text (with its pilot assists, `assists`), a behavior (default: the design's own, else its faction's) and what the run keeps of it ([Starts and locks](#starts-and-locks)). `Random(faction: "ship_mind")`: a random design that passes the pre-filter, under the faction's behavior |
+| `trials` | One or more trials, each with its weight ([Trials and goals](#trials-and-goals)) |
+| `limits` | Each optional. `frame`: a content frame id (24, 40 or 64 cells; default the smallest every start fits). `build_points`: the most a design may cost: `Start` (the default since GDR-0092: its own start's build points, "same cost, better ship"), a number (`build_points: At(60)`) or `Off`. `min_hold`: the smallest cargo hold (`Content::ship_hold`): `Start` (the default: its start's, so every result still brings salvage home), a number or `Off`. `max_cores`: the most logic cores (VOYAGE-READY: the career's mind capacity less the escorts' cores; default any). `counts`: how many of a part a design may hold (`{"pulse_laser": 2}`, `Career::available`; the drydock refuses more with `NoneLeft`). `parts`, `materials`: only these (e.g. a career's `Unlocks`; default all, locked ones too). `mirror`: the mirror lock (every edit mirrored, designs stay symmetric; a start's parts without a mirror image, `evolve::unmatched`, are locked where they are: the starter's single scanner and the cargo bay across from it, 16 Oct 2026, GDR-0095) |
+| `starts` | One to four starts (`starts: [...]`). `Design(design, behavior, locks)`: a content ship or blueprint text (with its pilot assists, `assists`), a behavior (default: the design's own, else its faction's) and what the run keeps of it ([Starts and locks](#starts-and-locks)). `Random(faction: "ship_mind")`: a random design that passes the pre-filter, under the faction's behavior |
 | `archive` | `(axes: [(measure, min, max, cells), ...])`, one to three axes (at most 65 536 cells) |
 | `enemy` | Optional (written only when there is one; step 7): THE ENEMY of an ARMS RACE, a `Population` ([Co-evolution](#co-evolution-the-arms-race)); a run with one has exactly one `CoEvolution` trial, and one with that trial an `enemy` |
 | `population`, `generations`, `seed`, `crossover`, `mutations` | Children per generation; generations; the run's stream; the share of children bred by crossover (0.2); a child gets 1 to `mutations` (3) mutations. All *placeholders* |
@@ -563,7 +560,7 @@ with that behavior (`validate_ship_flying`), one without with its own or its fac
 
 ### Starts and locks
 
-`starts: [...]` (with the old `start`, one to four, `MAX_STARTS`, lead default): generation 0 is every start, then
+`starts: [...]` (one to four, `MAX_STARTS`, lead default): generation 0 is every start, then
 mutants of each in turn (start 1, start 2, ..., start 1, ...); later generations breed from the whole archive, and a
 child descends from its first parent's start (its root). The run's frame is the configured one, else the smallest
 content frame every start fits; each start opens centred in it once.

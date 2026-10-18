@@ -26,6 +26,8 @@ pub struct RunDoc {
 impl Document for RunDoc {
     const NAMESPACE: &'static str = "lab";
     const FORMAT: u32 = 2;
+    /// Format 1 held the whole run in one document (before ADR-0041's parts).
+    const OLDEST: u32 = 2;
 
     fn to_ron(&self) -> String {
         self.head.to_ron()

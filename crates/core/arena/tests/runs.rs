@@ -14,7 +14,7 @@ const BOTH: &str = r#"(
     generations: 6,
     population: 6,
     crossover: 0.4,
-    fitness: ArenaPool(opponents: [(design: Ship("automaton_raider"))], seeds: 2, time_limit: 8, hall_of_fame: 1),
+    trials: [(kind: EnemyShips(opponents: [(design: Ship("automaton_raider"))], hall_of_fame: 1), seeds: 2, time_limit: 8)],
     limits: (mirror: true),
     starts: [
         Design(design: Ship("rim_skiff"), locks: (categories: ["weapons"], parts: [0], rules: [0], order: true)),
@@ -194,7 +194,7 @@ fn every_recorded_fight_replays_as_recorded() {
             for j in 0..r.jobs.len() {
                 let (job, rec) = run.job(g as u32, child, j).unwrap();
                 assert_eq!(job, jobs[k], "generation {g}, child {child}, job {j}");
-                assert_eq!(rec, arena::evolve::JobRecord::of(&results[k], false));
+                assert_eq!((rec.score, rec.ticks, rec.end), (results[k].score, results[k].ticks, results[k].end));
                 let code = run.fight_code(g as u32, child, j).unwrap();
                 let back = FightCode::decode(&code.encode()).unwrap();
                 assert_eq!(back.rules, run.rules());
@@ -266,10 +266,10 @@ fn locks_and_limits_hold_across_generations() {
         generations: 8,
         population: 8,
         crossover: 0.5,
-        fitness: ArenaPool(opponents: [(design: Ship("automaton_raider"))], seeds: 1, time_limit: 6),
+        trials: [(kind: EnemyShips(opponents: [(design: Ship("automaton_raider"))]), seeds: 1, time_limit: 6)],
         limits: (frame: "frigate"),
-        start: Design(design: Ship("rim_skiff"), behavior: Content("skirmisher"),
-            locks: (parts: [0, 1], categories: ["weapons"], cells: [(-1, 0), (-1, 1)], rules: [0, 3], target: true, order: true)),
+        starts: [Design(design: Ship("rim_skiff"), behavior: Content("skirmisher"),
+            locks: (parts: [0, 1], categories: ["weapons"], cells: [(-1, 0), (-1, 1)], rules: [0, 3], target: true, order: true))],
     )"#;
     let run = stepped(&c, config(text), u64::MAX);
     let start = &run.starts()[0];
@@ -327,9 +327,9 @@ fn the_prefilter_knows_cores_slots_and_cargo() {
     let base = |limits: &str, behavior: &str| {
         format!(
             r#"(seed: 1, evolve: Both, generations: 3, population: 6,
-                fitness: ArenaPool(opponents: [(design: Ship("automaton_raider"))], seeds: 1, time_limit: 5),
+                trials: [(kind: EnemyShips(opponents: [(design: Ship("automaton_raider"))]), seeds: 1, time_limit: 5)],
                 limits: {limits},
-                start: Design(design: Ship("rim_skiff"){behavior}))"#
+                starts: [Design(design: Ship("rim_skiff"){behavior})])"#
         )
     };
     let err = |text: String| Run::new(&c, config(&text)).err();
@@ -344,7 +344,7 @@ fn the_prefilter_knows_cores_slots_and_cargo() {
     let behavior = format!(r#", behavior: Text("{}")"#, long.join("\\n"));
     assert!(matches!(err(base("()", &behavior)), Some(RunError::Start(_))));
     // A hold below the limit: refused; with the hold switched off a run may trade the cargo away.
-    assert!(matches!(err(base(&format!("(min_hold: {})", hold + 1), "")), Some(RunError::Start(_))));
+    assert!(matches!(err(base(&format!("(min_hold: At({}))", hold + 1), "")), Some(RunError::Start(_))));
     let cfg = config(&base("(min_hold: Off, build_points: Off)", ""));
     assert_eq!(cfg.limits.min_hold, Bound::Off);
     assert!(Run::new(&c, cfg).is_ok());
@@ -355,11 +355,10 @@ fn the_prefilter_knows_cores_slots_and_cargo() {
         err(base(&format!(r#"(counts: {{"{part}": {}}})"#, n - 1), "")),
         Some(RunError::Start(_))
     ));
-    // The old forms still read: one `start`, `build_points` as a number.
-    let old = config(&base("(build_points: 60)", ""));
-    assert_eq!(old.limits.build_points, Bound::At(60.0));
-    assert_eq!(old.all_starts().count(), 1);
-    assert_eq!(RunConfig::from_ron(&old.to_ron()).unwrap(), old);
+    // A number reads as `At` and writes back the same.
+    let at = config(&base("(build_points: At(60))", ""));
+    assert_eq!(at.limits.build_points, Bound::At(60.0));
+    assert_eq!(RunConfig::from_ron(&at.to_ron()).unwrap(), at);
     // Starts: one to four, each lock in range.
     let five = BOTH.replace(
         r#"Design(design: Ship("halvex_runner")),"#,
@@ -471,4 +470,19 @@ fn everything_mutates_and_the_stand_in_flies_the_even_seeds() {
     let mut resumed = Run::restore(&c, &RunSave::from_ron(&first.snapshot().to_ron()).unwrap()).unwrap();
     while !resumed.step(5_000).finished {}
     assert_eq!(text(&resumed), text(&run), "byte for byte");
+}
+
+/// Every run file of `runs/` reads and builds against the base content.
+#[test]
+fn every_run_file_reads_and_builds() {
+    let c = data::base_content();
+    let dir = concat!(env!("CARGO_MANIFEST_DIR"), "/runs");
+    let mut n = 0;
+    for f in std::fs::read_dir(dir).unwrap() {
+        let path = f.unwrap().path();
+        let cfg = RunConfig::from_ron(&std::fs::read_to_string(&path).unwrap()).unwrap_or_else(|e| panic!("{path:?}: {e}"));
+        Run::new(&c, cfg).unwrap_or_else(|e| panic!("{path:?}: {e}"));
+        n += 1;
+    }
+    assert!(n >= 7);
 }

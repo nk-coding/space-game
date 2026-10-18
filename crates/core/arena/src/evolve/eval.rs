@@ -90,8 +90,8 @@ pub struct JobRecord {
     pub score: f32,
     pub ticks: u64,
     pub end: JobEnd,
-    /// Its score per goal: kept by runs with trials or goals of GDR-0092 step 5 (a run of the old form scores WIN
-    /// alone, `score`, and its files stay as they were).
+    /// Its score per goal: kept by runs (GDR-0092 step 5); left out by the ladder's records, which score WIN alone
+    /// (`score`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub goals: Option<GoalScores>,
 }
@@ -107,7 +107,7 @@ impl JobRecord {
         }
     }
 
-    /// Its score per goal: the kept ones, else WIN alone (a run of the old form).
+    /// Its score per goal: the kept ones, else WIN alone.
     pub fn goal_scores(&self) -> GoalScores {
         self.goals.unwrap_or(GoalScores { win: self.score, ..GoalScores::default() })
     }

@@ -8,16 +8,16 @@
     evolve: Behavior,
     generations: 30,
     population: 32,
-    fitness: ArenaPool(
-        opponents: [
+    trials: [(
+        kind: EnemyShips(opponents: [
             (design: Ship("automaton_raider"), count: 2),
             (design: Ship("automaton_raider"), count: 3),
             (design: Ship("automaton_hunter")),
-        ],
+        ]),
         seeds: 4,
         time_limit: 60,
-    ),
-    start: Design(design: Ship("rim_skiff"), behavior: Content("skirmisher")),
+    )],
+    starts: [Design(design: Ship("rim_skiff"), behavior: Content("skirmisher"))],
     archive: (
         axes: [
             (measure: EngageDistance, min: 0, max: 160, cells: 8),

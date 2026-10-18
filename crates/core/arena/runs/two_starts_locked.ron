@@ -11,12 +11,11 @@
     generations: 6,
     population: 8,
     crossover: 0.3,
-    fitness: ArenaPool(
-        opponents: [(design: Ship("automaton_raider"), count: 2)],
+    trials: [(
+        kind: EnemyShips(opponents: [(design: Ship("automaton_raider"), count: 2)], hall_of_fame: 1),
         seeds: 2,
-        hall_of_fame: 1,
         time_limit: 30,
-    ),
+    )],
     limits: (mirror: true),
     starts: [
         Design(

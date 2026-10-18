@@ -1,7 +1,7 @@
 //! The voyage fitness (`arena::voyage`) and the evolution (`arena::evolve`): determinism, slices and threads,
 //! limits, the configuration's text form and errors, and a tiny run that improves.
 
-use arena::evolve::{Fitness, Genes, Job, JobEnd, JobRecord, JobResult, Measure, Results};
+use arena::evolve::{Genes, Trial, Job, JobEnd, JobRecord, JobResult, Measure, Results};
 use arena::{DesignRef, Run, RunConfig, RunError, VoyageSpec};
 use data::Content;
 use data::behavior::Program;
@@ -13,8 +13,8 @@ const TINY: &str = r#"(
     evolve: Behavior,
     generations: 3,
     population: 6,
-    fitness: ArenaPool(opponents: [(design: Ship("automaton_raider"))], seeds: 2, time_limit: 10),
-    start: Design(design: Ship("rim_skiff")),
+    trials: [(kind: EnemyShips(opponents: [(design: Ship("automaton_raider"))]), seeds: 2, time_limit: 10)],
+    starts: [Design(design: Ship("rim_skiff"))],
     archive: (axes: [(measure: EngageDistance, min: 0, max: 120, cells: 6), (measure: Rules, min: 0, max: 12, cells: 4)]),
 )"#;
 
@@ -76,12 +76,12 @@ fn design_runs_keep_the_limits() {
         evolve: Stages([(evolve: Design, generations: 3), (evolve: Both, generations: 2)]),
         population: 8,
         crossover: 0.5,
-        fitness: ArenaPool(opponents: [(design: Ship("automaton_raider"))], seeds: 2, time_limit: 8),
-        limits: (frame: "frigate", build_points: 62, mirror: true,
+        trials: [(kind: EnemyShips(opponents: [(design: Ship("automaton_raider"))]), seeds: 2, time_limit: 8)],
+        limits: (frame: "frigate", build_points: At(62), mirror: true,
             parts: ["armor_block", "slope_1x1", "pulse_laser", "radiator", "capacitor", "fission_reactor",
                 "cargo_bay", "logic_core", "thruster", "shield_emitter", "gyro", "rcs_pod", "scanner"],
             materials: ["steel"]),
-        start: Design(design: Ship("rim_skiff")),
+        starts: [Design(design: Ship("rim_skiff"))],
     )"#;
     let cfg = config(text);
     let allowed = cfg.limits.parts.clone().unwrap();
@@ -140,8 +140,8 @@ fn a_tiny_run_improves_on_an_easy_target() {
         evolve: Behavior,
         generations: 5,
         population: 8,
-        fitness: ArenaPool(opponents: [(design: Ship("automaton_raider"))], seeds: 2, time_limit: 20),
-        start: Design(design: Ship("rim_skiff"), behavior: Text("always -> flee")),
+        trials: [(kind: EnemyShips(opponents: [(design: Ship("automaton_raider"))]), seeds: 2, time_limit: 20)],
+        starts: [Design(design: Ship("rim_skiff"), behavior: Text("always -> flee"))],
         archive: (axes: [(measure: Rules, min: 0, max: 12, cells: 4)]),
     )"#;
     let r = stepped(&c, config(text), u64::MAX);
@@ -160,9 +160,9 @@ fn a_random_start_flies_and_evolves() {
         evolve: Both,
         generations: 2,
         population: 4,
-        fitness: ArenaPool(opponents: [(design: Ship("automaton_raider"))], seeds: 2, time_limit: 5),
+        trials: [(kind: EnemyShips(opponents: [(design: Ship("automaton_raider"))]), seeds: 2, time_limit: 5)],
         limits: (frame: "frigate"),
-        start: Random(faction: "ship_mind"),
+        starts: [Random(faction: "ship_mind")],
     )"#;
     let r = stepped(&c, config(text), u64::MAX);
     assert_eq!(r.history.len(), 2);
@@ -188,7 +188,7 @@ fn the_run_text_reads_back_and_errors_are_values() {
         Err(RunError::Config(_))
     ));
     assert!(matches!(
-        err(&TINY.replace(r#"start: Design(design: Ship("rim_skiff"))"#, r#"start: Design(design: Ship("nope"))"#)),
+        err(&TINY.replace(r#"starts: [Design(design: Ship("rim_skiff"))]"#, r#"starts: [Design(design: Ship("nope"))]"#)),
         Err(RunError::Start(_))
     ));
     assert!(matches!(
@@ -197,17 +197,17 @@ fn the_run_text_reads_back_and_errors_are_values() {
     ));
     // Over the budget, a locked-out part, no such frame.
     let limited = |limits: &str| TINY.replace("archive:", &format!("limits: {limits}, archive:"));
-    assert!(matches!(err(&limited("(build_points: 30)")), Err(RunError::Start(_))));
+    assert!(matches!(err(&limited("(build_points: At(30))")), Err(RunError::Start(_))));
     assert!(matches!(err(&limited(r#"(parts: ["armor_block"])"#)), Err(RunError::Start(_))));
     assert!(matches!(err(&limited(r#"(frame: "nope")"#)), Err(RunError::Config(_))));
     // A measure that needs fights with the voyage fitness.
     let voyages = TINY.replace(
-        r#"ArenaPool(opponents: [(design: Ship("automaton_raider"))], seeds: 2, time_limit: 10)"#,
+        r#"EnemyShips(opponents: [(design: Ship("automaton_raider"))])"#,
         r#"Voyages(ids: ["yard_approach"])"#,
     );
     assert!(matches!(err(&voyages), Err(RunError::Config(_))));
     let cfg = config(&voyages.replace("EngageDistance", "Firepower"));
-    assert!(matches!(cfg.fitness, Some(Fitness::Voyages { .. })));
+    assert!(matches!(cfg.trials[0].kind, Trial::Voyages { .. }));
     assert_eq!(cfg.archive.axes[0].measure, Measure::Firepower);
     assert!(Run::new(&c, cfg).is_ok());
 }
@@ -294,7 +294,7 @@ fn every_childs_fights_are_kept_and_jobs_are_data() {
         assert_eq!(rebuilt.len(), 2, "one opponent, two seeds");
         for (j, (job, rec)) in rebuilt.iter().zip(&r.jobs).enumerate() {
             assert_eq!(job, &jobs[k], "child {child}, job {j} rebuilds");
-            assert_eq!(*rec, JobRecord::of(&results[k], false), "a run of the old form keeps no goals");
+            assert_eq!(*rec, JobRecord::of(&results[k], true), "a run keeps every job's goals");
             k += 1;
             round_trip(job);
             round_trip(&results[k - 1]);
