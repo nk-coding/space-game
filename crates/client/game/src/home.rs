@@ -35,7 +35,8 @@
 //! * **Notes** bottom right: what the career has to say (a new game, a save kept as it is, content that changed,
 //!   `?unlock=all`, an escort whose design is gone), from `career::PlayerCareer::notes`.
 //! * **The layers over home** (FLEET, SETTINGS, the LOG, EVOLUTION) leave the station barely showing: home's words, labels and
-//!   click areas, and the debrief's panel, step aside while one is open, so nothing reads through it.
+//!   click areas, and the debrief's panel, step aside while one is open, so nothing reads through it. Home's words,
+//!   labels and click areas step aside while the voyage's report shows, too (its backing is a world mesh).
 //!
 //! Entering home keeps the flight camera's zoom and leaving gives it back with the normal UI scale, so the drydock
 //! and flight find the camera as they left it. UI words are chrome in code, like the drydock's; the shipyard's
@@ -701,18 +702,21 @@ fn apply(
 }
 
 /// Home's screen shows at home while no layer is over it (FLEET, SETTINGS, the LOG, EVOLUTION, the WORKSHOP); the labels while the
-/// camera rests on the yard.
+/// camera rests on the yard. While the voyage's report shows they step aside too: its backing is a world mesh (under its
+/// part icons), which home's words would read through.
 #[allow(clippy::type_complexity)]
 fn show(
     mode: Res<State<AppMode>>,
     (fleet, log, evo, ws): (Res<Fleet>, Res<VoyageLog>, Res<EvolutionLayer>, Res<WorkshopLayer>),
     settings: Res<world::settings::SettingsLayer>,
     visit: Res<Visit>,
+    debrief: Res<world::voyage::debrief::Debrief>,
     mut screens: Query<&mut ScreenFx, Or<(With<HomeRoot>, With<LabelRoot>)>>,
     mut spots: Single<&mut Visibility, With<SpotRoot>>,
 ) {
     let home = *mode.get() == AppMode::Home && !fleet.open && !settings.open && !log.open && !evo.open && !ws.open;
-    let resting = home && matches!(visit.phase, Phase::Yard);
+    let report = debrief.open && debrief.data.is_some();
+    let resting = home && matches!(visit.phase, Phase::Yard) && !report;
     for mut fx in &mut screens {
         show_screen(&mut fx, resting);
     }

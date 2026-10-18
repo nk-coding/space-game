@@ -954,13 +954,16 @@ off, the flash and its ring where it left), `voyage-warp-emergency.png` (the eme
   theirs) until DISMISS, Esc or Enter: `VOYAGE
   HOME · HAUL UNLOADED` (or `SHIP LOST · RECALLED HOME`, `PRACTICE RUN · NOT SAVED`), the voyage's name, chips for
   the band, the outcome (`GOAL CLEARED`, `RECALLED`, `LOST`) and `FIRST CLEAR`; time, sites, kills, ships lost;
-  `14 PARTS DISMANTLED` with a row per part (intact parts, `Thruster, intact · SORT BELOW`, broken parts and
-  fragments apart, most first, six at most) and what it gave; under the rows the haul's intact parts to sort (18 Oct
-  2026, Niklas: take and dismantle belong in the report, not the workshop's main area): `INTACT · KEEP OR
-  DISMANTLE`, a line per part (`Career::intake`) with the stock and the suggestion, KEEP and DISMANTLE for all of it,
-  SORT AS SUGGESTED, and what the last sort gave; what the panel leaves is kept (`Career::keep_intake`) when it is
-  dismissed, and at any time at home without an open report; research
-  data per family with what is now in store; the materials; `RESEARCH READY · n` with the nodes the stores pay for
+  first the haul's intact parts to sort (18 Oct 2026, Niklas: take and dismantle belong in the report, not the
+  workshop's main area; later that day variant A of the report study, intact first): `INTACT · 2 PARTS`, a line per
+  part (`Career::intake`) with its icon and stock, KEEP (lit: what happens when nothing is pressed) and DISMANTLE
+  for all of it (its tooltip: what dismantling gives), SORT AS SUGGESTED (the suggestion in its tooltip), and what
+  the last sort gave; what the panel leaves is kept (`Career::keep_intake`) when it is dismissed, and at any time at
+  home without an open report; then `GAINED · FROM 14 PARTS DISMANTLED` in two columns, research data per family
+  and the materials, each with its total; then `14 PARTS DISMANTLED` as a grid of part icons with their counts
+  (broken parts and fragments apart; the family's colour dot; wrapping, six a row), a tile's tooltip what it gave.
+  The part icons are world meshes, so the panel's backing is one too (`UiIcon::Scrim`) and home's words step aside
+  while the report shows; `RESEARCH READY · n` with the nodes the stores pay for
   now; `SIGNAL FOUND · HALVEX DRIFT` after a beacon mark for each voyage it opened (GDR-0078: the name from
   the content; Barlow has no ◆ either, so the materials have a diamond mark too); after a cluster voyage
   (`voyage::debrief::galaxy_finds`, [GDR-0097](gdr/0097-galaxy-map-and-voyage-flow.md)) `CHARTED · NYOST FIELD` (its first launch), each signal heard or come further

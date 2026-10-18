@@ -38,8 +38,12 @@ pub struct DebriefStats {
 /// One kind of item that came home.
 #[derive(Clone, Debug, PartialEq)]
 pub struct PartRow {
+    /// The part (content id), for its icon.
+    pub part: String,
     pub name: String,
     pub count: u32,
+    /// Intact, so it went to the workshop's intake to be sorted (GDR-0108): it gave nothing yet.
+    pub intact: bool,
     /// What it gave: `KINETIC +18  ·  PROGRAMMABLE MATTER +1`.
     pub gives: String,
     /// The family colour key of its research data (none: neutral).
@@ -141,12 +145,9 @@ impl DebriefData {
                     Kept::Whole => base,
                 };
                 let mut gives: Vec<String> = data.iter().map(|(f, x)| format!("{} +{}", upper(family(f).map_or(f, |f| &f.name)), amount(*x))).collect();
-                if kept == Kept::Workshop {
-                    gives.push("SORT BELOW".into());
-                }
                 gives.extend(materials.iter().map(|(m, x)| format!("{} +{x}", upper(content.materials.get(m).map_or(m, |m| &m.name)))));
                 let color = data.keys().next().and_then(|f| family(f)).and_then(|f| f.color.clone());
-                PartRow { name, count, gives: gives.join("  ·  "), color }
+                PartRow { part, name, count, intact: kept == Kept::Workshop, gives: gives.join("  ·  "), color }
             })
             .collect();
         rows.sort_by(|a, b| b.count.cmp(&a.count).then_with(|| a.name.cmp(&b.name)));
@@ -324,7 +325,7 @@ mod tests {
         assert!(cannon.gives.starts_with("KINETIC WEAPONS +"), "{}", cannon.gives);
         // Intact parts go to the workshop to be sorted (GDR-0108).
         let thruster = d.rows.iter().find(|r| r.name == "Thruster, intact").unwrap();
-        assert_eq!((thruster.count, thruster.gives.as_str()), (3, "SORT BELOW"));
+        assert_eq!((thruster.count, thruster.intact, thruster.gives.as_str()), (3, true, ""));
         let fragment = d.rows.iter().find(|r| r.name.ends_with("fragment")).unwrap();
         assert!(fragment.gives.contains("PROGRAMMABLE MATTER +1"), "{}", fragment.gives);
         let kinetic = d.families.iter().find(|f| f.name == "KINETIC WEAPONS").unwrap();

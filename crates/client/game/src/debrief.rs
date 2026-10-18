@@ -8,15 +8,15 @@
 //! Shipyard approach
 //! [RIM] [GOAL CLEARED] [FIRST CLEAR]
 //! TIME 7:42   SITES 4 / 4   KILLS 9   SHIPS LOST 0
-//! 14 PARTS DISMANTLED
-//!   Automaton cannon ×6              KINETIC WEAPONS +18
-//!   Thruster, intact ×2                       SORT BELOW
-//! INTACT  ·  KEEP OR DISMANTLE
-//!   Thruster ×2   KEEP 1 · DISMANTLE 1          [KEEP] [DISMANTLE]
+//! INTACT · 2 PARTS                          KEPT UNLESS YOU DISMANTLE
+//!   [icon] Thruster ×2   IN STOCK 1          [KEEP] [DISMANTLE]
 //!   [SORT AS SUGGESTED]
-//! RESEARCH DATA
-//!   • KINETIC WEAPONS                  +18   IN STORE 18
-//! ◆ PROGRAMMABLE MATTER +1
+//! GAINED                                    FROM 14 PARTS DISMANTLED
+//!   RESEARCH DATA                 MATERIALS
+//!   • Kinetic weapons     +18     ◆ Programmable matter  +1
+//!   TOTAL                 +18     TOTAL                  +1
+//! 14 PARTS DISMANTLED                                          3 KINDS
+//!   [icon ×6] [icon ×4] [icon ×4]    (a part's yield on hover)
 //! RESEARCH READY · 1
 //!   Reverse-engineered cannon
 //! ((·)) SIGNAL FOUND · HALVEX DRIFT
@@ -35,15 +35,23 @@
 //!   (`map::OpenMap`), where the map selects the new signal. A voyage into a cluster of the galaxy lists what it found
 //!   there the same way (galaxy plan E6): `CHARTED · VARDIS`, the signals heard and how far each came, in gold
 //!   (`SIGNAL NARROWED · A GATE`), the logs to decode at the LOG; VOYAGE MAP shows for anything on the map.
-//! * The haul's intact parts are sorted here (Niklas, 18 Oct 2026: take and dismantle "belong in the return-report
-//!   sidebar", not in the workshop's main area): under the rows, a line per part with the suggestion, KEEP (into
-//!   stock) and DISMANTLE (research data and a share of its recipe) for all of it, and SORT AS SUGGESTED; it is
-//!   refilled whenever the career changes. What the panel leaves is kept (`Career::keep_intake`) when it is dismissed,
-//!   and at any time at home without an open report (a report never seen).
+//! * The haul's intact parts come first and are sorted here (Niklas, 18 Oct 2026: take and dismantle "belong in the
+//!   return-report sidebar", not in the workshop's main area; later that day, variant A of the report study: intact
+//!   first, a plain keep-or-dismantle per part): a line per part with its icon and stock, KEEP (into stock; lit, as
+//!   it is what happens when nothing is pressed) and DISMANTLE (its tooltip says what dismantling all of it gives:
+//!   research data and a share of its recipe), then SORT AS SUGGESTED (the workshop's suggestion in its tooltip); it
+//!   is refilled whenever the career changes. What the panel leaves is kept (`Career::keep_intake`) when it is
+//!   dismissed, and at any time at home without an open report (a report never seen). Dismantling later in the
+//!   WORKSHOP is always possible.
+//! * GAINED sums what the dismantled parts gave in two columns (research data by family, materials), then a grid
+//!   of the dismantled parts' icons (`workshop::icon`, the drydock's part icons) with their counts; a tile's tooltip
+//!   is what that part gave. The icons are world meshes, so the panel's backing is one too (`UiIcon::Scrim`) and
+//!   home's words step aside while the report shows (`home::show`).
 
 use bevy::prelude::*;
-use data::career::Outcome;
+use data::career::{Outcome, dismantle_yield};
 use kit::style::{Style, ui_color};
+use kit::ui_icons::UiIcon;
 use kit::ui_kit::{
     HudFonts, Edge, Hot, Pill, ScreenFx, ScreenPart, Scrollbar, Tip, Tone, show_screen, UiBlock, UiClick, UiInputSet, UiPointer, UiStyleSet, label, number, prose, spawn_pill, tracked,
 };
@@ -58,10 +66,12 @@ use world::voyage::debrief::{Debrief, DebriefData, amount};
 
 use crate::fleet::Fleet;
 use crate::voyage_log::VoyageLog;
-use crate::workshop::{fleet_need, gave_words, refusal_words, sort_rows};
+use crate::workshop::{fleet_need, gave_words, icon, refusal_words, sort_rows};
 
-/// Rows of parts shown (the rest are counted in one line).
-const MAX_ROWS: usize = 6;
+/// Tiles per row of the dismantled parts' grid (more wrap to the next row).
+const TILES: usize = 6;
+/// The gap between the grid's tiles (logical px).
+const TILE_GAP: f32 = 6.0;
 /// The panel's width (logical px).
 const WIDTH: f32 = 420.0;
 /// The gap between the report's lines, and between the report and the buttons (logical px).
@@ -78,7 +88,7 @@ struct DismissButton;
 #[derive(Component)]
 struct MapButton;
 
-/// The haul's intact parts to sort, under the rows (refilled when the career changes).
+/// The haul's intact parts to sort, at the top (refilled when the career changes).
 #[derive(Component)]
 struct IntakeBox;
 
@@ -116,7 +126,8 @@ fn spawn(mut commands: Commands, style: Res<Style>, clear: Res<ClearColor>) {
         Hot::default(),
         GlobalZIndex(10),
         Visibility::Hidden,
-        BackgroundColor(ui_color(clear.0, 0.94)),
+        // The backing is a world mesh, so the part icons (world meshes too) draw over it.
+        UiIcon::Scrim { color: clear.0.with_alpha(0.94), hole: [f32::INFINITY; 4], out: 0.0, into: 0.0 },
         BorderColor::all(ui_color(style.ui.dim, 0.5)),
         Node {
             position_type: PositionType::Absolute,
@@ -182,6 +193,7 @@ fn show(
 fn rebuild(
     mut commands: Commands,
     debrief: Res<Debrief>,
+    content: Res<GameContent>,
     fonts: Res<HudFonts>,
     style: Res<Style>,
     panel: Single<Entity, With<PanelRoot>>,
@@ -201,7 +213,7 @@ fn rebuild(
             Scrollbar::vertical(),
             Node { flex_direction: FlexDirection::Column, row_gap: px(GAP), flex_grow: 1.0, flex_basis: px(0), min_height: px(0), overflow: Overflow::scroll_y(), ..default() },
         ))
-        .with_children(|body| fill(body, &fonts, &style, d));
+        .with_children(|body| fill(body, &content.0, &fonts, &style, d));
         buttons(p, &fonts, d);
     });
 }
@@ -252,7 +264,7 @@ fn signal(color: Color, side: f32) -> impl Bundle {
 }
 
 /// The report's lines.
-fn fill(p: &mut ChildSpawnerCommands, fonts: &HudFonts, style: &Style, d: &DebriefData) {
+fn fill(p: &mut ChildSpawnerCommands, content: &data::Content, fonts: &HudFonts, style: &Style, d: &DebriefData) {
     let ui = style.ui;
     let c = |tone: Tone| ui_color(tone.color(&ui), 1.0);
     let fam = |key: &Option<String>| key.as_deref().map_or(ui_color(ui.label, 1.0), |k| ui_color(style.system_color(k), 1.0));
@@ -305,47 +317,95 @@ fn fill(p: &mut ChildSpawnerCommands, fonts: &HudFonts, style: &Style, d: &Debri
         p.spawn(label(fonts, &left, 9.5, c(Tone::Coral)));
         p.spawn(prose(fonts, "The haul of a lost voyage stays behind. Your ships re-formed at home, whole.", 13.0, c(Tone::Label)));
     } else {
-        let parts = format!("{} {} DISMANTLED", d.items, if d.items == 1 { "PART" } else { "PARTS" });
-        p.spawn(label(fonts, &parts, 9.5, c(Tone::Label)));
-        if d.rows.is_empty() {
-            p.spawn(prose(fonts, "The holds came home empty.", 13.0, c(Tone::Dim)));
-        }
-        for r in d.rows.iter().take(MAX_ROWS) {
-            p.spawn(Node { justify_content: JustifyContent::SpaceBetween, ..row(10.0) }).with_children(|line| {
-                line.spawn(row(8.0)).with_children(|l| {
-                    l.spawn((Node { width: px(7), height: px(7), border_radius: BorderRadius::MAX, ..default() }, BackgroundColor(fam(&r.color))));
-                    l.spawn(prose(fonts, &format!("{} ×{}", r.name, r.count), 14.0, c(Tone::Number)));
-                });
-                line.spawn(label(fonts, &r.gives, 8.5, fam(&r.color)));
+        // Intact parts first (`fill_intake`), then what the dismantled ones gave, then the parts themselves.
+        p.spawn((IntakeBox, Node { flex_direction: FlexDirection::Column, row_gap: px(10), flex_shrink: 0.0, ..default() }));
+        let dismantled: Vec<_> = d.rows.iter().filter(|r| !r.intact).collect();
+        let n: u32 = dismantled.iter().map(|r| r.count).sum();
+        let parts = format!("{n} {} DISMANTLED", if n == 1 { "PART" } else { "PARTS" });
+        let head = |p: &mut ChildSpawnerCommands, left: &str, right: &str| {
+            p.spawn(Node { justify_content: JustifyContent::SpaceBetween, align_items: AlignItems::Baseline, ..row(10.0) }).with_children(|h| {
+                h.spawn(label(fonts, left, 9.5, c(Tone::Label)));
+                h.spawn(tracked(fonts, right, 8.5, c(Tone::Dim), 0.2));
             });
-        }
-        if d.rows.len() > MAX_ROWS {
-            let more: u32 = d.rows[MAX_ROWS..].iter().map(|r| r.count).sum();
-            p.spawn(label(fonts, &format!("+ {more} MORE"), 9.0, c(Tone::Dim)));
-        }
-        p.spawn((IntakeBox, Node { flex_direction: FlexDirection::Column, row_gap: px(8), flex_shrink: 0.0, ..default() }));
+        };
         if !d.families.is_empty() || !d.materials.is_empty() {
+            head(p, "GAINED", &format!("FROM {}", parts));
+            p.spawn(Node { flex_direction: FlexDirection::Row, column_gap: px(22), flex_shrink: 0.0, ..default() }).with_children(|cols| {
+                let col = |cols: &mut ChildSpawnerCommands, title: &str, lines: Vec<(Option<Color>, Color, String, String)>, total: String, tone: Color| {
+                    cols.spawn(Node { flex_direction: FlexDirection::Column, row_gap: px(7), flex_grow: 1.0, flex_basis: px(0), ..default() }).with_children(|k| {
+                        k.spawn(label(fonts, title, 8.5, c(Tone::Dim)));
+                        if lines.is_empty() {
+                            k.spawn(label(fonts, "NONE", 9.0, c(Tone::Dim)));
+                        }
+                        for (dot, color, name, value) in &lines {
+                            k.spawn(Node { justify_content: JustifyContent::SpaceBetween, ..row(8.0) }).with_children(|l| {
+                                l.spawn(row(8.0)).with_children(|l| {
+                                    match dot {
+                                        Some(f) => l.spawn((Node { width: px(7), height: px(7), border_radius: BorderRadius::MAX, flex_shrink: 0.0, ..default() }, BackgroundColor(*f))),
+                                        None => l.spawn(diamond(*color, 8.0)),
+                                    };
+                                    l.spawn(label(fonts, name, 10.0, *color));
+                                });
+                                l.spawn(number(fonts, value, 15.0, *color));
+                            });
+                        }
+                        if !lines.is_empty() {
+                            k.spawn((Node { height: px(1), flex_shrink: 0.0, ..default() }, BackgroundColor(ui_color(ui.dim, 0.35))));
+                            k.spawn(Node { justify_content: JustifyContent::SpaceBetween, ..row(8.0) }).with_children(|l| {
+                                l.spawn(label(fonts, "TOTAL", 9.0, c(Tone::Label)));
+                                l.spawn(number(fonts, &total, 15.0, tone));
+                            });
+                        }
+                    });
+                };
+                let research: Vec<_> = d.families.iter().map(|f| (Some(fam(&f.color)), c(Tone::Number), f.name.clone(), format!("+{}", amount(f.gained)))).collect();
+                let data: f32 = d.families.iter().map(|f| f.gained).sum();
+                col(cols, "RESEARCH DATA", research, format!("+{}", amount(data)), c(Tone::Number));
+                let gold = c(Tone::Gold);
+                let materials: Vec<_> = d.materials.iter().map(|(m, n)| (None, gold, m.to_uppercase(), format!("+{n}"))).collect();
+                let units: u32 = d.materials.iter().map(|(_, n)| n).sum();
+                col(cols, "MATERIALS", materials, format!("+{units}"), gold);
+            });
             rule(p);
-            p.spawn(label(fonts, "RESEARCH DATA", 9.5, c(Tone::Label)));
-            for f in &d.families {
-                p.spawn(Node { justify_content: JustifyContent::SpaceBetween, ..row(10.0) }).with_children(|line| {
-                    line.spawn(row(8.0)).with_children(|l| {
-                        l.spawn((Node { width: px(7), height: px(7), border_radius: BorderRadius::MAX, ..default() }, BackgroundColor(fam(&f.color))));
-                        l.spawn(label(fonts, &f.name, 10.0, c(Tone::Number)));
-                    });
-                    line.spawn(row(14.0)).with_children(|l| {
-                        l.spawn(number(fonts, &format!("+{}", amount(f.gained)), 15.0, c(Tone::Number)));
-                        l.spawn(label(fonts, &format!("IN STORE {}", amount(f.store)), 8.5, c(Tone::Dim)));
-                    });
-                });
-            }
-            for (m, n) in &d.materials {
-                p.spawn(row(7.0)).with_children(|l| {
-                    l.spawn(diamond(c(Tone::Gold), 8.0));
-                    l.spawn(label(fonts, &format!("{} +{n}", m.to_uppercase()), 9.5, c(Tone::Gold)));
-                });
-            }
         }
+        let kinds = dismantled.len();
+        head(p, &parts, &if kinds > 0 { format!("{kinds} {}", if kinds == 1 { "KIND" } else { "KINDS" }) } else { String::new() });
+        if dismantled.is_empty() {
+            let empty = if d.rows.is_empty() { "The holds came home empty." } else { "Every part came home intact." };
+            p.spawn(prose(fonts, empty, 13.0, c(Tone::Dim)));
+        }
+        // The grid: an icon and its count per part, what it gave in its tooltip; more wrap onto the next row.
+        let side = (WIDTH - 60.0 - TILE_GAP * (TILES - 1) as f32) / TILES as f32;
+        p.spawn(Node { flex_direction: FlexDirection::Row, flex_wrap: FlexWrap::Wrap, column_gap: px(TILE_GAP), row_gap: px(TILE_GAP), flex_shrink: 0.0, ..default() }).with_children(|grid| {
+            for r in &dismantled {
+                let gave = if r.gives.is_empty() { "NOTHING".to_string() } else { r.gives.clone() };
+                grid.spawn((
+                    Hot::default(),
+                    Tip::key(format!("{} ×{}", r.name.to_uppercase(), r.count), gave),
+                    Node {
+                        width: px(side),
+                        flex_direction: FlexDirection::Column,
+                        align_items: AlignItems::Center,
+                        padding: UiRect::new(px(0), px(0), px(6), px(4)),
+                        row_gap: px(2),
+                        border: UiRect::all(px(1)),
+                        border_radius: BorderRadius::all(px(4)),
+                        ..default()
+                    },
+                    BorderColor::all(ui_color(ui.dim, 0.28)),
+                ))
+                .with_children(|t| {
+                    if r.color.is_some() {
+                        t.spawn((
+                            Node { position_type: PositionType::Absolute, top: px(5), right: px(5), width: px(5), height: px(5), border_radius: BorderRadius::MAX, ..default() },
+                            BackgroundColor(fam(&r.color)),
+                        ));
+                    }
+                    t.spawn(icon(content, &r.part));
+                    t.spawn(number(fonts, &format!("×{}", r.count), 11.0, c(Tone::Label)));
+                });
+            }
+        });
     }
     if !d.ready.is_empty() || !d.signals().is_empty() || d.cleared_text.is_some() {
         rule(p);
@@ -442,30 +502,42 @@ fn fill_intake(
     let (content, ui) = (&content.0, style.ui);
     let c = |tone: Tone| ui_color(tone.color(&ui), 1.0);
     let rows = sort_rows(content, career.career(), &fleet_need(content, &design, &escorts));
+    let share = content.workshop().map_or(0.0, |(_, r)| r.dismantle);
+    let row = |gap: f32| Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(gap), flex_shrink: 0.0, ..default() };
     commands.entity(entity).despawn_children();
     commands.entity(entity).with_children(|p| {
         if !rows.is_empty() {
-            p.spawn((Node { height: px(1), flex_shrink: 0.0, ..default() }, BackgroundColor(ui_color(ui.dim, 0.35))));
-            p.spawn(label(&fonts, "INTACT  ·  KEEP OR DISMANTLE", 9.5, c(Tone::Gold)));
+            let n: u32 = rows.iter().map(|r| r.count).sum();
+            p.spawn(Node { justify_content: JustifyContent::SpaceBetween, align_items: AlignItems::Baseline, ..row(10.0) }).with_children(|h| {
+                h.spawn(label(&fonts, &format!("INTACT  ·  {n} {}", if n == 1 { "PART" } else { "PARTS" }), 9.5, c(Tone::Gold)));
+                h.spawn(tracked(&fonts, "KEPT UNLESS YOU DISMANTLE", 8.5, c(Tone::Dim), 0.2));
+            });
         }
         for r in &rows {
-            p.spawn(Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(8), flex_shrink: 0.0, ..default() }).with_children(|line| {
+            p.spawn(row(10.0)).with_children(|line| {
+                line.spawn(icon(content, &r.part));
                 line.spawn(Node { flex_direction: FlexDirection::Column, row_gap: px(3), flex_grow: 1.0, ..default() }).with_children(|col| {
                     col.spawn(prose(&fonts, &format!("{} ×{}", r.name, r.count), 14.0, c(Tone::Number)));
-                    col.spawn(label(&fonts, &format!("IN STOCK {}  ·  SUGGESTED KEEP {} · DISMANTLE {}", r.stock, r.keep, r.dismantle), 8.0, c(Tone::Dim)));
+                    col.spawn(label(&fonts, &format!("IN STOCK {}", r.stock), 8.0, c(Tone::Dim)));
                 });
-                spawn_pill(line, &fonts, "KEEP", 9.0, 26.0, None, Pill::new(Tone::Teal), (SortButton::Keep(r.part.clone()), Tip::new(format!("ALL {} INTO STOCK", r.count))));
-                spawn_pill(line, &fonts, "DISMANTLE", 9.0, 26.0, None, Pill::new(Tone::Gold), (SortButton::Dismantle(r.part.clone()), Tip::new(format!("ALL {}  ·  DATA AND MATERIALS", r.count))));
+                // KEEP is lit: it is what happens when nothing is pressed.
+                spawn_pill(line, &fonts, "KEEP", 9.0, 26.0, None, Pill { active: true, ..Pill::new(Tone::Teal) }, (SortButton::Keep(r.part.clone()), Tip::new(format!("KEEP ALL {}  ·  INTO STOCK", r.count))));
+                let gives = gave_words(content, &dismantle_yield(content, &r.part, r.count, share));
+                spawn_pill(line, &fonts, "DISMANTLE", 9.0, 26.0, None, Pill::new(Tone::Gold), (SortButton::Dismantle(r.part.clone()), Tip::key(format!("DISMANTLE ALL {}", r.count), format!("GIVES {gives}"))));
             });
         }
-        if !rows.is_empty() {
-            p.spawn(Node { flex_direction: FlexDirection::Row, flex_shrink: 0.0, ..default() }).with_children(|b| {
-                spawn_pill(b, &fonts, "SORT AS SUGGESTED", 9.0, 28.0, None, Pill { primary: true, ..Pill::new(Tone::Teal) }, (SortButton::All, Tip::new("KEEP AND DISMANTLE AS SUGGESTED")));
+        let (keep, dismantle) = rows.iter().fold((0, 0), |(k, d), r| (k + r.keep, d + r.dismantle));
+        if dismantle > 0 {
+            p.spawn(row(0.0)).with_children(|b| {
+                let tip = Tip::key("SORT AS SUGGESTED", format!("KEEP {keep}  ·  DISMANTLE {dismantle}"));
+                spawn_pill(b, &fonts, "SORT AS SUGGESTED", 9.0, 26.0, None, Pill::new(Tone::Teal), (SortButton::All, tip));
             });
-            p.spawn(prose(&fonts, "What you leave goes to the workshop's stock when you dismiss the report.", 11.5, c(Tone::Dim)));
         }
         if let Some((words, tone)) = &sorted.0 {
             p.spawn(tracked(&fonts, words, 8.5, c(*tone), 0.16));
+        }
+        if !rows.is_empty() || sorted.0.is_some() {
+            p.spawn((Node { height: px(1), flex_shrink: 0.0, ..default() }, BackgroundColor(ui_color(ui.dim, 0.35))));
         }
     });
 }

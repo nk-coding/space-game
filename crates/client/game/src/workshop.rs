@@ -546,7 +546,7 @@ fn spawn_strip(p: &mut ChildSpawnerCommands, fonts: &HudFonts, style: &Style, s:
 }
 
 /// A part's icon as the drydock's palette shows it (hull parts in the first armour).
-fn icon(content: &Content, part: &str) -> (UiIcon, Node) {
+pub(crate) fn icon(content: &Content, part: &str) -> (UiIcon, Node) {
     let armor = content.materials.iter().find(|m| m.armor.is_some()).map_or("", |m| m.id.as_str());
     (part_icon(content, part, armor), Node { width: px(32), height: px(28), flex_shrink: 0.0, ..default() })
 }

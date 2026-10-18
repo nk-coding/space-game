@@ -131,11 +131,14 @@ When the haul comes home (VOYAGE HOME · HAUL UNLOADED on the debrief, and the L
   [[material:steel.salvage_data]] per cell), and [[facility:workshop.broken]] of a unit of its armour per cell.
 - A **fragment** gives its materials: [[part:logic_core.fragment]] from a logic core, [[part:automaton_core.fragment]]
   from an automaton core.
-- An **intact part** is sorted in the voyage's report, under what came home: KEEP puts it into the
-  [[facility:workshop]]'s stock (your ships can carry it), DISMANTLE takes it apart for its research data and
-  [[facility:workshop.dismantle]] of its recipe's materials. The report suggests a sort: keep while fewer than
-  [[facility:workshop.keep]] are in stock or your fleet needs more, dismantle the rest; SORT AS SUGGESTED does it in
-  one click. Whatever you leave unsorted goes into the stock when you dismiss the report.
+- An **intact part** comes first in the voyage's report: KEEP puts it into the [[facility:workshop]]'s stock (your
+  ships can carry it), DISMANTLE takes it apart for its research data and [[facility:workshop.dismantle]] of its
+  recipe's materials (point at DISMANTLE to see what it would give). Keeping is what happens if you do nothing:
+  whatever you leave goes into the stock when you dismiss the report, and you can still dismantle it in the
+  workshop later. SORT AS SUGGESTED keeps while fewer than [[facility:workshop.keep]] are in stock or your fleet needs
+  more and dismantles the rest, in one click.
+- Below the intact parts the report sums what the dismantled parts **gained**, research data and materials side by
+  side, and shows each dismantled part as an icon; point at one to see what it gave.
 
 Shares are summed over the haul (or over the parts dismantled together) and rounded to whole units. Each part's page
 lists what it gives under Salvage and what it is made of under Recipe. Research data and materials pay for research:
