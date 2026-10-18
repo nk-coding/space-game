@@ -5,7 +5,7 @@
 //!   ridge, speckle and the kind's marks, one mitred edge line.
 //! * **Filler** (`filler.rs`, drawn only, never in the way): glints and motes on a near parallax layer, bits of hull
 //!   drifting about (thicker round the sites), derelict shells drifting slowly along the way a little below the play.
-//! * **Far things** (`far.rs`): landmarks far off on layers of their own (a derelict station, a beacon, a junk ring),
+//! * **Far things** (`far.rs`): landmarks on layers of their own between the sky's planets and the junk (a derelict station, a beacon, a junk ring),
 //!   and a hot star's corona at the edge of the view towards it.
 //! * **The sky** (`sky/`, GDR-0105): two or three planets, their moons, a nebula and a far galaxy behind everything,
 //!   from the cluster type's or the band's `sky`, rolled from the cluster's own seed (the same sky at every visit),

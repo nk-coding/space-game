@@ -5,7 +5,7 @@
 //! blended over it as a smooth density (soft blobs, wispy streaks, storm swirls), the air's tint at the limb, then
 //! the light (a soft terminator, the limb darkened, the night side in the sky's dark). The GPU interpolates between
 //! the vertices, so every edge is a gradient. What must stay crisp is drawn over the disc as thin geometry, lit the
-//! same way: craters, cracks, the turbulent streaks between bands; glowing things (lava rifts, vents, a garden's
+//! same way: craters, cracks (soft lineae of varying width), the turbulent streaks between bands; glowing things (lava rifts, vents, a garden's
 //! lights, plumes) are not darkened at night. The air's glow is a strip round the limb fading outwards, the rings
 //! two halves of feathered ellipses, one behind the disc and one in front.
 //!
@@ -77,9 +77,9 @@ impl Geo {
         self.quad(a, b, cc, d);
     }
 
-    /// A soft-edged strip along `pts`: full colour `c` (alpha `a`) across `half` either side of the line, fading to
-    /// nothing over `feather` further out. `cols` gives each point its colour.
-    pub fn soft_strip(&mut self, pts: &[Vec2], cols: &[Rgb], a: &[f32], half: f32, feather: f32) {
+    /// A soft-edged strip along `pts`: each point's colour `cols` (alpha `a`) across its `half` either side of the
+    /// line, fading to nothing over `feather` further out.
+    pub fn soft_strip(&mut self, pts: &[Vec2], cols: &[Rgb], a: &[f32], half: &[f32], feather: f32) {
         let n = pts.len();
         if n < 2 {
             return;
@@ -91,7 +91,8 @@ impl Geo {
             let d = (d0 + d1).normalize_or(Vec2::X);
             let nrm = Vec2::new(-d.y, d.x);
             let k = if i > 0 && i + 1 < n { nrm.dot(Vec2::new(-d1.y, d1.x)).max(0.5) } else { 1.0 };
-            for (off, alpha) in [(half + feather, 0.0), (half, 1.0), (-half, 1.0), (-half - feather, 0.0)] {
+            let h = half[i];
+            for (off, alpha) in [(h + feather, 0.0), (h, 1.0), (-h, 1.0), (-h - feather, 0.0)] {
                 self.v(pts[i] + nrm * off / k, vc(cols[i], a[i] * alpha));
             }
         }
@@ -573,7 +574,7 @@ fn overlays(g: &mut Geo, b: &Body, p: &Paint, night: Rgb) {
             cols.push(mix(b.shade(sp, s.col, night), p.veil, p.veil_share));
             alpha.push(if inside { s.a * smooth(0.0, 0.25, f.z) } else { 0.0 });
         }
-        g.soft_strip(&pts, &cols, &alpha, (s.h / 2.0 * b.r).max(0.4), (0.6 * s.h * b.r).max(0.8));
+        g.soft_strip(&pts, &cols, &alpha, &vec![(s.h / 2.0 * b.r).max(0.4); pts.len()], (0.6 * s.h * b.r).max(0.8));
     }
     // craters: a dark floor, a rim lit on the side facing the light, foreshortened towards the limb
     let sun2 = b.sun().truncate().normalize_or(Vec2::X);
@@ -610,34 +611,43 @@ fn overlays(g: &mut Geo, b: &Body, p: &Paint, night: Rgb) {
             g.quad(a + 1, bb + 1, bb + 2, a + 2);
         }
     }
-    // cracks (lit) and rifts (glowing), broken where they pass round the limb
-    let lines = |g: &mut Geo, w: &Walk, col: Rgb, a: f32, half: f32, feather: f32, glow: bool| {
-        let mut run: Vec<(Vec2, Vec3)> = Vec::new();
-        let flush = |g: &mut Geo, run: &mut Vec<(Vec2, Vec3)>| {
+    // cracks (lit) and rifts (glowing), broken where they pass round the limb; `style` gives a point's alpha and
+    // half width from how far along the line it lies (0..1) and where (feature frame)
+    let lines = |g: &mut Geo, w: &Walk, col: Rgb, feather: f32, glow: bool, style: &dyn Fn(f32, Vec3) -> (f32, f32)| {
+        let mut run: Vec<(Vec2, Vec3, f32, f32)> = Vec::new();
+        let flush = |g: &mut Geo, run: &mut Vec<(Vec2, Vec3, f32, f32)>| {
             if run.len() > 1 {
                 let pts: Vec<Vec2> = run.iter().map(|x| x.0).collect();
                 let cols: Vec<Rgb> = run.iter().map(|x| if glow { col } else { mix(b.shade(x.1, col, night), p.veil, p.veil_share) }).collect();
-                let alpha: Vec<f32> = run.iter().map(|x| a * smooth(0.02, 0.2, x.1.z)).collect();
-                g.soft_strip(&pts, &cols, &alpha, half, feather);
+                let alpha: Vec<f32> = run.iter().map(|x| x.2 * smooth(0.02, 0.2, x.1.z)).collect();
+                let half: Vec<f32> = run.iter().map(|x| x.3).collect();
+                g.soft_strip(&pts, &cols, &alpha, &half, feather);
             }
             run.clear();
         };
-        for f in w {
+        let last = (w.len() - 1).max(1) as f32;
+        for (i, f) in w.iter().enumerate() {
             let (at, sp) = project(b, *f);
             if sp.z < 0.02 {
                 flush(g, &mut run);
             } else {
-                run.push((at, sp));
+                let (a, half) = style(i as f32 / last, *f);
+                run.push((at, sp, a, half));
             }
         }
         flush(g, &mut run);
     };
+    // cracks as soft lineae (Niklas, 18 Oct 2026: hard lines of one width looked bad): a thin core in a wide soft
+    // edge, fading in and out along the line and swelling and thinning with the body's noise
+    let fade = |t: f32| smooth(0.0, 0.3, t) * smooth(1.0, 0.7, t);
+    let swell = |f: Vec3| (0.5 + 0.5 * l.noise.at(f * 9.0 + Vec3::splat(5.0))).clamp(0.0, 1.0);
     for (w, col, width) in &l.cracks {
-        lines(g, w, *col, 0.75, (width * b.r * 0.5).max(0.35), 0.7, false);
+        let hw = width * b.r;
+        lines(g, w, *col, (hw * 1.6).max(0.9), false, &|t, f| (0.45 * fade(t) * (0.25 + swell(f)), (hw * 0.5 * (0.2 + swell(f))).max(0.15)));
     }
     for w in &l.rifts {
-        lines(g, w, l.rift_cols.0, 0.22, (b.r * 0.009).max(1.5), (b.r * 0.012).max(1.5), true);
-        lines(g, w, l.rift_cols.1, 0.8, (b.r * 0.0025).max(0.45), 0.8, true);
+        lines(g, w, l.rift_cols.0, (b.r * 0.012).max(1.5), true, &|_, _| (0.22, (b.r * 0.009).max(1.5)));
+        lines(g, w, l.rift_cols.1, 0.8, true, &|_, _| (0.8, (b.r * 0.0025).max(0.45)));
     }
     for (c, rho) in &l.vents {
         let (at, sp) = project(b, *c);
@@ -714,7 +724,7 @@ fn facets(g: &mut Geo, b: &Body, f: &Facets, p: &Paint) {
         let next = Vec2::from_angle(f.pts[(i + 1) % n].0) * b.r * f.pts[(i + 1) % n].1;
         for (from, to) in [(core, corner), (corner, next)] {
             let cols = [mix(edge, p.veil, p.veil_share); 2];
-            g.soft_strip(&[from, to], &cols, &[0.45, 0.45], 0.35, 0.6);
+            g.soft_strip(&[from, to], &cols, &[0.45, 0.45], &[0.35, 0.35], 0.6);
         }
     }
 }

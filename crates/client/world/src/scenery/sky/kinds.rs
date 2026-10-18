@@ -202,10 +202,11 @@ pub(super) fn look(r: &mut Stream, k: &PlanetKind, tilt: f32) -> Look {
             l.mottle = 0.07;
             let n = r.int(3, 6);
             patches(r, &mut l, n, (0.15, 0.35), pal.at(1), (0.35, 0.6));
-            let crack = jit(r, pal.at(2), 8.0, 0.08, 0.05);
+            // lineae: long gently curving streaks tinted reddish brown, close to the ground's colour
+            let crack = mix(mix(jit(r, pal.at(2), 8.0, 0.08, 0.05), Vec3::new(0.55, 0.33, 0.24), 0.45), l.base, 0.25);
             let n = r.int(8, 14);
-            for w in walks(r, n, (14, 34), 0.06, 0.22) {
-                l.cracks.push((w, crack, 0.005));
+            for w in walks(r, n, (18, 34), 0.045, 0.08) {
+                l.cracks.push((w, crack, 0.006));
             }
             let n = r.int(3, 9);
             l.craters = craters(r, n, 0.04);

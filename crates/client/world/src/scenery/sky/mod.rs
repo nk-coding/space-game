@@ -9,7 +9,7 @@
 //! the rest of the scenery (`camera + (anchor − camera) · p · depth_scale(p)`, GDR-0107; true parallax since
 //! Niklas's look of 18 Oct 2026, no cap, so a planet leaves the view): the galaxy 0, the nebula 0.003, the planets
 //! 0.018–0.046 (by the cluster's size, [`depth`]; within a sky the bigger the nearer and faster) and their moons a
-//! tenth more, above the stars (0.005–0.017) and below the junk (0.3 and up, `backdrop.rs`, `filler.rs`). A planet's
+//! tenth more, above the stars (0.005–0.017) and below the landmarks (0.08–0.15, `far.rs`) and the junk (0.3 and up, `backdrop.rs`, `filler.rs`). A planet's
 //! anchor is where the camera sees it in the view's middle: the first so the entry's view shows it off its middle,
 //! the others spread over the cluster about a view apart, never meeting on screen from anywhere the camera goes
 //! ([`clear`]), so mostly exactly one planet is in view ([`anchor_planets`]). The planets and moons draw by their parallax, the nearer over the
@@ -72,8 +72,8 @@ const SCALES: [f32; 3] = [0.8, 1.0, 1.25];
 const GAP: f32 = 24.0;
 /// Draw order: the galaxy over the gradient (its field, dust and glow, a hundredth apart), the far stars (−893, `backdrop.rs`), the nebula, then the planets and
 /// moons by their parallax (`Z_BODIES + parallax · DEPTH_Z`, −885 to −884), a planet's rings' back half just under
-/// it and the front half just over it. The hot star's glow (−889), its corona and the landmarks (−888.5) lie between
-/// the nebula and the planets: nothing farther off draws over a planet (GDR-0107).
+/// it and the front half just over it. The hot star's glow (−889) and its corona lie between the nebula and the
+/// planets: nothing farther off draws over a planet; the landmarks (−820, nearer) draw over it (GDR-0107).
 const Z_GALAXY: f32 = -897.0;
 const Z_NEBULA: f32 = -890.0;
 const Z_BODIES: f32 = -887.0;

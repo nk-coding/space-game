@@ -6,6 +6,7 @@
 //! * **the field** ([`Meshes::field`]), premultiplied: one grid (polar, 31 × 128; an edge-on disc's 110 × 25 across
 //!   it) whose every vertex samples the galaxy's light and dust; the dust dims what lies below, the light adds. A
 //!   spiral's field carries most of its light: a broad disc whose arms are only modestly brighter than the gaps;
+//!   its patchiness is the sky's isotropic [`Noise`] (the study's noise of crossed waves drew a grid through it);
 //! * **the dust** ([`Meshes::dust`]), alpha-blended: a spiral's wide soft dark strands just inside its inner arm
 //!   segments, the other kinds' patchy dark splats;
 //! * **the glow** ([`Meshes::glow`]), additive: a spiral's arms as soft strands following its 38 short wound arm
@@ -25,7 +26,7 @@ use std::f32::consts::{PI, TAU};
 use bevy::prelude::*;
 
 use super::paint::Geo;
-use super::roll::{Rgb, Stream, WHITE, mix, smooth, vc};
+use super::roll::{Noise, Rgb, Stream, WHITE, mix, smooth, vc};
 use super::{H, W};
 
 /// An sRGB colour from bytes.
@@ -141,8 +142,9 @@ pub(super) struct Galaxy {
     k: f32,
     rot: f32,
     seed: u64,
-    n1: f32,
-    n2: f32,
+    /// The field's noise, coarse and fine.
+    n1: Noise,
+    n2: Noise,
     clumps: Vec<Clump>,
     pal: Palette,
     strength: f32,
@@ -178,7 +180,10 @@ pub(super) fn galaxy(r: &mut Stream, strength: f32, tint: Rgb) -> Galaxy {
     };
     let rot = r.range(0.0, PI);
     let seed = (r.next() as f64 * 4_294_967_296.0) as u64;
-    let (n1, n2) = (r.range(0.0, TAU), r.range(0.0, TAU));
+    // an irregular's patches are coarser
+    let (f1, f2) = if kind == Kind::Irregular { (6.0, 10.0) } else { (14.0, 27.0) };
+    let mut nr = Stream::new(seed, "noise");
+    let (n1, n2) = (Noise::new(&mut nr, 3, f1, 0.5), Noise::new(&mut nr, 3, f2, 0.5));
     let clumps = if kind == Kind::Irregular {
         let mut c = Stream::new(seed, "irr");
         (0..6).map(|_| Clump { at: Vec2::new(c.gauss() * 0.3, c.gauss() * 0.22), s: c.range(0.12, 0.3), w: c.range(0.4, 1.0), blue: c.chance(0.75) }).collect()
@@ -187,13 +192,6 @@ pub(super) fn galaxy(r: &mut Stream, strength: f32, tint: Rgb) -> Galaxy {
     };
     let pal = Palette::roll(&mut Stream::new(seed, "hpal"), tint);
     Galaxy { at: best.0, rg: rg * 1.15, kind, dir, ph0, k, rot, seed, n1, n2, clumps, pal, strength }
-}
-
-/// The study's cheap smooth noise in about −1..1.
-fn nz2(x: f32, y: f32, a: f32, b: f32) -> f32 {
-    ((x * 2.3 + a + (y * 1.7 + b).sin() * 1.3).sin() * (y * 2.9 - b + (x * 2.1 + a).sin() * 1.1).sin()
-        + 0.5 * (x * 5.3 + y * 4.1 + a * 2.0).sin() * (x * 4.4 - y * 6.2 + b).sin())
-        / 1.5
 }
 
 /// Draws into a mesh in the galaxy's frame: placed (scaled by its radius, flattened by `k`, turned), every alpha
@@ -291,10 +289,7 @@ impl Galaxy {
     fn sample(&self, p: Vec2) -> (Rgb, f32) {
         let (x, y) = (p.x, p.y);
         let r = p.length() + 1e-4;
-        let (qx, qy) = (x * 0.8 + y * 0.6, y * 0.8 - x * 0.6);
-        let (f1, f2) = if self.kind == Kind::Irregular { (2.5, 4.0) } else { (6.0, 11.0) };
-        let n1 = nz2(qx * f1, qy * f1, self.n1, self.n2);
-        let n2 = nz2(qx * f2 + 3.0, qy * f2 - 2.0, self.n2, self.n1);
+        let (n1, n2) = (self.n1.at(p.extend(0.0)).clamp(-1.0, 1.0), self.n2.at(p.extend(0.0)).clamp(-1.0, 1.0));
         let mut e = Vec3::ZERO;
         let a = match self.kind {
             Kind::Spiral => {

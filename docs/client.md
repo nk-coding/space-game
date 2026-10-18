@@ -726,8 +726,8 @@ off, the flash and its ring where it left), `voyage-warp-emergency.png` (the eme
   2026): its size on screen goes with the zoom to the power `p`, so the play scales fully, the far layers hardly, and
   each looks as authored at the camera's starting zoom (18 px/m, `camera::REF_ZOOM`). The backdrop's dust and stars
   and the sky follow the same rule. **Draw order** by depth, far to near: galaxy −897, stars −893 / −892.7 / −892.4,
-  nebula −890, the hot star's glow −889, its corona −888.8, landmarks −888.5, the planet's rings and the planet −887
-  to −885, moons −883, dust −800, far debris −799.5, dust −799, range rings −700, glints −660, derelicts 1, site debris 2, rocks 3; nothing
+  nebula −890, the hot star's glow −889, its corona −888.8, the planet's rings and the planet −887
+  to −885, moons −883, landmarks −820 (−888.5 until 18 Oct 2026), dust −800, far debris −799.5, dust −799, range rings −700, glints −660, derelicts 1, site debris 2, rocks 3; nothing
   farther than the planet draws over it (the stars, points of light, stay behind the sky's bodies whatever their
   parallax).
   - **Rocks** (`rocks.rs`): the sim's rocks (`Voyage::rocks`) as they spawn, the rocks spawned together in one mesh
@@ -760,9 +760,12 @@ off, the flash and its ring where it left), `voyage-warp-emergency.png` (the eme
     thicker round each site in three drifting groups of 7–12 bits just under the play (`p` 0.97), derelict shells (16–36 m, broken in two or three, ribs and a hole) drifting
     and turning slowly 20–120 m off the way between the entry and the sites (`p` 0.9).
   - **Far things** (`far.rs`): each landmark the cluster rolls (its chance, from the voyage's seed) anchored within
-    0.7 of the radius on its own layer (parallax 0.012–0.016, behind the sky's planets at 0.020 and up; 0.03–0.04 until 18 Oct 2026; sizes in metres of the layer at
-    18 px/m): a station (hub, spokes, a torn ring
-    with modules, two faint lights), a beacon (a mast, crossbars, a light passing every 3.2 s), a junk ring at a slant
+    0.7 of the radius on its own layer (parallax 0.09–0.13, between the sky's planets and the junk, so it draws over
+    the planets, moves clearly faster than them and grows by zoom^p, 0.84–1.27 over the zoom's range; sizes in
+    metres of the layer at 18 px/m, 1.1–3.6, smaller on screen than the planets; since 18 Oct 2026, GDR-0107: at
+    0.012–0.016 behind the planets and 3–24 m they read like planets; 0.03–0.04 before): a station (a truss with
+    bracing, modules along it, one or two pairs of solar panels, one sometimes torn off, a torn docking ring at a
+    slant at one end, two faint lights; a hub, spokes and a ring until 18 Oct 2026), a beacon (a mast, crossbars, a light passing every 3.2 s), a junk ring at a slant
     round a dead hub; beside a hot star the **corona**: three arcs and six loops in the corona colour at the view's
     edge towards the star, placed and scaled as the backdrop's star glow, flickering softly (thin strips: with the glow
     the only large translucent layers, two at most). The distant fights were removed on 17 Oct 2026 (GDR-0107).
@@ -773,7 +776,8 @@ off, the flash and its ring where it left), `voyage-warp-emergency.png` (the eme
   - Screenshots (headless, 1280 × 720): `docs/results/scenery-rim.png` (a wreck drift's field, debris and glints),
     `scenery-corona.png` (the scorched deep's corona over the star's glow); after GDR-0107: `depth-zoom-in.png` and
     `depth-zoom-out.png` (the same view zoomed in and out: the planet and the station keep their size, the play
-    scales), `depth-planet-landmark.png` (a station behind the planet's layer, debris near), `scenery-rock-close.png`
+    scales), `depth-planet-landmark.png` (a station behind the planet's layer, debris near; before 18 Oct 2026's
+    move), `sky-station-planet.png` (a station in front of the planets' layer, placed by the entry for the shot), `scenery-rock-close.png`
     (a rock close up, zoomed out a little).
   - **The sky** (`sky/`, 17 Oct 2026, [GDR-0105](gdr/0105-cluster-sky-planets-nebula-galaxy.md)): behind
     everything, from the cluster type's `sky` (else its band's; a content voyage its band's), rolled from the
@@ -801,10 +805,14 @@ off, the flash and its ring where it left), `voyage-warp-emergency.png` (the eme
     the same size at any zoom. `paint.rs` builds a
     body: an even polar mesh (40–84 rings for a planet, 10–26 for a moon) whose every vertex is coloured on the CPU
     like a shader (the surface of its form, `kinds.rs`: bands and ripples, storms, land caps with rough coasts,
-    patches, ice caps, mottling; the clouds as one smooth density of noisy blobs, streaks and log-spiral swirls; the
+    patches, ice caps, mottling; every noise the sky's one isotropic `roll::Noise`, octaves of gradient noise on a
+    hashed lattice each turned its own way (18 Oct 2026: plane waves drew parallel stripes on rocky and desert worlds,
+    the galaxy's crossed waves a grid); the clouds as one smooth density of noisy blobs, streaks and log-spiral swirls; the
     air's tint and haze; then the light: a terminator by the air (sharp on an airless body; under air a wide twilight and a night that
     keeps a little of the surface's colour, since 18 Oct 2026: an earth-like world's night read as a hard dark half), limb darkening, a highlight, the night side in the sky's
-    dark), a one-pixel feather at the limb, and over it thin lit geometry (streaks, craters, cracks) and glowing
+    dark), a one-pixel feather at the limb, and over it thin lit geometry (streaks, craters, cracks as soft lineae: a thin core in a wide soft edge, fading in and out
+    along the line and swelling and thinning with the noise; an ice world's long, gently curving and tinted reddish
+    brown close to the ground's colour; until 18 Oct 2026 hard lines of one width) and glowing
     geometry (rifts, vents, a garden's lights, plumes); the air's glow a strip outside the limb; rings two halves
     of feathered elliptical bands (the back under the body, darkened in its shadow). Colours are veiled 15 % towards
     the sky's dark (strength 85 %). Depth: each piece hangs at an anchor in the cluster with true parallax, like the
@@ -817,8 +825,8 @@ off, the flash and its ring where it left), `voyage-warp-emergency.png` (the eme
     the camera's reach on a planets' layer is a disc of radius × parallax × 18 px (the sky's travel across the
     cluster is twice that: at 0.024 only 860 px for Corran Reach's 1 km radius, less than a view's width).
     `sky::depth` takes the most planets (up to 4) whose 1280 × 720 views fill 0.9 of that disc at a parallax of at
-    most 0.04, the parallax at least 0.021 (so planets stay 0.018–0.046, above the stars' 0.017 and the landmarks'
-    0.016, far below the junk's 0.3): 1 planet at 600 m (0.04), 2 at 1 km (0.038), 2–4 at 2–2.5 km (0.021–0.027),
+    most 0.04, the parallax at least 0.021 (so planets stay 0.018–0.046, above the stars' 0.017, below the landmarks'
+    0.09–0.13, far below the junk's 0.3): 1 planet at 600 m (0.04), 2 at 1 km (0.038), 2–4 at 2–2.5 km (0.021–0.027),
     4 at 3–4 km (0.021). A planet is in the view's middle with the camera at its anchor (stream `anchors`, after the
     moons): the first shows in the entry's view to a side, 0.16–0.26 of the view's width off the middle and level or
     up to 0.16 of its height towards the centre (clear of the ship and the HUD's columns); each other is the best of
@@ -833,8 +841,8 @@ off, the flash and its ring where it left), `voyage-warp-emergency.png` (the eme
     (the galaxy's first) nebula and galaxy show without planets, at strength 0.55 (18 Oct 2026; screenshot
     `docs/results/home-sky.png`, its galaxy a spiral). Z: galaxy −897 (field, dust, glow −897 / −896.99 / −896.98), the
     backdrop's stars −893 to −892.4, nebula −890, planets and moons −887 + 100 × their parallax (about −885 to −884,
-    the nearer over the farther; a planet's rings' halves 0.0004 under and over it); the hot star's glow, its
-    corona and the landmarks between the nebula and the planet (GDR-0107; until 17 Oct 2026 the glow lay over the
+    the nearer over the farther; a planet's rings' halves 0.0004 under and over it); the hot star's glow and its
+    corona between the nebula and the planet (GDR-0107; until 17 Oct 2026 the glow lay over the
     planet). Each piece's size also goes with the zoom to the power of its parallax (GDR-0107: hardly).
     The log line `sky: …` names the planets (radius, parallax) and moons and counts vertices (a large planet 21–33 k
     with rings, a small one 7–10 k, moons 0.5–3 k; three or four planets and their moons 28 k on average, 44 k at most; nebula
@@ -843,7 +851,10 @@ off, the flash and its ring where it left), `voyage-warp-emergency.png` (the eme
     `sky-grove.png`, `sky-scorched.png`, `sky-uncharted.png`, `sky-clouds.png` (a cloudy world close up); with two or
     three planets, two camera places in one cluster: `sky-planets-a.png`, `sky-planets-b.png`; spread a view apart: Corran Reach at the start and after
     500 m, `sky-spread-corran-start.png`, `sky-spread-corran-500m.png`, a 2.9 km cluster at two places,
-    `sky-spread-3km-a.png`, `sky-spread-3km-b.png`; a spiral galaxy in flight, `sky-galaxy-spiral.png`, and its galaxy three times enlarged, `sky-galaxy-spiral-close.png`.
+    `sky-spread-3km-a.png`, `sky-spread-3km-b.png`; a spiral galaxy in flight, `sky-galaxy-spiral.png`, and its galaxy three times enlarged, `sky-galaxy-spiral-close.png`; close-ups before and
+    after the isotropic noise and the lineae (18 Oct 2026, a debugging build drawing the galaxy 3.5 times larger and
+    the first planet at 0.4 of the view's height): `sky-galaxy-close-before.png` / `-after.png`, `sky-rock-close-…`,
+    `sky-desert-close-…`, `sky-ice-close-…`.
 - **Hot stars and living parts** (17 Oct 2026, [GDR-0102](gdr/0102-grown-mechanics-and-parts-defaults.md)): in a
   cluster beside a hot star (`Voyage::star`) a soft glow in the heat colour rises at the edge of the view towards the
   star (`backdrop.rs`, a camera child over the gradient and the nebula, behind the planet, GDR-0107; a disc as wide as the view centred just past

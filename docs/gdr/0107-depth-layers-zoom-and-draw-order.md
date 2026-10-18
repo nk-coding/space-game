@@ -67,6 +67,24 @@
   a soft field with splats; 3.5–6 k). The colours are rolled per galaxy within plausible ranges (core, arms, knots,
   dust), the arms nudged towards the sky's nebula. Home's sky uses it too (a spiral). Screenshots `docs/results/sky-galaxy-spiral.png`,
   `home-sky.png`.
+  2026-10-18, seventh (Niklas: two sets of parallel lines at 90° through the galaxy, the same stripes on rocky
+  planets, the ice worlds' crack lines look bad, the landmarks read like planets; provisional numbers, lead): the
+  galaxy's noise (the study's, products of two crossed sine waves: a grid whatever its rotation) and the planets'
+  (two plane waves an octave: families of parallel stripes) are now one isotropic noise for the whole sky
+  (`roll::Noise`: octaves of gradient noise on a hashed lattice, each turned by its own random rotation and shifted;
+  the same in every direction within 10 % by test), the galaxy's patches about as large as before, the study page
+  likewise. Cracks are soft lineae (a thin core in a wide soft edge, fading in and out along the line, swelling and
+  thinning with the noise; an ice world's long, gently curving and tinted reddish brown close to the ground's
+  colour), no longer hard lines of one width. Landmarks move in front of the planets: parallax 0.09 (junk ring),
+  0.11 (station), 0.13 (beacon), between the planets' 0.018–0.046 and the far debris's 0.3, at z −820 (over the
+  planets at −887 to −884, under the far debris at −799.5; were 0.012–0.016 at −888.5), so they move clearly faster
+  than the planets and, by the zoom^p rule, grow 0.84–1.27 times over the zoom's range (3–160 px/m); sizes 2.6–3.6,
+  1.1–1.5 and 2.4–3.2 m of their layer (47–65, 20–27 and 43–58 px at the starting zoom, smaller than the planets'
+  72–173 px discs; were 9–14, 3–4.5 and 16–24 m). The station is a structure, no longer round: a braced truss,
+  modules along it, one or two pairs of solar panels, a torn docking ring at a slant at one end. The corona is
+  unchanged. Screenshots `docs/results/sky-galaxy-close-before.png` / `-after.png`, `sky-rock-close-…`,
+  `sky-desert-close-…`, `sky-ice-close-…` (a debugging build, galaxy and planet enlarged), `sky-station-planet.png`,
+  `sky-galaxy-spiral.png`, `home-sky.png`.
 - Date: 2026-10-17
 - Decided by: lead session (defaults for Niklas's play-test of 17 Oct 2026 of GDR-0104's scenery and GDR-0105's sky)
 - Related: [GDR-0104](0104-scenery-rocks-filler-landmarks.md), [GDR-0105](0105-cluster-sky-planets-nebula-galaxy.md), [GDR-0106](0106-flight-minimap.md), `docs/client.md` "Scenery"

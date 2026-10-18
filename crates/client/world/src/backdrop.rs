@@ -21,8 +21,8 @@ use crate::camera::{CameraRig, CameraSet, MainCamera, depth_scale};
 use crate::mode::AppMode;
 
 const Z_BACKDROP: f32 = -900.0;
-/// The hot star's glow: over the gradient, the stars and the nebula, behind the far landmarks, the corona and the sky's
-/// planet (GDR-0107: nothing farther than the planet draws over it).
+/// The hot star's glow: over the gradient, the stars and the nebula, behind the corona, the sky's planet and the
+/// landmarks (GDR-0107: nothing farther than the planet draws over it).
 const Z_STAR_GLOW: f32 = -889.0;
 const Z_DUST: f32 = -800.0;
 /// The stars, far layer first: under a cluster's sky (its nebula, planet and moons, `scenery::sky`), over its galaxy,

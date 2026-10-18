@@ -1,33 +1,35 @@
-// Landmarks (GDR-0104): something big seen far off in a cluster, drawn behind the play on a layer of its own
-// (`parallax`: the share of the camera's motion it follows; below the sky's planets, 0.020 and up, so it hangs behind them and
-// keeps about its size on screen at any zoom, GDR-0107), never a body. A cluster type's or a voyage's
-// `scenery.landmarks` gives each a chance per cluster; the client draws its `form` in vector shapes, `size` metres of
-// its layer (18 px each at the camera's starting zoom). A corona belongs beside a hot star only. PLACEHOLDER NUMBERS
-// (lead defaults, 17 Oct 2026; the parallaxes 0.03–0.04 until 18 Oct 2026, slower with the sky, GDR-0107).
+// Landmarks (GDR-0104): a distant structure seen in a cluster, drawn behind the play on a layer of its own
+// (`parallax`: the share of the camera's motion it follows; between the sky's planets, 0.018–0.046, and the junk, 0.3
+// and up, so it draws over the planets, moves clearly faster than them and grows a little with the zoom, by
+// zoom^parallax, GDR-0107), never a body. A cluster type's or a voyage's `scenery.landmarks` gives each a chance per
+// cluster; the client draws its `form` in vector shapes, `size` metres of its layer (18 px each at the camera's
+// starting zoom: smaller on screen than the planets). A corona belongs beside a hot star only. PLACEHOLDER NUMBERS
+// (lead defaults, 17 Oct 2026; parallaxes 0.03–0.04 until 18 Oct 2026, then 0.012–0.016 behind the planets with sizes
+// 9–14, 3–4.5 and 16–24 m, which read like planets, GDR-0107's status line of 18 Oct 2026, seventh).
 [
     (
         id: "derelict_station",
         name: "Derelict station",
         summary: "A dead station far off: a hub, broken spokes and a torn ring, every window dark.",
         form: Station,
-        size: (9, 14),
-        parallax: 0.014,
+        size: (2.6, 3.6),
+        parallax: 0.11,
     ),
     (
         id: "silent_beacon",
         name: "Silent beacon",
         summary: "An old navigation mast, its light still turning slowly with nobody to guide.",
         form: Beacon,
-        size: (3, 4.5),
-        parallax: 0.016,
+        size: (1.1, 1.5),
+        parallax: 0.13,
     ),
     (
         id: "junk_ring",
         name: "Junk ring",
         summary: "A ring of wreckage circling a dead hub, the slow remains of an old fight.",
         form: Ring,
-        size: (16, 24),
-        parallax: 0.012,
+        size: (2.4, 3.2),
+        parallax: 0.09,
     ),
     (
         id: "star_corona",

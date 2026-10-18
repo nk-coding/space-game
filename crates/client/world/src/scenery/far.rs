@@ -1,10 +1,11 @@
 //! Far things (GDR-0104), drawn only:
 //!
 //! * **Landmarks**: each of the scenery's landmarks that its chance gives this cluster (rolled from the voyage's
-//!   seed), anchored somewhere in the cluster on a layer of the landmark's parallax (below the planet's: far off,
-//!   about the same size on screen at any zoom, GDR-0107), as a dim silhouette behind the sky's planet: a derelict
-//!   station (hub, spokes, a torn ring, two faint lights), a beacon (a mast whose light turns slowly), a ring of junk
-//!   round a dead hub.
+//!   seed), anchored somewhere in the cluster on a layer of the landmark's parallax (between the sky's planets and
+//!   the junk: a distant structure, moving clearly faster than the planets and growing a little with the zoom,
+//!   GDR-0107), as a dim silhouette in front of the planets and smaller than them on screen: a derelict station (a
+//!   truss with modules, solar panels and a torn docking ring, two faint lights), a beacon (a mast whose light turns
+//!   slowly), a ring of junk round a dead hub.
 //! * **The corona** (a landmark of form `Corona`, only beside a hot star): arcs of the corona's light and a few loops
 //!   off them at the edge of the view towards the star, over the backdrop's star glow and behind the planet,
 //!   flickering softly; thin strips, so one more large translucent layer at most.
@@ -20,10 +21,10 @@ use super::{Build, Layered, Scenery, SceneryPart, Spec, clock, salted, view};
 use crate::camera::MainCamera;
 use crate::sim_bridge::SimWorld;
 
-/// Landmarks hang farther off than the sky's planets (their parallax below their 0.020, GDR-0107): over the backdrop's
-/// stars (−893 to −892) and the nebula (−890), under the planet's rings and the planet (−887 to −885).
-const Z_LANDMARKS: f32 = -888.5;
-/// The corona round the hot star: over its glow (−889, `backdrop.rs`), under the landmarks.
+/// Landmarks hang between the sky's planets and the junk (their parallax 0.08–0.15, above the planets' 0.018–0.046
+/// and under the far debris's 0.3, GDR-0107): over the planets (−887 to −884), under the far debris (−799.5).
+const Z_LANDMARKS: f32 = -820.0;
+/// The corona round the hot star: over its glow (−889, `backdrop.rs`), under the planets.
 const Z_CORONA: f32 = -888.8;
 /// Landmarks lie within this share of the cluster's radius.
 const LANDMARK_REACH: f32 = 0.7;
@@ -97,47 +98,63 @@ pub(super) fn spawn(cx: &mut Build, spec: &Spec, content: &data::Content) -> Far
     out
 }
 
-/// A dead station `size` across: a hub, spokes, a ring torn in places with modules on it, two faint lights.
+/// A dead station `size` long: a truss with its bracing, modules along it, pairs of solar panels (one torn off at
+/// times), a docking ring at one end seen at a slant and torn in places, two faint lights.
 #[allow(clippy::too_many_arguments)]
 fn station(m: &mut MeshBuf, rng: &mut Rng, size: f32, white: &Region, hard: &Region, fill: Color, edge: Color, light: Color) {
-    let r = size * 0.42;
-    let hub: Vec<Vec2> = (0..16).map(|k| Vec2::from_angle(k as f32 * std::f32::consts::FRAC_PI_8) * size * 0.11).collect();
-    let spokes = 4 + (rng.next_f32() * 3.0) as usize;
-    for k in 0..spokes {
-        let a = k as f32 * std::f32::consts::TAU / spokes as f32 + rng.range(-0.1, 0.1);
-        let reach = if rng.next_f32() < 0.25 { rng.range(0.4, 0.8) } else { 1.0 };
-        m.strip(&[Vec2::from_angle(a) * size * 0.1, Vec2::from_angle(a) * r * reach], false, size * 0.018, white, vcol(edge, 0.9));
+    let (half, rail) = (size * 0.5, size * 0.025);
+    for y in [-rail, rail] {
+        m.strip(&[Vec2::new(-half, y), Vec2::new(half * 0.86, y)], false, size * 0.014, white, vcol(edge, 0.9));
     }
-    // The ring in arcs, with gaps where it tore.
-    let arcs = 48;
+    let braces = 14;
+    let zig: Vec<Vec2> = (0..=braces).map(|k| Vec2::new(-half + k as f32 / braces as f32 * half * 1.86, if k % 2 == 0 { -rail } else { rail })).collect();
+    m.strip(&zig, false, size * 0.008, white, vcol(edge, 0.6));
+    // solar panels in pairs across the truss
+    let pairs = 1 + (rng.next_f32() * 2.0) as usize;
+    for k in 0..pairs {
+        let x = -half * (0.8 - 0.45 * k as f32) + rng.range(-0.04, 0.04) * size;
+        for side in [-1.0, 1.0] {
+            if rng.next_f32() < 0.2 {
+                continue;
+            }
+            let (w, len) = (size * 0.035, size * rng.range(0.18, 0.26));
+            let (y0, y1) = (side * rail * 1.6, side * (rail * 1.6 + len));
+            let panel = [Vec2::new(x - w, y0), Vec2::new(x + w, y0), Vec2::new(x + w, y1), Vec2::new(x - w, y1)];
+            m.polygon(&panel, white.uv_center(), vcol(fill, 1.0));
+            m.strip(&panel, true, size * 0.006, white, vcol(edge, 0.75));
+            m.strip(&[Vec2::new(x, y0), Vec2::new(x, y1)], false, size * 0.005, white, vcol(edge, 0.5));
+        }
+    }
+    // modules along the truss, the largest in the middle
+    let mut x = -half * 0.25;
+    for k in 0..3 + (rng.next_f32() * 2.0) as usize {
+        let (len, h) = (size * rng.range(0.08, 0.14), size * if k == 0 { 0.12 } else { rng.range(0.06, 0.09) });
+        let module = [Vec2::new(x, -h / 2.0), Vec2::new(x + len, -h / 2.0), Vec2::new(x + len, h / 2.0), Vec2::new(x, h / 2.0)];
+        m.polygon(&module, white.uv_center(), vcol(fill, 1.0));
+        m.strip(&module, true, size * 0.007, white, vcol(edge, 0.8));
+        x += len + size * rng.range(0.01, 0.04);
+    }
+    // the docking ring at the far end, at a slant, torn in places
+    let (c, rx, ry) = (Vec2::new(half * 0.86, 0.0), size * 0.05, size * 0.2);
     let mut arc: Vec<Vec2> = Vec::new();
+    let arcs = 32;
     for k in 0..=arcs {
-        let a = k as f32 * std::f32::consts::TAU / arcs as f32;
-        let torn = rng.next_f32() < 0.12;
+        let torn = k < arcs && rng.next_f32() < 0.1;
         if torn || k == arcs {
             if arc.len() >= 2 {
-                m.strip(&arc, false, size * 0.035, white, vcol(fill, 0.95));
-                m.strip(&arc, false, size * 0.006, white, vcol(edge, 0.8));
+                m.strip(&arc, false, size * 0.022, white, vcol(fill, 0.95));
+                m.strip(&arc, false, size * 0.007, white, vcol(edge, 0.8));
             }
             arc.clear();
         }
         if !torn {
-            arc.push(Vec2::from_angle(a) * r);
-        }
-        if !torn && k % 6 == 3 {
-            let c = Vec2::from_angle(a) * r;
-            let t = Vec2::from_angle(a + std::f32::consts::FRAC_PI_2) * size * 0.05;
-            let n = Vec2::from_angle(a) * size * 0.03;
-            let module = [c - t - n, c + t - n, c + t + n, c - t + n];
-            m.polygon(&module, white.uv_center(), vcol(fill, 1.0));
-            m.strip(&module, true, size * 0.004, white, vcol(edge, 0.7));
+            let a = k as f32 / arcs as f32 * std::f32::consts::TAU;
+            arc.push(c + Vec2::new(a.cos() * rx, a.sin() * ry));
         }
     }
-    m.polygon(&hub, white.uv_center(), vcol(fill, 1.0));
-    m.strip(&hub, true, size * 0.006, white, vcol(edge, 0.9));
     for _ in 0..2 {
-        let at = Vec2::from_angle(rng.range(-3.15, 3.15)) * r;
-        m.region_at(hard, at, Vec2::splat(size * 0.008), 0.0, vcol(light, 0.35));
+        let at = Vec2::new(rng.range(-half, half * 0.8), rng.range(-1.0, 1.0) * rail);
+        m.region_at(hard, at, Vec2::splat(size * 0.012), 0.0, vcol(light, 0.4));
     }
 }
 
