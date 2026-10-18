@@ -489,6 +489,24 @@ content's fingerprint changed, so earlier fight codes and lab runs are fought un
 code (`mixed_trials`' first child, job 6, seed 1) replays in the browser's fight viewer to the CLI's final hash
 `b68e7f0291cc813e`; a run's generation parts are identical computed in the browser's workers and in its frames.
 
+**Rocks in pieces** ([GDR-0104](gdr/0104-scenery-rocks-filler-landmarks.md)'s status line of 18 Oct 2026, release
+builds), native x86_64 vs wasm32-wasip1 **identical** everywhere. Only streams with rock hash anew (the rocks' rolls
+draw more and their shapes and pieces are in the hash): voyage (seed 42, 900 ticks) `46dd6dbf26bcf5b3` (was
+`7130dd8ed5e65f5a` at the build before, 12 rocks), seeds 42 and 7 at 1800 ticks `42e0f57fb4e0bae3` /
+`e35760e33da7244a` (12 and 9 rocks); `--run mixed_trials` and `two_starts_locked` (seed 1, voyage trials fly the
+slice) last lines `a7530457d6e98f05`, `0fa36860cddd2136`, resumed = straight. Byte-identical to the build before:
+core `ca3219dc6f637ffb`, flight `dede946afd2e242b`, grown `62ee45fbc92b9fcf` (seed 7 `3f40cb96eb97a4e9`),
+`runner_vs_raiders` `c317945aeb6d915d` (1247 ticks), the galaxy (`--galaxy 20`) `5c71f969886ec4ec763d0b113f74a720`.
+The content's fingerprint covers rock kinds (`dent`, `look`), so earlier fight codes and lab runs are fought under
+other rules. The slice (the balance harness's voyage mode, 120 seeds, clear % before → after; ± about 8 points):
+rim_skiff 58 / 38 / 18 / 18 → 56 / 30 / 18 / 18, the cannon starter 82 / 65 / 34 / 26 → 86 / 62 / 32 / 26, the
+Runner 68 / 52 / 34 / 20 → 63 / 56 / 32 / 20, the Runner with an escort 72 / 71 / 46 / 39 → 75 / 78 / 47 / 39 (the
+Warden's gate holds no rock: identical); within the noise, the curve's order kept but for the escorted Runner's
+first two (level before too). Rock contact (`VOYAGE_STUCK=1`, an impact with a rock every tick): runs in which a
+vessel stayed on a rock 90 ticks or more, 5 of 1920 before and 6 after (the player's flagship in 3 and 4 of them, up
+to 4814 and 1700 ticks): not new with the pieces, but the 17 Oct report's "none" (100 runs) does not hold over the
+whole slice.
+
 Scenarios (`sim::voyage::scenario`); `core` and `flight` spawn two copies of every blueprint in the content (but
 those tagged `outer`, since 18 Oct 2026):
 
@@ -2373,12 +2391,24 @@ defaults throughout.
   (0.4–0.85 of the radius out, as long as 28 m a rock, thicker along its middle line, cut into pieces of about 180 m
   that spawn on their own); a scattering's anywhere within 0.95 of the radius, each rock its own group. Each rock
   takes the first of 12 spots inside the cluster that keeps 4 m from every other rock, 70 m from every site's spot and
-  150 m from the entry (else it is left out), then its outline (`rocks::outline`: the kind's corners round a radius in
-  its `size`, each pulled in by up to `roughness`, stretched by `stretch` along x and squeezed along y, the convex
-  hull) and its turn. `+ − × ÷`, `sqrt` and libm trig: the same rocks everywhere.
+  150 m from the entry (else it is left out), then its turn; its outline is rolled before its spot (`rocks::outline`:
+  the kind's corners round a radius in its `size`, each pulled in by up to `roughness`, stretched by `stretch` along
+  x and squeezed along y, the convex hull; since 18 Oct 2026 then control points round the hull: each corner at
+  0.9–0.95 of its distance, each edge's middle dented in by up to the kind's `dent`, every other edge on average a
+  second point a third along it dented by up to 0.6 of that). The outline itself is `rocks::curve` through the control
+  points: a periodic Catmull-Rom spline of the radius over the angle, sampled at 96 even angles
+  (`rocks::OUTLINE_POINTS`), star-shaped round the centre, so it never crosses itself; the rock's radius is the
+  farthest of its samples and control points. `+ − × ÷`, `sqrt` and libm trig (`atan2`, `sin`, `cos`): the same
+  rocks everywhere.
+- **Pieces** (`rocks::pieces`, 18 Oct 2026, GDR-0104's status line): the curve's convex hull, or, where the curve
+  lies more than `SPLIT_DENT` (0.05) of the radius inside that hull, two or three convex pieces cut from the centre
+  through its deepest dents (at least 16 samples apart; a single dent is cut through the sample opposite it too),
+  each the hull of its stretch of the curve and the centre (`Rock::parts`, counter-clockwise; in the state hash), so
+  every point of the drawn outline lies in a piece and a shot or ram into a dent passes its hull. Of 150 rocks rolled
+  from the base kinds 93 are one piece, 44 two and 13 three.
 - **Spawning**: the director spawns a group's rocks once a player vessel comes within `spawn_radius` of its reach
-  (as sites spawn, E0), as **anchored** Rapier bodies (fixed; the outline as a convex polyline, hull friction and
-  bounce) keyed `BodyKey::rock(k)`: ship id `BodyKey::ROCKS` (`u32::MAX`, no ship's), piece `k` = the rock's index in
+  (as sites spawn, E0), as **anchored** Rapier bodies (fixed; one convex polyline, or a compound of the two or three
+  pieces, hull friction and bounce) keyed `BodyKey::rock(k)`: ship id `BodyKey::ROCKS` (`u32::MAX`, no ship's), piece `k` = the rock's index in
   `Voyage::rocks()`, so they order after every ship's pieces. `start_voyage` removes a voyage's rocks it replaces.
 - **Shots and plumes** stop on a rock (`Sim::cast_part` lands on it as `Cast::Rock`): a projectile is gone (`Hit`),
   a pulse or beam ends there, `SimEvent::RockHit { by, rock, point, normal, family }` (the hook for mining later); the
@@ -2396,7 +2426,8 @@ defaults throughout.
   before it could stop (`Mover::heading_into`) is bent aside first whatever its goal. The pilot assist
   `avoid_collisions` takes rocks as anchored circles on its course test (`AssistState::avoiding` gives a rock as
   `(BodyKey::ROCKS, k)`). `Sim::rock_between(a, b)`: is a rock on the line (the voyage runner's fire check).
-- **Checked** (`tests/rocks.rs`): the roll's clearances and determinism, sites unmoved by rocks, convex outlines,
+- **Checked** (`tests/rocks.rs`): the roll's clearances and determinism, sites unmoved by rocks, outlines star-shaped
+  and inside their convex pieces (and some rocks cut), a ray through the gap between two pieces passing,
   lazy spawning, shots stopping and rams hurting only the ship, a held maneuver reaching a point behind a rock
   without touching it, the narrow gap and the momentum bend. Over 20 seeds each of Corran Reach and four cluster types
   flown by the voyage runner (`docs/results/scenery-2026-10-17.md`) no ship stayed pressed on a rock for 3 s.

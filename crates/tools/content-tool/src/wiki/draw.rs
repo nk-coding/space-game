@@ -630,5 +630,9 @@ mod tests {
         for key in data::content::art_keys::GLOWS {
             s.glow(key);
         }
+        for tone in data::content::art_keys::ROCK_TONES {
+            s.get(&format!("world.rock.{tone}.mid"));
+            s.get(&format!("world.rock.{tone}.edge"));
+        }
     }
 }

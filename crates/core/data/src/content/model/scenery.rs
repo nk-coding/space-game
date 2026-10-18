@@ -7,8 +7,9 @@
 
 use super::*;
 
-/// `rocks.ron`: a kind of asteroid rock. Each rock of a field is rolled from it: a convex outline of `corners`
-/// corners round a `size` radius, pulled in by up to `roughness` of it and stretched along one axis by `stretch`.
+/// `rocks.ron`: a kind of asteroid rock. Each rock of a field is rolled from it: a convex hull of `corners`
+/// corners round a `size` radius, pulled in by up to `roughness` of it and stretched along one axis by `stretch`, then
+/// dented along its edges by up to `dent` (the outline the sim collides and the client draws, `sim::voyage::rocks`).
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct RockKind {
@@ -31,15 +32,38 @@ pub struct RockKind {
     pub roughness: f32,
     /// Stretch along its long axis `(min, max)` (1: round), rolled per rock.
     pub stretch: (f32, f32),
+    /// How far the middle of an edge may dent in, as a share of its distance from the centre (0: no dents). A rock
+    /// dented deeply enough collides as two or three convex pieces.
+    pub dent: f32,
     /// The share of a ram's damage (GDR-0047) a ship takes against it: an anchored rock gives nothing, so a ram on
     /// it would hurt as much as one on a ship of infinite mass; like a ram prow's factors (GDR-0102).
     pub ram: f32,
-    /// Its colour: a key into `art/tokens.json` `world.rock` ([`crate::content::art_keys::ROCK_TONES`]).
+    /// Its colours: a key into `art/tokens.json` `world.rock` ([`crate::content::art_keys::ROCK_TONES`]).
     pub tone: String,
+    /// Its marks, as the client draws them (the colours are its tone's).
+    pub look: RockLook,
     #[serde(skip_deserializing)]
     pub source: Source,
 }
 entry!(RockKind, Kind::Rock);
+
+/// How a rock kind's rocks are marked (drawn only, `world::scenery::rocks`; GDR-0104's status line of 18 Oct 2026).
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RockLook {
+    /// One crater per this many metres of radius (at least one, at most seven).
+    pub crater_every: f32,
+    /// A ridge across it.
+    pub ridge: bool,
+    /// A metal glint on its lit side: how strong (0: none).
+    pub glint: f32,
+    /// Bright fractures across it.
+    pub cracks: u32,
+    /// Small gas pits over it.
+    pub pits: u32,
+    /// Ember veins on its shadow side.
+    pub embers: u32,
+}
 
 /// `landmarks.ron`: something big seen far off in a cluster, drawn behind the play (no body, no effect): a derelict
 /// station, a beacon, a ring of junk, a hot star's corona.

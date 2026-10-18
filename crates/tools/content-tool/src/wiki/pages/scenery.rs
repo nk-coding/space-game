@@ -4,8 +4,9 @@
 use super::*;
 use data::{Landmark, LandmarkForm, RockKind, RockLayout, Scenery};
 
-/// How many rocks a rock kind's drawing shows.
+/// How many rocks a rock kind's drawing shows, and the points along each outline.
 const SAMPLES: u32 = 5;
+const OUTLINE_POINTS: usize = 64;
 
 /// A landmark's form in words.
 pub(crate) fn form_word(f: LandmarkForm) -> &'static str {
@@ -27,12 +28,13 @@ fn layout_word(l: RockLayout) -> String {
 }
 
 impl Wiki<'_> {
-    /// A row of rocks rolled from the kind as the sim rolls them (`sim::voyage::rocks::outline`), side by side.
+    /// A row of rocks rolled from the kind as the sim rolls them (`sim::voyage::rocks::outline`, drawn along its
+    /// `curve`), side by side, in the tone's middle band with its edge.
     fn rock_figure(&self, r: &RockKind) -> String {
-        let fill = self.style.get(&format!("world.rock.{}", r.tone));
-        let edge = self.style.get("world.rock_edge");
+        let fill = self.style.get(&format!("world.rock.{}.mid", r.tone));
+        let edge = self.style.get(&format!("world.rock.{}.edge", r.tone));
         let mut rng = sim::Pcg32::new(0x726f_636b, 1);
-        let shapes: Vec<Vec<sim::Vec2>> = (0..SAMPLES).map(|_| sim::voyage::rocks::outline(r, &mut rng)).collect();
+        let shapes: Vec<Vec<sim::Vec2>> = (0..SAMPLES).map(|_| sim::voyage::rocks::curve(&sim::voyage::rocks::outline(r, &mut rng), OUTLINE_POINTS)).collect();
         let reach = |s: &Vec<sim::Vec2>| s.iter().fold(0.0f32, |m, p| m.max(p.length()));
         let width: f32 = shapes.iter().map(|s| 2.0 * reach(s) + 4.0).sum();
         let height = shapes.iter().map(|s| 2.0 * reach(s) + 4.0).fold(0.0f32, f32::max);
@@ -78,17 +80,18 @@ impl Wiki<'_> {
             ("Corners".into(), count_range(r.corners)),
             ("Roughness".into(), format!("up to {} % in from its radius", format_number(100.0 * r.roughness, 0))),
             ("Stretch".into(), format!("{}–{} ×", format_number(r.stretch.0, 2), format_number(r.stretch.1, 2))),
+            ("Dents".into(), format!("up to {} % in along its edges", format_number(100.0 * r.dent, 0))),
             ("Ram damage taken".into(), format!("{} × a ram's", format_number(r.ram, 2))),
             (
                 "Tone".into(),
                 format!(
                     "<span class=\"dot tone\" style=\"--c: {}\"></span><code>{}</code>",
-                    esc(&self.style.get(&format!("world.rock.{}", r.tone))),
+                    esc(&self.style.get(&format!("world.rock.{}.mid", r.tone))),
                     esc(&r.tone)
                 ),
             ),
         ];
-        let what = "<p>Asteroid rock is anchored in place: it blocks ships, shots and engine plumes, so it gives cover. A ship that hits it takes ramming damage as in any ram, and behaviors steer round the rocks ahead. Each rock is rolled from its kind when the fleet warps in. Mining it comes later.</p>\n".to_string();
+        let what = "<p>Asteroid rock is anchored in place: it blocks ships, shots and engine plumes, so it gives cover. A ship that hits it takes ramming damage as in any ram, and behaviors steer round the rocks ahead. Each rock is rolled from its kind when the fleet warps in; one dented deeply collides as two or three pieces, so shots pass through its dents. Mining it comes later.</p>\n".to_string();
         let found = self.scenery_users(root, |s| {
             let groups: Vec<String> = s
                 .rocks

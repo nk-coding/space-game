@@ -1,22 +1,22 @@
 //! Asteroid rock (`sim::voyage::rocks`, GDR-0104): the roll keeps rocks clear of sites and the entry and inside the
-//! cluster, outlines are convex, fields spawn lazily as anchored bodies, shots and rams stop on them, and behaviors'
+//! cluster, outlines are star-shaped and covered by their convex pieces, fields spawn lazily as anchored bodies, shots and rams stop on them, and behaviors'
 //! maneuvers steer round them.
 
 mod common;
 
 use common::*;
-use sim::voyage::rocks::{FieldPlan, Mover, Rock, outline, steer};
+use sim::voyage::rocks::{FieldPlan, Mover, OUTLINE_POINTS, Rock, curve, outline, pieces, steer};
 use sim::{Body, Maneuver, Owner, ShipCommand, Sim, SimEvent, TickInputs, Vec2, VoyagePlan};
 
 /// A voyage with no sites and one rock of `radius` at `at` (spawned when a player vessel comes near).
 fn rock_plan(at: Vec2, radius: f32) -> VoyagePlan {
-    let points = (0..8)
+    let points: Vec<Vec2> = (0..8)
         .map(|k| {
             let a = k as f32 * core::f32::consts::TAU / 8.0;
             Vec2::new(libm::cosf(a), libm::sinf(a)) * radius
         })
         .collect();
-    let rock = Rock { kind: "iron_rock".into(), ram: 0.5, pos: at, angle: 0.0, points, radius };
+    let rock = Rock { kind: "iron_rock".into(), ram: 0.5, pos: at, angle: 0.0, parts: vec![points.clone()], points, radius };
     VoyagePlan {
         voyage: "rocks".into(),
         seed: 1,
@@ -74,21 +74,40 @@ fn the_roll_keeps_rocks_inside_and_clear_of_sites_and_the_entry() {
 }
 
 #[test]
-fn outlines_are_convex_and_within_the_kinds_size() {
+fn outlines_are_star_shaped_within_the_kinds_size_and_covered_by_their_pieces() {
     let c = content();
+    let mut split = [0; 3];
     for kind in c.rocks.iter() {
         let mut rng = sim::Pcg32::new(7, 1);
         for _ in 0..50 {
             let pts = outline(kind, &mut rng);
-            assert!(pts.len() >= 3);
+            assert!(pts.len() >= 6);
             let reach = pts.iter().fold(0.0f32, |m, p| m.max(p.length()));
             assert!(reach <= kind.size.1 * kind.stretch.1.sqrt() + 1e-3);
-            for k in 0..pts.len() {
-                let (a, b, n) = (pts[k], pts[(k + 1) % pts.len()], pts[(k + 2) % pts.len()]);
-                assert!((b - a).cross(n - b) > 0.0, "{}: counter-clockwise and convex", kind.id);
+            let line = curve(&pts, OUTLINE_POINTS);
+            for k in 0..line.len() {
+                let (a, b) = (line[k], line[(k + 1) % line.len()]);
+                assert!(a.cross(b) > 0.0, "{}: star-shaped round the centre, counter-clockwise", kind.id);
+            }
+            let r = line.iter().fold(0.0f32, |m, p| m.max(p.length()));
+            let parts = pieces(&line, r);
+            assert!((1..=3).contains(&parts.len()));
+            split[parts.len() - 1] += 1;
+            for p in &parts {
+                for k in 0..p.len() {
+                    let (a, b, n) = (p[k], p[(k + 1) % p.len()], p[(k + 2) % p.len()]);
+                    assert!((b - a).cross(n - b) > -1e-4, "{}: each piece counter-clockwise and convex", kind.id);
+                }
+            }
+            // Every point of the drawn outline lies on or inside a piece.
+            let inside = |p: &Vec<Vec2>, q: Vec2, slack: f32| (0..p.len()).all(|k| (p[(k + 1) % p.len()] - p[k]).cross(q - p[k]) >= -slack * (p[(k + 1) % p.len()] - p[k]).length());
+            for &q in &line {
+                assert!(parts.iter().any(|p| inside(p, q, 1e-4 * r)), "{}: the outline within its pieces", kind.id);
             }
         }
     }
+    println!("rocks in one, two and three pieces: {split:?}");
+    assert!(split[1] + split[2] > 0, "deeply dented rocks are cut into pieces");
 }
 
 #[test]
@@ -104,6 +123,22 @@ fn a_field_spawns_when_the_fleet_comes_near() {
     assert_eq!(w.voyage().unwrap().rocks().len(), 1, "within the spawn radius: spawned");
     let key = sim::BodyKey::rock(0);
     assert_eq!(w.physics().body(key).map(|b| b.pos), Some(Vec2::new(0.0, 900.0)));
+}
+
+#[test]
+fn a_rock_in_pieces_leaves_its_dents_open() {
+    let c = content();
+    let square = |x0: f32, x1: f32| vec![Vec2::new(x0, -10.0), Vec2::new(x1, -10.0), Vec2::new(x1, 10.0), Vec2::new(x0, 10.0)];
+    let mut plan = rock_plan(Vec2::new(0.0, 40.0), 15.0);
+    plan.rocks[0].rocks[0].parts = vec![square(-10.0, -1.0), square(1.0, 10.0)];
+    let mut w = Sim::new(1);
+    w.set_behaviors(sim::BehaviorLibrary::new(&c).unwrap());
+    w.start_voyage(plan, Owner::PLAYER, Owner(1));
+    w.spawn_ship(design(&c, "rim_skiff"), Owner::PLAYER, Body::at(Vec2::ZERO, 0.0));
+    w.step(&TickInputs::default());
+    assert_eq!(w.voyage().unwrap().rocks().len(), 1);
+    assert!(!w.rock_between(Vec2::new(0.0, 20.0), Vec2::new(0.0, 60.0)), "through the gap between its pieces");
+    assert!(w.rock_between(Vec2::new(5.0, 20.0), Vec2::new(5.0, 60.0)), "through a piece");
 }
 
 #[test]
@@ -168,7 +203,7 @@ fn maneuvers_steer_round_a_rock_in_the_way() {
 
 #[test]
 fn steer_leaves_a_clear_way_alone_and_turns_aside_for_a_rock() {
-    let rock = Rock { kind: "iron_rock".into(), ram: 0.5, pos: Vec2::new(0.0, 50.0), angle: 0.0, points: Vec::new(), radius: 10.0 };
+    let rock = Rock { kind: "iron_rock".into(), ram: 0.5, pos: Vec2::new(0.0, 50.0), angle: 0.0, points: Vec::new(), parts: Vec::new(), radius: 10.0 };
     let v = Vec2::new(0.0, 20.0);
     let at = |x: f32| Mover { pos: Vec2::new(x, 0.0), radius: 5.0, vel: Vec2::ZERO, accel: 10.0 };
     assert_eq!(steer(&at(0.0), v, &[]), v);
@@ -180,7 +215,7 @@ fn steer_leaves_a_clear_way_alone_and_turns_aside_for_a_rock() {
 
 #[test]
 fn steer_slows_for_a_gap_too_narrow_and_bends_a_ship_carried_into_a_rock() {
-    let rock = |x: f32| Rock { kind: "iron_rock".into(), ram: 0.5, pos: Vec2::new(x, 60.0), angle: 0.0, points: Vec::new(), radius: 10.0 };
+    let rock = |x: f32| Rock { kind: "iron_rock".into(), ram: 0.5, pos: Vec2::new(x, 60.0), angle: 0.0, points: Vec::new(), parts: Vec::new(), radius: 10.0 };
     // Two rocks 4 m apart edge to edge: no way through for a 5 m ship.
     let pair = [rock(-12.0), rock(12.0)];
     let m = Mover { pos: Vec2::ZERO, radius: 5.0, vel: Vec2::ZERO, accel: 10.0 };

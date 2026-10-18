@@ -104,8 +104,8 @@ keys, prose file).
   areas. A generator that fails on the content is a wiki warning, so the completeness test fails too. The hand-written
   page `mechanics/galaxy` explains bands, S, home, gates, trails, signals and lore from the data.
 - **Rock kinds and landmarks** (17 Oct 2026, GDR-0104, `wiki::pages::scenery`): a rock kind's page draws five rocks
-  rolled from it by the sim's own outline (`sim::voyage::rocks::outline`, vector) in its tone, its material, size,
-  corners, roughness, stretch and ram factor, and where it lies (every cluster type's and voyage's groups); a
+  rolled from it by the sim's own outline (`sim::voyage::rocks::outline` through `curve`, vector; dented since 18 Oct
+  2026) in its tone's middle band and edge, its material, size, corners, roughness, stretch, dents and ram factor, and where it lies (every cluster type's and voyage's groups); a
   landmark's page its form, size, depth and where it is seen; every cluster type's and voyage's page a "Between the
   sites" section (its rock groups and what is drawn only), a material's page the rock it is in. The hand-written
   `mechanics/galaxy` has a section on rock and the scenery.

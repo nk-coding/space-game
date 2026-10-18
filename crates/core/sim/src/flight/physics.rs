@@ -320,9 +320,8 @@ impl Physics {
         self.refresh_bvh(collider);
     }
 
-    /// Replaces the colliders and mass properties of a body and sets its velocities from `desc.body` (its
-    /// centre of mass moved). The pose stays.
-    /// Adds an anchored rock (GDR-0104): a fixed body with the rock's convex outline, hull friction and bounce.
+    /// Adds an anchored rock (GDR-0104): a fixed body with the rock's convex pieces (one shape, or a compound of two
+    /// or three), hull friction and bounce.
     pub(crate) fn create_rock(&mut self, key: BodyKey, rock: &crate::voyage::rocks::Rock) {
         self.remove_body(key);
         let t = self.tuning;
@@ -331,8 +330,13 @@ impl Physics {
         let pose = Pose::from_parts(vr(rock.pos), Rotation::from_cos_sin_unchecked(r.cos, r.sin));
         let rb = RigidBodyBuilder::fixed().pose(pose).user_data(user_data(key)).build();
         let body = w.bodies.insert(rb);
-        let shape = SharedShape::convex_polyline(rock.points.iter().map(|&p| vr(p)).collect())
-            .unwrap_or_else(|| SharedShape::ball(rock.radius));
+        let poly = |p: &[Vec2]| SharedShape::convex_polyline(p.iter().map(|&q| vr(q)).collect());
+        let shape = match rock.parts.as_slice() {
+            [one] => poly(one),
+            [] => None,
+            many => Some(SharedShape::compound(many.iter().filter_map(|p| Some((Pose::IDENTITY, poly(p)?))).collect())),
+        }
+        .unwrap_or_else(|| SharedShape::ball(rock.radius));
         let co = ColliderBuilder::new(shape)
             .friction(t.friction)
             .restitution(t.restitution)
@@ -342,6 +346,8 @@ impl Physics {
         self.refresh_bvh(collider);
     }
 
+    /// Replaces the colliders and mass properties of a body and sets its velocities from `desc.body` (its
+    /// centre of mass moved). The pose stays.
     pub(crate) fn update_body(&mut self, key: BodyKey, desc: &BodyDesc) {
         let Some(&h) = self.handles.get(&key) else {
             return;

@@ -7,7 +7,13 @@
 //!   middle), a belt's along an arc round the cluster's centre (thicker along its middle line), a scattering's
 //!   anywhere in the cluster. A rock keeps [`ROCK_GAP`] from every other rock, [`SITE_CLEAR`] from every site's spot
 //!   and [`ENTRY_CLEAR`] from the entry, and stays inside the cluster; a rock with no such spot in [`ROCK_TRIES`]
-//!   tries is left out. Each rock's outline ([`outline`]) is rolled from its kind right after its spot.
+//!   tries is left out. Each rock's outline ([`outline`]) is rolled from its kind before its spot.
+//! * **Outline** (GDR-0104's status line of 18 Oct 2026): a convex hull of the kind's corners, then control points
+//!   round it (each corner rounded in a little, each edge's middle dented in by up to the kind's `dent`), and through
+//!   them a periodic spline of radius over angle ([`curve`]): star-shaped round the rock's centre, so it never crosses
+//!   itself. The client draws the same curve. A rock dented in by more than [`SPLIT_DENT`] of its radius below its
+//!   hull collides as two or three convex pieces cut at its deepest dents through its centre ([`pieces`]), so hits
+//!   land on what is drawn; any other as the curve's hull.
 //! * **Spawning**: rocks come in [`FieldPlan`]s (a field, a belt cut into pieces of about [`BELT_PIECE`] metres, one
 //!   scattered rock), each spawned as anchored bodies once a player vessel comes within
 //!   `VoyageTuning::spawn_radius` of its reach, as the sites spawn (E0: records cost nothing until then, and an
@@ -23,7 +29,7 @@
 use data::{Content, RockKind, RockLayout, Scenery};
 
 use crate::hash::{StateHash, StateHasher};
-use crate::math::{Vec2, cos, sin, sqrt};
+use crate::math::{Vec2, atan2, cos, sin, sqrt};
 use crate::rng::{Pcg32, splitmix64};
 
 /// The rocks' generator's stream (`"rock"` in ASCII): never a sim stream's id, nor the plan's.
@@ -50,12 +56,25 @@ const STEER_AHEAD: f32 = 3.0;
 const STEER_CLEAR: f32 = 8.0;
 /// [`steer`] bends round at most this many rocks one after the other.
 const STEER_PASSES: u32 = 3;
+/// A rock's corners sit this far out along their ray as control points (shares, rolled per corner): the corners
+/// rounded in a little.
+const CORNER_IN: (f32, f32) = (0.9, 0.95);
+/// The share of edges with a second dent point, a third along the edge, and how deep it dents (share of `dent`).
+const SECOND_DENT: (f32, f32) = (0.5, 0.6);
+/// The outline is sampled at this many points ([`curve`]) for the pieces and the radius, and drawn at them.
+pub const OUTLINE_POINTS: usize = 96;
+/// A rock is cut where its outline dents in by more than this share of its radius below the outline's hull ...
+pub const SPLIT_DENT: f32 = 0.05;
+/// ... into at most this many pieces, cut at least this many samples apart.
+const MOST_PIECES: usize = 3;
+const CUT_APART: usize = 16;
 /// Below this speed (m/s) a ship's own motion is no threat ([`Mover::heading_into`]).
 const MOMENTUM_SPEED: f32 = 2.0;
 
-/// One rock: its kind (content id), where it lies, how it is turned, its convex outline (counter-clockwise, about its
-/// position), the radius of the circle round it and the share of a ram's damage a ship takes against it (its kind's
-/// `ram`).
+/// One rock: its kind (content id), where it lies, how it is turned, its outline's control points ([`outline`],
+/// counter-clockwise round its position; the outline is [`curve`] through them), the convex pieces it collides as
+/// (each counter-clockwise; [`pieces`]), the radius of the circle round it and the share of a ram's damage a ship
+/// takes against it (its kind's `ram`).
 #[derive(Clone, Debug, PartialEq)]
 pub struct Rock {
     pub kind: String,
@@ -63,6 +82,7 @@ pub struct Rock {
     pub pos: Vec2,
     pub angle: f32,
     pub points: Vec<Vec2>,
+    pub parts: Vec<Vec<Vec2>>,
     pub radius: f32,
 }
 
@@ -85,12 +105,21 @@ impl StateHash for Rock {
         for &p in &self.points {
             h.vec2(p);
         }
+        h.u32(self.parts.len() as u32);
+        for part in &self.parts {
+            h.u32(part.len() as u32);
+            for &p in part {
+                h.vec2(p);
+            }
+        }
     }
 }
 
-/// A rock's outline rolled from its kind: `corners` corners round its radius, each pulled in by up to `roughness`
-/// of it, the whole stretched along x (and squeezed along y, keeping its area), then the convex hull.
-/// Counter-clockwise, about the origin.
+/// A rock's outline's control points rolled from its kind: `corners` corners round its radius, each pulled in by up
+/// to `roughness` of it, the whole stretched along x (and squeezed along y, keeping its area), the convex hull; then
+/// round it each corner rounded in ([`CORNER_IN`]), each edge's middle dented in by up to `dent` of its distance and
+/// every other edge on average a point a third along it by up to [`SECOND_DENT`] of that. Counter-clockwise round
+/// the origin (which lies inside: the corners are never more than 0.6 of a step off their place).
 pub fn outline(kind: &RockKind, rng: &mut Pcg32) -> Vec<Vec2> {
     let r = rng.range_f32(kind.size.0, kind.size.1);
     let n = kind.corners.0 + rng.below(kind.corners.1.saturating_sub(kind.corners.0) + 1);
@@ -106,7 +135,97 @@ pub fn outline(kind: &RockKind, rng: &mut Pcg32) -> Vec<Vec2> {
         })
         .collect();
     hull(&mut pts);
-    pts
+    let mut out = Vec::with_capacity(pts.len() * 3);
+    for (k, &a) in pts.iter().enumerate() {
+        let b = pts[(k + 1) % pts.len()];
+        out.push(a * rng.range_f32(CORNER_IN.0, CORNER_IN.1));
+        if rng.next_f32() < SECOND_DENT.0 {
+            out.push((a * 0.7 + b * 0.3) * (1.0 - kind.dent * SECOND_DENT.1 * rng.next_f32()));
+        }
+        out.push((a + b) * 0.5 * (1.0 - kind.dent * rng.next_f32()));
+    }
+    out
+}
+
+/// The outline through the control points `points` (counter-clockwise round the origin) at `n` evenly spaced
+/// angles from the first point's on: a periodic Catmull-Rom spline of the radius over the angle, so it is
+/// star-shaped round the origin and never crosses itself. libm trig: the same everywhere.
+pub fn curve(points: &[Vec2], n: usize) -> Vec<Vec2> {
+    let m = points.len() as isize;
+    let tau = core::f32::consts::TAU;
+    let mut angle: Vec<f32> = Vec::with_capacity(points.len());
+    for p in points {
+        let mut a = atan2(p.y, p.x);
+        if let Some(&last) = angle.last() {
+            while a <= last {
+                a += tau;
+            }
+        }
+        angle.push(a);
+    }
+    let radius: Vec<f32> = points.iter().map(|p| p.length()).collect();
+    // The `i`th control point counting on round and round: its angle (unwrapped) and radius.
+    let at = |i: isize| {
+        let k = i.rem_euclid(m) as usize;
+        (angle[k] + tau * i.div_euclid(m) as f32, radius[k])
+    };
+    let mut i = 0isize;
+    (0..n)
+        .map(|j| {
+            let t = angle[0] + tau * j as f32 / n as f32;
+            while at(i + 1).0 <= t {
+                i += 1;
+            }
+            let ((t1, p1), (t2, p2), p0, p3) = (at(i), at(i + 1), at(i - 1).1, at(i + 2).1);
+            let u = (t - t1) / (t2 - t1);
+            let d = 0.5 * (2.0 * p1 + (p2 - p0) * u + (2.0 * p0 - 5.0 * p1 + 4.0 * p2 - p3) * u * u + (3.0 * p1 - p0 - 3.0 * p2 + p3) * u * u * u);
+            Vec2::new(cos(t), sin(t)) * d
+        })
+        .collect()
+}
+
+/// The convex pieces a rock of outline `outline` (a [`curve`], counter-clockwise round the origin) and `radius`
+/// collides as: the outline's hull, or, where it dents in by more than [`SPLIT_DENT`] of the radius below that
+/// hull, pieces cut from its centre through its deepest dents (at most [`MOST_PIECES`], at least [`CUT_APART`]
+/// samples apart; a single dent is cut through the sample opposite it too), each the hull of its stretch of the
+/// outline and the centre. Counter-clockwise.
+pub fn pieces(outline: &[Vec2], radius: f32) -> Vec<Vec<Vec2>> {
+    let mut whole = outline.to_vec();
+    hull(&mut whole);
+    let n = outline.len();
+    let depth: Vec<f32> = outline
+        .iter()
+        .map(|&p| {
+            whole.iter().zip(whole.iter().cycle().skip(1)).map(|(&a, &b)| (b - a).cross(p - a) / (b - a).length().max(1e-6)).fold(f32::MAX, f32::min)
+        })
+        .collect();
+    let mut order: Vec<usize> = (0..n).filter(|&k| depth[k] > SPLIT_DENT * radius).collect();
+    order.sort_by(|&a, &b| depth[b].total_cmp(&depth[a]).then(a.cmp(&b)));
+    let mut cuts: Vec<usize> = Vec::new();
+    for k in order {
+        let apart = |c: usize| {
+            let g = c.abs_diff(k);
+            g.min(n - g) >= CUT_APART
+        };
+        if cuts.len() < MOST_PIECES && cuts.iter().all(|&c| apart(c)) {
+            cuts.push(k);
+        }
+    }
+    match cuts.len() {
+        0 => return vec![whole],
+        1 => cuts.push((cuts[0] + n / 2) % n),
+        _ => {}
+    }
+    cuts.sort_unstable();
+    (0..cuts.len())
+        .map(|i| {
+            let (a, b) = (cuts[i], cuts[(i + 1) % cuts.len()]);
+            let mut p: Vec<Vec2> = (0..=(b + n - a) % n).map(|k| outline[(a + k) % n]).collect();
+            p.push(Vec2::ZERO);
+            hull(&mut p);
+            p
+        })
+        .collect()
 }
 
 /// The convex hull of `pts` in place, counter-clockwise from the lowest-leftmost point (Andrew's monotone chain).
@@ -149,15 +268,25 @@ pub fn roll(content: &Content, scenery: &Scenery, radius: f32, sites: &[Vec2], e
         for _ in 0..count {
             let n = g.rocks.0 + rng.below(g.rocks.1.saturating_sub(g.rocks.0) + 1);
             let first = placed.len();
-            // Each rock: its spot (up to ROCK_TRIES), then its outline and turn.
+            // Each rock: its outline, its spot (up to ROCK_TRIES), then its turn.
             let place = |rng: &mut Pcg32, placed: &mut Vec<Rock>, spot: &mut dyn FnMut(&mut Pcg32) -> Vec2| {
                 let mut shape = outline(kind, rng);
-                let r = shape.iter().fold(0.0f32, |m, p| m.max(p.length()));
+                let samples = curve(&shape, OUTLINE_POINTS);
+                let r = samples.iter().chain(&shape).fold(0.0f32, |m, p| m.max(p.length()));
+                let mut parts = pieces(&samples, r);
                 for _ in 0..ROCK_TRIES {
                     let p = spot(rng);
                     if clear(p, r, radius, sites, entry, placed) {
                         let angle = rng.range_f32(-core::f32::consts::PI, core::f32::consts::PI);
-                        placed.push(Rock { kind: kind.id.clone(), ram: kind.ram, pos: p, angle, points: std::mem::take(&mut shape), radius: r });
+                        placed.push(Rock {
+                            kind: kind.id.clone(),
+                            ram: kind.ram,
+                            pos: p,
+                            angle,
+                            points: std::mem::take(&mut shape),
+                            parts: std::mem::take(&mut parts),
+                            radius: r,
+                        });
                         return;
                     }
                 }

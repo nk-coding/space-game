@@ -8,14 +8,16 @@ use crate::content::art_keys::ROCK_TONES;
 pub const MAX_ROCK_SIZE: f32 = 120.0;
 /// Most corners of a rock's outline.
 pub const MAX_ROCK_CORNERS: u32 = 16;
+/// Most marks of each kind on a rock (cracks, pits, embers).
+pub const MAX_ROCK_MARKS: u32 = 24;
 /// Most rocks a cluster may place (every group at its largest count).
 pub const MAX_CLUSTER_ROCKS: u32 = 600;
 /// Most derelict shells drawn in a cluster.
 pub const MAX_DERELICTS: u32 = 32;
 
 impl<'a> Validator<'a> {
-    /// A rock kind: a known material, a size, an outline of at least 3 corners, a roughness below 1, a stretch of at
-    /// least 1 and a known tone.
+    /// A rock kind: a known material, a size, an outline of at least 3 corners, a roughness below 0.8, a stretch of at
+    /// least 1, a dent below 0.4, a known tone and marks in range.
     pub(super) fn rock_kind(&mut self, r: &'a RockKind) {
         if !self.c.materials.contains(&r.material) {
             self.err(r, "material", format!("unknown material `{}`", r.material));
@@ -34,6 +36,19 @@ impl<'a> Validator<'a> {
         let (lo, hi) = r.stretch;
         if !(lo.is_finite() && hi.is_finite() && lo >= 1.0 && lo <= hi && hi <= 4.0) {
             self.err(r, "stretch", format!("`(min, max)` with 1 ≤ min ≤ max ≤ 4, got ({lo}, {hi})"));
+        }
+        if !(r.dent.is_finite() && (0.0..0.4).contains(&r.dent)) {
+            self.err(r, "dent", format!("a share from 0 up to (not including) 0.4, got {}", r.dent));
+        }
+        let l = &r.look;
+        if !(l.crater_every.is_finite() && l.crater_every >= 1.0) {
+            self.err(r, "look.crater_every", format!("at least 1 m, got {}", l.crater_every));
+        }
+        if !(l.glint.is_finite() && (0.0..=1.0).contains(&l.glint)) {
+            self.err(r, "look.glint", format!("a strength from 0 to 1, got {}", l.glint));
+        }
+        if l.cracks > MAX_ROCK_MARKS || l.pits > MAX_ROCK_MARKS || l.embers > MAX_ROCK_MARKS {
+            self.err(r, "look", format!("at most {MAX_ROCK_MARKS} cracks, pits and embers each"));
         }
         if !(r.ram.is_finite() && (0.0..=4.0).contains(&r.ram)) {
             self.err(r, "ram", format!("a factor from 0 to 4, got {}", r.ram));
