@@ -110,6 +110,9 @@ pub enum Glyph {
     Mirror,
     Bevel,
     Caret,
+    /// A small triangle pointing left or right (a line of chips scrolled by a step).
+    Prev,
+    Next,
     /// A cog with eight teeth (SETTINGS).
     Gear,
 }
@@ -529,6 +532,10 @@ fn glyph_mesh(glyph: Glyph, color: Color, side: f32, atlas: &Atlas) -> Mesh {
         }
         Glyph::Caret => {
             m.polygon(&[Vec2::new(-0.3 * s, 0.14 * s), Vec2::new(0.0, -0.18 * s), Vec2::new(0.3 * s, 0.14 * s)], uv, col);
+        }
+        Glyph::Prev | Glyph::Next => {
+            let f = if glyph == Glyph::Next { 1.0 } else { -1.0 };
+            m.polygon(&[Vec2::new(-0.14 * f * s, 0.3 * s), Vec2::new(0.18 * f * s, 0.0), Vec2::new(-0.14 * f * s, -0.3 * s)], uv, col);
         }
         Glyph::Lock => {
             let p = |x: f32, y: f32| Vec2::new(x * s, y * s);

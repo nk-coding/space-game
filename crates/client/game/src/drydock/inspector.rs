@@ -397,8 +397,8 @@ mod tests {
         assert!(insp.stats.iter().any(|l| l.label == "BUILD POINTS"));
         assert!(insp.bonuses.iter().any(|l| l.contains("TO ADJACENT")), "{:?}", insp.bonuses);
         let line = |l: &str| insp.stats.iter().find(|x| x.label == l).map(|x| x.value.clone());
-        assert_eq!(line("RECIPE").as_deref(), Some("1 CERAMIC · 3 COPPER"));
-        assert_eq!(line("IN STOCK").as_deref(), Some("3  ·  THE DESIGN HOLDS 4"));
+        assert_eq!(line("RECIPE").as_deref(), Some("1\u{a0}Ceramic  ·  3\u{a0}Copper"));
+        assert_eq!(line("IN STOCK").as_deref(), Some("3  ·  4 in the design"));
         ui.picked = None;
         assert_eq!(picked(&content, &ui, &granted, 0).name, "Nothing picked");
     }

@@ -15,11 +15,13 @@
 //!   top.
 //! * **Chips**: a click glides the list to its group's heading; the lit chip is the group at the top of the view (the
 //!   clicked one while the list glides to it and while its heading is in view). The line scrolls sideways by wheel and
-//!   by drag, and the lit chip glides into view.
+//!   by drag, and the lit chip glides into view. While the chips don't fit, a small ring at each end steps the line
+//!   by most of its width (dim at its end), so a chip cut at the edge says there is more (Niklas, 18 Oct 2026: DEFE…
+//!   cut at the column's edge with no hint that the line scrolls).
 //! * **Icons** in the rows are cut where the list cuts its rows (`ui_icons`: a clipping parent cuts them too).
 
 use super::*;
-use super::widgets::{Pill, spawn_pill};
+use super::widgets::{Pill, Ring, ring_glyph, ring_node, spawn_pill};
 
 /// What a grouped list is spawned with.
 #[derive(Clone, Debug)]
@@ -69,6 +71,16 @@ struct ListSearch(Entity);
 #[derive(Component)]
 struct ChipLine(Entity);
 
+/// A ring at an end of a chips' line that steps it by most of its width (`-1` back, `1` on).
+#[derive(Component)]
+struct ChipStep {
+    list: Entity,
+    dir: f32,
+}
+
+/// How much of the line's width a step scrolls.
+const STEP_SHARE: f32 = 0.8;
+
 #[derive(Component)]
 struct ListChip {
     list: Entity,
@@ -86,7 +98,7 @@ enum HeadText {
 }
 
 pub(super) fn plugin(app: &mut App) {
-    app.add_systems(Update, (chip_clicks, filter, light, scroll_chips).chain().after(UiInputSet).before(UiStyleSet));
+    app.add_systems(Update, (chip_clicks, filter, light, scroll_chips, step_chips).chain().after(UiInputSet).before(UiStyleSet));
 }
 
 /// Spawns a grouped list into `parent` (a column): the search field with `search` on it, `between`, the chips, the
@@ -126,18 +138,24 @@ pub fn spawn_grouped_list(
             f.spawn((field_text(fonts, 12.5), Node { flex_grow: 1.0, ..default() }));
         });
     between(parent);
-    parent.spawn(Node { width: percent(100), height: px(24), flex_shrink: 0.0, ..default() }).with_children(|w| {
+    parent.spawn(Node { width: percent(100), height: px(24), flex_shrink: 0.0, flex_direction: FlexDirection::Row, column_gap: px(6), ..default() }).with_children(|w| {
+        let step = |w: &mut ChildSpawnerCommands, dir: f32, glyph: Glyph| {
+            // Hidden until the line knows whether its chips fit.
+            w.spawn((ChipStep { list: area, dir }, ring_node(24.0))).with_child(ring_glyph(glyph, 10.0)).entry::<Node>().and_modify(|mut n| n.display = Display::None);
+        };
+        step(w, -1.0, Glyph::Prev);
         w.spawn((
             ChipLine(area),
             ScrollPosition::default(),
             Scrollbar::horizontal().outside(),
-            Node { flex_direction: FlexDirection::Row, column_gap: px(6), width: percent(100), height: percent(100), overflow: Overflow::scroll_x(), ..default() },
+            Node { flex_direction: FlexDirection::Row, column_gap: px(6), flex_grow: 1.0, flex_basis: px(0), min_width: px(0), height: percent(100), overflow: Overflow::scroll_x(), ..default() },
         ))
         .with_children(|line| {
             for (id, name) in &spec.groups {
                 spawn_pill(line, fonts, &name.to_uppercase(), 8.5, 24.0, None, Pill::new(Tone::Teal), ListChip { list: area, group: id.clone() });
             }
         });
+        step(w, 1.0, Glyph::Next);
     });
     let column = parent.target_entity();
     parent.commands().entity(area).insert((
@@ -324,8 +342,8 @@ fn light(
     }
 }
 
-/// The chips' line: a drag over it scrolls it sideways (at once; the wheel is the kit's), the lit chip glides into
-/// view, and the kit's fades show over an edge with more chips behind it.
+/// The chips' line: a drag over it scrolls it sideways (at once; the wheel is the kit's) and the lit chip glides into
+/// view.
 #[allow(clippy::type_complexity)]
 fn scroll_chips(
     lists: Query<Ref<GroupedList>>,
@@ -369,6 +387,33 @@ fn scroll_chips(
             } else if right > x + width {
                 smooth.to(right - width);
             }
+        }
+    }
+}
+
+/// The rings at the line's ends: shown while the chips don't fit beside them (the line's content against the whole
+/// strip, so showing them never decides it), dim at the line's end; a click glides the line by a step.
+#[allow(clippy::type_complexity)]
+fn step_chips(
+    mut clicks: MessageReader<UiClick>,
+    mut steps: Query<(Entity, &ChipStep, &ChildOf, &mut Node, &mut Ring)>,
+    strips: Query<&ComputedNode, Without<ChipLine>>,
+    mut lines: Query<(&ChipLine, &ComputedNode, &ScrollPosition, &mut SmoothScroll)>,
+) {
+    let clicked: Vec<Entity> = clicks.read().map(|c| c.0).collect();
+    for (e, step, parent, mut node, mut ring) in &mut steps {
+        let Some((_, line, pos, mut smooth)) = lines.iter_mut().find(|(l, ..)| l.0 == step.list) else { continue };
+        let Ok(strip) = strips.get(parent.parent()) else { continue };
+        let k = line.inverse_scale_factor;
+        set_display(&mut node, line.content_size.x > strip.size.x + 0.5);
+        let max = ((line.content_size.x - line.size.x) * k).max(0.0);
+        let x = pos.0.x;
+        let disabled = if step.dir < 0.0 { x <= 0.5 } else { x >= max - 0.5 };
+        if ring.disabled != disabled {
+            ring.disabled = disabled;
+        }
+        if !disabled && clicked.contains(&e) {
+            smooth.to((x + step.dir * line.size.x * k * STEP_SHARE).clamp(0.0, max));
         }
     }
 }

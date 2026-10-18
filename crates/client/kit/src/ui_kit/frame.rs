@@ -62,6 +62,8 @@ pub struct CardLook {
     pub margin: f32,
     /// Seconds the pointer rests on a row before the card shows.
     pub delay: f32,
+    /// The gap between the stat rows of a card too tall for its room.
+    pub tight_gap: f32,
 }
 
 /// A part's stat block (`stats.*`): label and value sizes, the label's tracking (em), the gaps.
@@ -132,6 +134,7 @@ pub fn frame() -> &'static Frame {
                 offset: n("card.offset"),
                 margin: n("card.margin"),
                 delay: n("card.delay"),
+                tight_gap: n("card.tight_gap"),
             },
             stats: StatsLook {
                 label: n("stats.label"),
@@ -177,6 +180,12 @@ impl Frame {
             column_gap: px(self.pill_gap),
             ..default()
         }
+    }
+
+    /// Where a screen's room under the top bar starts, from the window's top: the bar (the ring's height inside the
+    /// top margin) and the gap after it (the hover card stays below it).
+    pub fn below_top(&self) -> f32 {
+        self.top + self.ring + self.gap
     }
 
     /// The breadcrumb over the title, centred on the ring's height and as tall as the ring, so the row (and the ring

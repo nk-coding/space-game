@@ -11,7 +11,9 @@
 //!   `overflow_clip_margin`), so a glow at an edge fades out on its own instead of ending in a straight line. An
 //!   edge the content is scrolled past cuts it right there instead ([`cut_scrolled_edges`]; Niklas, 14 Oct 2026:
 //!   "the parts list overlaps this categories thingy": rows scrolled out of view showed in the room over the
-//!   category tabs). No fades over the edges, as in Chrome (Niklas, 14 Oct 2026: the panels' "weird gradient at top
+//!   category tabs). A text cut by such an edge (across a vertical area's scrolled edge) is cut away whole, so no
+//!   line shows half its letters (Niklas, 18 Oct 2026: the top row of the parts list showed its name cut through);
+//!   the row's icon and outline are cut where the edge is. No fades over the edges, as in Chrome (Niklas, 14 Oct 2026: the panels' "weird gradient at top
 //!   and bottom", a band of backdrop colour over whatever lay behind the panel): the bar is all that says an area
 //!   scrolls ("there is no need for the UI to say that you can scroll via wheel"; the `MORE BELOW · WHEEL` cue is
 //!   gone).
@@ -347,11 +349,13 @@ pub(super) fn plugin(app: &mut App) {
 pub struct ScrollClipSet;
 
 /// Cuts an area's content at an edge it is scrolled past (its glow room stays at the other edges): every node
-/// inside gets one more clip rect, after bevy_ui has worked out the clips of the frame.
+/// inside gets one more clip rect, after bevy_ui has worked out the clips of the frame; in a vertical area a text
+/// across that edge is cut away whole ([`cut_text`]).
 fn cut_scrolled_edges(
     tracks: Query<&Track>,
     areas: Query<(&ComputedNode, &UiGlobalTransform, &ScrollPosition, Option<&ScrollRows>, &Children)>,
     children: Query<&Children>,
+    texts: Query<(&ComputedNode, &UiGlobalTransform), With<Text>>,
     mut clips: Query<&mut CalculatedClip>,
 ) {
     for track in &tracks {
@@ -370,11 +374,27 @@ fn cut_scrolled_edges(
         let mut stack: Vec<Entity> = kids.iter().collect();
         while let Some(e) = stack.pop() {
             if let Ok(mut clip) = clips.get_mut(e) {
-                clip.push_rect(cut, to_area);
+                let rect = match texts.get(e) {
+                    Ok((n, t)) if axis == BarAxis::Vertical => {
+                        let mid = to_area.transform_point2(t.translation).y;
+                        let (lo, hi) = cut_text(lo, hi, mid - n.size.y / 2.0, mid + n.size.y / 2.0);
+                        Rect { min: Vec2::new(f32::NEG_INFINITY, lo), max: Vec2::new(f32::INFINITY, hi) }
+                    }
+                    _ => cut,
+                };
+                clip.push_rect(rect, to_area);
             }
             stack.extend(children.get(e).into_iter().flatten());
         }
     }
+}
+
+/// The cut along a vertical area (`lo` to `hi`, its own space) for a text from `top` to `bottom`: a text across an
+/// edge is cut away whole (the cut moves past it), one inside it keeps the cut.
+fn cut_text(lo: f32, hi: f32, top: f32, bottom: f32) -> (f32, f32) {
+    let lo = if top < lo && bottom > lo { bottom } else { lo };
+    let hi = if top < hi && bottom > hi { top } else { hi };
+    (lo, hi.max(lo))
 }
 
 /// Gives every new [`Scrollbar`] area its glow room and spawns its bar as its next sibling (it draws over it).
@@ -890,5 +910,15 @@ mod tests {
         }
         assert!(half.is_some_and(|h| h > 0.3 && h < 0.7), "{half:?}");
         assert_eq!(a, 0.0);
+    }
+
+    /// A text across a scrolled edge is cut away whole; one inside the view, or with no edge cut, keeps the cut.
+    #[test]
+    fn a_text_across_an_edge_goes_whole() {
+        assert_eq!(cut_text(-100.0, 100.0, -110.0, -90.0), (-90.0, 100.0));
+        assert_eq!(cut_text(-100.0, 100.0, 90.0, 110.0), (-100.0, 90.0));
+        assert_eq!(cut_text(-100.0, 100.0, -20.0, 20.0), (-100.0, 100.0));
+        assert_eq!(cut_text(f32::NEG_INFINITY, 100.0, -120.0, -90.0), (f32::NEG_INFINITY, 100.0));
+        assert_eq!(cut_text(-10.0, 10.0, -20.0, 20.0), (20.0, 20.0), "taller than the view: nothing shows");
     }
 }

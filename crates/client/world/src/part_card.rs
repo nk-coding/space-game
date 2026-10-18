@@ -10,8 +10,11 @@
 //! * **The hover card**: a row that carries a [`PartHover`] (or holds the node under the pointer) shows the card after
 //!   the pointer rests on it for `card.delay`; from one row to the next it follows at once. It sits beside the row,
 //!   outside the list (`card.offset` from the row's right edge, or left of it when the window has no room), level
-//!   with the row and kept inside the window and up and down the row's list (off the bars under and over it). Its
-//!   icon, size and category, stat block and bonuses.
+//!   with the row, moved up when it would run past the bottom of the row's list (each screen ends its list above
+//!   its bottom bars and status lines) and never above the top bar ([`kit::ui_kit::Frame::below_top`]; Niklas, 18 Oct 2026: "it
+//!   should not cover the bottom area"). A part too tall for that room shows its stat rows closer ([`Fit::Tight`]),
+//!   then in three columns ([`Fit::Wide`], when the card still fits beside the row). Its icon, size and category,
+//!   stat block and bonuses.
 //! * **Layering**: part icons are world meshes under bevy_ui. The card's backing is a world mesh too (a filled
 //!   [`UiIcon::Scrim`]) one icon layer up ([`UiIconLayer`]), its icon on that layer, so the card covers the icons
 //!   below it and shows its own; its words are bevy_ui. bevy_ui draws over every icon, so the card lies beside the
@@ -73,8 +76,8 @@ pub enum Held {
 impl Held {
     fn words(self) -> &'static str {
         match self {
-            Held::Design => "THE DESIGN HOLDS",
-            Held::Fleet => "THE FLEET CARRIES",
+            Held::Design => "in the design",
+            Held::Fleet => "in the fleet",
         }
     }
 }
@@ -99,14 +102,15 @@ pub fn part_info(content: &Content, granted: &Granted, part: &Part, material: Op
     let mut stats: Vec<StatLine> = lines.iter().filter(|l| l.bonus.is_none()).map(|l| StatLine::new(l.label.to_uppercase(), l.text.clone(), Tone::Number)).collect();
     if !part.hull {
         let recipe = part.recipe.as_ref().map_or_else(
-            || "SALVAGE ONLY".to_string(),
-            |r| r.materials.iter().map(|(m, n)| format!("{n} {}", content.materials.get(m).map_or(m.as_str(), |x| x.name.as_str()).to_uppercase())).collect::<Vec<_>>().join(" · "),
+            || "Salvage only".to_string(),
+            // An entry never breaks over two lines (no-break spaces in it); the line breaks between entries.
+            |r| r.materials.iter().map(|(m, n)| format!("{n} {}", content.materials.get(m).map_or(m.as_str(), |x| x.name.as_str())).replace(' ', "\u{a0}")).collect::<Vec<_>>().join("  ·  "),
         );
-        stats.push(StatLine { wide: true, ..StatLine::new("RECIPE", recipe, Tone::Label) });
+        stats.push(StatLine { wide: true, ..StatLine::new("RECIPE", recipe, Tone::Number) });
         if let Some(n) = granted.in_stock(&part.id) {
             let (count, whose) = held;
             let tone = if count > n { Tone::Coral } else { Tone::Number };
-            stats.push(StatLine { wide: true, ..StatLine::new("IN STOCK", format!("{n}  ·  {} {count}", whose.words()), tone) });
+            stats.push(StatLine { wide: true, ..StatLine::new("IN STOCK", format!("{n}  ·  {count} {}", whose.words()), tone) });
         }
     }
     let bonuses = lines
@@ -248,12 +252,40 @@ enum CardText {
     Bonuses,
 }
 
-/// The row the pointer rests on, since when, and what the card shows.
+/// The row the pointer rests on, since when, what the card shows and how it fits its room.
 #[derive(Default)]
 struct Resting {
     row: Option<Entity>,
     since: f32,
     shown: Option<(Entity, PartHover)>,
+    fit: Fit,
+}
+
+/// How a card fits its room: its stat rows `stats.row_gap` apart, `card.tight_gap` apart, or that and in three
+/// columns (the card a column wider).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
+pub enum Fit {
+    #[default]
+    Normal,
+    Tight,
+    Wide,
+}
+
+impl Fit {
+    fn columns(self) -> u16 {
+        if self == Fit::Wide { 3 } else { 2 }
+    }
+
+    fn row_gap(self) -> f32 {
+        if self == Fit::Normal { frame().stats.row_gap } else { frame().card.tight_gap }
+    }
+
+    /// The card's width: `card.width` with two columns, a column and its gap more with three.
+    pub fn width(self) -> f32 {
+        let (card, s) = (&frame().card, &frame().stats);
+        let column = (card.width - 2.0 * card.pad - 2.0 - s.col_gap) / 2.0;
+        card.width + f32::from(self.columns() - 2) * (column + s.col_gap)
+    }
 }
 
 /// The most stat lines a card shows (a part has fewer).
@@ -327,10 +359,10 @@ fn show_card(
     parents: Query<&ChildOf>,
     rows: Query<(&PartHover, &ComputedNode, &UiGlobalTransform, &InheritedVisibility)>,
     lists: Query<(&ComputedNode, &UiGlobalTransform), With<GroupedList>>,
-    mut card: Single<(&mut Visibility, &mut UiTransform, &ComputedNode), With<Card>>,
+    mut card: Single<(&mut Visibility, &mut UiTransform, &ComputedNode, &mut Node), With<Card>>,
     mut icon: Single<&mut UiIcon, With<CardIcon>>,
-    mut block: Single<&mut StatBlock, With<CardStats>>,
-    mut texts: Query<(&CardText, &mut Text, &mut TextColor, &mut Node)>,
+    mut block: Single<(&mut StatBlock, &mut Node), (With<CardStats>, Without<Card>)>,
+    mut texts: Query<(&CardText, &mut Text, &mut TextColor, &mut Node), (Without<Card>, Without<CardStats>)>,
     style: Res<Style>,
     mut rest: Local<Resting>,
 ) {
@@ -343,7 +375,8 @@ fn show_card(
         rest.row = row;
         rest.since = now;
     }
-    let (vis, tf, node) = &mut *card;
+    let (vis, tf, node, card_node) = &mut *card;
+    let (block, block_node) = &mut *block;
     let want = row.filter(|_| rest.shown.is_some() || now - rest.since >= frame().card.delay).and_then(|e| rows.get(e).ok().map(|(h, ..)| (e, h.clone())));
     let Some((row_e, hover)) = want else {
         rest.shown = None;
@@ -385,7 +418,9 @@ fn show_card(
         let first = rest.shown.as_ref().is_none_or(|(e, h)| *e != row_e || h.part != hover.part);
         rest.shown = Some((row_e, hover));
         if first {
-            // Laid out this frame, placed and shown from the next.
+            // Laid out this frame (at the normal fit), placed and shown from the next.
+            rest.fit = Fit::Normal;
+            lay_fit(rest.fit, card_node, block_node);
             if **vis != Visibility::Hidden {
                 **vis = Visibility::Hidden;
             }
@@ -397,16 +432,24 @@ fn show_card(
     let scale = window.scale_factor() * k;
     let row_rect = Rect::from_center_size(row_at.translation / scale, row_node.size / scale);
     let size = node.size * node.inverse_scale_factor;
-    // The room up and down: the row's list (the card stays level with it, off the bars under and over it), else the
-    // window, inside the margin.
-    let m = frame().card.margin;
-    let window_room = Rect::from_corners(Vec2::splat(m), window.size() / k - m);
+    // The room: the window inside the margin, under the top bar and down to the bottom of the row's list (each screen
+    // ends it above its bottom bars and status lines).
+    let (f, m) = (frame(), frame().card.margin);
+    let mut room = Rect::from_corners(Vec2::new(m, f.below_top().max(m)), window.size() / k - m);
     let list = std::iter::successors(Some(row_e), |e| parents.get(*e).ok().map(ChildOf::parent)).find_map(|e| lists.get(e).ok());
-    let room = list.map_or(window_room, |(n, at)| {
-        let r = Rect::from_center_size(at.translation / scale, n.size / scale);
-        Rect::new(window_room.min.x, r.min.y.max(window_room.min.y), window_room.max.x, r.max.y.min(window_room.max.y))
-    });
-    let at = card_position(row_rect, size, room, frame().card.offset);
+    if let Some((n, at)) = list {
+        room.max.y = room.max.y.min((at.translation.y + n.size.y / 2.0) / scale);
+    }
+    // Too tall for the room: closer rows, then three columns; laid out this frame, placed from the next.
+    if let Some(fit) = next_fit(rest.fit, row_rect, size, room, f.card.offset) {
+        rest.fit = fit;
+        lay_fit(fit, card_node, block_node);
+        if **vis != Visibility::Hidden {
+            **vis = Visibility::Hidden;
+        }
+        return;
+    }
+    let at = card_position(row_rect, size, room, f.card.offset);
     let t = Val2::px(at.x, at.y);
     if tf.translation != t {
         tf.translation = t;
@@ -416,9 +459,37 @@ fn show_card(
     }
 }
 
+/// The card's and its stat block's layout for a fit (written only when it changes).
+fn lay_fit(fit: Fit, card: &mut Node, block: &mut Node) {
+    let (width, gap, columns) = (px(fit.width()), px(fit.row_gap()), RepeatedGridTrack::flex(fit.columns(), 1.0));
+    if card.width != width {
+        card.width = width;
+    }
+    if block.row_gap != gap || block.grid_template_columns != columns {
+        block.row_gap = gap;
+        block.grid_template_columns = columns;
+    }
+}
+
+/// The next fit for a card of `size` at `fit` that is taller than its `room` (UI px): closer rows, then three columns
+/// if the wider card fits beside the `row` (by `offset`) on either side; `None` when it fits or nothing is left.
+pub fn next_fit(fit: Fit, row: Rect, size: Vec2, room: Rect, offset: f32) -> Option<Fit> {
+    if size.y <= room.height() {
+        return None;
+    }
+    match fit {
+        Fit::Normal => Some(Fit::Tight),
+        Fit::Tight => {
+            let w = Fit::Wide.width();
+            (row.max.x + offset + w <= room.max.x || row.min.x - offset - w >= room.min.x).then_some(Fit::Wide)
+        }
+        Fit::Wide => None,
+    }
+}
+
 /// Where a card of `size` goes beside a row (all UI px, y down; the card's top-left corner): right of the row by
-/// `offset`, level with its top; left of it when `room` (the window inside its margin, and up and down the row's
-/// list) has no space on the right; moved up to end inside the room (never above its top).
+/// `offset`, level with its top; left of it when `room` (the window inside its margin, under the top bar and down to
+/// the bottom of the row's list) has no space on the right; moved up to end inside the room (never above its top).
 pub fn card_position(row: Rect, size: Vec2, room: Rect, offset: f32) -> Vec2 {
     let mut x = row.max.x + offset;
     if x + size.x > room.max.x {
@@ -435,17 +506,33 @@ mod tests {
     /// The card sits right of its row, level with it; left of it at the window's right edge; up from the bottom edge.
     #[test]
     fn the_card_sits_beside_its_row() {
-        // The window inside an 8 px margin, up and down a list from 74 to 634.
-        let room = Rect::new(8.0, 74.0, 1272.0, 634.0);
+        // The window inside an 8 px margin, under the top bar at 68 and down to a list's bottom at 634.
+        let room = Rect::new(8.0, 68.0, 1272.0, 634.0);
         let size = Vec2::new(272.0, 300.0);
         let row = Rect::new(20.0, 200.0, 268.0, 242.0);
         assert_eq!(card_position(row, size, room, 10.0), Vec2::new(278.0, 200.0));
         let low = Rect::new(20.0, 560.0, 268.0, 602.0);
         assert_eq!(card_position(low, size, room, 10.0).y, 634.0 - 300.0, "it ends with the list, off the bar under it");
         let tall = Vec2::new(272.0, 700.0);
-        assert_eq!(card_position(row, tall, room, 10.0).y, 74.0, "never above the list's top");
+        assert_eq!(card_position(row, tall, room, 10.0).y, 68.0, "never above the top bar");
         let right = Rect::new(900.0, 100.0, 1200.0, 142.0);
         assert_eq!(card_position(right, size, room, 10.0).x, 900.0 - 10.0 - 272.0);
+    }
+
+    /// A card taller than its room tightens its rows, then takes three columns while that fits beside the row.
+    #[test]
+    fn a_tall_card_compacts() {
+        let room = Rect::new(8.0, 68.0, 1272.0, 434.0);
+        let row = Rect::new(20.0, 380.0, 268.0, 422.0);
+        let fits = Vec2::new(272.0, 300.0);
+        let tall = Vec2::new(272.0, 420.0);
+        assert_eq!(next_fit(Fit::Normal, row, fits, room, 10.0), None);
+        assert_eq!(next_fit(Fit::Normal, row, tall, room, 10.0), Some(Fit::Tight));
+        assert_eq!(next_fit(Fit::Tight, row, tall, room, 10.0), Some(Fit::Wide));
+        assert_eq!(next_fit(Fit::Wide, row, tall, room, 10.0), None);
+        let narrow = Rect::new(8.0, 68.0, 560.0, 434.0);
+        assert_eq!(next_fit(Fit::Tight, row, tall, narrow, 10.0), None, "no room beside the row for three columns");
+        assert!(Fit::Wide.width() > Fit::Normal.width() && Fit::Tight.width() == Fit::Normal.width());
     }
 
     /// Every part's stat labels fit one line of the card's narrower column (the drydock's is wider): estimated at
