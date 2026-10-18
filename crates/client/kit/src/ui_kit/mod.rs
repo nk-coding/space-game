@@ -14,6 +14,8 @@
 //!   state, the kit turns state + pointer into colours ([`UiStyleSet`]), writing only what changed.
 //! * Colours go through [`ui_color`] (the world composites in sRGB, bevy_ui does not encode for it).
 //! * Glyphs that Barlow lacks (arrows, the play triangle, the search lens) are vector icons (`ui_icons`).
+//! * [`Frame`] (`frame`): the frame every screen shares, its numbers from the style tokens: the back ring and the
+//!   heading at the window's top left, the top bar's pills, plates over the view, the flight HUD's type.
 //! * [`HudFonts`] (`fonts`): the UI's fonts, loaded at `Startup` by [`load_fonts`].
 //! * [`Tip`]: a control's tooltip (its name and key; labels carry no key letters).
 //! * [`ScreenFx`] / [`ScreenPart`] (`transition`): a screen's enter / exit transition, its panels sliding in from
@@ -24,7 +26,7 @@
 //!   [`ScrollRows`] for a list that shows a pool of row nodes, scrolled by pixels too.
 //!
 //! Files: text helpers, the pointer and hit testing, the UI scale here; `widgets` (pills, rings, bars, brackets and
-//! their styling), `field` (the text field), `tip`, `fonts`, `transition`, `scrollbar`.
+//! their styling), `field` (the text field), `tip`, `fonts`, `frame`, `transition`, `scrollbar`.
 
 use std::borrow::Cow;
 
@@ -37,6 +39,7 @@ use bevy::window::PrimaryWindow;
 
 mod field;
 mod fonts;
+mod frame;
 mod scrollbar;
 mod tip;
 mod transition;
@@ -45,6 +48,7 @@ mod widgets;
 pub use field::{Caret, FieldKey, TextField, TextFieldText, edit_line, field_text, name_in_place, selected_text};
 use field::{FieldSpan, field_parts, type_into_fields};
 pub use fonts::{BARLOW_REGULAR, HudFonts, load_fonts};
+pub use frame::{Frame, HudType, PanelLook, crumb, frame, panel_colors, panel_node, panel_title, spawn_back, spawn_close, spawn_head, title, top_pill};
 pub use scrollbar::{BAR_HIT, ScrollClipSet, ScrollRows, Scrollbar, SmoothScroll};
 pub use transition::{
     EXIT_SECONDS, Edge, IconMaterials, ScreenFx, ScreenPart, WorldCover, show_screen, snap_screen,

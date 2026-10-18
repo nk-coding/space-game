@@ -27,7 +27,7 @@ pub(in crate::drydock) fn spawn_title(parent: &mut ChildSpawnerCommands, fonts: 
         // left back button which is incredibly weird").
         .spawn((TitleButton, Hot::default(), Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(12), height: px(FIELD_H), ..default() }))
         .with_children(|t| {
-            t.spawn((PanelText::Name, number(fonts, "", 20.0, name)));
+            t.spawn((PanelText::Name, prose(fonts, "", kit::ui_kit::frame().title, name)));
             t.spawn((
                 TitleField,
                 TextField { placeholder: "Name".into(), max_chars: MAX_NAME, ..default() },

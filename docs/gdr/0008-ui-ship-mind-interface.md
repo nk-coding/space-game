@@ -1,6 +1,16 @@
 # GDR-0008: The UI is a diegetic ship-mind interface with a floating HUD, landscape only
 
 - Status: Accepted
+  2026-10-18 (Niklas: "the top-left back to the main shipyard button sits at different positions on different
+  screens; harmonize margins, paddings, button sizes"): one frame for every screen, its numbers in the style tokens
+  (`frame.*`, `panel.*`, `hud.*` in `art/tokens.json`; `kit::ui_kit::frame`). The back ring (40 px, the menu glyph)
+  sits 22 px from the window's left and 14 px from its top on every screen (the screens on a 1280 × 720 stage had it
+  at the stage's corner, which moves with the window's aspect), the breadcrumb (10) over the title (22) beside it,
+  the top bar's pills (30 px, text 9.5) at the same margin on the right, centred on the ring; the shipyard's words
+  and the flight HUD's top left start at the same corner. Plates over the view (the flight menu, the controls,
+  ABANDON VOYAGE?) share one fill, border, padding and title. The flight HUD has one type for every group (head 12,
+  value 34, line 10.5). Screenshots `docs/results/ui-frame-research.png`, `ui-frame-fleet.png`,
+  `flight-hud-frame.png`.
 - Date: 2026-10-10
 - Decided by: Niklas
 - Related: [GDR-0007](0007-ship-style-2a.md), [GDR-0009](0009-stick-and-lock-controls.md), [GDR-0015](0015-layered-behavior.md), [GDR-0017](0017-combat-support-repair-capture-sensors.md), `docs/style-guide.md` "UI", `docs/concept/boards/ui-mockups/`

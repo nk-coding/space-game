@@ -10,8 +10,8 @@ use data::{Content, ResearchNode, Unlock};
 use kit::style::{Style, ui_color};
 use kit::ui_icons::{Glyph, UiIcon};
 use kit::ui_kit::{
-    HudFonts, Edge, Hot, Pill, PillText, ScreenFx, ScreenPart, Scrollbar, Tip, Tone, UiBlock, show_screen, UiClick, glow, label, number, prose, ring_node, set_color, set_text, spawn_brackets, spawn_pill,
-    tracked,
+    HudFonts, Edge, Hot, Pill, PillText, ScreenFx, ScreenPart, Scrollbar, Tip, Tone, UiBlock, show_screen, UiClick, glow, label, number, prose, set_color, set_text, spawn_brackets, spawn_pill,
+    frame, spawn_head, tracked,
 };
 use world::career::{Granted, PlayerCareer};
 use world::mode::AppMode;
@@ -240,29 +240,8 @@ pub fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>, co
             root.spawn(Node { position_type: PositionType::Absolute, width: percent(100), height: percent(100), justify_content: JustifyContent::Center, align_items: AlignItems::Center, ..default() })
                 .with_children(|centre| {
                     centre.spawn(Node { width: px(STAGE.x), height: px(STAGE.y), flex_shrink: 0.0, ..default() }).with_children(|stage| {
-                        // Four roots (the top bar, the tree, the detail, the bottom bar), so each can slide in on its own.
-                        stage.spawn((UiBlock, ScreenPart::new(Edge::Top, 0), abs(Vec2::ZERO, Some(Vec2::new(STAGE.x, 70.0))))).with_children(|top| {
-                            // Left: the way back, where we are.
-                            top.spawn(Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(14), ..abs(Vec2::new(22.0, 14.0), None) }).with_children(|tl| {
-                                tl.spawn((ring_node(40.0), ResearchButton(ResearchAction::Home), Tip::key("SHIPYARD", "ESC"))).with_child((UiIcon::Glyph { glyph: Glyph::Menu, color: ui.violet }, Node { width: px(22), height: px(22), ..default() }));
-                                tl.spawn(Node { flex_direction: FlexDirection::Column, row_gap: px(4), ..default() }).with_children(|col| {
-                                    col.spawn(label(fonts, "SHIPYARD  ›  RESEARCH", 10.0, c(Tone::Label, 1.0)));
-                                    col.spawn(prose(fonts, "Research", 22.0, c(Tone::Number, 1.0)));
-                                });
-                            });
-                            // Right: data of families without a lane, the materials research costs.
-                            top.spawn(Node { position_type: PositionType::Absolute, right: px(24), top: px(24), flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(10), ..default() })
-                                .with_children(|tr| {
-                                    tr.spawn((RText::AlsoInStore, label(fonts, "", 8.5, c(Tone::Dim, 1.0)), Node { margin: UiRect::right(px(16)), ..default() }));
-                                    for (k, mat) in cost_materials(content).iter().enumerate() {
-                                        let name = content.materials.get(mat).map_or(mat.to_uppercase(), |m| m.name.to_uppercase());
-                                        tr.spawn((UiIcon::Glyph { glyph: Glyph::Diamond, color: ui.gold }, Node { width: px(9), height: px(9), ..default() }));
-                                        tr.spawn(label(fonts, &name, 9.0, c(Tone::Label, 1.0)));
-                                        tr.spawn((RText::Material(k), number(fonts, "", 18.0, c(Tone::Gold, 1.0)), Node { margin: UiRect::right(px(6)), ..default() }));
-                                    }
-                                });
-                        });
-
+                        // Three roots on the stage (the tree, the detail, the bottom bar) and the top bar over the window, so each
+                        // can slide in on its own.
                         // The tree: tier heads over the columns, the lanes (scrolled when they don't fit).
                         stage.spawn((ScreenPart::new(Edge::Left, 1), abs(Vec2::new(0.0, TIER_Y), Some(Vec2::new(TREE_RIGHT + 8.0, TREE_BOTTOM - TIER_Y))))).with_children(|left| {
                             for col in 0..tree.columns {
@@ -294,6 +273,23 @@ pub fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>, co
                         });
                     });
                 });
+            // The top bar across the window: the way back and where we are (the frame's top left), the data of families
+            // without a lane and the materials research costs (its top right).
+            let f = frame();
+            root.spawn((UiBlock, ScreenPart::new(Edge::Top, 0), Node { position_type: PositionType::Absolute, left: px(0), top: px(0), width: percent(100), height: px(70.0), ..default() })).with_children(|top| {
+                top.spawn(f.top_left()).with_children(|tl| {
+                    spawn_head(tl, fonts, &ui, (ResearchButton(ResearchAction::Home), Tip::key("SHIPYARD", "ESC")), "SHIPYARD  ›  RESEARCH", "Research");
+                });
+                top.spawn(f.top_right()).with_children(|tr| {
+                    tr.spawn((RText::AlsoInStore, label(fonts, "", 8.5, c(Tone::Dim, 1.0)), Node { margin: UiRect::right(px(16)), ..default() }));
+                    for (k, mat) in cost_materials(content).iter().enumerate() {
+                        let name = content.materials.get(mat).map_or(mat.to_uppercase(), |m| m.name.to_uppercase());
+                        tr.spawn((UiIcon::Glyph { glyph: Glyph::Diamond, color: ui.gold }, Node { width: px(9), height: px(9), ..default() }));
+                        tr.spawn(label(fonts, &name, 9.0, c(Tone::Label, 1.0)));
+                        tr.spawn((RText::Material(k), number(fonts, "", 18.0, c(Tone::Gold, 1.0)), Node { margin: UiRect::right(px(6)), ..default() }));
+                    }
+                });
+            });
         });
 }
 

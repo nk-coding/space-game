@@ -43,8 +43,7 @@ use bevy::prelude::*;
 use data::{Content, ResearchNode, Unlock};
 use kit::clipboard::Clipboard;
 use kit::style::{Style, ui_color};
-use kit::ui_icons::{Glyph, UiIcon};
-use kit::ui_kit::{Edge, HudFonts, Pill, PillText, ScreenFx, ScreenPart, TextField, Tip, Tone, UiClick, UiInputSet, UiStyleSet, label, prose, ring_node, set_color, set_text, show_screen, spawn_pill};
+use kit::ui_kit::{Edge, HudFonts, Pill, PillText, ScreenFx, ScreenPart, TextField, Tip, Tone, UiClick, UiInputSet, UiStyleSet, crumb, frame, label, set_color, set_text, show_screen, spawn_back, spawn_close, spawn_pill, title, top_pill};
 use world::career::{EscortDesigns, Granted, PlayerCareer};
 use world::evolution::{Lab, LabRequest};
 use world::mode::AppMode;
@@ -547,37 +546,6 @@ fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>) {
             })
             .with_children(|centre| {
                 centre.spawn(Node { width: px(STAGE.x), height: px(STAGE.y), flex_shrink: 0.0, ..default() }).with_children(|stage| {
-                    // Top left: the way back, where we are, the title.
-                    stage.spawn((ScreenPart::new(Edge::Top, 0), on_row(abs(Vec2::new(22.0, 14.0), None), 14.0))).with_children(|tl| {
-                        tl.spawn((ring_node(40.0), LabButton::Back, Tip::key("BACK", "ESC")))
-                            .with_child((UiIcon::Glyph { glyph: Glyph::Menu, color: ui.violet }, Node { width: px(22), height: px(22), ..default() }));
-                        tl.spawn(column(4.0)).with_children(|col| {
-                            col.spawn((LayerText::Crumb, label(fonts, "SHIPYARD  ›  EVOLUTION", 10.0, c(Tone::Label, 1.0))));
-                            col.spawn((LayerText::Title, prose(fonts, "Evolution", 22.0, c(Tone::Number, 1.0))));
-                        });
-                    });
-                    // Top right: the page's pill, CLOSE.
-                    stage.spawn((ScreenPart::new(Edge::Top, 0), Node { position_type: PositionType::Absolute, right: px(20), top: px(19), ..row(10.0) })).with_children(|tr| {
-                        let primary = Pill { primary: true, ..Pill::new(Tone::Teal) };
-                        let ladder = spawn_pill(tr, fonts, "THE LADDER", 9.5, 30.0, None, Pill::new(Tone::Gold), (LabButton::OpenLadder, Tip::new("YOUR DESIGNS RATED ON A FIXED LADDER OF ENEMIES")));
-                        tr.commands().entity(ladder).insert(TopPill::Ladder);
-                        let rate_all = spawn_pill(tr, fonts, "RATE ALL", 9.5, 30.0, None, primary, (LabButton::Ladder(ladder::LadderButton::RateAll), Tip::new("EVERY SAVED DESIGN ON THE LADDER")));
-                        tr.commands().entity(rate_all).insert(TopPill::RateAll);
-                        let import = spawn_pill(tr, fonts, "IMPORT RUN", 9.5, 30.0, None, Pill::new(Tone::Teal), (LabButton::Import, Tip::new("A RUN FILE OF THE CLI: ARENA EVOLVE --SAVE")));
-                        tr.commands().entity(import).insert(TopPill::Import);
-                        let new_run = spawn_pill(tr, fonts, "NEW RUN", 9.5, 30.0, None, primary, (LabButton::NewRun, Tip::new("SET UP A NEW RUN")));
-                        tr.commands().entity(new_run).insert(TopPill::NewRun);
-                        let rename = spawn_pill(tr, fonts, "RENAME", 9.5, 30.0, None, Pill::new(Tone::Teal), LabButton::Run(run::RunButton::Rename));
-                        tr.commands().entity(rename).insert(TopPill::Rename);
-                        let rescore = spawn_pill(tr, fonts, "RE-SCORE", 9.5, 30.0, None, primary, (LabButton::Run(run::RunButton::Rescore), Tip::new("A NEW RUN UNDER TODAY'S RULES")));
-                        tr.commands().entity(rescore).insert(TopPill::Rescore);
-                        let pause = spawn_pill(tr, fonts, "PAUSE", 9.5, 30.0, None, Pill::new(Tone::Gold), LabButton::Run(run::RunButton::Pause));
-                        tr.commands().entity(pause).insert(TopPill::Pause);
-                        let resume = spawn_pill(tr, fonts, "RESUME", 9.5, 30.0, None, primary, LabButton::Run(run::RunButton::Resume));
-                        tr.commands().entity(resume).insert(TopPill::Resume);
-                        tr.spawn(Node { width: px(6), ..default() });
-                        spawn_pill(tr, fonts, "CLOSE", 9.5, 30.0, None, Pill::new(Tone::Teal), (LabButton::Back, Tip::key("CLOSE", "ESC")));
-                    });
                     for page in [Page::Runs, Page::Setup, Page::Run, Page::Ladder] {
                         let node = Node { position_type: PositionType::Absolute, width: percent(100), height: percent(100), ..default() };
                         stage.spawn((PageNode(page), ScreenPart::new(Edge::Fade, 1), node)).with_children(|p| match page {
@@ -589,6 +557,36 @@ fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>) {
                     }
                     stage.spawn((LayerText::Status, ScreenPart::new(Edge::Bottom, 3), label(fonts, "", 9.0, c(Tone::Label, 1.0)), abs(Vec2::new(36.0, 690.0), Some(Vec2::new(1208.0, 20.0)))));
                 });
+            });
+            // Top left: the way back, where we are, the title; top right: the page's pills, CLOSE (the frame's corners).
+            let f = frame();
+            root.spawn((ScreenPart::new(Edge::Top, 0), f.top_left())).with_children(|tl| {
+                spawn_back(tl, &ui, (LabButton::Back, Tip::key("BACK", "ESC")));
+                tl.spawn(f.heading()).with_children(|col| {
+                    col.spawn((LayerText::Crumb, crumb(fonts, "SHIPYARD  ›  EVOLUTION", &ui)));
+                    col.spawn((LayerText::Title, title(fonts, "Evolution", &ui)));
+                });
+            });
+            root.spawn((ScreenPart::new(Edge::Top, 0), f.top_right())).with_children(|tr| {
+                let primary = Pill { primary: true, ..Pill::new(Tone::Teal) };
+                let pills = [
+                    ("THE LADDER", Pill::new(Tone::Gold), LabButton::OpenLadder, Some("YOUR DESIGNS RATED ON A FIXED LADDER OF ENEMIES"), TopPill::Ladder),
+                    ("RATE ALL", primary, LabButton::Ladder(ladder::LadderButton::RateAll), Some("EVERY SAVED DESIGN ON THE LADDER"), TopPill::RateAll),
+                    ("IMPORT RUN", Pill::new(Tone::Teal), LabButton::Import, Some("A RUN FILE OF THE CLI: ARENA EVOLVE --SAVE"), TopPill::Import),
+                    ("NEW RUN", primary, LabButton::NewRun, Some("SET UP A NEW RUN"), TopPill::NewRun),
+                    ("RENAME", Pill::new(Tone::Teal), LabButton::Run(run::RunButton::Rename), None, TopPill::Rename),
+                    ("RE-SCORE", primary, LabButton::Run(run::RunButton::Rescore), Some("A NEW RUN UNDER TODAY'S RULES"), TopPill::Rescore),
+                    ("PAUSE", Pill::new(Tone::Gold), LabButton::Run(run::RunButton::Pause), None, TopPill::Pause),
+                    ("RESUME", primary, LabButton::Run(run::RunButton::Resume), None, TopPill::Resume),
+                ];
+                for (text, look, button, tip, top) in pills {
+                    let e = match tip {
+                        Some(t) => top_pill(tr, fonts, text, look, (button, Tip::new(t))),
+                        None => top_pill(tr, fonts, text, look, button),
+                    };
+                    tr.commands().entity(e).insert(top);
+                }
+                spawn_close(tr, fonts, LabButton::Back);
             });
         });
 }

@@ -45,19 +45,18 @@ pub(in crate::drydock) fn spawn(mut commands: Commands, fonts: Res<HudFonts>, st
             root.spawn((GridScrim, ScreenPart::new(Edge::Fade, 1), Node { width: percent(100), height: percent(100), ..abs(Some(0.0), None, Some(0.0), None) }, scrim));
 
             // Top left: the ring menu, the breadcrumb and the design's name.
-            root.spawn((UiBlock, UnderShelf, ScreenPart::new(Edge::Top, 0), Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(14), ..abs(Some(22.0), None, Some(14.0), None) }))
+            let f = frame();
+            root.spawn((UiBlock, UnderShelf, ScreenPart::new(Edge::Top, 0), f.top_left()))
                 .with_children(|tl| {
-                    tl.spawn((ring_node(40.0), ActionButton(DrydockAction::Menu), Tip::new("SHIPYARD"))).with_children(|r| {
-                        r.spawn(glyph(Glyph::Menu, Tone::Violet, 22.0));
-                    });
-                    tl.spawn(Node { flex_direction: FlexDirection::Column, row_gap: px(4), ..default() }).with_children(|col| {
-                        col.spawn((PanelText::Breadcrumb, label(fonts, "", 10.0, c(Tone::Label, 1.0))));
+                    spawn_back(tl, &ui, (ActionButton(DrydockAction::Menu), Tip::new("SHIPYARD")));
+                    tl.spawn(f.heading()).with_children(|col| {
+                        col.spawn((PanelText::Breadcrumb, crumb(fonts, "", &ui)));
                         crate::drydock::blueprints::spawn_title(col, fonts, c(Tone::Number, 1.0), c(Tone::Dim, 1.0), c(Tone::Label, 0.3));
                     });
                 });
 
             // Top right: the overlays.
-            root.spawn((UiBlock, UnderShelf, ScreenPart::new(Edge::Top, 0), Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(5), ..abs(None, Some(20.0), Some(19.0), None) }))
+            root.spawn((UiBlock, UnderShelf, ScreenPart::new(Edge::Top, 0), Node { column_gap: px(5), ..f.top_right() }))
                 .with_children(|tr| {
                     tr.spawn((label(fonts, "OVERLAY", 9.0, c(Tone::Dim, 1.0)), Node { margin: UiRect::right(px(5)), ..default() }));
                     for o in Overlay::ALL {

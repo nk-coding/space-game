@@ -30,8 +30,8 @@ use data::{Blueprint, Content};
 use kit::style::{Style, ui_color};
 use kit::ui_icons::{Glyph, Stroke, UiIcon};
 use kit::ui_kit::{
-    HudFonts, Edge, Hot, Pill, ScreenFx, ScreenPart, ScrollRows, Scrollbar, Tip, Tone, UiClick, UiInputSet, show_screen, UiStyleSet, label, number, prose, ring_node, set_color, set_text,
-    spawn_brackets, spawn_pill, tracked,
+    HudFonts, Edge, Hot, Pill, ScreenFx, ScreenPart, ScrollRows, Scrollbar, Tip, Tone, UiClick, UiInputSet, show_screen, UiStyleSet, label, number, prose, set_color, set_text,
+    spawn_brackets, spawn_close, spawn_head, spawn_pill, frame, tracked,
 };
 use world::career::{EscortDesigns, Granted, PlayerCareer, readiness_words, voyage_line};
 use world::mode::AppMode;
@@ -498,51 +498,11 @@ fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>, clear:
                 centre.spawn(Node { width: px(STAGE.x), height: px(STAGE.y), flex_shrink: 0.0, ..default() }).with_children(|stage| {
                     // The formation ring and lines, under everything else.
                     stage.spawn((Formation, ScreenPart::new(Edge::Fade, 1), UiIcon::Sketch(Vec::new()), abs(Vec2::ZERO, Some(STAGE))));
-                    // Top left: the way back, where we are, the words.
-                    stage
-                        .spawn((ScreenPart::new(Edge::Top, 0), Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(14), ..abs(Vec2::new(22.0, 14.0), None) }))
-                        .with_children(|tl| {
-                            tl.spawn((ring_node(40.0), FleetButton::Close, Tip::key("SHIPYARD", "ESC"))).with_child((
-                                UiIcon::Glyph { glyph: Glyph::Menu, color: ui.violet },
-                                Node { width: px(22), height: px(22), ..default() },
-                            ));
-                            tl.spawn(Node { flex_direction: FlexDirection::Column, row_gap: px(4), ..default() }).with_children(|col| {
-                                col.spawn(label(fonts, "SHIPYARD  ›  FLEET", 10.0, c(Tone::Label, 1.0)));
-                                col.spawn(prose(fonts, "Fleet", 22.0, c(Tone::Number, 1.0)));
-                            });
-                            crate::evolution::spawn_chip(tl, fonts);
-                        });
                     stage.spawn((
                         ScreenPart::new(Edge::Fade, 1),
                         prose(fonts, "Escorts fly the behavior their design names and follow the flagship's lock.", 12.0, c(Tone::Label, 1.0)),
                         abs(Vec2::new(28.0, 84.0), Some(Vec2::new(300.0, 40.0))),
                     ));
-                    // Top right: the mind's cores, CLOSE.
-                    stage
-                        .spawn((ScreenPart::new(Edge::Top, 0), Node {
-                            position_type: PositionType::Absolute,
-                            right: px(20),
-                            top: px(19),
-                            flex_direction: FlexDirection::Row,
-                            align_items: AlignItems::Center,
-                            column_gap: px(10),
-                            ..default()
-                        }))
-                        .with_children(|tr| {
-                            tr.spawn(label(fonts, "CORES", 9.0, c(Tone::Label, 1.0)));
-                            tr.spawn((FleetText::Cores, number(fonts, "", 17.0, c(Tone::Violet, 1.0))));
-                            tr.spawn(Node { flex_direction: FlexDirection::Row, column_gap: px(5), margin: UiRect::right(px(14)), ..default() }).with_children(|dots| {
-                                for k in 0..DOTS {
-                                    dots.spawn((
-                                        FleetNode::Dot(k),
-                                        Node { width: px(8), height: px(8), border: UiRect::all(px(1.2)), border_radius: BorderRadius::MAX, ..default() },
-                                        BorderColor::all(c(Tone::Violet, 0.9)),
-                                        BackgroundColor(Color::NONE),
-                                    ));
-                                }
-                            });
-                            spawn_pill(tr, fonts, "CLOSE", 9.5, 30.0, None, Pill::new(Tone::Teal), (FleetButton::Close, Tip::key("CLOSE", "ESC")));
-                        });
 
                     // The flagship on the dock.
                     let (centre_at, size) = FLAGSHIP;
@@ -663,6 +623,27 @@ fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>, clear:
                         });
                     stage.spawn((FleetText::Status, ScreenPart::new(Edge::Bottom, 3), label(fonts, "", 9.5, c(Tone::Teal, 1.0)), abs(Vec2::new(36.0, 676.0), Some(Vec2::new(1208.0, 30.0)))));
                 });
+            });
+            // Top left: the way back, where we are; top right: the mind's cores, CLOSE (the frame's corners, `ui_kit::frame`).
+            let f = frame();
+            root.spawn((ScreenPart::new(Edge::Top, 0), f.top_left())).with_children(|tl| {
+                spawn_head(tl, fonts, &ui, (FleetButton::Close, Tip::key("SHIPYARD", "ESC")), "SHIPYARD  ›  FLEET", "Fleet");
+                crate::evolution::spawn_chip(tl, fonts);
+            });
+            root.spawn((ScreenPart::new(Edge::Top, 0), f.top_right())).with_children(|tr| {
+                tr.spawn(label(fonts, "CORES", 9.0, c(Tone::Label, 1.0)));
+                tr.spawn((FleetText::Cores, number(fonts, "", 17.0, c(Tone::Violet, 1.0))));
+                tr.spawn(Node { flex_direction: FlexDirection::Row, column_gap: px(5), margin: UiRect::right(px(14)), ..default() }).with_children(|dots| {
+                    for k in 0..DOTS {
+                        dots.spawn((
+                            FleetNode::Dot(k),
+                            Node { width: px(8), height: px(8), border: UiRect::all(px(1.2)), border_radius: BorderRadius::MAX, ..default() },
+                            BorderColor::all(c(Tone::Violet, 0.9)),
+                            BackgroundColor(Color::NONE),
+                        ));
+                    }
+                });
+                spawn_close(tr, fonts, FleetButton::Close);
             });
         });
 }

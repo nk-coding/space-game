@@ -515,7 +515,7 @@ pub(super) fn spawn_title(parent: &mut ChildSpawnerCommands, fonts: &HudFonts, n
     // As tall as the field in both states, so opening it does not move the ring button beside the block (as in the
     // drydock's title).
     parent.spawn(Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(12), height: px(FIELD_H), ..default() }).with_children(|t| {
-        t.spawn((TitleButton, Hot::default(), Node::default())).with_child((ScreenText::Name, prose(fonts, "", 21.0, name)));
+        t.spawn((TitleButton, Hot::default(), Node::default())).with_child((ScreenText::Name, prose(fonts, "", kit::ui_kit::frame().title, name)));
         t.spawn((
             TitleField,
             TextField { placeholder: "Name".into(), max_chars: MAX_NAME, ..default() },

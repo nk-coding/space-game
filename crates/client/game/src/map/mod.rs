@@ -71,7 +71,7 @@ use kit::meshbuf::MeshBuf;
 use kit::params::RenderToggles;
 use kit::style::{Style, ui_color};
 use kit::ui_icons::{Glyph, UiIcon};
-use kit::ui_kit::{HudFonts, Edge, Hot, Pill, ScreenFx, ScreenPart, Tip, Tone, show_screen, snap_screen, UiBlock, UiClick, UiInputSet, UiPointer, UiStyleSet, label, number, prose, ring_glyph, ring_node, set_color, set_text, spawn_pill, tracked};
+use kit::ui_kit::{HudFonts, Edge, Hot, Pill, ScreenFx, ScreenPart, Tip, Tone, show_screen, snap_screen, UiBlock, UiClick, UiInputSet, UiPointer, UiStyleSet, crumb, frame, label, number, prose, spawn_back, title, ring_glyph, ring_node, set_color, set_text, spawn_pill, tracked};
 use world::camera::{CameraRig, CameraSet};
 use world::career::{EscortDesigns, Granted, PlayerCareer, fleet_cores};
 use world::mode::AppMode;
@@ -480,15 +480,6 @@ fn spawn(
                             });
                     });
                 }
-                // Top left: the way back and where we are.
-                m.spawn(Node { position_type: PositionType::Absolute, left: px(22), top: px(14), ..row(14.0) }).with_children(|tl| {
-                    tl.spawn((ring_node(40.0), MapButton::Back, Tip::key("SHIPYARD", "ESC")))
-                        .with_child((UiIcon::Glyph { glyph: Glyph::Menu, color: ui.violet }, Node { width: px(22), height: px(22), ..default() }));
-                    tl.spawn(column(4.0)).with_children(|col| {
-                        col.spawn((MapText::Header, label(fonts, "", 10.0, c(Tone::Label, 1.0))));
-                        col.spawn(prose(fonts, "Voyages", 22.0, c(Tone::Number, 1.0)));
-                    });
-                });
                 // The band names along the top: home's band between its edges, the next one past the gate (they slide
                 // along the line with the arcs, `view::MapView::top_band_x`).
                 let top = MapView::new(b.centre, b.outer).top_band_x(b);
@@ -648,6 +639,15 @@ fn spawn(
                     let play = UiIcon::Glyph { glyph: Glyph::Play, color: ui.teal };
                     spawn_pill(p, fonts, "SET COURSE", 12.0, 46.0, Some(play), Pill { primary: true, ..Pill::new(Tone::Teal) }, (MapButton::SetCourse, Tip::key("SET COURSE", "ENTER")));
                 });
+        });
+        // Top left, at the window's corner (the frame's): the way back and where we are.
+        let f = frame();
+        root.spawn(f.top_left()).with_children(|tl| {
+            spawn_back(tl, &ui, (MapButton::Back, Tip::key("SHIPYARD", "ESC")));
+            tl.spawn(f.heading()).with_children(|col| {
+                col.spawn((MapText::Header, crumb(fonts, "", &ui)));
+                col.spawn(title(fonts, "Voyages", &ui));
+            });
         });
     });
 }

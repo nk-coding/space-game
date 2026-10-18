@@ -29,10 +29,10 @@ use bevy::window::PrimaryWindow;
 use data::input::{Action, Button, Chord, MAX_INPUTS, Section};
 use kit::params::{Params, RenderToggles};
 use kit::style::{Style, ui_color};
-use kit::ui_icons::{Glyph, UiIcon};
+use kit::ui_icons::Glyph;
 use kit::ui_kit::{
     Edge, HudFonts, Pill, PillText, ScreenFx, ScreenPart, Scrollbar, Tip, Tone, UiClick, UiInputSet, UiPointer, UiSize, UiStyleSet, label, prose, ring_glyph,
-    ring_node, set_text, show_screen, spawn_pill, ui_scale_for,
+    ring_node, set_text, show_screen, spawn_pill, ui_scale_for, crumb, frame, spawn_back, spawn_close, title, top_pill,
 };
 use world::mode::AppMode;
 use world::settings::{Act, ActionTip, Controls, DisplaySettings, OpenSettings, SettingsLayer, UI_SIZES, button_of, mods_of, mouse_of};
@@ -444,27 +444,6 @@ fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>, conten
             })
             .with_children(|centre| {
                 centre.spawn(Node { width: px(STAGE.x), height: px(STAGE.y), flex_shrink: 0.0, ..default() }).with_children(|stage| {
-                    // Top left: the way back, where we are, the title.
-                    stage
-                        .spawn((ScreenPart::new(Edge::Top, 0), Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(14), ..abs(Vec2::new(22.0, 14.0), None) }))
-                        .with_children(|tl| {
-                        tl.spawn((ring_node(40.0), SettingsButton::Close, Tip::key("CLOSE", "ESC")))
-                            .with_child((UiIcon::Glyph { glyph: Glyph::Menu, color: ui.violet }, Node { width: px(22), height: px(22), ..default() }));
-                        tl.spawn(Node { flex_direction: FlexDirection::Column, row_gap: px(4), ..default() }).with_children(|col| {
-                            col.spawn((SettingsText::Crumb, label(fonts, "SHIPYARD  ›  SETTINGS", 10.0, c(Tone::Label, 1.0))));
-                            col.spawn(prose(fonts, "Settings", 22.0, c(Tone::Number, 1.0)));
-                        });
-                        crate::evolution::spawn_chip(tl, fonts);
-                    });
-                    // Top right: the tabs, CLOSE.
-                    stage
-                        .spawn((ScreenPart::new(Edge::Top, 0), Node { position_type: PositionType::Absolute, right: px(20), top: px(19), ..row(10.0) }))
-                        .with_children(|tr| {
-                            spawn_pill(tr, fonts, "CONTROLS", 9.5, 30.0, None, Pill::new(Tone::Teal), (SettingsButton::Tab(Tab::Controls), Tip::new("CONTROLS")));
-                            spawn_pill(tr, fonts, "DISPLAY", 9.5, 30.0, None, Pill::new(Tone::Teal), (SettingsButton::Tab(Tab::Display), Tip::new("DISPLAY")));
-                            tr.spawn(Node { width: px(12), ..default() });
-                            spawn_pill(tr, fonts, "CLOSE", 9.5, 30.0, None, Pill::new(Tone::Teal), (SettingsButton::Close, Tip::key("CLOSE", "ESC")));
-                        });
 
                     // CONTROLS: every action by section, scrolling.
                     let (at, size) = LIST;
@@ -530,10 +509,26 @@ fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>, conten
                         });
                 });
             });
+            // Top left: the way back, where we are, the title; top right: the tabs, CLOSE (the frame's corners).
+            let f = frame();
+            root.spawn((ScreenPart::new(Edge::Top, 0), f.top_left())).with_children(|tl| {
+                spawn_back(tl, &ui, (SettingsButton::Close, Tip::key("CLOSE", "ESC")));
+                tl.spawn(f.heading()).with_children(|col| {
+                    col.spawn((SettingsText::Crumb, crumb(fonts, "SHIPYARD  ›  SETTINGS", &ui)));
+                    col.spawn(title(fonts, "Settings", &ui));
+                });
+                crate::evolution::spawn_chip(tl, fonts);
+            });
+            root.spawn((ScreenPart::new(Edge::Top, 0), f.top_right())).with_children(|tr| {
+                top_pill(tr, fonts, "CONTROLS", Pill::new(Tone::Teal), (SettingsButton::Tab(Tab::Controls), Tip::new("CONTROLS")));
+                top_pill(tr, fonts, "DISPLAY", Pill::new(Tone::Teal), (SettingsButton::Tab(Tab::Display), Tip::new("DISPLAY")));
+                spawn_close(tr, fonts, SettingsButton::Close);
+            });
         });
 }
 
 /// Spawns the gear ring for home's top right (home calls this into its screen root).
 pub fn spawn_ring(parent: &mut ChildSpawnerCommands) {
-    parent.spawn((SettingsRing, ring_node(40.0), Tip::new("SETTINGS"), ActionTip(Action::OpenSettings))).with_child(ring_glyph(Glyph::Gear, 20.0));
+    let f = frame();
+    parent.spawn((SettingsRing, ring_node(f.ring), Tip::new("SETTINGS"), ActionTip(Action::OpenSettings))).with_child(ring_glyph(Glyph::Gear, f.ring_glyph));
 }

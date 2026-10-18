@@ -30,7 +30,7 @@ use data::behavior::edit::RuleId;
 use kit::style::{Style, UiPalette, ui_color};
 use kit::ui_icons::{Glyph, UiIcon};
 use kit::ui_kit::{
-    HudFonts, Edge, Hot, Pill, ScreenFx, ScreenPart, Scrollbar, TextField, Tip, Tone, field_text, glow, label, prose, ring_node, set_color, set_text, spawn_pill,
+    HudFonts, Edge, Hot, Pill, ScreenFx, ScreenPart, Scrollbar, TextField, Tip, Tone, crumb, field_text, frame, glow, label, prose, spawn_back, ring_node, set_color, set_text, spawn_pill,
     tracked,
 };
 use world::camera::CameraRig;
@@ -206,13 +206,12 @@ pub(super) fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Sty
         ))
         .with_children(|root| {
             // Top left: the ring menu, the breadcrumb and the behavior's name, the rule slots.
-            root.spawn((ScreenPart::new(Edge::Top, 0), Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(14), ..abs(Some(SIDE), None, Some(14.0), None) }))
+            let f = frame();
+            root.spawn((ScreenPart::new(Edge::Top, 0), f.top_left()))
                 .with_children(|tl| {
-                    tl.spawn((ring_node(40.0), BehaviorButton(BehaviorAction::Menu), Tip::new("SHIPYARD"))).with_children(|r| {
-                        r.spawn((UiIcon::Glyph { glyph: Glyph::Menu, color: kit.ui.violet }, Node { width: px(22), height: px(22), ..default() }));
-                    });
-                    tl.spawn(Node { flex_direction: FlexDirection::Column, row_gap: px(4), ..default() }).with_children(|col| {
-                        col.spawn((ScreenText::Breadcrumb, label(fonts, "", 10.0, kit.c(Tone::Label, 1.0))));
+                    spawn_back(tl, &kit.ui, (BehaviorButton(BehaviorAction::Menu), Tip::new("SHIPYARD")));
+                    tl.spawn(f.heading()).with_children(|col| {
+                        col.spawn((ScreenText::Breadcrumb, crumb(fonts, "", &kit.ui)));
                         // The name (a click renames it) and its saved state (`saving.rs`).
                         super::saving::spawn_title(col, fonts, kit.c(Tone::Number, 1.0), kit.c(Tone::Dim, 1.0), kit.c(Tone::Label, 0.3));
                     });
@@ -241,7 +240,7 @@ pub(super) fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Sty
             });
 
             // Top right: GRAPH / TEXT, TEST IN RANGE and its two modes under it.
-            root.spawn((ScreenPart::new(Edge::Top, 0), Node { flex_direction: FlexDirection::Row, align_items: AlignItems::FlexStart, column_gap: px(28), ..abs(None, Some(20.0), Some(16.0), None) }))
+            root.spawn((ScreenPart::new(Edge::Top, 0), Node { align_items: AlignItems::FlexStart, column_gap: px(28), ..f.top_right() }))
                 .with_children(|tr| {
                     tr.spawn(Node { flex_direction: FlexDirection::Row, column_gap: px(8), margin: UiRect::top(px(3)), ..default() }).with_children(|v| {
                         for (text, view) in [("GRAPH", BehaviorView::Graph), ("TEXT", BehaviorView::Text)] {

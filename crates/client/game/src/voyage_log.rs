@@ -31,8 +31,7 @@ use bevy::prelude::*;
 use data::{Career, Content};
 use data::career::{Outcome, TrailSignal, VoyageResult};
 use kit::style::{Style, ui_color};
-use kit::ui_icons::{Glyph, UiIcon};
-use kit::ui_kit::{Edge, HudFonts, Pill, ScreenFx, ScreenPart, Scrollbar, Tip, Tone, UiClick, UiInputSet, UiStyleSet, label, number, prose, ring_node, show_screen, spawn_pill, tracked};
+use kit::ui_kit::{Edge, HudFonts, Pill, ScreenFx, ScreenPart, Scrollbar, Tip, Tone, UiClick, UiInputSet, UiStyleSet, frame, label, number, prose, show_screen, spawn_close, spawn_head, spawn_pill, tracked};
 use world::career::{Note, PlayerCareer};
 use world::mode::AppMode;
 use world::sim_bridge::GameContent;
@@ -384,7 +383,6 @@ fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>) {
         height: size.map_or(Val::Auto, |s| px(s.y)),
         ..default()
     };
-    let row = |gap: f32| Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(gap), ..default() };
     commands
         .spawn((
             LogRoot,
@@ -404,29 +402,6 @@ fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>) {
             })
             .with_children(|centre| {
                 centre.spawn(Node { width: px(STAGE.x), height: px(STAGE.y), flex_shrink: 0.0, ..default() }).with_children(|stage| {
-                    // Top left: the way back, where we are, the title.
-                    stage
-                        .spawn((ScreenPart::new(Edge::Top, 0), Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(14), ..abs(Vec2::new(22.0, 14.0), None) }))
-                        .with_children(|tl| {
-                            tl.spawn((ring_node(40.0), CloseButton, Tip::key("SHIPYARD", "ESC")))
-                                .with_child((UiIcon::Glyph { glyph: Glyph::Menu, color: ui.violet }, Node { width: px(22), height: px(22), ..default() }));
-                            tl.spawn(Node { flex_direction: FlexDirection::Column, row_gap: px(4), ..default() }).with_children(|col| {
-                                col.spawn(label(fonts, "SHIPYARD  ›  LOG", 10.0, c(Tone::Label, 1.0)));
-                                col.spawn(prose(fonts, "Log", 22.0, c(Tone::Number, 1.0)));
-                            });
-                            crate::evolution::spawn_chip(tl, fonts);
-                        });
-                    // Top right: the career's counts, CLOSE.
-                    stage
-                        .spawn((ScreenPart::new(Edge::Top, 0), Node { position_type: PositionType::Absolute, right: px(20), top: px(19), ..row(10.0) }))
-                        .with_children(|tr| {
-                            for (word, t, tone) in [("VOYAGES", LogText::Voyages, Tone::Number), ("HOME", LogText::Home, Tone::Teal), ("LOST", LogText::Lost, Tone::Coral), ("SALVAGED", LogText::Salvaged, Tone::Gold)] {
-                                tr.spawn(label(fonts, word, 9.0, c(Tone::Label, 1.0)));
-                                tr.spawn((t, number(fonts, "0", 17.0, c(tone, 1.0)), Node { margin: UiRect::right(px(8)), ..default() }));
-                            }
-                            tr.spawn(Node { width: px(6), ..default() });
-                            spawn_pill(tr, fonts, "CLOSE", 9.5, 30.0, None, Pill::new(Tone::Teal), (CloseButton, Tip::key("CLOSE", "ESC")));
-                        });
                     // The voyages, scrolling.
                     let (at, size) = LIST;
                     stage.spawn((
@@ -437,6 +412,19 @@ fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>) {
                         Node { flex_direction: FlexDirection::Column, overflow: Overflow::scroll_y(), padding: UiRect::right(px(14)), ..abs(at, Some(size)) },
                     ));
                 });
+            });
+            // Top left: the way back, where we are, the title; top right: the career's counts, CLOSE (the frame's corners).
+            let f = frame();
+            root.spawn((ScreenPart::new(Edge::Top, 0), f.top_left())).with_children(|tl| {
+                spawn_head(tl, fonts, &ui, (CloseButton, Tip::key("SHIPYARD", "ESC")), "SHIPYARD  ›  LOG", "Log");
+                crate::evolution::spawn_chip(tl, fonts);
+            });
+            root.spawn((ScreenPart::new(Edge::Top, 0), f.top_right())).with_children(|tr| {
+                for (word, t, tone) in [("VOYAGES", LogText::Voyages, Tone::Number), ("HOME", LogText::Home, Tone::Teal), ("LOST", LogText::Lost, Tone::Coral), ("SALVAGED", LogText::Salvaged, Tone::Gold)] {
+                    tr.spawn(label(fonts, word, 9.0, c(Tone::Label, 1.0)));
+                    tr.spawn((t, number(fonts, "0", 17.0, c(tone, 1.0)), Node { margin: UiRect::right(px(8)), ..default() }));
+                }
+                spawn_close(tr, fonts, CloseButton);
             });
         });
 }

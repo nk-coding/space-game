@@ -60,7 +60,7 @@ use kit::ui_icons::{Glyph, UiIcon};
 use kit::ui_kit::{
     HudFonts, Edge, Hot, Pill, PillText, Ring, ScreenFx, ScreenPart, ScrollRows, Scrollbar, SmoothScroll, TextField, Tip, Tone, UiBlock, ValueBar,
     field_text, label, number,
-    prose, ring_glyph, ring_node, set_color, set_text, spawn_bar, spawn_brackets, spawn_pill, sub_tone, tracked,
+    crumb, frame, prose, ring_glyph, spawn_back, ring_node, set_color, set_text, spawn_bar, spawn_brackets, spawn_pill, sub_tone, tracked,
 };
 use world::camera::CameraRig;
 use world::career::{Granted, SeenPart, unlocked_by};
