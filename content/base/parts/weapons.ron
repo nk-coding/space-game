@@ -116,7 +116,10 @@
         recipe: (materials: {"automaton_plate": 4, "copper": 2, "steel": 3}),
     ),
     // The ammo feeder (GDR-0018: the kinetic weapons' own support part): what the capacitor is to lasers, for guns
-    // tagged `cannon`; a bigger step but at most two, and it cooks off when it is destroyed (the `ammo_feeder` node).
+    // tagged `cannon`; the capacitor's step but at most two, and it cooks off when it is destroyed (the `ammo_feeder`
+    // node). +20 % → +15 % (18 Oct 2026, docs/results/sidegrades-2026-10-18.md): at +20 % a feeder per gun lifted the
+    // cannon starter's Warden clear from 28 to 41 %, past its 37 % before GDR-0100's cut, where a capacitor per pulse
+    // laser adds about 6 points.
     (
         id: "ammo_feeder",
         name: "Ammo feeder",
@@ -135,7 +138,7 @@
         salvage: (family: "utility", data: 2),
         recipe: (materials: {"copper": 1, "steel": 3}),
         bonuses: [
-            (target: Tag("cannon"), stat: "fire_rate", effect: Percent(20), max_stacks: 2),
+            (target: Tag("cannon"), stat: "fire_rate", effect: Percent(15), max_stacks: 2),
         ],
     ),
 ]

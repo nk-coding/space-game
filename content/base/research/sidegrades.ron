@@ -5,7 +5,7 @@
     (
         id: "wide_bubble",
         name: "Wide bubble",
-        summary: "A shield emitter whose bubble covers half again as much, refilling slower.",
+        summary: "A shield emitter with a wider, thinner bubble that refills slower.",
         family: "shields",
         kind: Variant,
         cost: (data: {"shields": 5}),
