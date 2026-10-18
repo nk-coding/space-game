@@ -63,8 +63,9 @@ use crate::home::HomeAction;
 
 /// The layout's size (logical px), like the LOG's.
 const STAGE: Vec2 = Vec2::new(1280.0, 720.0);
-/// The two columns' boxes on the stage: the parts, the materials; the hover card shows in the room between them.
-const PARTS: (Vec2, Vec2) = (Vec2::new(40.0, 84.0), Vec2::new(640.0, 568.0));
+/// The two columns' boxes on the stage: the parts, the materials; the hover card shows in the room between them
+/// (`card.offset` past the list's edge and its scrollbar, its `card.width`, the same gap again before the materials).
+const PARTS: (Vec2, Vec2) = (Vec2::new(40.0, 84.0), Vec2::new(628.0, 568.0));
 const MATERIALS: (Vec2, Vec2) = (Vec2::new(960.0, 84.0), Vec2::new(280.0, 568.0));
 const ROW: f32 = 44.0;
 /// The most a count goes to, and a shift-click's step.

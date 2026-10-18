@@ -430,7 +430,7 @@ fn show_card(
     let Ok((_, row_node, row_at, _)) = rows.get(row_e) else { return };
     let k = ui_scale.0.max(1e-3);
     let scale = window.scale_factor() * k;
-    let row_rect = Rect::from_center_size(row_at.translation / scale, row_node.size / scale);
+    let mut row_rect = Rect::from_center_size(row_at.translation / scale, row_node.size / scale);
     let size = node.size * node.inverse_scale_factor;
     // The room: the window inside the margin, under the top bar and down to the bottom of the row's list (each screen
     // ends it above its bottom bars and status lines).
@@ -439,6 +439,10 @@ fn show_card(
     let list = std::iter::successors(Some(row_e), |e| parents.get(*e).ok().map(ChildOf::parent)).find_map(|e| lists.get(e).ok());
     if let Some((n, at)) = list {
         room.max.y = room.max.y.min((at.translation.y + n.size.y / 2.0) / scale);
+        // Beside the list, not just its row: its scrollbar runs down the area's right edge, in the room the area
+        // keeps right of its rows (`ListSpec::pad_right`), so a card on the right starts past it (Niklas, 18 Oct
+        // 2026: the workshop's card covered the bar).
+        row_rect.max.x = row_rect.max.x.max((at.translation.x + n.size.x / 2.0) / scale);
     }
     // Too tall for the room: closer rows, then three columns; laid out this frame, placed from the next.
     if let Some(fit) = next_fit(rest.fit, row_rect, size, room, f.card.offset) {
