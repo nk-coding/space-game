@@ -169,7 +169,7 @@ pub(super) fn spawn(cx: &mut Build, s: &SkySpec, content: &data::Content) -> Opt
         None => (Vec::new(), Vec::new()),
     };
     let nebula = nebula::nebula(&mut Stream::new(s.seed, "nebula"), s.sky, night, hot.is_some());
-    let galaxy = galaxy::galaxy(&mut Stream::new(s.seed, "galaxy"), s.sky.galaxy);
+    let galaxy = galaxy::galaxy(&mut Stream::new(s.seed, "galaxy"), s.sky.galaxy, roll::hex(&s.sky.nebula.0));
 
     let light = planets.first().map(|p| p.body.light);
     let mut counts = SkyCounts { planets: Vec::new(), moons: Vec::new(), vertices: [0; 4], nebula_peak: nebula.peak, galaxy: galaxy.kind.name(), light };

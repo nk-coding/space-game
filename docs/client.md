@@ -785,13 +785,18 @@ off, the flash and its ring where it left), `voyage-warp-emergency.png` (the eme
     kind, 4–24 px, rings and moons scale with the planet), a nebula of soft blobs along a curve
     (at most 3 over a point, 2 beside a hot star) with faint dust lanes, and a far galaxy (`galaxy.rs`, the backdrop
     study's version 8, 18 Oct 2026; before, a soft glowing spiral of sprites and dots) whose kind is rolled per sky: a
-    spiral 60 % (variant H, flocculent like M74: a compact cream-pink core, 38 short wound arm segments, a third on two
-    main arms, each a chain of small blue-violet clumps, magenta knots, thin dust filaments on the inner segments'
-    inner edges, a violet haze and a ragged edge), else an elliptical 12 %, an edge-on disc 16 % or an irregular 12 %
-    (variant D: a soft field, dark splats and clumps of blue splats with pink cores). Three static meshes, at
+    spiral 60 % (variant H, M74's structure, as Niklas tuned it on the study's round 9: a broad field disc carries
+    most of the light, its arms only modestly brighter than the gaps; the arms as soft strands following 38 short
+    wound arm segments, a third on two main arms, large to small: two broad strands a segment, three finer ones
+    within, a few soft knots; wide soft dark dust strands inside the inner segments; every strand five vertices across
+    and fading to nothing at its sides and ends, so nothing reads as a hard line or a dot; no sparkles), else an
+    elliptical 12 %, an edge-on disc 16 % or an irregular 12 % (variant D: a soft field, dark splats and clumps of blue splats with pink cores). Three static meshes, at
     parallax 0: the field, premultiplied (`Atlas::premultiplied`: a 31 × 128 polar grid, an edge-on disc's 110 × 25,
     every vertex sampling the light and the dust, so the dust dims what lies below and the light adds), the dust
-    alpha-blended and the glow additive, each a hundredth over the last. Composed in a 1600 × 900 design frame scaled to the view's height, a planet and its moons round the view's
+    alpha-blended and the glow additive, each a hundredth over the last. The colours are rolled per galaxy
+    (`galaxy::Palette`): a warm core from cream to gold or pink, two arm hues from blue-white, lavender, violet, teal
+    and a warm gold-white nudged towards the sky's first nebula colour and evened out in brightness, knots
+    pink-magenta to orange-red, dust brown to deep red. Composed in a 1600 × 900 design frame scaled to the view's height, a planet and its moons round the view's
     middle, the galaxy at its distance from the view's left or right edge, the nebula stretched to its width; about
     the same size at any zoom. `paint.rs` builds a
     body: an even polar mesh (40–84 rings for a planet, 10–26 for a moon) whose every vertex is coloured on the CPU
@@ -833,12 +838,12 @@ off, the flash and its ring where it left), `voyage-warp-emergency.png` (the eme
     planet). Each piece's size also goes with the zoom to the power of its parallax (GDR-0107: hardly).
     The log line `sky: …` names the planets (radius, parallax) and moons and counts vertices (a large planet 21–33 k
     with rings, a small one 7–10 k, moons 0.5–3 k; three or four planets and their moons 28 k on average, 44 k at most; nebula
-    about 2.9 k, galaxy about 17 k for a spiral, 3.5–6 k for the others, with its kind) and the build time. `?planet=<kind>` shows that
+    about 2.9 k, galaxy about 18 k for a spiral, 3.5–6 k for the others, with its kind) and the build time. `?planet=<kind>` shows that
     planet kind as the first planet (for looking at kinds). Screenshots (1280 × 720): `docs/results/sky-rim.png`,
     `sky-grove.png`, `sky-scorched.png`, `sky-uncharted.png`, `sky-clouds.png` (a cloudy world close up); with two or
     three planets, two camera places in one cluster: `sky-planets-a.png`, `sky-planets-b.png`; spread a view apart: Corran Reach at the start and after
     500 m, `sky-spread-corran-start.png`, `sky-spread-corran-500m.png`, a 2.9 km cluster at two places,
-    `sky-spread-3km-a.png`, `sky-spread-3km-b.png`; a spiral galaxy in flight, `sky-galaxy-spiral.png`.
+    `sky-spread-3km-a.png`, `sky-spread-3km-b.png`; a spiral galaxy in flight, `sky-galaxy-spiral.png`, and its galaxy three times enlarged, `sky-galaxy-spiral-close.png`.
 - **Hot stars and living parts** (17 Oct 2026, [GDR-0102](gdr/0102-grown-mechanics-and-parts-defaults.md)): in a
   cluster beside a hot star (`Voyage::star`) a soft glow in the heat colour rises at the edge of the view towards the
   star (`backdrop.rs`, a camera child over the gradient and the nebula, behind the planet, GDR-0107; a disc as wide as the view centred just past

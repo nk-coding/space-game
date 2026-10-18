@@ -1,17 +1,23 @@
-//! The far galaxy (GDR-0105, GDR-0107), ported from the backdrop study's version 8 (Niklas, 18 Oct 2026): a spiral
-//! is variant H (flocculent, like M74), an elliptical, edge-on or irregular galaxy variant D (a soft field with
-//! splats). Built once per voyage in the design frame (px, y down), origin at the galaxy's centre, as three static
-//! meshes drawn in this order:
+//! The far galaxy (GDR-0105, GDR-0107), ported from the backdrop study (Niklas, 18 Oct 2026; version 8, then his
+//! notes on it, the study's round 9): a spiral is variant H (M74's structure), an elliptical, edge-on or irregular
+//! galaxy variant D (a soft field with splats). Built once per voyage in the design frame (px, y down), origin at the
+//! galaxy's centre, as three static meshes drawn in this order:
 //!
-//! * **the field** ([`Galaxy::field`]), premultiplied: one grid (polar, 31 × 128; an edge-on disc's 110 × 25 across
-//!   it) whose every vertex samples the galaxy's light and dust; the dust dims what lies below, the light adds;
-//! * **the dust** ([`Galaxy::dust`]), alpha-blended: a spiral's thin filaments on the inner edges of its inner arm
+//! * **the field** ([`Meshes::field`]), premultiplied: one grid (polar, 31 × 128; an edge-on disc's 110 × 25 across
+//!   it) whose every vertex samples the galaxy's light and dust; the dust dims what lies below, the light adds. A
+//!   spiral's field carries most of its light: a broad disc whose arms are only modestly brighter than the gaps;
+//! * **the dust** ([`Meshes::dust`]), alpha-blended: a spiral's wide soft dark strands just inside its inner arm
 //!   segments, the other kinds' patchy dark splats;
-//! * **the glow** ([`Galaxy::glow`]), additive: a spiral's 38 short wound arm segments (a third on two main arms),
-//!   each a chain of small blue-violet clumps, a violet haze of splats, magenta knots and a soft core; the other
-//!   kinds' clumps of splats with pink cores; a few sparkles.
+//! * **the glow** ([`Meshes::glow`]), additive: a spiral's arms as soft strands following its 38 short wound arm
+//!   segments (a third on two main arms), built large to small: two broad strands a segment carry the form, three
+//!   finer ones lie within it, a few soft knots on top, and a soft core; the other kinds' clumps of splats with pink
+//!   cores and a few sparkles.
 //!
-//! About 17 000 vertices for a spiral. Distances in the galaxy's own frame are shares of its radius, before it is
+//! Nothing is a thin hard strip, a dotted chain or a field of small round splats (Niklas, 18 Oct 2026: hard lines,
+//! "too dotted", "rather filaments"): every strand is five vertices across, fading to nothing at its sides and its
+//! ends. The colours are rolled per galaxy ([`Palette`]), nudged towards the sky's nebula.
+//!
+//! About 18 000 vertices for a spiral. Distances in the galaxy's own frame are shares of its radius, before it is
 //! flattened by `k` and turned.
 
 use std::f32::consts::{PI, TAU};
@@ -32,15 +38,11 @@ const WARM: Rgb = rgb(255, 206, 152);
 const DISK: Rgb = rgb(196, 188, 210);
 const BLUE: Rgb = rgb(132, 172, 255);
 const BLUE2: Rgb = rgb(198, 220, 255);
-const PINK: Rgb = rgb(255, 108, 168);
 const DUST: Rgb = rgb(28, 15, 11);
-/// Variant H's palette.
-const H_HAZE: Rgb = rgb(146, 132, 236);
-const H_BLUE: Rgb = rgb(118, 140, 255);
-const H_LAV: Rgb = rgb(176, 140, 255);
-const H_HOT: Rgb = rgb(205, 215, 255);
-const H_PINK: Rgb = rgb(255, 84, 196);
-const H_DUST: Rgb = rgb(44, 18, 14);
+/// The arms' hues a galaxy's palette picks from, by weight ([`Palette`]): blue-white, lavender, violet, teal and a
+/// warm gold-white.
+const ARM_HUES: [(Rgb, u32); 5] =
+    [(rgb(200, 216, 255), 3), (rgb(176, 150, 255), 3), (rgb(150, 128, 248), 2), (rgb(140, 214, 228), 3), (rgb(255, 232, 196), 2)];
 /// The arms' winding in the spiral's field and segments.
 const H_WIND: f32 = 0.34;
 /// Wound arm segments of a spiral.
@@ -84,14 +86,56 @@ struct Segment {
     w: f32,
 }
 
+/// A galaxy's colours, rolled per galaxy (Niklas, 18 Oct 2026: the reference's violet was only an example): a warm
+/// core (cream to gold or pink), two arm hues from [`ARM_HUES`] nudged towards the sky's nebula and evened out in
+/// brightness, knots pink-magenta to orange-red, dust brown to deep red.
+struct Palette {
+    core: Rgb,
+    core2: Rgb,
+    inner: Rgb,
+    arm: Rgb,
+    arm2: Rgb,
+    hot: Rgb,
+    haze: Rgb,
+    knot: Rgb,
+    dust: Rgb,
+}
+
+/// `c` scaled to the luminance `l` (no channel over 1).
+fn even(c: Rgb, l: f32) -> Rgb {
+    let c = c * (l / c.dot(Vec3::new(0.2126, 0.7152, 0.0722)).max(0.05));
+    c / c.max_element().max(1.0)
+}
+
+impl Palette {
+    fn roll(r: &mut Stream, tint: Rgb) -> Palette {
+        let near = mix(tint, WHITE, 0.45);
+        let weights = ARM_HUES.map(|h| h.1);
+        let mut arm = || even(mix(ARM_HUES[r.weighted(&weights)].0, near, 0.18), 0.6);
+        let (arm, arm2) = (arm(), arm());
+        let warm = if r.chance(0.5) { rgb(255, 222, 170) } else { rgb(255, 206, 206) };
+        let core = mix(rgb(255, 238, 222), warm, r.next());
+        let knot = mix(rgb(255, 84, 196), rgb(255, 110, 80), r.next());
+        let dust = mix(rgb(44, 18, 14), rgb(58, 10, 14), r.next());
+        Palette {
+            core,
+            core2: mix(core, knot, 0.22),
+            inner: mix(core, rgb(255, 214, 200), 0.5),
+            arm,
+            arm2,
+            hot: mix(arm, WHITE, 0.5),
+            haze: even(arm, 0.5),
+            knot,
+            dust,
+        }
+    }
+}
+
 /// The far galaxy: where (design frame), its radius, kind and shape, and the seed of its own streams.
 pub(super) struct Galaxy {
     pub at: Vec2,
     pub rg: f32,
     pub kind: Kind,
-    arms: u32,
-    /// The arms' winding, which way they wind and where they start (the sparkles follow these arms).
-    b: f32,
     dir: f32,
     ph0: f32,
     k: f32,
@@ -100,6 +144,7 @@ pub(super) struct Galaxy {
     n1: f32,
     n2: f32,
     clumps: Vec<Clump>,
+    pal: Palette,
     strength: f32,
 }
 
@@ -110,8 +155,9 @@ pub(super) struct Meshes {
     pub glow: Geo,
 }
 
-/// Rolls the galaxy clear of the view's middle (the planets pass over it).
-pub(super) fn galaxy(r: &mut Stream, strength: f32) -> Galaxy {
+/// Rolls the galaxy clear of the view's middle (the planets pass over it), its colours nudged towards `tint` (the
+/// sky's nebula).
+pub(super) fn galaxy(r: &mut Stream, strength: f32, tint: Rgb) -> Galaxy {
     let rg = r.range(70.0, 140.0);
     let mut best = (Vec2::ZERO, f32::MIN);
     for _ in 0..40 {
@@ -123,8 +169,6 @@ pub(super) fn galaxy(r: &mut Stream, strength: f32) -> Galaxy {
         }
     }
     let kind = [Kind::Spiral, Kind::Elliptical, Kind::EdgeOn, Kind::Irregular][r.weighted(&[60, 12, 16, 12])];
-    let arms = if r.chance(0.75) { 2 } else { 3 };
-    let b = r.range(0.22, 0.3);
     let dir = if r.chance(0.5) { 1.0 } else { -1.0 };
     let ph0 = r.range(0.0, TAU);
     let k = match kind {
@@ -141,7 +185,8 @@ pub(super) fn galaxy(r: &mut Stream, strength: f32) -> Galaxy {
     } else {
         Vec::new()
     };
-    Galaxy { at: best.0, rg: rg * 1.15, kind, arms, b, dir, ph0, k, rot, seed, n1, n2, clumps, strength }
+    let pal = Palette::roll(&mut Stream::new(seed, "hpal"), tint);
+    Galaxy { at: best.0, rg: rg * 1.15, kind, dir, ph0, k, rot, seed, n1, n2, clumps, pal, strength }
 }
 
 /// The study's cheap smooth noise in about −1..1.
@@ -196,25 +241,29 @@ impl Pen<'_> {
         self.disc(c, n, &[(0.0, col, a), (r, col, 0.0)]);
     }
 
-    /// A soft ribbon along `pts`: three vertices across (`half` either side), each point's colour and alpha along the
-    /// middle, nothing at the edges.
-    fn ribbon(&mut self, pts: &[Vec2], half: &[f32], col: Rgb, a: &[f32]) {
+    /// A soft strand along `pts`: five vertices across (half width `half`, alpha falling 1, 0.55, 0 to the edges),
+    /// each point's alpha `a`.
+    fn strand(&mut self, pts: &[Vec2], half: &[f32], col: Rgb, a: &[f32]) {
+        const ACROSS: [(f32, f32); 5] = [(-1.0, 0.0), (-0.5, 0.55), (0.0, 1.0), (0.5, 0.55), (1.0, 0.0)];
         let n = pts.len();
         let first = self.g.len() as u32;
-        for i in 0..n {
-            let d = (pts[(i + 1).min(n - 1)] - pts[i.saturating_sub(1)]).normalize_or(Vec2::X);
-            let nrm = Vec2::new(-d.y, d.x) * half[i];
-            self.v(pts[i] + nrm, col, 0.0);
-            self.v(pts[i], col, a[i]);
-            self.v(pts[i] - nrm, col, 0.0);
+        for (o, k) in ACROSS {
+            for i in 0..n {
+                let d = (pts[(i + 1).min(n - 1)] - pts[i.saturating_sub(1)]).normalize_or(Vec2::X);
+                self.v(pts[i] + Vec2::new(-d.y, d.x) * half[i] * o, col, a[i] * k);
+            }
         }
-        for i in 0..n as u32 - 1 {
-            let (p, q) = (first + 3 * i, first + 3 * (i + 1));
-            self.g.quad(p, q, q + 1, p + 1);
-            self.g.quad(p + 1, q + 1, q + 2, p + 2);
+        for j in 0..4 {
+            let (p, q) = (first + j * n as u32, first + (j + 1) * n as u32);
+            for i in 0..n as u32 - 1 {
+                self.g.quad(p + i, q + i, q + i + 1, p + i + 1);
+            }
         }
     }
 }
+
+/// A strand's point: where, its radius and how far along the strand (0..1).
+type StrandPt = (Vec2, f32, f32);
 
 impl Galaxy {
     /// The galaxy's three meshes at the backdrop's `strength`.
@@ -225,9 +274,8 @@ impl Galaxy {
         let mut glow = Stream::new(self.seed, if self.kind == Kind::Spiral { "galH" } else { "galD" });
         if self.kind == Kind::Spiral {
             let segs = self.segments();
-            self.filaments(&mut self.pen(&mut m.dust, gain), &segs);
+            self.dust_strands(&mut self.pen(&mut m.dust, gain), &segs);
             self.arms(&mut self.pen(&mut m.glow, gain), &mut glow, &segs);
-            self.sparkle(&mut self.pen(&mut m.glow, gain), &mut glow, 2);
         } else {
             self.splats(&mut self.pen(&mut m.dust, gain), &mut self.pen(&mut m.glow, gain), &mut glow);
             self.sparkle(&mut self.pen(&mut m.glow, gain), &mut glow, 4);
@@ -254,10 +302,10 @@ impl Galaxy {
                 let lr = (r.max(0.03) / 0.08).ln() / H_WIND;
                 let s = (2.0 * (ph - self.ph0 - self.dir * lr)).cos();
                 let edge = 1.0 - smooth(0.72, 1.08, r + 0.1 * n1);
-                e += rgb(255, 236, 222) * 0.9 * (-r / 0.015).exp();
-                e += rgb(255, 200, 200) * (0.7 * (-r / 0.06).exp() + 0.38 * (-r / 0.15).exp());
-                e += H_HAZE * (0.64 * (-r / 0.3).exp() + 0.05) * edge * (1.0 + 1.3 * (((1.0 + s) / 2.0).powi(2) - 0.35)) * (0.8 + 0.3 * n1);
-                0.18 * ((1.0 + (2.0 * (ph - self.ph0 - self.dir * (lr + 0.4))).cos()) / 2.0).powi(6)
+                e += self.pal.core * 0.9 * (-r / 0.015).exp();
+                e += self.pal.core2 * (0.7 * (-r / 0.06).exp() + 0.38 * (-r / 0.15).exp());
+                e += self.pal.haze * (0.85 * (-r / 0.32).exp() + 0.07) * edge * (1.0 + 0.7 * ((1.0 + s) / 2.0 - 0.5)) * (0.8 + 0.3 * n1);
+                0.14 * ((1.0 + (2.0 * (ph - self.ph0 - self.dir * (lr + 0.4))).cos()) / 2.0).powi(3)
                     * smooth(0.04, 0.1, r)
                     * (1.0 - smooth(0.3, 0.6, r))
                     * (0.6 + 0.5 * n2)
@@ -354,64 +402,79 @@ impl Galaxy {
         (Vec2::from_angle(s.ph + self.dir * th) * rr, rr)
     }
 
-    /// A spiral's dust: a thin filament just inside every other inner segment.
-    fn filaments(&self, pen: &mut Pen, segs: &[Segment]) {
+    /// `n` points of a strand along segment `s` from `t0` to `t1`, at `rs0` times its radius wobbling by `amp`.
+    fn strand_pts(&self, s: &Segment, r: &mut Stream, (t0, t1): (f32, f32), rs0: f32, amp: f32, n: usize) -> Vec<StrandPt> {
+        let (f, ph) = (r.range(2.0, 5.0), r.range(0.0, TAU));
+        (0..n)
+            .map(|i| {
+                let u = i as f32 / (n - 1) as f32;
+                let (p, rr) = self.seg_at(s, t0 + (t1 - t0) * u, rs0 + amp * (u * f + ph).sin());
+                (p, rr, u)
+            })
+            .collect()
+    }
+
+    /// A spiral's dust: wide soft dark strands just inside every other inner segment, faded at both ends (thin strips
+    /// there read as hard lines; Niklas, 18 Oct 2026).
+    fn dust_strands(&self, pen: &mut Pen, segs: &[Segment]) {
+        let mut r = Stream::new(self.seed, "hdust");
         for s in segs.iter().step_by(2).filter(|s| s.r0 <= 0.42) {
-            let pts: Vec<(Vec2, f32)> = (0..18).map(|i| self.seg_at(s, i as f32 / 17.0 * 0.8, 0.955)).filter(|p| p.1 < 1.0).collect();
-            if pts.len() <= 3 {
-                continue;
-            }
-            let n = pts.len();
-            let at: Vec<Vec2> = pts.iter().map(|p| p.0).collect();
-            let half: Vec<f32> = pts.iter().map(|p| 0.006 + 0.008 * p.1).collect();
-            let a: Vec<f32> = pts.iter().enumerate().map(|(i, p)| 0.75 * (PI * i as f32 / (n - 1) as f32).sin() * (1.0 - smooth(0.35, 0.7, p.1))).collect();
-            pen.ribbon(&at, &half, H_DUST, &a);
+            let q = self.strand_pts(s, &mut r, (0.0, 0.8), 0.94, 0.015, 16);
+            let w = r.range(0.03, 0.045);
+            let half: Vec<f32> = q.iter().map(|q| w * (0.6 + 0.6 * q.1) * (0.5 + 0.5 * (PI * q.2).sin())).collect();
+            let a: Vec<f32> = q.iter().map(|q| 0.22 * (PI * q.2).sin().max(0.0).powf(1.5) * (1.0 - smooth(0.35, 0.7, q.1))).collect();
+            pen.strand(&q.iter().map(|q| q.0).collect::<Vec<_>>(), &half, self.pal.dust, &a);
         }
     }
 
-    /// A spiral's glow: clumps along the segments, the haze, the knots and the core.
+    /// A spiral's glow as strands following the spiral flow (Niklas, 18 Oct 2026: round splats read as smeared
+    /// dots): along each segment two broad soft strands carry the arm's form, three finer ones lie within it, and a
+    /// few soft knots on top; then the core.
     fn arms(&self, pen: &mut Pen, r: &mut Stream, segs: &[Segment]) {
+        let env = |u: f32| (PI * u).sin().max(0.0).powf(0.8);
+        let edge = |rr: f32| 1.0 - smooth(0.75, 1.05, rr);
         let mut knots = Vec::new();
         for s in segs {
-            let n = (s.len * s.r0 * 70.0 + 9.0).round() as u32;
-            for _ in 0..n {
-                let t = r.next();
-                let (p, rr) = self.seg_at(s, t, 1.0 + r.gauss() * 0.03);
-                if rr > 1.02 || r.next() > 1.0 - smooth(0.75, 1.05, rr + r.gauss() * 0.08) {
-                    continue;
-                }
-                let warm = 1.0 - smooth(0.06, 0.22, rr);
-                let base = if r.chance(0.35) {
-                    H_HOT
+            for k in 0..2 {
+                let rs0 = 1.0 + if k > 0 { r.gauss() * 0.05 } else { 0.0 };
+                let amp = r.range(0.01, 0.03);
+                let q = self.strand_pts(s, r, (0.0, 1.0), rs0, amp, 16);
+                let w = r.range(0.09, 0.14);
+                let half: Vec<f32> = q.iter().map(|q| w * (0.6 + 0.6 * q.1) * (0.5 + 0.5 * (PI * q.2).sin())).collect();
+                let a: Vec<f32> = q.iter().map(|q| 0.06 * s.w * env(q.2) * edge(q.1)).collect();
+                pen.strand(&q.iter().map(|q| q.0).collect::<Vec<_>>(), &half, mix(self.pal.arm, self.pal.haze, 0.5), &a);
+            }
+            for _ in 0..3 {
+                let t0 = r.range(0.0, 0.55);
+                let t1 = t0 + r.range(0.3, 0.45);
+                let rs0 = 1.0 + r.gauss() * 0.05;
+                let amp = r.range(0.01, 0.025);
+                let q = self.strand_pts(s, r, (t0, t1), rs0, amp, 12);
+                let (w, aa) = (r.range(0.03, 0.045), r.range(0.06, 0.09));
+                let warm = 1.0 - smooth(0.06, 0.22, q[6].1);
+                let base = if r.chance(0.4) {
+                    self.pal.hot
                 } else if r.chance(0.5) {
-                    H_LAV
+                    self.pal.arm2
                 } else {
-                    H_BLUE
+                    self.pal.arm
                 };
-                let c = mix(mix(base, rgb(255, 214, 200), warm), WHITE, if r.chance(0.08) { 0.4 } else { 0.0 });
-                let size = r.range(0.018, 0.042) * (0.7 + 0.5 * rr);
-                let a = r.range(0.085, 0.16) * s.w * (PI * (0.08 + 0.84 * t)).sin();
-                pen.soft(p, size, c, a, 6);
-                if r.chance(0.03) && rr > 0.12 {
-                    knots.push(p);
+                let half: Vec<f32> = q.iter().map(|q| w * (0.6 + 0.6 * q.1) * (0.4 + 0.6 * (PI * q.2).sin())).collect();
+                let a: Vec<f32> = q.iter().map(|q| aa * s.w * env(q.2) * edge(q.1)).collect();
+                pen.strand(&q.iter().map(|q| q.0).collect::<Vec<_>>(), &half, mix(base, self.pal.inner, warm), &a);
+                if r.chance(0.15) && q[6].1 > 0.12 && q[6].1 < 0.95 {
+                    knots.push(q[6].0);
                 }
             }
         }
-        for _ in 0..90 {
-            let rr = (-(1.0 - r.next() * 0.97).ln() * 0.3).min(1.0);
-            let at = Vec2::from_angle(r.range(0.0, TAU)) * rr;
-            let size = r.range(0.02, 0.045);
-            pen.soft(at, size, H_LAV, 0.035 * (1.0 - smooth(0.7, 1.0, rr)), 8);
-        }
         for p in knots {
-            let size = r.range(0.007, 0.013);
-            pen.soft(p, size, H_PINK, 0.55, 8);
-            pen.soft(p, 0.004, rgb(255, 200, 240), 0.6, 6);
+            let size = r.range(0.018, 0.028);
+            pen.soft(p, size, self.pal.knot, 0.2, 10);
         }
         // the core, less flattened than the disc
         let k = pen.k;
         pen.k = k.max(0.7);
-        pen.soft(Vec2::ZERO, 0.05, rgb(255, 226, 214), 0.5, 16);
+        pen.soft(Vec2::ZERO, 0.05, mix(self.pal.core, WHITE, 0.3), 0.5, 16);
         pen.k = k;
     }
 
@@ -445,28 +508,21 @@ impl Galaxy {
             for _ in 0..3 {
                 let at = p + Vec2::new(r.gauss(), r.gauss()) * 0.015;
                 let size = r.range(0.025, 0.05);
-                let c = mix(BLUE, BLUE2, r.next());
+                let c = mix(self.pal.arm, self.pal.hot, r.next());
                 glow.soft(at, size, c, 0.07, 12);
             }
             if r.chance(0.45) {
                 let size = r.range(0.008, 0.016);
-                glow.soft(p, size, mix(PINK, WHITE, 0.2), 0.4, 8);
+                glow.soft(p, size, mix(self.pal.knot, WHITE, 0.2), 0.4, 8);
             }
         }
     }
 
-    /// `n` sparkles: along a spiral's arms, else scattered round the middle.
+    /// `n` sparkles scattered round the middle (an elliptical, edge-on or irregular galaxy; a spiral has none).
     fn sparkle(&self, pen: &mut Pen, r: &mut Stream, n: u32) {
-        for i in 0..n {
-            let p = if self.kind == Kind::Spiral {
-                let r0 = 0.09;
-                let th = r.range(0.3, 1.0) * (1.0f32 / r0).ln() / self.b;
-                let rr = r0 * (self.b * th).exp() * (1.0 + r.gauss() * 0.05);
-                Vec2::from_angle(self.dir * th + self.ph0 + (i % self.arms) as f32 * TAU / self.arms as f32) * rr
-            } else {
-                let x = r.gauss() * 0.4;
-                Vec2::new(x, r.gauss() * if self.kind == Kind::EdgeOn { 0.04 / self.k } else { 0.3 })
-            };
+        for _ in 0..n {
+            let x = r.gauss() * 0.4;
+            let p = Vec2::new(x, r.gauss() * if self.kind == Kind::EdgeOn { 0.04 / self.k } else { 0.3 });
             pen.disc(p, 6, &[(0.0, WHITE, 0.8), (0.007, BLUE2, 0.0)]);
         }
     }
@@ -481,7 +537,7 @@ mod tests {
     fn meshes() {
         let mut seen = Vec::new();
         for seed in 0..60u64 {
-            let g = galaxy(&mut Stream::new(seed, "galaxy"), 0.85);
+            let g = galaxy(&mut Stream::new(seed, "galaxy"), 0.85, Vec3::new(0.12, 0.5, 0.55));
             let m = g.meshes(Vec2::ZERO, 0.85);
             assert!(m.field.finite() && m.dust.finite() && m.glow.finite());
             let n = m.field.len() + m.dust.len() + m.glow.len();

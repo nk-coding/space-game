@@ -60,10 +60,12 @@
   2026-10-18, sixth (Niklas approved the backdrop study's version 8, galaxy variant H): the galaxy is three static
   meshes built once per voyage at parallax 0, at −897, −896.99 and −896.98 (still over the gradient, under the far
   stars): a premultiplied field (a 31 × 128 polar grid sampling light and dust; an edge-on disc's 110 × 25), a small
-  alpha dust mesh and an additive glow. Its kind is rolled per sky: a spiral 60 % (variant H, flocculent like M74: a
-  cream-pink core, 38 short wound arm segments of small blue-violet clumps, magenta knots, thin dust filaments, a
-  violet haze; about 17 k vertices), an elliptical 12 %, an edge-on disc 16 % or an irregular 12 % (variant D, a soft
-  field with splats; 3.5–6 k). Home's sky uses it too (a spiral). Screenshots `docs/results/sky-galaxy-spiral.png`,
+  alpha dust mesh and an additive glow. Its kind is rolled per sky: a spiral 60 % (variant H, M74's structure as Niklas tuned it in the study's round 9:
+  no hard lines and no dots; a broad field disc with arms only modestly brighter than the gaps, the arms as soft
+  strands along 38 short wound segments, broad ones carrying the form and finer ones within, a few soft knots, soft
+  dark dust strands; about 18 k vertices), an elliptical 12 %, an edge-on disc 16 % or an irregular 12 % (variant D,
+  a soft field with splats; 3.5–6 k). The colours are rolled per galaxy within plausible ranges (core, arms, knots,
+  dust), the arms nudged towards the sky's nebula. Home's sky uses it too (a spiral). Screenshots `docs/results/sky-galaxy-spiral.png`,
   `home-sky.png`.
 - Date: 2026-10-17
 - Decided by: lead session (defaults for Niklas's play-test of 17 Oct 2026 of GDR-0104's scenery and GDR-0105's sky)
