@@ -8,6 +8,10 @@
   (icon, name, size and category, the same stat block with the recipe, the bonuses). The left column is the kit's
   grouped list, shared with the workshop (search, chips, sections unchanged). `docs/client.md` "Part lists and the
   hover card".
+  2026-10-18, late (Niklas: the card "should not cover the bottom area"): the hover card stays between the top bar and
+  the bottom of the list (moved up to end there; closer rows, then three columns for a part too tall for that room);
+  RECIPE reads like the other values; a list's texts cut by its scrolled edge go whole; the category chips get a
+  small step ring at each end while they don't fit.
 - Date: 2026-10-14
 - Decided by: Niklas (in chat and interactively, with the draft `docs/plans/mockups/drydock-left-column.html`)
 - Related: [GDR-0051](0051-drydock-v1.md), [GDR-0053](0053-drydock-v1-lead-defaults.md), [GDR-0063](0063-salvage-and-research-v1.md), [GDR-0029](0029-mild-death-bonded-matter.md), [GDR-0031](0031-materials-and-fabrication.md), [GDR-0081](0081-drydock-editing-bevel-rotate-replace.md), `docs/drydock.md`

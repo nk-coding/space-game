@@ -1488,7 +1488,10 @@ palette's search and grouping, from one component.
   lowercase text the search looks in, `aside` for rows counted apart, the drydock's LOCKED). The kit filters by the
   search (display only, no respawn; another search starts at the top), counts the headings (`4  ·  2 LOCKED`), shows
   a chip while its group has rows, glides the list to a clicked chip's heading and lights the chip of the section in
-  view (`lit_group`), and scrolls the chips' line by wheel and drag. Rows that change keep their nodes: the drydock
+  view (`lit_group`), and scrolls the chips' line by wheel and drag; while the chips don't fit, a 24 px ring with a
+  small triangle at each end of the line steps it by 80 % of its width (dim at its end; `docs/results/drydock-chip-steps.png`).
+  Rows cut at a scrolled edge: their icons and outlines are cut at the edge, their texts go whole (a text across the
+  edge is not drawn, `scrollbar::cut_text`), so no line shows half its letters; this holds for every scrolling area. Rows that change keep their nodes: the drydock
   writes its rows' texts and icons in place (`panels::sync_rows`) and fills the list again only when the unlocks
   change; the workshop fills it after every action. Icons in the rows are cut where the area cuts them (`ui_icons`).
 - **`world::part_card`**: `part_info` is a part's information from content (name, `2×1  ·  WEAPONS`, or `LOCKED  ·
@@ -1500,8 +1503,15 @@ palette's search and grouping, from one component.
   at Barlow's widest capitals against the card's narrower column.
 - **The hover card**: a row with a `PartHover` (its part, its armour, what its stock counts against) shows the card
   after the pointer rests on it for `card.delay` (0.3 s; from a shown card's row to the next at once), beside the row
-  (`card.offset` right of it, left when the window has no room; level with it, inside the window and up and down the
-  row's list, so it never reaches the bars under or over the list, `card_position`). Icon in brackets, name, subtitle, the stat block, the gold bonus lines; a plate like `panel.*`
+  (`card.offset` right of it, left when the window has no room; level with it, `card_position`) inside a safe room:
+  the window inside `card.margin`, under the top bar (`Frame::below_top`: `frame.top + frame.ring + frame.gap`) and
+  down to the bottom of the row's list, which each screen ends above its bottom bars and status lines (the drydock's
+  grid info line and tools, the workshop's said line). A card that would run past the room's bottom moves up until
+  its bottom is there (Niklas, 18 Oct 2026: "it should not cover the bottom area"; it ran over the drydock's info
+  line). A part too tall for the room shows its stat rows `card.tight_gap` apart, then (if the wider card fits beside
+  the row) in three columns (`part_card::Fit`, `next_fit`; laid out a frame before it shows). Icon in brackets, name,
+  subtitle, the stat block (RECIPE in the value style, `10 Ceramic  ·  3 Copper  ·  6 Steel`, wrapping only between
+  entries; IN STOCK `3  ·  4 in the design`), the gold bonus lines; a plate like `panel.*`
   (`card.*` in the tokens). **Layering**: part icons are world meshes under bevy_ui, so the card's backing is a world
   mesh too (a filled `UiIcon::Scrim`) one icon layer up (`ui_icons::UiIconLayer(1)`: 2 world units over the screens'
   icons and scrims), its icon on the same layer, its words bevy_ui. It covers the icons under it and shows its own;
@@ -1509,7 +1519,9 @@ palette's search and grouping, from one component.
   workshop's room between its columns), never over a list's text.
 
 Screenshots (1280 × 720): `docs/results/drydock-stat-block.png` (SELECTED PART, a reactor's POWER OUTPUT and BLAST
-DAMAGE), `drydock-hover-card.png`, `workshop-list-card.png` (a search, the sections and a card).
+DAMAGE), `drydock-hover-card.png` (the tallest card, the torch drive, on the list's bottom row: it ends with the
+list, above the info line), `drydock-hover-card-top.png` (the same on the top row), `workshop-list-card.png` (the
+thruster near the list's bottom).
 
 ## Screen transitions
 
