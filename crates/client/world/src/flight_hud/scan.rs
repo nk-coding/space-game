@@ -61,7 +61,7 @@ pub(super) fn spawn(c: &mut ChildSpawnerCommands, fonts: &HudFonts, ui: &kit::st
         b.spawn((Node { width: px(BAR), height: px(3), ..default() }, BackgroundColor(ui_color(ui.dim, 0.5)))).with_children(|bar| {
             bar.spawn((ScanBar, Node { width: px(0), height: percent(100), ..default() }, BackgroundColor(ui_color(ui.violet, 0.95))));
         });
-        b.spawn((ScanLine, label(fonts, "", 9.5, ui_color(ui.violet, 1.0))));
+        b.spawn((ScanLine, label(fonts, "", kit::ui_kit::frame().hud.sub, ui_color(ui.violet, 1.0))));
     });
 }
 

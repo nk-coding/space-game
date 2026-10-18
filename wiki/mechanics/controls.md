@@ -9,10 +9,10 @@ Everything you do with a key or a mouse button is a named **action**: [[control:
 [[control:fire_group_2]], [[control:lock_next]], [[control:undo]]. Each action has up to two inputs, and you can change them in SETTINGS. The game's tooltips, key
 badges and the flight's controls list always show what you have bound, not the defaults.
 
-In flight, the **?** ring under the home ring top left, or [[control:controls_help]]
+In flight, CONTROLS in the [flight menu](#the-flight-menu) (Esc), or [[control:controls_help]]
 ([[control:controls_help.keys]]), lays the controls of where you are over the view: the test range's keys in the
-test range, a voyage's on a voyage, the fight viewer's in a replay, each with what you have bound. Press it again,
-or Esc, to close it; the flight goes on underneath.
+test range, a voyage's on a voyage, the fight viewer's in a replay, each with what you have bound. Press the key
+again, or Esc, to close it (back to the menu if you opened it there); the flight goes on underneath.
 
 ## Flying
 
@@ -140,8 +140,8 @@ Changes show at once and are saved on this device.
 ## The flight menu
 
 Press Esc in flight with nothing locked. In the test range the menu pauses the flight (PAUSED); on a voyage the
-flight goes on behind it (MENU). It offers RESUME, SETTINGS, and SHIPYARD in the test range or ABANDON VOYAGE… on a
-voyage. Esc or RESUME closes it.
+flight goes on behind it (MENU). It offers RESUME, CONTROLS (the list of the controls here), SETTINGS, and SHIPYARD in the test range or
+ABANDON VOYAGE… on a voyage. Esc or RESUME closes it.
 
 ## Every action
 

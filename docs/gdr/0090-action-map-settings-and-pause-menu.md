@@ -7,6 +7,12 @@
   TO SHIP pill at the bottom centre brings the camera back (as F does). The tuning panel's action (`tuning`, U) went
   with the panel ([GDR-0053](0053-drydock-v1-lead-defaults.md)'s status). Screenshots
   `docs/results/flight-controls-overlay.png`, `flight-back-to-ship.png`.
+  2026-10-18, later (Niklas: the controls "should be opened from the Escape menu, not the ? ring"; the speed
+  "left-aligned like the rest of the HUD"; "unify the flight HUD's style"): the flight menu gains CONTROLS, which lays
+  the controls overlay over the view (the menu waits under it; Esc comes back to the menu); the ? ring is gone, the
+  `controls_help` key (/) stays. The speed is a group of the HUD's top left column (hull, a voyage's cargo and
+  RECALL, speed, assists), in the frame's type ([GDR-0008](0008-ui-ship-mind-interface.md)'s status). Screenshots
+  `docs/results/flight-menu-controls.png`, `flight-controls-from-menu.png`, `flight-hud-frame.png`.
 - Date: 2026-10-15
 - Decided by: Niklas (Esc, pausing, where settings opens, its scope, toggle slots: interactively); lead session (the
   action list, the matching rules, the layout; defaults for Niklas to review)

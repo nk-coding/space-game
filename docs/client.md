@@ -41,7 +41,7 @@ per sim tick with `sim::flight::turn_ramp_step` (like the lock's nudge with `nud
 | Drift toggle (pure momentum while keys are held: no drift cancelling; a release coasts either way, GDR-0086) | X | – (drift changes only the keys; the stick always flies where it points) |
 | Lock a target | left-click a ship (or a salvage piece) | tap it |
 | While locked | the ship turns its strongest working guns onto the target (lead point for projectiles); A/D nudge the aim and it springs back; W/S and Q/E still thrust and strafe | the stick strafes |
-| Unlock | click empty space, or Esc (with nothing locked Esc opens the flight menu: RESUME, SETTINGS, SHIPYARD or ABANDON VOYAGE…; it pauses the test range, never a voyage; Esc closes it, GDR-0090) | tap empty space |
+| Unlock | click empty space, or Esc (with nothing locked Esc opens the flight menu: RESUME, CONTROLS, SETTINGS, SHIPYARD or ABANDON VOYAGE…; it pauses the test range, never a voyage; Esc closes it, GDR-0090) | tap empty space |
 | LOCK TARGET (`lock_next`, GDR-0088): the first press locks the nearest enemy, each next press the next one by distance, round to the nearest again; the order is the sim's (`sim::flight::next_lock`: from the flown ship's position, ties by id), the lock the one a click sets (`PlayerInput::lock`) | Tab | – |
 | Auto-lock (the `auto_lock` pilot assist): while nothing is locked, the ship it asks for (`AssistState::auto_lock`) becomes the lock at the scene's tick (`scene::tick_lock`), the same lock as a click's (HUD, target panel, lock ring, sim). Esc or a click on empty space drops it and pauses auto-lock until you lock again or switch it (`AUTO-LOCK · PAUSED` in the HUD) | – | – |
 | Fire (by weapon group, GDR-0088: each gun's group is set in the drydock, a gun without one is group 1) | Space: every group; 1 / 2 / 3: that group; hold the left button on empty space: group 1; hold the right button: group 2. The held triggers OR into the pilot's fire mask (`PlayerInput::fire`, `sim::PilotInput::fire`); the controls overlay shows each from the bindings | fire button bottom right: every group |
@@ -56,7 +56,7 @@ per sim tick with `sim::flight::turn_ramp_step` (like the lock's nudge with `nud
 | The cluster map on a voyage: the whole cluster laid over the view (galaxy plan E6) | N | — |
 | The minimap on a voyage ([GDR-0106](gdr/0106-flight-minimap.md)): steps its range 1 km → 2.5 km → hidden → 1 km | B | – (always 1 km) |
 | Raider waves off / on (sandbox; off removes the raiders) | C | – |
-| The controls (18 Oct 2026, in place of the help line along the bottom): lays this scene's controls over the view, a column per SETTINGS group with the bound inputs and a line for the mouse (`flight_hud/help.rs`); the flight goes on under it; again or Esc closes it | / (also ? with Shift), or the ? ring under the home ring | the ? ring |
+| The controls (18 Oct 2026, in place of the help line along the bottom): lays this scene's controls over the view, a column per SETTINGS group with the bound inputs and a line for the mouse (`flight_hud/help.rs`); the flight goes on under it; again or Esc closes it | / (also ? with Shift), or CONTROLS in the flight menu (Esc) | CONTROLS in the flight menu |
 | Debug overlay (fps, frame and sim times, the focus ship's heading, turn rate, speed and whether the last resort turns it, the locked ship's active behavior rule; in TEST IN RANGE every rule of the tested behavior with why) | F8 (F3 until 15 Oct 2026: the assist toggles took F1–F4) | – |
 | Render toggles | F5 debug shapes, F6 glow sprites, F7 bloom (1, 2 and 3 until GDR-0090: they are the fire groups' keys now) | – |
 | Hide HUD / pause (`PAUSED · P` shows) / reset scene (not in a voyage) | H / P / Shift+R | – |
@@ -202,7 +202,7 @@ generation (its best child's hardest fight); paste one after `fight=`, e.g.
   viewer plays it unchanged; the subtitle adds `· FLOWN BY STAND-IN · CASUAL` (the pilot's `lab.ron` name).
 - **HUD**: title `REPLAY · HALVEX RUNNER VS 3 × AUTOMATON RAIDER · SEED 3`; subtitle `0:23 / 1:30 · 2× · BUILD POINTS
   120 / 132 VS 12 / 47`; a timeline under the view (how far the fight is in teal, how far it has been simulated in
-  grey, a mark per vessel lost: teal side 0's, coral side 1's, at most 24); the controls overlay (/ or the ? ring) lists the
+  grey, a mark per vessel lost: teal side 0's, coral side 1's, at most 24); the controls overlay (/ or the menu's CONTROLS) lists the
   replay keys.
 - **Checks**: today's rules fingerprint is computed once (`arena::rules_fingerprint`, about 5 ms natively); a code
   fought under other rules shows `THE RULES HAVE CHANGED SINCE THIS FIGHT` for its first 6 s and plays anyway. At the
@@ -302,7 +302,7 @@ names in this document are found in the crate that holds them:
 
 | Crate | Modules |
 |---|---|
-| `crates/client/kit` (the toolkit: knows nothing about ships or the sim) | `atlas` (+ `atlas.wesl`), `style`, `meshbuf`, `ui_kit` (+ `widgets`, `field`, `tip`, `fonts`, `transition`, `scrollbar`), `ui_icons`, `clipboard`, `params` (+ `RenderToggles`), `view` (`ViewScale`: the camera's zoom and place as the atlas and the icons read them, written by `world::camera`), `rng`; the fonts in `assets/fonts` |
+| `crates/client/kit` (the toolkit: knows nothing about ships or the sim) | `atlas` (+ `atlas.wesl`), `style`, `meshbuf`, `ui_kit` (+ `widgets`, `field`, `tip`, `fonts`, `frame`, `transition`, `scrollbar`), `ui_icons`, `clipboard`, `params` (+ `RenderToggles`), `view` (`ViewScale`: the camera's zoom and place as the atlas and the icons read them, written by `world::camera`), `rng`; the fonts in `assets/fonts` |
 | `crates/client/world` (the running game) | `sim_bridge` (+ `PilotFocus`), `scene`, `ship_model`, `ship_view`, `part_icons` (part and ship icons: `ui_icons::IconShapes` for the content), `fx` (+ `blast`), `shield` (+ `shield.wesl`), `backdrop`, `camera` (+ `spawn_camera`), `controls`, `hud`, `flight_hud` (+ `text`, `markers`, `help`), `fleet_bar`, `test_range`, `mode`, `voyage` (+ `debrief`: the debrief's data), `warp_fx`, `storage`, `career`, `player` (`design`, `behaviors`, `library`: what the player owns) |
 | `crates/client/game` (the screens and `main.rs`) | `home`, `shipyard` (+ `gate`: the ring after a recall), `fleet`, `voyage_log` (the LOG), `settings`, `research`, `map`, `debrief` (the panel), `drydock` (`panels/`: `spawn`, `sync`; `blueprints/`: `autosave`, `title`, `screens`, `handlers`, `sync`), `behavior_ui`; `index.html` and `Trunk.toml` for the web build |
 
@@ -444,14 +444,16 @@ PostUpdate            ship_view::sync_piece_views (render_pose(alpha) → Transf
   [`results/chain-blast.png`](results/chain-blast.png) (a fission reactor's chain: its ring growing over
   the flash, a capacitor's at full reach, a thruster's starting; a thruster's ring fading on the right),
   [`results/chain-blast-later.png`](results/chain-blast-later.png) (a moment later).
-- **HUD** (`flight_hud/`, Barlow from `assets/fonts`, OFL): the home ring top left (what M does, for touch; its
-  clicks never reach the world: `HudButton`), hull %, hull map (one cell per part of the shown ship's design,
+- **HUD** (`flight_hud/`, Barlow from `assets/fonts`, OFL; one type for every group, `hud.*` in the style tokens:
+  a head label 12, a value 34, a line under it 10.5, and the screens' frame, `ui_kit::frame`; Niklas, 18 Oct 2026):
+  the home ring top left at the frame's corner, as on every screen (what M does, for touch; its clicks never reach
+  the world: `HudButton`), and beside it one column of groups: hull %, hull map (one cell per part of the shown ship's design,
   rebuilt when the ship or its compiled design changes: every new sim numbers its ships from 0, so the id alone
   can't tell a test flight of an edited design from the last flight), the hold (`CARGO 3 / 8`: cargo units
   in use / the alive cargo parts of the controlling piece, `Ship::cargo` and `cargo_capacity`; empty for a ship
-  without a hold), speed with the top speed of the
-  best axis (`TOP 22`, from `ship.telemetry().top_speed`; the block ends at mid-height so it stays between the
-  hull block and the touch stick on a phone), under it the **pilot assists** of the ship flown (`flight_hud/assists.rs`,
+  without a hold), in voyages the cargo block and RECALL, speed with the top speed of the
+  best axis (`TOP 22`, from `ship.telemetry().top_speed`; in the column since 18 Oct 2026, left-aligned with the
+  rest, no longer alone at mid-height), under it the **pilot assists** of the ship flown (`flight_hud/assists.rs`,
   GDR-0088; hidden without any): `ASSISTS`, then one line per assist with its toggle key, `F2 · BRAKE`, teal while it
   decides its channel, white while on, dim while off, an auto-lock paused by a dropped lock `F1 · AUTO-LOCK · PAUSED`;
   `ASSISTS OFF · Z` in gold while ALL ASSISTS has them off
@@ -467,11 +469,13 @@ PostUpdate            ship_view::sync_piece_views (render_pose(alpha) → Transf
   every HUD text and widget (`HudZone`: hull map, fleet bar, home ring, touch widgets). HUD colours are the
   `ui.*` tokens. Debug overlay and toggles: `hud.rs`.
 - **The controls overlay** (`flight_hud/help.rs`, 18 Oct 2026; the help line along the bottom and the live tuning
-  panel, U, are gone, Niklas: "I will just tell you when I am unhappy"): the ? ring under the home ring (or /, the
-  `controls_help` action) opens a dark plate over the view with this scene's actions, a column per SETTINGS group
+  panel, U, are gone, Niklas: "I will just tell you when I am unhappy"): CONTROLS in the flight menu (Niklas, 18 Oct
+  2026: from the Escape menu; the ? ring under the home ring it had first is gone) or /, the `controls_help` action,
+  opens a dark plate (`ui_kit::panel_node`, like the menu's and ABANDON VOYAGE?'s) over the view with this scene's actions, a column per SETTINGS group
   (FLIGHT or THE FIGHT VIEWER, MISSIONS, CAMERA AND VIEWS, DEBUG AND DISPLAY) with their bound inputs, and a line for
-  the mouse; the test range's keys only there, a voyage's only there, the fight viewer's in a replay. Again, Esc or
-  the ring closes it, and the flight menu takes its place. `FlightMenu::help` holds whether it is open.
+  the mouse; the test range's keys only there, a voyage's only there, the fight viewer's in a replay. Esc or the key
+  again closes it; opened from the menu, the menu waits under it and shows again. `FlightMenu::help` holds whether it
+  is open.
 - **BACK TO SHIP** (`flight_hud/mod.rs`, 18 Oct 2026): a pill at the bottom centre while the camera is panned away
   from what it follows or frames (`CameraRig::detached`: free while the scene's own mode is follow or frame; FRAME
   THE FIGHT in a framed replay); a click does what F does then (`CameraRig::reattach`).
@@ -602,7 +606,7 @@ scene after `../space-game-archive/mockups/shipyard-long-u.png`, drawn by the ga
   `RESEARCH` / `2 READY` (gold while lit, else dim; `NOTHING READY` while lit with nothing to pay, `NO DATA YET`
   while dark), `VOYAGES` / `THE GATE · HALVEX DRIFT` (teal: the voyage the map will select; `DORMANT` while no
   voyage is open), `LOG` / `NO VOYAGES YET` (dim), `NEW · SHIPYARD APPROACH` or `2 NEW` (gold while a result is new),
-  `3 VOYAGES` (grey), `WORKSHOP` / `7 TO SORT` (gold), `FLEET SHORT OF 3` (coral) or `STOCK · 21 PARTS` (grey). Top left `THE SHIPYARD · RIM` and the working design's name;
+  `3 VOYAGES` (grey), `WORKSHOP` / `FLEET SHORT OF 3` (coral) or `STOCK · 21 PARTS` (grey). Top left, at the frame's corner, `THE SHIPYARD · RIM` and the working design's name;
   bottom right the career's notes (a head and a line each; the two most serious, coral before gold, and how many
   more the console has): a new game and its start's summary, a save kept as it is, content that changed under the
   save, `?save=`, `?unlock=all`, an escort whose design is gone, a refused launch ([Career](#career)). After a voyage
@@ -691,7 +695,7 @@ off, the flash and its ring where it left), `voyage-warp-emergency.png` (the eme
   only gold, the goal brighter (`· GOAL`, a glow), cleared ones dim (`· CLEARED`); a sleeping site's ships get no
   enemy marker of their own. Banners (with a line under them): `RAIDER PAIR · AWAKE` (coral), `SITE CLEARED ·
   RAIDER PACK` / `SITES 2 / 4 · THE WRECKS ARE YOURS` (teal), `GOAL CLEARED · RAIDER PACK` / `… · RECALL WHEN CLEAR
-  · R` (gold). The home ring top left is hidden (the ? ring stays). The controls overlay names R RECALL and M ABANDON.
+  · R` (gold). The home ring top left is hidden (its place stays, so the column beside it does not move). The controls overlay names R RECALL and M ABANDON.
 - **Scanning** (galaxy track E3, 16 Oct 2026, [GDR-0095](gdr/0095-sensors-hidden-sites-and-scans.md);
   `flight_hud/scan.rs`, in every flight scene): under the target panel the SCAN pill (violet; G, the SCAN action, or a
   click sends `ShipCommand::Scan` for the flown ship) with a bar and a line: `READY · G · 1.2 KM`, `CHARGING · 45 %`,
@@ -951,8 +955,12 @@ off, the flash and its ring where it left), `voyage-warp-emergency.png` (the eme
   theirs) until DISMISS, Esc or Enter: `VOYAGE
   HOME · HAUL UNLOADED` (or `SHIP LOST · RECALLED HOME`, `PRACTICE RUN · NOT SAVED`), the voyage's name, chips for
   the band, the outcome (`GOAL CLEARED`, `RECALLED`, `LOST`) and `FIRST CLEAR`; time, sites, kills, ships lost;
-  `14 PARTS DISMANTLED` with a row per part (intact parts, `Thruster, intact · TO THE WORKSHOP`, broken parts and
-  fragments apart, most first, six at most) and what it gave; research
+  `14 PARTS DISMANTLED` with a row per part (intact parts, `Thruster, intact · SORT BELOW`, broken parts and
+  fragments apart, most first, six at most) and what it gave; under the rows the haul's intact parts to sort (18 Oct
+  2026, Niklas: take and dismantle belong in the report, not the workshop's main area): `INTACT · KEEP OR
+  DISMANTLE`, a line per part (`Career::intake`) with the stock and the suggestion, KEEP and DISMANTLE for all of it,
+  SORT AS SUGGESTED, and what the last sort gave; what the panel leaves is kept (`Career::keep_intake`) when it is
+  dismissed, and at any time at home without an open report; research
   data per family with what is now in store; the materials; `RESEARCH READY · n` with the nodes the stores pay for
   now; `SIGNAL FOUND · HALVEX DRIFT` after a beacon mark for each voyage it opened (GDR-0078: the name from
   the content; Barlow has no ◆ either, so the materials have a diamond mark too); after a cluster voyage
@@ -1142,27 +1150,30 @@ there). Screenshots:
 ## Workshop
 
 `workshop.rs`, 18 Oct 2026 ([GDR-0108](gdr/0108-materials-economy-workshop.md)): a layer over home at the workshop
-(W). Left **TO SORT**: the haul's intact parts (`Career::intake`) a row each with the count, the stock and the
-suggestion (`KEEP 2 · DISMANTLE 1`), KEEP and DISMANTLE, and SORT AS SUGGESTED for all. Right **FABRICATE**: what
-the fleet (the working design and the escorts) is short of, with FABRICATE MISSING, then every unlocked part with a
-recipe and every part with a recipe in stock (those the fleet lacks first): its stock (`1 / 2` against what the
-fleet carries, coral when short), its recipe (the materials it lacks in coral, an upgrade it needs in words), MAKE
-(disabled when not even one can be made) and DISMANTLE (stock parts, `Career::dismantle_stock`: the workshop's share
-of the recipe, no data; disabled with the tip `THE FLEET CARRIES ALL 2` when the fleet carries every one in stock).
-**How many** (18 Oct 2026, later): MAKE, a stock DISMANTLE, and KEEP or DISMANTLE of a part the intake holds more than
-one of (one alone goes at once) open a strip under the row (the row's pill lit): − n + (rings, shift-click steps
-five), MAX (`most`: the intake's count, what the scarcest material pays for, the stock beyond the fleet; at most
-99), the confirming pill (`MAKE 3`, `DISMANTLE 2`) and CANCEL (Esc cancels the strip before it closes the layer);
-under them the total (`choice_words`: `COSTS COPPER 6 · LATTICE CRYSTAL 4 · STEEL 2`, `GIVES PROPULSION +6 · STEEL
-+2`, `GIVES STEEL +2 · NO DATA`, `IN STOCK THEN 5`). It opens at the suggestion's count (intake), the fleet's
-shortfall (MAKE) or one (`first_count`); one strip at a time, any action closes it. Top right the
-materials in store; bottom left what the last action did (`DISMANTLED 1 THRUSTER · PROPULSION +3 · STEEL +1`, a
-refusal in coral). Every action is the career's and writes the save. Every row leads with the part's icon as the
-drydock's palette draws it (`drydock::panels::part_icon`, hull parts in the first armour; Niklas, 18 Oct 2026).
+(W). Since the second round of 18 Oct 2026 (Niklas: parts made go straight into the parts list, take and dismantle
+of returned salvage belong in the return report, a column of materials since there will be more than a top bar
+holds): left the **parts list**: what the fleet (the working design and the escorts) is short of, with FABRICATE
+MISSING, then every unlocked part with a recipe and every part with a recipe in stock (those the fleet lacks first):
+its stock (`1 / 2` against what the fleet carries, coral when short), an upgrade it needs in words, MAKE (disabled
+when not even one can be made) and DISMANTLE (stock parts, `Career::dismantle_stock`: the workshop's share of the
+recipe, no data; disabled with the tip `THE FLEET CARRIES ALL 2` when the fleet carries every one in stock). Right
+the **materials** in store, a row each in content order (`material_rows`); the part under the pointer (its row, its
+pills, its count strip; else the one a count is chosen for) names itself over them and shows `NEEDS 3` beside each
+material of its recipe (times the count while MAKE's strip is open), coral where the store is short, the others dim.
+The haul's intact parts are sorted in the voyage's report ("The debrief" under [Voyages](#voyages)), no longer here.
+**How many** (18 Oct 2026, later): MAKE and a stock DISMANTLE open a strip under the row (the row's pill lit): − n +
+(rings, shift-click steps five), MAX (`most`: what the scarcest material pays for, the stock beyond the fleet; at
+most 99), the confirming pill (`MAKE 3`, `DISMANTLE 2`) and CANCEL (Esc cancels the strip before it closes the
+layer); under them the total (`choice_words`: `COSTS COPPER 6 · LATTICE CRYSTAL 4 · STEEL 2`, `GIVES STEEL +2 · NO
+DATA`). It opens at the fleet's shortfall (MAKE) or one (`first_count`); one strip at a time, any action closes it.
+Top right CLOSE; bottom left what the last action did (`FABRICATED 2 PULSE LASER · IN STOCK`, a refusal in coral).
+Every action is the career's and writes the save. Every row leads with the part's icon as the drydock's palette
+draws it (`drydock::panels::part_icon`, hull parts in the first armour; Niklas, 18 Oct 2026).
 Screenshots: `docs/results/workshop-layer.png`, `workshop-home.png`, `workshop-drydock.png`; with the icons
 `workshop-icons.png`, and the redrawn cargo icons in the palette `drydock-cargo-icons.png` (the cargo bay, 1 × 1, a
 single crate, was a 2 × 2 grid of boxes; the cargo hold, 2 × 2, four crates, was a 3 × 3 grid; the other part icons
-suggest no footprint). Choosing a count: `workshop-count-make.png`, `workshop-count-dismantle.png`.
+suggest no footprint). Choosing a count: `workshop-count-make.png`, `workshop-count-dismantle.png`. The two columns, a part's
+needs on hover: `workshop-columns.png`.
 
 ## LOG
 
@@ -1427,6 +1438,29 @@ save slot, so a slot without the node has its runs but the lab locked). The lab'
   self-contained), `game::evolution` (the building's words; the setup pre-filled by EVOLVE THIS
   DESIGN; changes and endings in words), `drydock::actions` (EVOLVE THIS DESIGN asks the lab and goes home),
   `drydock::blueprints` (the EVOLVED tag), `shipyard::layout` (the building and its label apart).
+
+## The frame
+
+Niklas, 18 Oct 2026: "the top-left back to the main shipyard button sits at different positions on different
+screens". `ui_kit::frame` holds the numbers every screen shares (`frame.*`, `panel.*` and `hud.*` in
+`art/tokens.json`, read once into `Frame`) and the helpers that place them; no screen has numbers of its own for
+these:
+
+- **Top left**, at the window's corner on every screen (`Frame::top_left`: 22 px from the left, 14 from the top, at
+  UI scale 1): the back ring (40 px, the menu glyph, `spawn_back`) and beside it the breadcrumb (10) over the title
+  (22) in a block as tall as the ring (`Frame::heading`), so the ring sits at the same place whatever the title holds
+  (the drydock's and the BEHAVIOR screen's name fields). Until then the screens on a 1280 × 720 stage (FLEET, LOG,
+  SETTINGS, RESEARCH, EVOLUTION, WORKSHOP, the voyage map) placed it at the stage's corner, which moves inwards with
+  the window's aspect, and the drydock and the BEHAVIOR screen at the window's: now all are at the window's. The
+  shipyard (no way back) starts its words there; the flight HUD's home ring and its column too.
+- **Top right**, at the same margin (`Frame::top_right`): the screen's pills (`top_pill`, 30 px high, text 9.5) and
+  CLOSE last (`spawn_close`), centred on the ring's height.
+- **Plates over the view** (`panel_node`, `panel_colors`, `panel_title`): the flight menu, the controls overlay,
+  ABANDON VOYAGE?: the same fill, border, padding and title size.
+- **The flight HUD's type** (`Frame::hud`): every group's head label, value and line under it.
+
+Screenshots (1280 × 720): `docs/results/ui-frame-research.png`, `ui-frame-fleet.png`, `flight-hud-frame.png`,
+`flight-menu-controls.png`, `flight-controls-from-menu.png`.
 
 ## Screen transitions
 

@@ -10,8 +10,8 @@ use super::chart::{Chart, Pen, paint};
 use super::markers::hud_fade;
 use kit::atlas::Atlas;
 
-/// From the window's right and bottom edges (logical px); on touch the bottom clears the fire button.
-const RIGHT: f32 = 28.0;
+/// From the window's bottom edge (logical px; from its right edge the frame's margin); on touch the bottom clears the
+/// fire button.
 const BOTTOM: f32 = 46.0;
 const BOTTOM_TOUCH: f32 = 184.0;
 
@@ -67,7 +67,7 @@ pub(super) fn spawn(root: &mut ChildSpawnerCommands, fonts: &HudFonts, ui: &kit:
         Visibility::Hidden,
         Node {
             position_type: PositionType::Absolute,
-            right: px(RIGHT),
+            right: px(kit::ui_kit::frame().edge),
             bottom: px(BOTTOM),
             flex_direction: FlexDirection::Column,
             align_items: AlignItems::Center,
@@ -78,7 +78,7 @@ pub(super) fn spawn(root: &mut ChildSpawnerCommands, fonts: &HudFonts, ui: &kit:
     .with_children(|c| {
         c.spawn((MinimapDisc, Node { justify_content: JustifyContent::Center, ..default() }))
             .with_child((label(fonts, "N", 9.0, ui_color(ui.label, 0.8)), Node { margin: UiRect::top(px(3)), ..default() }));
-        c.spawn((MinimapLine, label(fonts, "", 9.5, ui_color(ui.dim, 1.0))));
+        c.spawn((MinimapLine, label(fonts, "", kit::ui_kit::frame().hud.sub, ui_color(ui.dim, 1.0))));
     });
 }
 

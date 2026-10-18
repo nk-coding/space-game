@@ -92,7 +92,8 @@ pub(super) fn update_text(
                 }
                 None => s.push('–'),
             },
-            HudText::Cargo if voyage.is_some() => s.push_str("SALVAGE"),
+            // A voyage's cargo block has its own head.
+            HudText::Cargo if voyage.is_some() => {}
             HudText::Cargo => {
                 // Salvage in the hold (GDR-0063): cargo units in use / the hold of the controlling piece.
                 if let Some(ship) = player {

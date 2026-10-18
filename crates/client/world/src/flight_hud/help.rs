@@ -1,8 +1,9 @@
-//! The controls overlay (18 Oct 2026, in place of the help line along the bottom): the `?` ring under the home ring,
+//! The controls overlay (18 Oct 2026, in place of the help line along the bottom): CONTROLS in the flight menu (Esc),
 //! or its key (`controls_help`, `/`), lays the flight's controls over the view, grouped as SETTINGS groups them, with
-//! their bound inputs; again, Esc or the ring closes it. It lists what acts in this scene: in a voyage no test-range
-//! keys, in the test range no voyage keys, in a replayed fight the fight viewer's keys instead of flying. The flight
-//! goes on under it (the test range pauses only under the menu).
+//! their bound inputs; Esc closes it (back to the menu when it was opened there; Niklas, 18 Oct 2026: from the menu,
+//! not a `?` ring on the HUD), its key again too. It lists what acts in this scene: in a voyage no test-range keys, in
+//! the test range no voyage keys, in a replayed fight the fight viewer's keys instead of flying. The flight goes on
+//! under it (the test range pauses only under the menu).
 //!
 //! ```text
 //!                                  CONTROLS
@@ -15,17 +16,13 @@
 use bevy::prelude::*;
 use data::input::{Action, Context, Section};
 use kit::style::{Style, ui_color};
-use kit::ui_kit::{Edge, Hot, HudFonts, ScreenFx, ScreenPart, Tip, UiClick, label, ring_node, set_text, show_screen, tracked};
+use kit::ui_kit::{Edge, Hot, HudFonts, ScreenFx, ScreenPart, frame, label, panel_colors, panel_node, panel_title, set_text, show_screen};
 
 use super::{FlightMenu, HudButton, HudZone};
 use crate::mode::FlightUi;
 use crate::scene::{Scene, SceneKind};
-use crate::settings::{ActionTip, Controls};
+use crate::settings::Controls;
 use crate::sim_bridge::{GameContent, PilotFocus};
-
-/// The `?` ring.
-#[derive(Component)]
-pub(super) struct HelpRing;
 
 #[derive(Component)]
 pub(super) struct HelpRoot;
@@ -51,14 +48,6 @@ pub(super) struct HelpKeys(Action);
 #[derive(Component)]
 pub(super) struct HelpMouse;
 
-/// The `?` ring top left, under the home ring.
-pub(super) fn spawn_ring(root: &mut ChildSpawnerCommands, fonts: &HudFonts, style: &Style) {
-    let violet = ui_color(style.ui.violet, 1.0);
-    root.spawn((ScreenPart::new(Edge::Left, 0), Node { position_type: PositionType::Absolute, left: px(23), top: px(62), ..default() })).with_children(|c| {
-        c.spawn((HelpRing, HudButton, HudZone, ring_node(28.0), Tip::new("CONTROLS"), ActionTip(Action::ControlsHelp))).with_child(label(fonts, "?", 14.0, violet));
-    });
-}
-
 /// The overlay: a dark plate in the middle of the view with a column per section (a [`HudButton`]: clicks on it never
 /// reach the world).
 pub(super) fn spawn_overlay(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>, clear: Res<ClearColor>, content: Res<GameContent>) {
@@ -74,29 +63,13 @@ pub(super) fn spawn_overlay(mut commands: Commands, fonts: Res<HudFonts>, style:
             Node { position_type: PositionType::Absolute, width: percent(100), height: percent(100), justify_content: JustifyContent::Center, align_items: AlignItems::Center, ..default() },
         ))
         .with_children(|root| {
-            root.spawn((
-                ScreenPart::new(Edge::Fade, 0),
-                HudButton,
-                HudZone,
-                Hot::default(),
-                BackgroundColor(ui_color(clear.0, 0.92)),
-                BorderColor::all(ui_color(ui.teal, 0.35)),
-                Node {
-                    max_width: percent(94),
-                    border: UiRect::all(px(1)),
-                    flex_direction: FlexDirection::Column,
-                    align_items: AlignItems::Center,
-                    padding: UiRect::new(px(30), px(30), px(20), px(20)),
-                    row_gap: px(14),
-                    ..default()
-                },
-            ))
+            root.spawn((ScreenPart::new(Edge::Fade, 0), HudButton, HudZone, Hot::default(), panel_colors(clear.0, ui.teal), Node { max_width: percent(94), ..panel_node() }))
             .with_children(|p| {
-                p.spawn(tracked(&fonts, "CONTROLS", 18.0, white, 0.3));
+                p.spawn(panel_title(&fonts, "CONTROLS", white));
                 p.spawn(Node { flex_direction: FlexDirection::Row, flex_wrap: FlexWrap::Wrap, justify_content: JustifyContent::Center, column_gap: px(34), row_gap: px(14), ..default() }).with_children(|cols| {
                     for section in [Section::Flight, Section::Replay, Section::Mission, Section::Camera, Section::Debug] {
                         cols.spawn((HelpColumn(section), Node { flex_direction: FlexDirection::Column, row_gap: px(5), min_width: px(200), ..default() })).with_children(|col| {
-                            col.spawn((label(&fonts, &section.title().to_uppercase(), 10.5, teal), Node { margin: UiRect::bottom(px(3)), ..default() }));
+                            col.spawn((label(&fonts, &section.title().to_uppercase(), frame().hud.sub, teal), Node { margin: UiRect::bottom(px(3)), ..default() }));
                             for c in content.0.controls.iter().filter(|c| c.section == section) {
                                 let Some(action) = Action::from_id(&c.id) else { continue };
                                 let has = |x: Context| c.contexts.contains(&x) || c.contexts.contains(&Context::Any);
@@ -138,12 +111,10 @@ fn mouse_line(kind: &SceneKind, piloted: bool) -> &'static str {
     }
 }
 
-/// The ring's clicks, opening and closing, and what the overlay lists while it is open.
+/// Opening and closing, and what the overlay lists while it is open.
 #[allow(clippy::type_complexity, clippy::too_many_arguments)]
 pub(super) fn update(
-    mut clicks: MessageReader<UiClick>,
-    ring: Query<(), With<HelpRing>>,
-    mut menu: ResMut<FlightMenu>,
+    menu: Res<FlightMenu>,
     layer: Res<crate::settings::SettingsLayer>,
     scene: Res<Scene>,
     focus: Res<PilotFocus>,
@@ -154,13 +125,6 @@ pub(super) fn update(
     mut keys: Query<(&HelpKeys, &mut Text), Without<HelpMouse>>,
     mut mouse: Single<&mut Text, With<HelpMouse>>,
 ) {
-    if clicks.read().any(|c| ring.contains(c.0)) {
-        menu.help = !menu.help;
-    }
-    // The menu takes its place.
-    if menu.open {
-        menu.help = false;
-    }
     show_screen(&mut root, menu.help && !layer.open);
     if !menu.help {
         return;

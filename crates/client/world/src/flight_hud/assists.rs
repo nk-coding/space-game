@@ -1,8 +1,8 @@
-//! The pilot assists in the flight HUD (GDR-0088): left, under the speed, the assists of the ship flown, one line
-//! each with its toggle key (`F2 · BRAKE`): teal while it decides its channel (it acts whenever the pilot leaves the
-//! channel free), white while it is on, dim while off; an auto-lock the pilot paused by dropping a lock says
-//! `PAUSED`. The title says `ASSISTS OFF` while ALL ASSISTS has switched them off. Hidden for a ship without assists. Toggling one says what changed in the HUD's banner
-//! ([`switch_note`], `controls.rs`).
+//! The pilot assists in the flight HUD (GDR-0088): top left, the column's last group under the speed, the assists of
+//! the ship flown, one line each with its toggle key (`F2 · BRAKE`): teal while it decides its channel (it acts
+//! whenever the pilot leaves the channel free), white while it is on, dim while off; an auto-lock the pilot paused by
+//! dropping a lock says `PAUSED`. The title says `ASSISTS OFF` while ALL ASSISTS has switched them off. Hidden for a
+//! ship without assists. Toggling one says what changed in the HUD's banner ([`switch_note`], `controls.rs`).
 
 use super::*;
 use sim::{AssistState, AssistSwitch};
@@ -21,21 +21,17 @@ pub(super) struct AssistTitle;
 #[derive(Component)]
 pub(super) struct AssistRow(usize);
 
-/// The block, left under the speed (which ends at mid-height).
-pub(super) fn spawn(root: &mut ChildSpawnerCommands, fonts: &HudFonts, grey: Color, dim: Color) {
-    root.spawn((
-        AssistBlock,
-        HudZone,
-        Visibility::Hidden,
-        ScreenPart::new(Edge::Left, 1),
-        Node { position_type: PositionType::Absolute, left: px(28), top: percent(50), margin: UiRect::top(px(18)), flex_direction: FlexDirection::Column, row_gap: px(5), ..default() },
-    ))
-    .with_children(|c| {
-        c.spawn((AssistTitle, label(fonts, "ASSISTS", 12.0, grey), Node { margin: UiRect::bottom(px(2)), ..default() }));
-        for k in 0..ROWS {
-            c.spawn((AssistRow(k), label(fonts, "", 10.5, dim)));
-        }
-    });
+/// The block, the last group of the HUD's top left column (under the speed), in its type.
+pub(super) fn spawn(column: &mut ChildSpawnerCommands, fonts: &HudFonts, grey: Color, dim: Color) {
+    let hud = &frame().hud;
+    column
+        .spawn((AssistBlock, HudZone, Visibility::Hidden, Node { flex_direction: FlexDirection::Column, row_gap: px(5), ..default() }))
+        .with_children(|c| {
+            c.spawn((AssistTitle, label(fonts, "ASSISTS", hud.head, grey), Node { margin: UiRect::bottom(px(2)), ..default() }));
+            for k in 0..ROWS {
+                c.spawn((AssistRow(k), label(fonts, "", hud.sub, dim)));
+            }
+        });
 }
 
 /// A rule's name for the HUD: its action's (content) name, with the weapon group for auto-fire (`AUTO-FIRE 2`).

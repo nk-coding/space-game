@@ -1,16 +1,17 @@
 //! The flight menu (GDR-0090): Esc with nothing locked opens it (`controls`), Esc again or RESUME closes it. In the
 //! test range it pauses the flight; a voyage never pauses, so there it lies over the running fight. SETTINGS opens
-//! the SETTINGS screen over it (`settings::OpenSettings`), SHIPYARD goes home (the test range), ABANDON VOYAGE…
-//! opens the ABANDON VOYAGE? panel (a voyage).
+//! the SETTINGS screen over it (`settings::OpenSettings`), CONTROLS the controls overlay over it (`help.rs`; Esc
+//! comes back to the menu), SHIPYARD goes home (the test range), ABANDON VOYAGE… opens the ABANDON VOYAGE? panel (a
+//! voyage).
 //!
 //! ```text
 //!          PAUSED                    (a voyage: MENU · THE FLIGHT GOES ON)
-//!   [ RESUME ]  [ SETTINGS ]  [ SHIPYARD ]          ([ ABANDON VOYAGE… ] in a voyage)
+//!   [ RESUME ]  [ CONTROLS ]  [ SETTINGS ]  [ SHIPYARD ]          ([ ABANDON VOYAGE… ] in a voyage)
 //! ```
 
 use bevy::prelude::*;
 use kit::style::{Style, ui_color};
-use kit::ui_kit::{Edge, Hot, HudFonts, Pill, ScreenFx, ScreenPart, Tip, Tone, UiClick, label, show_screen, spawn_pill, tracked};
+use kit::ui_kit::{Edge, Hot, HudFonts, Pill, ScreenFx, ScreenPart, Tip, Tone, UiClick, frame, label, panel_colors, panel_node, panel_title, show_screen, spawn_pill};
 
 use super::{HudButton, HudZone};
 use crate::mode::{AppMode, FlightUi};
@@ -22,7 +23,7 @@ use crate::voyage::VoyageRun;
 #[derive(Resource, Debug, Default)]
 pub struct FlightMenu {
     pub open: bool,
-    /// The controls overlay is open (`help.rs`).
+    /// The controls overlay is open (`help.rs`): over the menu when it was opened there, which then waits under it.
     pub help: bool,
     paused: bool,
 }
@@ -39,6 +40,7 @@ pub(super) struct MenuSub;
 #[derive(Component, Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum MenuButton {
     Resume,
+    Controls,
     Settings,
     Shipyard,
     Abandon,
@@ -57,28 +59,14 @@ pub(super) fn spawn_menu(mut commands: Commands, fonts: Res<HudFonts>, style: Re
             Node { position_type: PositionType::Absolute, width: percent(100), height: percent(100), justify_content: JustifyContent::Center, align_items: AlignItems::Center, ..default() },
         ))
         .with_children(|root| {
-            root.spawn((
-                ScreenPart::new(Edge::Fade, 0),
-                HudButton,
-                HudZone,
-                Hot::default(),
-                BackgroundColor(ui_color(clear.0, 0.94)),
-                BorderColor::all(ui_color(ui.teal, 0.35)),
-                Node {
-                    border: UiRect::all(px(1)),
-                    flex_direction: FlexDirection::Column,
-                    align_items: AlignItems::Center,
-                    padding: UiRect::new(px(36), px(36), px(26), px(26)),
-                    row_gap: px(10),
-                    ..default()
-                },
-            ))
-            .with_children(|p| {
-                p.spawn((MenuTitle, tracked(&fonts, "PAUSED", 24.0, ui_color(ui.number, 1.0), 0.3)));
-                p.spawn((MenuSub, label(&fonts, "", 9.0, ui_color(ui.dim, 1.0))));
-                p.spawn(Node { flex_direction: FlexDirection::Row, column_gap: px(12), margin: UiRect::top(px(10)), ..default() }).with_children(|row| {
+            root.spawn((ScreenPart::new(Edge::Fade, 0), HudButton, HudZone, Hot::default(), panel_colors(clear.0, ui.teal), panel_node())).with_children(|p| {
+                let f = frame();
+                p.spawn((MenuTitle, panel_title(&fonts, "PAUSED", ui_color(ui.number, 1.0))));
+                p.spawn((MenuSub, label(&fonts, "", f.hud.sub, ui_color(ui.dim, 1.0))));
+                p.spawn(Node { flex_direction: FlexDirection::Row, column_gap: px(f.pill_gap), margin: UiRect::top(px(f.panel.gap)), ..default() }).with_children(|row| {
                     let resume = Pill { active: true, ..Pill::new(Tone::Teal) };
                     spawn_pill(row, &fonts, "RESUME", 11.0, 36.0, None, resume, (MenuButton::Resume, Tip::key("RESUME", "ESC")));
+                    spawn_pill(row, &fonts, "CONTROLS", 11.0, 36.0, None, Pill::new(Tone::Teal), (MenuButton::Controls, Tip::new("THE CONTROLS HERE"), ActionTip(data::input::Action::ControlsHelp)));
                     spawn_pill(row, &fonts, "SETTINGS", 11.0, 36.0, None, Pill::new(Tone::Teal), (MenuButton::Settings, Tip::new("CONTROLS AND DISPLAY")));
                     spawn_pill(row, &fonts, "SHIPYARD", 11.0, 36.0, None, Pill::new(Tone::Teal), (MenuButton::Shipyard, Tip::new("SHIPYARD"), ActionTip(data::input::Action::Leave)));
                     spawn_pill(row, &fonts, "ABANDON VOYAGE…", 11.0, 36.0, None, Pill::new(Tone::Coral), (MenuButton::Abandon, Tip::new("ABANDON VOYAGE"), ActionTip(data::input::Action::Leave)));
@@ -107,6 +95,7 @@ pub(super) fn flight_menu(
     for c in clicks.read() {
         match buttons.get(c.0) {
             Ok(MenuButton::Resume) => menu.open = false,
+            Ok(MenuButton::Controls) => menu.help = true,
             Ok(MenuButton::Settings) => {
                 settings.write(OpenSettings);
             }
@@ -133,8 +122,8 @@ pub(super) fn flight_menu(
         menu.paused = false;
         time.unpause();
     }
-    // SETTINGS opened from it covers it; it comes back when SETTINGS closes.
-    show_screen(&mut root, menu.open && !layer.open);
+    // SETTINGS or the controls opened from it cover it; it comes back when they close.
+    show_screen(&mut root, menu.open && !menu.help && !layer.open);
     if menu.open {
         let (title, sub) = match (voyage, scene.kind == crate::scene::SceneKind::Fight) {
             (true, _) => ("MENU", "THE FLIGHT GOES ON"),

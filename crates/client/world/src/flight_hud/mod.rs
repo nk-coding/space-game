@@ -1,17 +1,20 @@
 //! The flight HUD in the reference look (the concept's phone HUD mockup): floating text,
-//! wide-tracked uppercase labels in Barlow, white numbers, no boxes.
+//! wide-tracked uppercase labels in Barlow, white numbers, no boxes. One type for every group (`hud.*` in the style
+//! tokens: a head label, a value, a line under it) and the frame every screen shares (`ui_kit::frame`: margins, the
+//! ring; Niklas, 18 Oct 2026: "unify the flight HUD's style").
 //!
-//! * top left: the home ring (what M does: home, for touch), hull % and a tiny hull map of the player's ship (in a
-//!   behavior test's watch mode: the watched one), and its hold (`CARGO 3 / 8`, salvage collected / cargo units;
-//!   hidden for a ship without a hold);
-//! * left: speed (m/s), the top speed and the drift state; under it the pilot assists of the ship flown, with their
+//! * top left, at the frame's corner: the home ring (what M does: home, for touch; hidden in voyages), and beside it
+//!   one column of groups: HULL (hull % and a tiny hull map of the player's ship, in a behavior test's watch mode the
+//!   watched one; its hold under it, `CARGO 3 / 8`, salvage collected / cargo units, hidden for a ship without a
+//!   hold), in voyages the cargo block and RECALL, SPEED (m/s, the top speed and the drift state; Niklas, 18 Oct
+//!   2026: left-aligned with the rest, not alone at mid-height), and the pilot assists of the ship flown, with their
 //!   toggle keys and state (`assists.rs`, GDR-0088);
 //! * top right: target panel (name, hull %, distance; in watch mode the watched ship's behavior target); under it,
 //!   for a ship with a scanner, the SCAN pill with what the scanner does and its charge or cooldown (`scan.rs`);
 //! * top centre: scene / wave line and whether raider waves come, centre: banners (wave cleared, ship lost,
 //!   `PAUSED`);
 //! * bottom centre: heat and power warnings ("PULSE LASER 2 · HEAT 96 %"); bottom: BACK TO SHIP while the camera is
-//!   panned away (`camera.rs`); under the home ring the `?` ring that lays the controls over the view (`help.rs`);
+//!   panned away (`camera.rs`); the controls overlay (`help.rs`) opens from the flight menu (`menu.rs`) or its key;
 //! * in the world: a dotted lock ring around the target, off-screen markers for enemies (also in watch mode; kept
 //!   clear of the HUD's texts and widgets; in a replayed fight for every ship, in its side's colour); scans charging
 //!   and sweeping, bearings, and the sites found (`scan.rs`).
@@ -50,8 +53,7 @@ use sim::{ShipDesign, ShipId, Stat, Target};
 use bevy::ui::{ComputedNode, UiGlobalTransform};
 use kit::params::RenderToggles;
 use kit::style::{Style, ui_color};
-use kit::ui_icons::{Glyph, UiIcon};
-use kit::ui_kit::{Edge, Hot, HudFonts, Pill, PillText, ScreenFx, ScreenPart, Tip, Tone, show_screen, UiClick, UiInputSet, UiStyleSet, label, load_fonts, number, prose, ring_node, set_color, set_text, spawn_pill, tracked};
+use kit::ui_kit::{Edge, Hot, HudFonts, Pill, PillText, ScreenFx, ScreenPart, Tip, Tone, show_screen, UiClick, UiInputSet, UiStyleSet, frame, label, load_fonts, number, panel_colors, panel_node, panel_title, prose, set_color, set_text, spawn_back, spawn_pill, tracked};
 
 use crate::camera::{CameraRig, CameraSet};
 use crate::controls::PlayerInput;
@@ -283,59 +285,59 @@ pub fn spawn_hud(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>
             Node { width: percent(100), height: percent(100), position_type: PositionType::Absolute, ..default() },
         ))
         .with_children(|root| {
-            // Top left: the home ring (as on the drydock and the BEHAVIOR screen), then the hull.
-            root.spawn((ScreenPart::new(Edge::Left, 0), abs(Some(20.0), None, Some(18.0), None))).with_children(|c| {
-                c.spawn((HomeRing, HudButton, HudZone, ring_node(34.0), Tip::new("SHIPYARD"), ActionTip(Action::Leave))).with_children(|r| {
-                    r.spawn((UiIcon::Glyph { glyph: Glyph::Menu, color: ui.violet }, Node { width: px(19), height: px(19), ..default() }));
-                });
-            });
-            help::spawn_ring(root, &fonts, &style);
-            root.spawn((ScreenPart::new(Edge::Left, 0), abs(Some(68.0), None, Some(18.0), None))).with_children(|c| {
-                c.spawn(label(&fonts, "HULL", 13.0, grey));
-                c.spawn(Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(18), ..default() })
-                    .with_children(|row| {
-                        row.spawn((HudText::HullValue, number(&fonts, "–", 40.0, white)));
-                        row.spawn((HullMap, HudZone, Node { width: px(100), height: px(60), position_type: PositionType::Relative, ..default() }));
+            // Top left, at the frame's corner (`ui_kit::frame`, as on every screen): the home ring, and beside it one
+            // column of groups in the same type: the hull, the voyage's cargo and RECALL, the speed, the assists.
+            let f = frame();
+            let hud = &f.hud;
+            let group = || Node { flex_direction: FlexDirection::Column, row_gap: px(2), ..default() };
+            root.spawn((ScreenPart::new(Edge::Left, 0), Node { align_items: AlignItems::FlexStart, height: Val::Auto, ..f.top_left() })).with_children(|tl| {
+                spawn_back(tl, ui, (HomeRing, HudButton, HudZone, Tip::new("SHIPYARD"), ActionTip(Action::Leave)));
+                tl.spawn(Node { flex_direction: FlexDirection::Column, row_gap: px(hud.group_gap), ..default() }).with_children(|c| {
+                    c.spawn(group()).with_children(|g| {
+                        g.spawn(label(&fonts, "HULL", hud.head, grey));
+                        g.spawn(Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(18), ..default() }).with_children(|row| {
+                            row.spawn((HudText::HullValue, number(&fonts, "–", hud.value, white)));
+                            row.spawn((HullMap, HudZone, Node { width: px(100), height: px(60), position_type: PositionType::Relative, ..default() }));
+                        });
+                        g.spawn((HudText::Cargo, label(&fonts, "", hud.sub, dim)));
                     });
-                c.spawn((HudText::Cargo, label(&fonts, "", 12.0, grey)));
-                // Voyages: the cargo block, RECALL right under it (GDR-0065).
-                c.spawn((VoyageBlock, Visibility::Hidden, Node { flex_direction: FlexDirection::Column, row_gap: px(5), margin: UiRect::top(px(2)), ..default() }))
-                    .with_children(|v| {
-                        v.spawn((HudText::SalvageValue, number(&fonts, "", 28.0, gold)));
+                    // Voyages: the cargo block, RECALL right under it (GDR-0065); out of the column elsewhere.
+                    c.spawn((VoyageBlock, Node { display: Display::None, row_gap: px(5), ..group() })).with_children(|v| {
+                        v.spawn(label(&fonts, "SALVAGE", hud.head, grey));
+                        v.spawn((HudText::SalvageValue, number(&fonts, "", hud.value_minor, gold)));
                         v.spawn(Node { flex_direction: FlexDirection::Row, column_gap: px(3), ..default() }).with_children(|row| {
                             for k in 0..PIPS {
                                 row.spawn((CargoPip(k), Node { width: px(11), height: px(3), ..default() }, BackgroundColor(Color::NONE)));
                             }
                         });
-                        v.spawn((HudText::SalvageSub, label(&fonts, "", 10.0, dim)));
-                        v.spawn(Node { height: px(16), ..default() });
-                        v.spawn(Node { align_self: AlignSelf::FlexStart, ..default() }).with_children(|r| {
-                            spawn_pill(r, &fonts, "RECALL", 12.0, 42.0, None, Pill::new(Tone::Teal), (RecallButton, HudButton, HudZone, Tip::new("RECALL"), ActionTip(Action::Recall)));
+                        v.spawn((HudText::SalvageSub, label(&fonts, "", hud.sub, dim)));
+                        v.spawn(Node { align_self: AlignSelf::FlexStart, margin: UiRect::top(px(8)), ..default() }).with_children(|r| {
+                            spawn_pill(r, &fonts, "RECALL", 11.0, 36.0, None, Pill::new(Tone::Teal), (RecallButton, HudButton, HudZone, Tip::new("RECALL"), ActionTip(Action::Recall)));
                         });
-                        v.spawn((HudText::RecallSub, label(&fonts, "", 9.5, teal)));
+                        v.spawn((HudText::RecallSub, label(&fonts, "", hud.sub, teal)));
                     });
+                    c.spawn(group()).with_children(|g| {
+                        g.spawn(label(&fonts, "SPEED", hud.head, grey));
+                        g.spawn((HudText::SpeedValue, number(&fonts, "0", hud.value, white)));
+                        g.spawn((HudText::SpeedSub, label(&fonts, "M/S", hud.sub, dim)));
+                    });
+                    // The pilot assists of the ship flown (hidden without).
+                    assists::spawn(c, &fonts, grey, dim);
+                });
             });
-            // Left: speed, ending at mid-height (on a 390 px phone it sits between the hull block and the stick).
-            root.spawn((ScreenPart::new(Edge::Left, 1), Node { bottom: percent(50), ..abs(Some(28.0), None, None, None) })).with_children(|c| {
-                c.spawn(label(&fonts, "SPEED", 12.0, grey));
-                c.spawn((HudText::SpeedValue, number(&fonts, "0", 34.0, white)));
-                c.spawn((HudText::SpeedSub, label(&fonts, "M/S", 11.0, dim)));
-            });
-            // Left, under the speed: the pilot assists.
-            assists::spawn(root, &fonts, grey, dim);
             // Top right: target.
-            root.spawn((ScreenPart::new(Edge::Right, 0), Node { align_items: AlignItems::FlexEnd, ..abs(None, Some(28.0), Some(18.0), None) }))
+            root.spawn((ScreenPart::new(Edge::Right, 0), Node { align_items: AlignItems::FlexEnd, row_gap: px(2), ..abs(None, Some(f.edge), Some(f.top), None) }))
                 .with_children(|c| {
-                    c.spawn((HudText::TargetName, label(&fonts, "NO TARGET", 13.0, grey)));
-                    c.spawn((HudText::TargetValue, number(&fonts, "", 34.0, coral)));
-                    c.spawn((HudText::TargetSub, label(&fonts, "", 11.0, dim)));
+                    c.spawn((HudText::TargetName, label(&fonts, "NO TARGET", hud.head, grey)));
+                    c.spawn((HudText::TargetValue, number(&fonts, "", hud.value, coral)));
+                    c.spawn((HudText::TargetSub, label(&fonts, "", hud.sub, dim)));
                     scan::spawn(c, &fonts, ui);
                 });
             // Top centre: title.
-            root.spawn((ScreenPart::new(Edge::Top, 0), Node { position_type: PositionType::Absolute, top: px(16), width: percent(100), flex_direction: FlexDirection::Column, align_items: AlignItems::Center, ..default() }))
+            root.spawn((ScreenPart::new(Edge::Top, 0), Node { position_type: PositionType::Absolute, top: px(f.top), width: percent(100), flex_direction: FlexDirection::Column, align_items: AlignItems::Center, row_gap: px(2), ..default() }))
                 .with_children(|c| {
-                    c.spawn((HudText::Title, label(&fonts, "", 16.0, white)));
-                    c.spawn((HudText::Subtitle, label(&fonts, "", 11.0, grey)));
+                    c.spawn((HudText::Title, label(&fonts, "", hud.title, white)));
+                    c.spawn((HudText::Subtitle, label(&fonts, "", hud.subtitle, grey)));
                 });
             // Centre: banner, and the line under it (voyages).
             root.spawn(Node { position_type: PositionType::Absolute, top: percent(25), width: percent(100), flex_direction: FlexDirection::Column, align_items: AlignItems::Center, row_gap: px(10), ..default() })
@@ -381,11 +383,11 @@ pub fn spawn_hud(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>
                 });
             }
             // Bottom centre: warnings, then BACK TO SHIP.
-            root.spawn((ScreenPart::new(Edge::Bottom, 1), Node { position_type: PositionType::Absolute, bottom: px(14), width: percent(100), flex_direction: FlexDirection::Column, align_items: AlignItems::Center, row_gap: px(8), ..default() }))
+            root.spawn((ScreenPart::new(Edge::Bottom, 1), Node { position_type: PositionType::Absolute, bottom: px(f.top), width: percent(100), flex_direction: FlexDirection::Column, align_items: AlignItems::Center, row_gap: px(8), ..default() }))
                 .with_children(|c| {
-                    c.spawn((HudText::Warnings, label(&fonts, "", 14.0, coral)));
-                    c.spawn(Node { min_height: px(30), ..default() }).with_children(|r| {
-                        spawn_pill(r, &fonts, "BACK TO SHIP", 11.0, 30.0, None, Pill::new(Tone::Teal), (CameraBack, HudButton, HudZone, Visibility::Hidden, Tip::new("CAMERA BACK"), ActionTip(Action::CameraFollow)));
+                    c.spawn((HudText::Warnings, label(&fonts, "", hud.head, coral)));
+                    c.spawn(Node { min_height: px(f.pill), ..default() }).with_children(|r| {
+                        spawn_pill(r, &fonts, "BACK TO SHIP", f.pill_text, f.pill, None, Pill::new(Tone::Teal), (CameraBack, HudButton, HudZone, Visibility::Hidden, Tip::new("CAMERA BACK"), ActionTip(Action::CameraFollow)));
                     });
                 });
         });
@@ -411,24 +413,16 @@ fn spawn_abandon_panel(mut commands: Commands, fonts: Res<HudFonts>, style: Res<
                 HudButton,
                 HudZone,
                 Hot::default(),
-                BackgroundColor(ui_color(clear.0, 0.94)),
-                BorderColor::all(ui_color(ui.coral, 0.45)),
-                Node {
-                    width: px(460),
-                    border: UiRect::all(px(1)),
-                    flex_direction: FlexDirection::Column,
-                    align_items: AlignItems::Center,
-                    padding: UiRect::new(px(28), px(28), px(22), px(22)),
-                    row_gap: px(10),
-                    ..default()
-                },
+                panel_colors(clear.0, ui.coral),
+                Node { width: px(460), ..panel_node() },
             ))
             .with_children(|p| {
-                p.spawn(tracked(&fonts, "ABANDON VOYAGE?", 24.0, ui_color(ui.coral, 1.0), 0.3));
-                p.spawn((AbandonCargo, label(&fonts, "", 10.5, ui_color(ui.number, 1.0))));
+                let f = frame();
+                p.spawn(panel_title(&fonts, "ABANDON VOYAGE?", ui_color(ui.coral, 1.0)));
+                p.spawn((AbandonCargo, label(&fonts, "", f.hud.sub, ui_color(ui.number, 1.0))));
                 p.spawn(prose(&fonts, "The voyage counts as lost. Your ships re-form at home.", 13.0, ui_color(ui.label, 1.0)));
-                p.spawn(label(&fonts, "THE FLIGHT GOES ON WHILE YOU DECIDE", 9.0, ui_color(ui.dim, 1.0)));
-                p.spawn(Node { flex_direction: FlexDirection::Row, column_gap: px(12), margin: UiRect::top(px(8)), ..default() }).with_children(|row| {
+                p.spawn(label(&fonts, "THE FLIGHT GOES ON WHILE YOU DECIDE", f.hud.sub, ui_color(ui.dim, 1.0)));
+                p.spawn(Node { flex_direction: FlexDirection::Row, column_gap: px(f.pill_gap), margin: UiRect::top(px(f.panel.gap)), ..default() }).with_children(|row| {
                     let abandon = Pill { active: true, ..Pill::new(Tone::Coral) };
                     spawn_pill(row, &fonts, "ABANDON VOYAGE", 11.0, 36.0, None, abandon, (AbandonButton::Abandon, Tip::key("ABANDON VOYAGE", "ENTER")));
                     spawn_pill(row, &fonts, "KEEP FLYING", 11.0, 36.0, None, Pill::new(Tone::Teal), (AbandonButton::KeepFlying, Tip::key("KEEP FLYING", "ESC")));
@@ -515,19 +509,25 @@ fn voyage_widgets(
     world: Res<SimWorld>,
     focus: Res<PilotFocus>,
     style: Res<Style>,
-    mut blocks: Query<(&mut Visibility, Has<VoyageBlock>, Has<LostBlock>), (Or<(With<VoyageBlock>, With<LostBlock>, With<HomeRing>)>, Without<CargoPip>)>,
+    mut blocks: Query<(&mut Visibility, Has<LostBlock>), (Or<(With<LostBlock>, With<HomeRing>)>, Without<CargoPip>)>,
+    mut block: Single<&mut Node, With<VoyageBlock>>,
     mut pips: Query<(&CargoPip, &mut Visibility, &mut BackgroundColor), Without<VoyageBlock>>,
     mut pill: Query<(Entity, &mut Pill), With<RecallButton>>,
     mut pill_text: Query<(&ChildOf, &mut Text), With<PillText>>,
 ) {
     let voyage = scene.voyage().is_some();
     let lost = matches!(run.phase, Phase::Lost { .. });
-    for (mut v, block, lost_block) in &mut blocks {
-        let want = if lost_block { lost } else if block { voyage } else { !voyage };
+    for (mut v, lost_block) in &mut blocks {
+        let want = if lost_block { lost } else { !voyage };
         let want = if want { Visibility::Inherited } else { Visibility::Hidden };
         if *v != want {
             *v = want;
         }
+    }
+    // The cargo block takes its place in the column only in voyages.
+    let display = if voyage { Display::Flex } else { Display::None };
+    if block.display != display {
+        block.display = display;
     }
     if !voyage {
         return;
