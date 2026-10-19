@@ -36,7 +36,9 @@
 //! * **Mouse and touch**: the bar is a [`Hot`] node (it takes the pointer from the rows under it); a press on the
 //!   thumb drags it, a press on the track beside it jumps the thumb's middle there and drags on from there (at
 //!   once: no glide). A finger dragged along the area itself (on its rows too) scrolls it under the finger
-//!   ([`finger_scroll`], after [`FINGER_SLOP`]; no fling yet).
+//!   ([`finger_scroll`], after [`FINGER_SLOP`]); lifted while it moves, the list flings on ([`Glide::fling`]: as fast
+//!   as the finger was, slowing to a stop over [`FLING_SECONDS`]), and a finger that lands on a moving list stops it
+//!   (that press is no click).
 //! * **Look** (style guide "UI"): the label grey at low alpha, 4 px wide, 6 px while the pointer is on it or it is
 //!   dragged, fully rounded, [`EDGE_INSET`] px in from the area's edge.
 
@@ -205,20 +207,41 @@ fn ease_out(t: f32) -> f32 {
     1.0 - u * u * u
 }
 
-/// A smooth scroll from one place to another over [`GLIDE_SECONDS`] (UI px along the area's axis).
+/// A finger's fling runs on this long (seconds; *placeholder*).
+pub const FLING_SECONDS: f32 = 0.9;
+/// A finger lifted slower than this (UI px a second) stops the list where it is; faster than the most it flings as
+/// fast as that (*placeholders*).
+pub const FLING_MIN: f32 = 120.0;
+pub const FLING_MAX: f32 = 5000.0;
+
+/// A smooth scroll from one place to another over [`GLIDE_SECONDS`] (a fling's over [`FLING_SECONDS`]; UI px along
+/// the area's axis).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Glide {
     from: f32,
     to: f32,
     /// Seconds since it started.
     t: f32,
+    /// How long it runs.
+    secs: f32,
 }
 
 impl Glide {
     /// A glide from `at` to `target`, kept within `0..=max`; none when it is there already.
     pub fn new(at: f32, target: f32, max: f32) -> Option<Glide> {
         let to = target.clamp(0.0, max.max(0.0));
-        ((to - at).abs() > 0.01).then_some(Glide { from: at, to, t: 0.0 })
+        ((to - at).abs() > 0.01).then_some(Glide { from: at, to, t: 0.0, secs: GLIDE_SECONDS })
+    }
+
+    /// A fling: on from `at` at `velocity` (UI px a second, scrolling's sign), slowing to a stop over
+    /// [`FLING_SECONDS`] on the same ease-out (whose start is three times its mean speed, so it starts as fast as the
+    /// finger went), within `0..=max`; none slower than [`FLING_MIN`].
+    pub fn fling(at: f32, velocity: f32, max: f32) -> Option<Glide> {
+        if velocity.abs() < FLING_MIN {
+            return None;
+        }
+        let by = velocity.clamp(-FLING_MAX, FLING_MAX) * FLING_SECONDS / 3.0;
+        Glide::new(at, at + by, max).map(|g| Glide { secs: FLING_SECONDS, ..g })
     }
 
     /// A notch: `by` further on from the `running` glide's target (notches in quick succession add up), or from
@@ -237,7 +260,7 @@ impl Glide {
     pub fn step(&mut self, dt: f32, max: f32) -> (f32, bool) {
         self.t += dt;
         self.to = self.to.clamp(0.0, max.max(0.0));
-        let k = self.t / GLIDE_SECONDS;
+        let k = self.t / self.secs;
         let at = self.from + (self.to - self.from) * ease_out(k);
         (at.clamp(0.0, max.max(0.0)), k >= 1.0)
     }
@@ -530,13 +553,43 @@ struct FingerScroll {
     from: Vec2,
     start: f32,
     engaged: bool,
+    /// The scroll over the last [`FLING_WINDOW`] seconds and the one note before (seconds, UI px; slow frames
+    /// still give two), for the fling's speed.
+    track: [(f32, f32); 8],
+    tracked: usize,
+}
+
+/// A fling's speed is the scroll's over this many seconds before the finger lifts.
+const FLING_WINDOW: f32 = 0.1;
+
+impl FingerScroll {
+    /// Notes the scroll `at` at `now` (seconds).
+    fn note(&mut self, now: f32, at: f32) {
+        let n = self.tracked.min(self.track.len());
+        let keep = (self.track[..n].iter().filter(|(t, _)| now - t <= FLING_WINDOW).count() + 1).min(n).min(self.track.len() - 1);
+        self.track.copy_within(n - keep..n, 0);
+        self.track[keep] = (now, at);
+        self.tracked = keep + 1;
+    }
+
+    /// The scroll's speed over the last [`FLING_WINDOW`] (UI px a second; 0 when the finger stood still).
+    fn velocity(&self) -> f32 {
+        let seen = &self.track[..self.tracked];
+        match (seen.first(), seen.last()) {
+            (Some(a), Some(b)) if b.0 - a.0 > 0.01 => (b.1 - a.1) / (b.0 - a.0),
+            _ => 0.0,
+        }
+    }
 }
 
 /// A finger dragged along an area (on its rows too) scrolls it 1:1 under the finger, at once (docs/plans/android.md
 /// 4.1: touch has no wheel). It starts once the finger has moved [`FINGER_SLOP`] along the area's axis (more than
 /// across it, so a sideways slider in a list still drags); then the press on the row under it ends without a click.
+/// Lifted while it moves, the list flings on ([`Glide::fling`]); a finger landing on a gliding list stops it, and
+/// that press is no click.
 #[allow(clippy::too_many_arguments)]
 fn finger_scroll(
+    time: Res<Time<Real>>,
     window: Single<&Window, With<PrimaryWindow>>,
     touches: Res<Touches>,
     mut pointer: ResMut<UiPointer>,
@@ -546,12 +599,20 @@ fn finger_scroll(
     mut areas: Areas,
     mut drag: Local<Option<FingerScroll>>,
 ) {
+    let now = time.elapsed_secs();
     let Some(id) = pointer.finger() else {
         *drag = None;
         return;
     };
     let Some(at) = touches.get_pressed(id).map(|t| t.position() * window.scale_factor()) else {
-        *drag = None;
+        // Lifted: a list that moved under it flings on.
+        if let Some(d) = drag.take().filter(|d| d.engaged && d.finger == id)
+            && let Ok((_, bar, mut smooth, node, _, _, _, _, pos, rows)) = areas.get_mut(d.area)
+        {
+            let (view, content, at) = extent(bar.axis, node, &pos, rows.as_deref());
+            smooth.glide = Glide::fling(at, d.velocity(), content - view);
+            smooth.wrote = Some(at);
+        }
         return;
     };
     if touches.just_pressed(id) || drag.is_some_and(|d| d.finger != id) {
@@ -560,7 +621,14 @@ fn finger_scroll(
             .then(|| area_under(at, pointer.over, &stacks, &parents, &areas))
             .flatten()
             .and_then(|area| areas.get(area).ok().map(|(_, bar, _, node, _, _, _, _, pos, rows)| (area, extent(bar.axis, node, pos, rows).2)))
-            .map(|(area, start)| FingerScroll { finger: id, area, from: at, start, engaged: false });
+            .map(|(area, start)| FingerScroll { finger: id, area, from: at, start, engaged: false, track: [(0.0, 0.0); 8], tracked: 0 });
+        // A finger on a moving list stops it; that press is no click.
+        if let Some(Ok((_, _, mut smooth, ..))) = drag.map(|d| areas.get_mut(d.area))
+            && smooth.glide.is_some()
+        {
+            smooth.glide = None;
+            pointer.cancel_press();
+        }
     }
     let Some(d) = drag.as_mut() else { return };
     let Ok((_, bar, mut smooth, node, _, _, _, _, mut pos, mut rows)) = areas.get_mut(d.area) else {
@@ -582,12 +650,14 @@ fn finger_scroll(
         d.engaged = true;
         d.from = at;
         d.start = extent(axis, node, &pos, rows.as_deref()).2;
+        d.note(now, d.start);
         pointer.cancel_press();
         return;
     }
-    let (view, content, now) = extent(axis, node, &pos, rows.as_deref());
+    let (view, content, at_now) = extent(axis, node, &pos, rows.as_deref());
     let to = (d.start - axis.of(moved) * node.inverse_scale_factor).clamp(0.0, (content - view).max(0.0));
-    if to != now {
+    d.note(now, to);
+    if to != at_now {
         set_scroll(axis, &mut pos, rows.as_mut(), to);
     }
     if smooth.glide.is_some() || smooth.wrote != Some(to) {
@@ -904,6 +974,52 @@ mod tests {
     }
 
     /// Glides stay within the content: they end at an end, not past it, and none starts at an end going out.
+    /// A fling starts as fast as the finger went and slows to a stop over [`FLING_SECONDS`]; a slow lift stops,
+    /// a fling ends at the content's end.
+    #[test]
+    fn a_fling_runs_on_at_the_finger_s_speed() {
+        assert!(Glide::fling(100.0, FLING_MIN - 1.0, 1000.0).is_none());
+        let mut g = Glide::fling(100.0, 900.0, 1000.0).unwrap();
+        let dt = 1.0 / 120.0;
+        let (first, _) = g.step(dt, 1000.0);
+        assert!(((first - 100.0) / dt - 900.0).abs() < 900.0 * 0.03, "{first}");
+        let mut last = (first, false);
+        for _ in 0..200 {
+            last = g.step(dt, 1000.0);
+            if last.1 {
+                break;
+            }
+        }
+        assert!(last.1 && (last.0 - (100.0 + 900.0 * FLING_SECONDS / 3.0)).abs() < 1e-3);
+        assert!((g.t - FLING_SECONDS).abs() < dt);
+        // Up the list, past its start: it stops there.
+        let mut g = Glide::fling(50.0, -4000.0, 1000.0).unwrap();
+        assert_eq!(g.step(FLING_SECONDS, 1000.0), (0.0, true));
+    }
+
+    /// The fling's speed is the finger's over the last tenth of a second (one note before it with slow frames); a
+    /// finger that stood still flings nothing.
+    #[test]
+    fn the_fling_speed_is_the_finger_s_last() {
+        let mut d = FingerScroll { finger: 0, area: Entity::PLACEHOLDER, from: Vec2::ZERO, start: 0.0, engaged: true, track: [(0.0, 0.0); 8], tracked: 0 };
+        for k in 0..30 {
+            let t = k as f32 / 60.0;
+            d.note(t, 500.0 * t);
+        }
+        assert!((d.velocity() - 500.0).abs() < 1e-2);
+        // Held still for a while: no speed left.
+        for k in 30..50 {
+            d.note(k as f32 / 60.0, 500.0 * 29.0 / 60.0);
+        }
+        assert_eq!(d.velocity(), 0.0);
+        // Slow frames (5 a second): still two notes.
+        let mut d = FingerScroll { tracked: 0, ..d };
+        for k in 0..5 {
+            d.note(k as f32 * 0.2, -300.0 * k as f32 * 0.2);
+        }
+        assert!((d.velocity() + 300.0).abs() < 1e-2);
+    }
+
     #[test]
     fn glides_stop_at_the_ends() {
         let dt = 1.0 / 60.0;
