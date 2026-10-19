@@ -302,7 +302,7 @@ mod tests {
         let text = format!("// space-game: saves, format {}, saved 1\n(start: \"rim_awakening\", seed: 1, generator: {}{save})", data::career::FORMAT, data::career::GENERATOR);
         mem.write("saves", "career", &text).unwrap();
         let mut storage = Storage::new(mem);
-        let switches = Switches { slot: "career".into(), new_game: false, free: false };
+        let switches = Switches { slot: "career".into(), new_game: false, free: false, bands: None };
         let career = load(&mut storage, &content, switches, 1, 1);
         let mut app = App::new();
         app.add_plugins((MinimalPlugins, StatesPlugin))
