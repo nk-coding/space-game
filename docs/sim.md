@@ -2120,7 +2120,7 @@ were set by the salvage agent for Niklas to review.
 - **Items** (`Item`): `Part { part, material }`, a whole part by content id (hull parts carry their armour
   material), `Broken { part, material }` (18 Oct 2026, GDR-0108: a part that broke as it was stripped, below),
   `Fragment { part }`, what a destroyed part leaves if its `salvage` block names a `fragment` (the
-  content id of that part), and `DataCore { trail, signal }` (16 Oct 2026, galaxy track E4, GDR-0096): a log of the
+  content id of that part), `Ore { material }` (19 Oct 2026, GDR-0114: a unit a mining beam cut, see Voyages, Mining), and `DataCore { trail, signal }` (16 Oct 2026, galaxy track E4, GDR-0096): a log of the
   galaxy's trail signal, one cargo unit worth `salvage::DATA_CORE_VALUE` (1000) a unit, so a hold takes it first and a
   shrinking hold drops it last; a voyage puts it into the first wreck of a log's site when the site spawns
   (`Sim::stow_data_core`; loose at the site, never expiring, without a wreck). `Item::haul()` is the career's copy
@@ -2473,6 +2473,30 @@ defaults throughout.
   without touching it, the narrow gap and the momentum bend, the push off a rock at rest and out of the nearest of two
   gaps, and a blocked turn turning the long way. Over 20 seeds each of Corran Reach and four cluster types
   flown by the voyage runner (`docs/results/scenery-2026-10-17.md`) no ship stayed pressed on a rock for 3 s.
+
+### Mining (`combat/mining.rs`, 19 Oct 2026, [GDR-0114](gdr/0114-mining-and-ore-refining.md))
+
+- **Ore in a rock**: rolled with the rock, `round(kind.ore × π r²)` units of its kind's material (`Rock::ore`,
+  `Rock::material`), and `Rock::cut`, the cut towards the next unit.
+- **Cutting**: a gun's `cut` (content `weapon.cut`, ore units a second at full power; `GunMount::cut`) acts on beams:
+  every tick a mining beam's hit-scan ends on a rock (`ShotEnd::rock`) it adds `cut × work × DT` to that rock's
+  `cut` (`Sim::mine`, in gun order, so several beams on one rock share it); each whole unit leaves the rock as an
+  `Item::Ore { material }`, one cargo unit worth `mining::ORE_VALUE` (0.25, below every part and fragment), into the
+  shooter's hold while it has a free unit, else as a loose item half a metre off the hit point drifting back along
+  the beam at 0.5 m/s (`Sim::set_loose`). `SimEvent::Mined { ship, rock, item, at, stowed, spent }` per unit. A
+  rock at 0 is spent: hits on it cut nothing. Other guns' hits on rock stay `RockHit` only. No random draws.
+- **The `mine` action** (`Action::Mine`, needs no target ship): while the controlling piece has a working mining gun
+  with a clear line of fire and the hold a free unit, the nearest spawned rock with ore whose circle lies within
+  sensor range; the rule decides with `Maneuver::Approach { target: Point(aim), range, aim: Target }`, `aim` the
+  point of the rock's circle nearest the ship, `range` `behavior::tuning::MINE_STANDOFF` (0.5) of the shortest mining
+  reach (at most the default reach), and `Fire::Mine` at the aim point: `guns_at_will` for the mining guns only.
+  Without a rock it steps aside like a rule without a target. `BehaviorState::mine` (rock and aim point).
+- **State hash**: the spawned rocks' `ore` and `cut` after the rock count, once a mining beam has cut
+  (`Voyage::mined`); a behavior's `mine` after its rally point, while set. Voyages and behaviors without mining hash
+  as before.
+- **Checked** (`tests/mining.rs`): a beam fills the hold unit by unit until the rock is spent, the first unit after a
+  unit's worth of cutting; a full hold lets the rest drift loose, and plain lasers cut nothing; the `miner`
+  behavior flies to a rock 170 m off and cuts all of it, the same run hashing the same.
 
 ### State hash
 
