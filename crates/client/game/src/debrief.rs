@@ -55,7 +55,7 @@ use data::career::{Haul, HaulItem, Outcome, VoyageEnd, dismantle_yield};
 use kit::style::{Style, ui_color};
 use kit::ui_icons::UiIcon;
 use kit::ui_kit::{
-    HudFonts, Edge, Hot, Pill, ScreenFx, ScreenPart, Scrollbar, Tip, Tone, show_screen, UiBlock, UiClick, UiInputSet, UiPointer, UiStyleSet, label, number, prose, spawn_pill, tracked,
+    CompactText, HudFonts, Edge, Hot, Pill, ScreenFx, ScreenPart, Scrollbar, Tip, Tone, show_screen, UiBlock, UiClick, UiInputSet, UiPointer, UiStyleSet, label, number, prose, spawn_pill, tracked,
 };
 use world::career::{EscortDesigns, Note, PlayerCareer};
 use world::mode::AppMode;
@@ -67,6 +67,7 @@ use world::voyage::clock;
 use world::voyage::debrief::{Debrief, DebriefData, DebriefStats, amount};
 
 use crate::fleet::Fleet;
+use crate::home::{COMPACT_TEXT, by_class};
 use crate::voyage_log::VoyageLog;
 use crate::workshop::{fleet_need, gave_words, icon, icon_sized, refusal_words, sort_rows};
 
@@ -77,8 +78,9 @@ const TILE_ICON: Vec2 = Vec2::new(46.0, 40.0);
 const TILE_GAP: f32 = 6.0;
 /// The GAINED columns' value column (logical px): names wrap beside it, never pushing a value out.
 const VALUE_W: f32 = 34.0;
-/// The panel's width (logical px).
-const WIDTH: f32 = 420.0;
+/// The panel's width and padding (left and right, top, bottom; logical px), and on a phone at `compact_scale`
+/// (docs/client.md "Phones").
+const PANEL: [(f32, f32, f32, f32); 2] = [(420.0, 30.0, 26.0, 24.0), (400.0, 20.0, 16.0, 12.0)];
 /// The gap between the report's lines, and between the report and the buttons (logical px).
 const GAP: f32 = 14.0;
 
@@ -121,8 +123,22 @@ impl Plugin for DebriefPlugin {
 }
 
 fn spawn(mut commands: Commands, style: Res<Style>, clear: Res<ClearColor>) {
+    let panel = |(width, side, top, bottom): (f32, f32, f32, f32)| Node {
+        position_type: PositionType::Absolute,
+        right: px(0),
+        top: px(0),
+        bottom: px(0),
+        width: px(width),
+        border: UiRect::left(px(1)),
+        flex_direction: FlexDirection::Column,
+        padding: UiRect::new(px(side), px(side), px(top), px(bottom)),
+        row_gap: px(GAP),
+        overflow: Overflow::clip(),
+        ..default()
+    };
     commands.spawn((
         PanelRoot,
+        CompactText(COMPACT_TEXT),
         // Slides in from the right and fades in (`ui_kit::ScreenFx`); out the same way when dismissed.
         ScreenFx::closed(),
         ScreenPart::new(Edge::Right, 0),
@@ -134,19 +150,7 @@ fn spawn(mut commands: Commands, style: Res<Style>, clear: Res<ClearColor>) {
         // The backing is a world mesh, so the part icons (world meshes too) draw over it.
         UiIcon::Scrim { color: clear.0.with_alpha(0.94), hole: [f32::INFINITY; 4], out: 0.0, into: 0.0 },
         BorderColor::all(ui_color(style.ui.dim, 0.5)),
-        Node {
-            position_type: PositionType::Absolute,
-            right: px(0),
-            top: px(0),
-            bottom: px(0),
-            width: px(WIDTH),
-            border: UiRect::left(px(1)),
-            flex_direction: FlexDirection::Column,
-            padding: UiRect::new(px(30), px(30), px(26), px(24)),
-            row_gap: px(GAP),
-            overflow: Overflow::clip(),
-            ..default()
-        },
+        by_class(panel(PANEL[0]), panel(PANEL[1])),
     ));
 }
 

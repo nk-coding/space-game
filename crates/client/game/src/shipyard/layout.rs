@@ -328,9 +328,12 @@ impl Layout {
         }
     }
 
-    /// Where the place's label goes: the point its title's top lines up with, and how.
-    pub fn label(&self, place: Place) -> (Vec2, Align) {
+    /// Where the place's label goes: the point its title's top lines up with, and how. On a phone (`compact`,
+    /// docs/client.md "Phones") the labels are large beside the station, so the building area's hangs inside the
+    /// area's top instead of its bottom (it ran into the gate's line under the ring).
+    pub fn label(&self, place: Place, compact: bool) -> (Vec2, Align) {
         match place {
+            Place::Drydock if compact => (Vec2::new(self.area.center().x, self.area.max.y - 1.3), Align::Middle),
             Place::Drydock => (Vec2::new(self.area.center().x, self.area.min.y + 1.3), Align::Middle),
             Place::Behavior => (self.mind.centre - Vec2::Y * 5.8, Align::Middle),
             Place::Research => (self.research.centre + Vec2::new(-5.4, 2.2), Align::End),
@@ -453,7 +456,7 @@ mod tests {
                 assert!(r.width() > 1.0 && r.height() > 1.0, "{a:?}");
                 assert!(l.overview.contains(r.center()), "{a:?} {frame:?}");
                 assert!(l.focus(*a).width() < l.overview.width(), "{a:?}");
-                assert!(l.overview.contains(l.label(*a).0), "{a:?} label {frame:?}");
+                assert!(l.overview.contains(l.label(*a, false).0), "{a:?} label {frame:?}");
                 for b in &Place::ALL[i + 1..] {
                     assert!(r.intersect(l.hit(*b)).is_empty(), "{a:?} overlaps {b:?} at {frame:?}");
                 }
@@ -497,7 +500,7 @@ mod tests {
             assert!(log.intersect(antenna).is_empty(), "{frame:?}");
             // The strut lands on the arm.
             assert!(l.log.strut.1.x <= l.tip_x && l.log.strut.1.y == top, "{frame:?}");
-            let (at, align) = l.label(Place::Log);
+            let (at, align) = l.label(Place::Log, false);
             assert_eq!(align, Align::Start);
             assert!(at.x > log.max.x && at.y > l.gate.y + GATE_RADIUS + GATE_POD, "{frame:?}");
         }
@@ -539,7 +542,7 @@ mod tests {
                 let (_, zoom) = fit(l.overview, viewport - Vec2::splat(36.0));
                 // A label's box in metres: hung from its anchor, as wide and high as its pixels at this zoom.
                 let label = |p: Place, width: f32| {
-                    let (at, align) = l.label(p);
+                    let (at, align) = l.label(p, false);
                     let (wm, hm) = (width * k / zoom, 30.0 * k / zoom);
                     let x = match align {
                         Align::Start => (at.x, at.x + wm),
@@ -599,7 +602,7 @@ mod tests {
             let tags: Vec<Tag> = Place::ALL
                 .iter()
                 .map(|p| {
-                    let (at, align) = l.label(*p);
+                    let (at, align) = l.label(*p, false);
                     let (x0, x1) = match align {
                         Align::Start => (0.0, 260.0),
                         Align::Middle => (-130.0, 130.0),

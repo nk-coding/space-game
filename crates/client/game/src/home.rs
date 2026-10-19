@@ -47,7 +47,7 @@ use bevy::state::state::StateTransitionEvent;
 use bevy::ui::{ComputedNode, UiGlobalTransform, UiScale, UiTransform, Val2};
 use bevy::window::PrimaryWindow;
 use kit::style::{Style, ui_color};
-use kit::ui_kit::{HudFonts, EXIT_SECONDS, Hot, ScreenFx, Tip, Tone, UiClick, show_screen, UiInputSet, UiPointer, UiSize, UiStyleSet, crumb, frame, label, prose, title, set_color, set_text, ui_scale_for};
+use kit::ui_kit::{CompactText, LayoutClass, HudFonts, EXIT_SECONDS, Hot, ScreenFx, Tip, Tone, UiClick, show_screen, UiInputSet, UiPointer, UiSize, UiStyleSet, crumb, frame, label, prose, title, set_color, set_text, ui_scale_for};
 use data::input::Action;
 use world::camera::{CamMode, CameraRig, CameraSet};
 use world::settings::{Act, ActionTip};
@@ -85,6 +85,35 @@ const BRACKET: (f32, f32, f32) = (14.0, 6.0, 1.5);
 const Z_BRACKETS: f32 = 410.0;
 /// Notes shown at most (the most serious first; the console has them all).
 const NOTES: usize = 2;
+
+/// The least text size on a phone (`kit::ui_kit::CompactText`) for home and the layers over it.
+pub(crate) const COMPACT_TEXT: f32 = 9.0;
+
+/// A node laid out for each layout class (docs/client.md "Phones"): the wide class's and the compact class's.
+/// [`by_class`] puts the window's one in place when the class changes; its `display` stays as the screen sets it,
+/// unless one of the two hides it (a part a phone leaves out).
+#[derive(Component, Clone, Debug)]
+pub(crate) struct ByClass(Node, Node);
+
+/// A node of `wide` in the wide class and `compact` in the compact one ([`ByClass`]).
+pub(crate) fn by_class(wide: Node, compact: Node) -> impl Bundle {
+    (wide.clone(), ByClass(wide, compact))
+}
+
+fn apply_by_class(class: Res<LayoutClass>, mut nodes: Query<(Ref<ByClass>, &mut Node)>) {
+    for (b, mut node) in &mut nodes {
+        if !(class.is_changed() || b.is_added()) {
+            continue;
+        }
+        let mut want = if class.is_compact() { b.1.clone() } else { b.0.clone() };
+        if b.0.display != Display::None && b.1.display != Display::None {
+            want.display = node.display;
+        }
+        if *node != want {
+            *node = want;
+        }
+    }
+}
 
 /// What home's places do once the camera has arrived.
 #[derive(Message, Clone, Copy, Debug, PartialEq, Eq)]
@@ -265,6 +294,7 @@ impl Plugin for HomePlugin {
                     .run_if(in_state(AppMode::Home)),
             )
             .add_systems(Update, show.run_if(state_changed::<AppMode>.or_eager(resource_changed::<world::settings::SettingsLayer>).or_eager(resource_changed::<VoyageLog>).or_eager(resource_changed::<EvolutionLayer>).or_eager(resource_changed::<WorkshopLayer>)))
+            .add_systems(Update, apply_by_class.before(UiStyleSet))
             .add_systems(PostUpdate, draw_hover.run_if(in_state(AppMode::Home)).after(CameraSet).before(FxFlush));
     }
 }
@@ -299,7 +329,7 @@ fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>) {
     let full = Node { position_type: PositionType::Absolute, width: percent(100), height: percent(100), ..default() };
     // Home's words and the labels fade in when the camera comes to rest on the yard, and out when it leaves
     // (`ui_kit::ScreenFx`).
-    commands.spawn((HomeRoot, ScreenFx::closed(), full.clone(), Visibility::Hidden)).with_children(|root| {
+    commands.spawn((HomeRoot, CompactText(COMPACT_TEXT), ScreenFx::closed(), full.clone(), Visibility::Hidden)).with_children(|root| {
         // Top left (the frame's corner; the shipyard has no way back): where we are and the docked design's name.
         let f = frame();
         root.spawn(f.top_left()).with_children(|tl| {
@@ -314,15 +344,9 @@ fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>) {
             crate::settings::spawn_ring(tr);
         });
         // Bottom right: the career's notes.
-        root.spawn(Node {
-            position_type: PositionType::Absolute,
-            right: px(f.edge),
-            bottom: px(f.top),
-            width: px(300),
-            flex_direction: FlexDirection::Column,
-            row_gap: px(5),
-            ..default()
-        })
+        // On a phone narrower, so they stay right of the test range's label, under the gate's.
+        let notes = |width: f32| Node { position_type: PositionType::Absolute, right: px(f.edge), bottom: px(f.top), width: px(width), flex_direction: FlexDirection::Column, row_gap: px(5), ..default() };
+        root.spawn(by_class(notes(300.0), notes(230.0)))
         .with_children(|notes| {
             for k in 0..NOTES {
                 notes.spawn((NoteText::Head(k), label(fonts, "", 9.0, c(Tone::Teal, 1.0)), Node { margin: UiRect::top(px(if k == 0 { 0.0 } else { 6.0 })), ..default() }));
@@ -346,7 +370,8 @@ fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>) {
             let words = TextLayout::no_wrap();
             // Placed by their transforms (they follow the camera's flights while they fade).
             let at = Node { position_type: PositionType::Absolute, left: px(0), top: px(0), width: px(0), flex_direction: FlexDirection::Column, row_gap: px(LABEL_GAP), ..default() };
-            root.spawn((PlaceLabel(place), at))
+            // The plate's letters follow the zoom, so the least size on a phone goes on each label.
+            root.spawn((PlaceLabel(place), CompactText(COMPACT_TEXT), at))
                 .with_children(|l| {
                     l.spawn((LabelTitle(place), label(fonts, "", TITLE, c(Tone::Dim, 1.0)), words));
                     l.spawn((LabelSub(place), label(fonts, "", SUB, c(Tone::Label, 1.0)), words));
@@ -379,7 +404,7 @@ fn overview(layout: &Layout, window: &Window, tags: &LabelTags) -> View {
         .0
         .iter()
         .map(|&(place, size)| {
-            let (at, align) = layout.label(place);
+            let (at, align) = layout.label(place, LayoutClass::of(window.size()).is_compact());
             let x = match align {
                 Align::Start => (0.0, size.x),
                 Align::Middle => (-size.x / 2.0, size.x / 2.0),
@@ -504,11 +529,10 @@ fn exit(mut rig: ResMut<CameraRig>, cam: Res<HomeCamera>, mut ui_scale: ResMut<U
 }
 
 /// The UI scale: the labels are made for 1280 × 720 logical pixels and grow with larger windows (as the drydock's,
-/// whose layout home's camera flies onto). On a phone the EVOLUTION layer, which has a phone layout, takes the
-/// phone's scale while it is open (docs/client.md "Phones").
-fn ui_scale(window: Single<&Window, With<PrimaryWindow>>, size: Res<UiSize>, class: Res<kit::ui_kit::LayoutClass>, lab: Res<crate::evolution::EvolutionLayer>, mut ui_scale: ResMut<UiScale>) {
-    let phone = class.is_compact() && lab.open;
-    let s = if phone { kit::ui_kit::compact_scale(window.size()) * size.0 } else { ui_scale_for(&window, *size) };
+/// whose layout home's camera flies onto). On a phone home and every layer over it (FLEET, WORKSHOP, the LOG,
+/// EVOLUTION, SETTINGS, the debrief) have a phone layout for 844 × 390 at `compact_scale` (docs/client.md "Phones").
+fn ui_scale(window: Single<&Window, With<PrimaryWindow>>, size: Res<UiSize>, class: Res<LayoutClass>, mut ui_scale: ResMut<UiScale>) {
+    let s = if class.is_compact() { kit::ui_kit::compact_scale(window.size()) * size.0 } else { ui_scale_for(&window, *size) };
     if (ui_scale.0 - s).abs() > 1e-3 {
         ui_scale.0 = s;
     }
@@ -742,6 +766,7 @@ fn place_labels(
     yard: Res<Yard>,
     rig: Res<CameraRig>,
     ui_scale: Res<UiScale>,
+    class: Res<LayoutClass>,
     visit: Res<Visit>,
     mut labels: Query<(&PlaceLabel, &mut Node, &mut UiTransform), Without<PlateAnchor>>,
     mut anchor: Single<&mut UiTransform, (With<PlateAnchor>, Without<PlaceLabel>)>,
@@ -759,7 +784,7 @@ fn place_labels(
         }
     };
     for (label, mut node, mut tf) in &mut labels {
-        let (anchor, align) = l.label(label.0);
+        let (anchor, align) = l.label(label.0, class.is_compact());
         let items = match align {
             Align::Start => AlignItems::FlexStart,
             Align::Middle => AlignItems::Center,
@@ -932,12 +957,13 @@ fn sync_name(design: Res<PlayerDesign>, mut name: Single<&mut Text, With<DesignN
     set_text(&mut name, &design.blueprint().name);
 }
 
-/// The career's notes: the [`NOTES`] most serious (coral, then gold, then the rest, each in order), and how many
-/// more the console has.
-fn sync_notes(career: Res<PlayerCareer>, style: Res<Style>, mut texts: Query<(&NoteText, &mut Text, &mut TextColor, &mut Node)>) {
-    if !career.is_changed() {
+/// The career's notes: the [`NOTES`] most serious (coral, then gold, then the rest, each in order; on a phone the
+/// first only, under the gate's label), and how many more the console has.
+fn sync_notes(career: Res<PlayerCareer>, class: Res<LayoutClass>, style: Res<Style>, mut texts: Query<(&NoteText, &mut Text, &mut TextColor, &mut Node)>) {
+    if !(career.is_changed() || class.is_changed()) {
         return;
     }
+    let notes = if class.is_compact() { 1 } else { NOTES };
     let rank = |t: Tone| match t {
         Tone::Coral => 0,
         Tone::Gold => 1,
@@ -945,8 +971,8 @@ fn sync_notes(career: Res<PlayerCareer>, style: Res<Style>, mut texts: Query<(&N
     };
     let mut shown: Vec<_> = career.notes.iter().collect();
     shown.sort_by_key(|n| rank(n.tone));
-    let more = shown.len().saturating_sub(NOTES);
-    shown.truncate(NOTES);
+    let more = shown.len().saturating_sub(notes);
+    shown.truncate(notes);
     for (t, mut text, mut color, mut node) in &mut texts {
         let (k, (s, tone)) = match *t {
             NoteText::Head(k) => (k, shown.get(k).map_or((String::new(), Tone::Dim), |n| (n.head.clone(), n.tone))),
@@ -1123,7 +1149,7 @@ mod tests {
                 .0
                 .iter()
                 .map(|&(p, size)| {
-                    let (at, align) = on.label(p);
+                    let (at, align) = on.label(p, false);
                     let x = match align {
                         Align::Start => (0.0, size.x),
                         Align::Middle => (-size.x / 2.0, size.x / 2.0),
