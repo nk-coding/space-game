@@ -149,6 +149,34 @@ pub struct Act<'w> {
     keys: Res<'w, ButtonInput<KeyCode>>,
     mouse: Res<'w, ButtonInput<MouseButton>>,
     controls: Res<'w, Controls>,
+    taps: Option<Res<'w, ActionTaps>>,
+}
+
+/// Actions a touch button pressed (a button for what only a key does: the flight menu's RESTART, the fight viewer's
+/// PLAY): [`Act`] sees each pressed for one frame, the frame after the tap, wherever its system runs in the frame.
+#[derive(Resource, Default, Debug)]
+pub struct ActionTaps {
+    now: Vec<Action>,
+    next: Vec<Action>,
+}
+
+impl ActionTaps {
+    /// Presses `a` (for the next frame).
+    pub fn tap(&mut self, a: Action) {
+        self.next.push(a);
+    }
+
+    fn tapped(&self, a: Action) -> bool {
+        self.now.contains(&a)
+    }
+}
+
+/// The taps of the last frame are this frame's.
+fn turn_taps(mut taps: ResMut<ActionTaps>) {
+    if !(taps.now.is_empty() && taps.next.is_empty()) {
+        let next = std::mem::take(&mut taps.next);
+        taps.now = next;
+    }
 }
 
 impl Act<'_> {
@@ -169,12 +197,17 @@ impl Act<'_> {
 
     /// Is an input of `a` held?
     pub fn pressed(&self, a: Action) -> bool {
-        self.controls.0.fires(a, |b| self.down(b, false), self.mods())
+        self.tapped(a) || self.controls.0.fires(a, |b| self.down(b, false), self.mods())
+    }
+
+    /// Did a touch button press `a` ([`ActionTaps`])?
+    fn tapped(&self, a: Action) -> bool {
+        self.taps.as_ref().is_some_and(|t| t.tapped(a))
     }
 
     /// Was an input of `a` pressed this frame?
     pub fn just_pressed(&self, a: Action) -> bool {
-        self.controls.0.fires(a, |b| self.down(b, true), self.mods())
+        self.tapped(a) || self.controls.0.fires(a, |b| self.down(b, true), self.mods())
     }
 
     /// The bound inputs' label (`W / UP`).
@@ -225,6 +258,8 @@ impl Plugin for SettingsPlugin {
             .insert_resource(size)
             .add_message::<OpenSettings>()
             .init_resource::<SettingsLayer>()
+            .init_resource::<ActionTaps>()
+            .add_systems(First, turn_taps)
             .add_systems(Update, (action_tips, action_labels));
     }
 }
@@ -252,5 +287,33 @@ fn action_labels(controls: Res<Controls>, mut labels: Query<(Ref<ActionLabel>, &
         if text.0 != first {
             text.0 = first;
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[derive(Resource, Default)]
+    struct Seen(Vec<bool>);
+
+    /// A touch button's tap is its action pressed for one frame, the next one, for every system in it.
+    #[test]
+    fn a_tap_is_the_action_pressed_for_the_next_frame() {
+        let mut app = App::new();
+        app.add_plugins(MinimalPlugins)
+            .init_resource::<ButtonInput<KeyCode>>()
+            .init_resource::<ButtonInput<MouseButton>>()
+            .init_resource::<ActionTaps>()
+            .init_resource::<Seen>()
+            .insert_resource(Controls::defaults(&data::base_content()))
+            .add_systems(First, turn_taps)
+            .add_systems(Update, |act: Act, mut seen: ResMut<Seen>| seen.0.push(act.just_pressed(Action::Waves) && act.pressed(Action::Waves)));
+        app.update();
+        app.world_mut().resource_mut::<ActionTaps>().tap(Action::Waves);
+        for _ in 0..3 {
+            app.update();
+        }
+        assert_eq!(app.world().resource::<Seen>().0, [false, true, false, false]);
     }
 }

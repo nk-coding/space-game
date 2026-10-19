@@ -39,9 +39,9 @@ web-sys = { version = "=0.3.106", features = [
   # world/storage.rs: IndexedDB and the storage estimate
   "IdbFactory", "IdbOpenDbRequest", "IdbRequest", "IdbDatabase", "IdbTransaction", "IdbTransactionMode",
   "IdbObjectStore", "DomStringList", "StorageManager", "StorageEstimate", "DomException",
-  # kit/clipboard.rs, game/drydock/share.rs: copy / paste events, downloads, the file chooser
+  # kit/clipboard.rs, game/drydock/share.rs: copy / paste events, downloads, the file chooser; kit/ui_kit/phone.rs: a coarse pointer
   "Document", "HtmlDocument", "Element", "HtmlElement", "HtmlAnchorElement", "HtmlInputElement", "CssStyleDeclaration",
-  "Navigator", "Clipboard", "Event", "EventTarget", "AddEventListenerOptions", "KeyboardEvent", "ClipboardEvent",
+  "Navigator", "Clipboard", "Event", "MediaQueryList", "EventTarget", "AddEventListenerOptions", "KeyboardEvent", "ClipboardEvent",
   "DataTransfer", "Blob", "BlobPropertyBag", "Url", "File", "FileList", "FileReader",
   # world/evolution/workers.rs and lab-worker: the evolution lab's web workers (ADR-0043)
   "Worker", "MessageEvent", "ErrorEvent", "DedicatedWorkerGlobalScope",

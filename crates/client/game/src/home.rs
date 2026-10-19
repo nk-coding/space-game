@@ -89,31 +89,9 @@ const NOTES: usize = 2;
 /// The least text size on a phone (`kit::ui_kit::CompactText`) for home and the layers over it.
 pub(crate) const COMPACT_TEXT: f32 = 9.0;
 
-/// A node laid out for each layout class (docs/client.md "Phones"): the wide class's and the compact class's.
-/// [`by_class`] puts the window's one in place when the class changes; its `display` stays as the screen sets it,
-/// unless one of the two hides it (a part a phone leaves out).
-#[derive(Component, Clone, Debug)]
-pub(crate) struct ByClass(Node, Node);
-
-/// A node of `wide` in the wide class and `compact` in the compact one ([`ByClass`]).
-pub(crate) fn by_class(wide: Node, compact: Node) -> impl Bundle {
-    (wide.clone(), ByClass(wide, compact))
-}
-
-fn apply_by_class(class: Res<LayoutClass>, mut nodes: Query<(Ref<ByClass>, &mut Node)>) {
-    for (b, mut node) in &mut nodes {
-        if !(class.is_changed() || b.is_added()) {
-            continue;
-        }
-        let mut want = if class.is_compact() { b.1.clone() } else { b.0.clone() };
-        if b.0.display != Display::None && b.1.display != Display::None {
-            want.display = node.display;
-        }
-        if *node != want {
-            *node = want;
-        }
-    }
-}
+/// A node laid out for each layout class (docs/client.md "Phones"; the kit's since the flight HUD has a phone layout
+/// too).
+pub(crate) use kit::ui_kit::by_class;
 
 /// What home's places do once the camera has arrived.
 #[derive(Message, Clone, Copy, Debug, PartialEq, Eq)]
@@ -294,7 +272,6 @@ impl Plugin for HomePlugin {
                     .run_if(in_state(AppMode::Home)),
             )
             .add_systems(Update, show.run_if(state_changed::<AppMode>.or_eager(resource_changed::<world::settings::SettingsLayer>).or_eager(resource_changed::<VoyageLog>).or_eager(resource_changed::<EvolutionLayer>).or_eager(resource_changed::<WorkshopLayer>)))
-            .add_systems(Update, apply_by_class.before(UiStyleSet))
             .add_systems(PostUpdate, draw_hover.run_if(in_state(AppMode::Home)).after(CameraSet).before(FxFlush));
     }
 }

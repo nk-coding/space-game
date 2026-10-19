@@ -44,6 +44,7 @@ mod field;
 mod fonts;
 mod frame;
 mod list;
+mod phone;
 mod scrollbar;
 mod tip;
 mod transition;
@@ -53,6 +54,7 @@ pub use field::{Caret, FieldKey, TextField, TextFieldText, edit_line, field_text
 use field::{FieldSpan, field_parts, type_into_fields};
 pub use fonts::{BARLOW_REGULAR, HudFonts, load_fonts};
 pub use frame::{CardLook, Frame, HudType, PanelLook, StatsLook, crumb, frame, panel_colors, panel_node, panel_title, spawn_back, spawn_close, spawn_head, title, top_pill};
+pub use phone::{ByClass, CompactSize, SafeArea, TouchScreen, by_class};
 pub use list::{GroupedList, ListRow, ListSpec, fill_list, head_count, lit_group, row_shown, spawn_grouped_list};
 pub use scrollbar::{BAR_HIT, ScrollClipSet, ScrollRows, Scrollbar, SmoothScroll};
 pub use transition::{
@@ -244,6 +246,7 @@ impl Plugin for UiKitPlugin {
         transition::plugin(app);
         scrollbar::plugin(app);
         list::plugin(app);
+        phone::plugin(app);
     }
 }
 
