@@ -111,6 +111,7 @@ pub(super) fn fill(
     style: Res<Style>,
     head: Single<Entity, With<RunsHead>>,
     rows: Single<Entity, With<RunsRows>>,
+    class: Res<kit::ui_kit::LayoutClass>,
 ) {
     let usage = storage.usage();
     if !layer.open || layer.page != Page::Runs || !(layer.dirty || lab.is_changed() || usage != *shown) {
@@ -139,7 +140,10 @@ pub(super) fn fill(
         });
         return;
     }
+    // On a phone a row leaves out STARTS and MADE, and its buttons wrap under it.
+    let phone = class.is_compact();
     let cell = |w: f32| Node { width: px(w), flex_shrink: 0.0, ..default() };
+    let cut = |k: usize| if phone && (k == 1 || k == 5) { Node { display: Display::None, ..cell(COLUMNS[k]) } } else { cell(COLUMNS[k]) };
     commands.entity(*head).with_children(|p| {
         let head = format!("RUNS  ·  {} OF {MAX_RUNS}  ·  ONE COMPUTES AT A TIME", lab.runs().len());
         p.spawn(Node { justify_content: JustifyContent::SpaceBetween, margin: UiRect::bottom(px(10)), ..row(16.0) }).with_children(|h| {
@@ -150,8 +154,8 @@ pub(super) fn fill(
             }
         });
         p.spawn(Node { padding: UiRect::horizontal(px(14)), margin: UiRect::bottom(px(4)), ..row(0.0) }).with_children(|h| {
-            for (word, w) in ["NAME", "STARTS", "STATUS", "GENERATION", "START  »  BEST", "MADE"].into_iter().zip(COLUMNS) {
-                h.spawn((label(fonts, word, 8.0, c(Tone::Dim, 1.0)), cell(w)));
+            for (k, word) in ["NAME", "STARTS", "STATUS", "GENERATION", "START  »  BEST", "MADE"].into_iter().enumerate() {
+                h.spawn((label(fonts, word, 8.0, c(Tone::Dim, 1.0)), cut(k)));
             }
         });
     });
@@ -164,9 +168,12 @@ pub(super) fn fill(
                 Pill { bare: true, ..Pill::new(Tone::Teal) },
                 Hot::default(),
                 Node {
-                    height: px(ROW),
+                    height: if phone { Val::Auto } else { px(ROW) },
+                    min_height: px(ROW),
                     flex_shrink: 0.0,
-                    padding: UiRect::horizontal(px(14)),
+                    flex_wrap: if phone { FlexWrap::Wrap } else { FlexWrap::NoWrap },
+                    row_gap: px(6),
+                    padding: if phone { UiRect::axes(px(14), px(8)) } else { UiRect::horizontal(px(14)) },
                     border: UiRect::all(px(1.2)),
                     border_radius: BorderRadius::all(px(12)),
                     margin: UiRect::bottom(px(4)),
@@ -178,12 +185,12 @@ pub(super) fn fill(
             .with_children(|r| {
                 r.spawn((prose(fonts, &e.name, 15.0, c(Tone::Number, 1.0)), TextLayout::no_wrap(), Node { overflow: Overflow::clip(), ..cell(COLUMNS[0]) }));
                 let starts = e.starts.join(" + ").to_uppercase() + e.race.as_ref().map_or(String::new(), |r| format!("  ·  {}", r.to_uppercase())).as_str();
-                r.spawn((tracked(fonts, &starts, 8.0, c(Tone::Label, 1.0), 0.18), TextLayout::no_wrap(), Node { overflow: Overflow::clip(), ..cell(COLUMNS[1]) }));
+                r.spawn((tracked(fonts, &starts, 8.0, c(Tone::Label, 1.0), 0.18), TextLayout::no_wrap(), Node { overflow: Overflow::clip(), ..cut(1) }));
                 r.spawn((label(fonts, status, 9.0, c(tone, 1.0)), cell(COLUMNS[2])));
                 r.spawn((number(fonts, &format!("{} / {}", e.generation, e.generations), 14.0, c(Tone::Number, 1.0)), cell(COLUMNS[3])));
                 r.spawn((number(fonts, &format!("{}  »  {}", score(e.first), score(e.best)), 14.0, c(Tone::Gold, 1.0)), cell(COLUMNS[4])));
                 let made = e.created.map_or_else(String::new, |t| ago(now, t));
-                r.spawn((label(fonts, &made, 8.0, c(Tone::Dim, 1.0)), cell(COLUMNS[5])));
+                r.spawn((label(fonts, &made, 8.0, c(Tone::Dim, 1.0)), cut(5)));
                 r.spawn(Node { flex_grow: 1.0, justify_content: JustifyContent::FlexEnd, ..row(8.0) }).with_children(|b| {
                     if asking {
                         b.spawn(label(fonts, "DELETE IT? THERE IS NO UNDO", 8.5, c(Tone::Coral, 1.0)));

@@ -504,9 +504,11 @@ fn exit(mut rig: ResMut<CameraRig>, cam: Res<HomeCamera>, mut ui_scale: ResMut<U
 }
 
 /// The UI scale: the labels are made for 1280 × 720 logical pixels and grow with larger windows (as the drydock's,
-/// whose layout home's camera flies onto).
-fn ui_scale(window: Single<&Window, With<PrimaryWindow>>, size: Res<UiSize>, mut ui_scale: ResMut<UiScale>) {
-    let s = ui_scale_for(&window, *size);
+/// whose layout home's camera flies onto). On a phone the EVOLUTION layer, which has a phone layout, takes the
+/// phone's scale while it is open (docs/client.md "Phones").
+fn ui_scale(window: Single<&Window, With<PrimaryWindow>>, size: Res<UiSize>, class: Res<kit::ui_kit::LayoutClass>, lab: Res<crate::evolution::EvolutionLayer>, mut ui_scale: ResMut<UiScale>) {
+    let phone = class.is_compact() && lab.open;
+    let s = if phone { kit::ui_kit::compact_scale(window.size()) * size.0 } else { ui_scale_for(&window, *size) };
     if (ui_scale.0 - s).abs() > 1e-3 {
         ui_scale.0 = s;
     }

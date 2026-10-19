@@ -43,7 +43,11 @@ use bevy::prelude::*;
 use data::{Content, ResearchNode, Unlock};
 use kit::clipboard::Clipboard;
 use kit::style::{Style, ui_color};
-use kit::ui_kit::{Edge, HudFonts, Pill, PillText, ScreenFx, ScreenPart, TextField, Tip, Tone, UiClick, UiInputSet, UiStyleSet, crumb, frame, label, set_color, set_text, show_screen, spawn_back, spawn_close, spawn_pill, title, top_pill};
+use bevy::window::PrimaryWindow;
+use kit::ui_kit::{
+    CompactText, Edge, HudFonts, LayoutClass, Pill, PillText, ScreenFx, ScreenPart, Scrollbar, TextField, Tip, Tone, UiClick, UiInputSet, UiStyleSet, crumb, frame, label, set_color, set_text, show_screen, snap_screen, spawn_back, spawn_close,
+    spawn_pill, title, top_pill,
+};
 use world::career::{EscortDesigns, Granted, PlayerCareer};
 use world::evolution::{Lab, LabRequest};
 use world::mode::AppMode;
@@ -63,6 +67,14 @@ pub use setup::SetupPage;
 
 /// The layout's size (logical px), like FLEET's.
 const STAGE: Vec2 = Vec2::new(1280.0, 720.0);
+/// On a phone ([`LayoutClass::Compact`], docs/client.md "Phones"): the stage, where the pages start (under the
+/// header and the pills) and their left edge, the status line's height, and the least text size. Each page scrolls
+/// up and down there, its wide layout's columns stacked ([`Reflow`]).
+const COMPACT_STAGE: Vec2 = Vec2::new(844.0, 390.0);
+const COMPACT_TOP: f32 = 62.0;
+const COMPACT_LEFT: f32 = 16.0;
+const COMPACT_STATUS: f32 = 24.0;
+const COMPACT_TEXT: f32 = 9.0;
 
 /// The layer's pages.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -190,12 +202,93 @@ fn sync_chip(mode: Res<State<AppMode>>, lab: Res<Lab>, mut chips: Query<(&mut No
     }
 }
 
+/// The layer's root and whether it is laid out for a phone.
 #[derive(Component)]
-struct LayerRoot;
+struct LayerRoot(bool);
 
 /// The pages' roots.
 #[derive(Component, Clone, Copy, PartialEq, Eq)]
 struct PageNode(Page);
+
+/// What a page's widgets are placed in (on the stage as they are; on a phone moved by [`reflow`]).
+#[derive(Component, Clone, Copy, PartialEq, Eq)]
+struct PageBody(Page);
+
+/// A page's wide layout on a phone: its parts in each region (wide stage px, by where a part's top left lies) move
+/// by `by`, at most `max` wide and high; the page's content is `height` tall.
+struct Reflow {
+    regions: Vec<(Rect, Vec2, Vec2)>,
+    height: f32,
+}
+
+const ANY: Vec2 = Vec2::splat(f32::MAX);
+const PHONE_W: f32 = COMPACT_STAGE.x - 2.0 * COMPACT_LEFT;
+const PHONE_PAGE_H: f32 = COMPACT_STAGE.y - COMPACT_TOP - COMPACT_STATUS;
+
+impl Page {
+    /// Where the page's columns go on a phone: stacked, the first at the top (one wide list keeps the page's height
+    /// and scrolls itself).
+    fn reflow(self) -> Reflow {
+        // Each region: the wide rect its parts start in, the move, the largest size.
+        match self {
+            Page::Runs => Reflow { regions: vec![(Rect { min: Vec2::ZERO, max: ANY }, Vec2::new(COMPACT_LEFT - 60.0, 4.0 - 100.0), Vec2::new(PHONE_W, PHONE_PAGE_H - 8.0))], height: PHONE_PAGE_H },
+            // The left column (36, 600 wide; 90 to 680), then the right one (664, 580 wide; 90 to 676), centred.
+            Page::Setup => Reflow {
+                regions: vec![
+                    (Rect { min: Vec2::ZERO, max: Vec2::new(650.0, f32::MAX) }, Vec2::new(122.0 - 36.0, 4.0 - 90.0), ANY),
+                    (Rect { min: Vec2::new(650.0, 0.0), max: ANY }, Vec2::new(132.0 - 664.0, 618.0 - 90.0), ANY),
+                ],
+                height: 618.0 + 586.0 + 12.0,
+            },
+            // The progress line, then the chart and the archive side by side, then the picked design.
+            Page::Run => Reflow {
+                regions: vec![
+                    (Rect { min: Vec2::ZERO, max: Vec2::new(f32::MAX, 136.0) }, Vec2::new(COMPACT_LEFT - 36.0, 4.0 - 88.0), Vec2::new(PHONE_W, f32::MAX)),
+                    (Rect { min: Vec2::new(0.0, 136.0), max: Vec2::new(420.0, f32::MAX) }, Vec2::new(COMPACT_LEFT - 36.0, -88.0), ANY),
+                    (Rect { min: Vec2::new(420.0, 136.0), max: Vec2::new(850.0, f32::MAX) }, Vec2::new(COMPACT_LEFT + 404.0 - 444.0, -88.0), ANY),
+                    (Rect { min: Vec2::new(850.0, 136.0), max: ANY }, Vec2::new(COMPACT_LEFT - 864.0, 548.0 - 140.0), ANY),
+                ],
+                height: 548.0 + 540.0 + 12.0,
+            },
+            // YOUR DESIGNS a page high (it scrolls), then the picked design's rungs under it.
+            Page::Ladder => Reflow {
+                regions: vec![
+                    (Rect { min: Vec2::ZERO, max: Vec2::new(660.0, f32::MAX) }, Vec2::new(COMPACT_LEFT - 60.0, 4.0 - 100.0), Vec2::new(f32::MAX, PHONE_PAGE_H - 8.0)),
+                    (Rect { min: Vec2::new(660.0, 0.0), max: ANY }, Vec2::new(COMPACT_LEFT - 690.0, PHONE_PAGE_H + 16.0 - 100.0), ANY),
+                ],
+                height: PHONE_PAGE_H + 16.0 + 570.0 + 12.0,
+            },
+        }
+    }
+}
+
+/// On a phone each page's parts move to their place in its stacked columns ([`Page::reflow`]), once, when built.
+fn reflow(roots: Query<&LayerRoot>, bodies: Query<(&PageBody, &Children), Added<PageBody>>, mut nodes: Query<&mut Node>) {
+    if !roots.iter().any(|r| r.0) {
+        return;
+    }
+    for (body, children) in &bodies {
+        let flow = body.0.reflow();
+        for c in children {
+            let Ok(mut n) = nodes.get_mut(*c) else { continue };
+            let (Val::Px(left), Val::Px(top)) = (n.left, n.top) else { continue };
+            let Some(&(_, by, max)) = flow.regions.iter().find(|(r, ..)| r.contains(Vec2::new(left, top))) else { continue };
+            n.left = px(left + by.x);
+            n.top = px(top + by.y);
+            if let Val::Px(w) = n.width
+                && w > max.x
+            {
+                n.width = px(max.x);
+                n.flex_wrap = FlexWrap::Wrap;
+            }
+            if let Val::Px(h) = n.height
+                && h > max.y
+            {
+                n.height = px(max.y);
+            }
+        }
+    }
+}
 
 /// The texts every page shares: where we are, the title, the status line.
 #[derive(Component, Clone, Copy, PartialEq, Eq)]
@@ -264,6 +357,8 @@ impl Plugin for EvolutionPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<EvolutionLayer>()
             .add_systems(Startup, spawn.after(world::flight_hud::spawn_hud))
+            // A phone's layout and a wide one's are built apart: built again when the window changes class.
+            .add_systems(Update, (relayout.run_if(resource_changed::<LayoutClass>), reopen, reflow).chain().after(UiInputSet).before(open))
             .add_systems(OnExit(AppMode::Home), |mut layer: ResMut<EvolutionLayer>, mut lab: ResMut<Lab>| {
                 layer.open = false;
                 lab.layer_open = false;
@@ -523,13 +618,38 @@ pub(crate) fn column(gap: f32) -> Node {
     Node { flex_direction: FlexDirection::Column, row_gap: px(gap), ..default() }
 }
 
-fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>) {
+fn spawn(commands: Commands, window: Single<&Window, With<PrimaryWindow>>, fonts: Res<HudFonts>, style: Res<Style>) {
+    build(commands, LayoutClass::of(window.size()).is_compact(), &fonts, &style);
+}
+
+/// The window changed its layout class: the layer is built again for the new one (open at once when it was, its
+/// pages filled again).
+fn relayout(mut commands: Commands, class: Res<LayoutClass>, root: Single<(Entity, &LayerRoot)>, fonts: Res<HudFonts>, style: Res<Style>, mut layer: ResMut<EvolutionLayer>) {
+    if root.1.0 == class.is_compact() {
+        return;
+    }
+    commands.entity(root.0).despawn();
+    build(commands, class.is_compact(), &fonts, &style);
+    layer.dirty = true;
+}
+
+/// A layer built again while open shows at once.
+fn reopen(mode: Res<State<AppMode>>, layer: Res<EvolutionLayer>, mut roots: Query<&mut ScreenFx, Added<LayerRoot>>) {
+    for mut fx in &mut roots {
+        if *mode.get() == AppMode::Home && layer.open {
+            snap_screen(&mut fx, true);
+        }
+    }
+}
+
+fn build(mut commands: Commands, compact: bool, fonts: &HudFonts, style: &Style) {
     let ui = style.ui;
     let c = |tone: Tone, a: f32| ui_color(tone.color(&ui), a);
-    let fonts = &*fonts;
+    let stage_size = if compact { COMPACT_STAGE } else { STAGE };
     commands
         .spawn((
-            LayerRoot,
+            LayerRoot(compact),
+            CompactText(COMPACT_TEXT),
             world::backdrop::VeilsBackdrop,
             ScreenFx::closed().dimming(),
             Node { position_type: PositionType::Absolute, width: percent(100), height: percent(100), ..default() },
@@ -545,17 +665,39 @@ fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>) {
                 ..default()
             })
             .with_children(|centre| {
-                centre.spawn(Node { width: px(STAGE.x), height: px(STAGE.y), flex_shrink: 0.0, ..default() }).with_children(|stage| {
+                centre.spawn(Node { width: px(stage_size.x), height: px(stage_size.y), flex_shrink: 0.0, ..default() }).with_children(|stage| {
                     for page in [Page::Runs, Page::Setup, Page::Run, Page::Ladder] {
-                        let node = Node { position_type: PositionType::Absolute, width: percent(100), height: percent(100), ..default() };
-                        stage.spawn((PageNode(page), ScreenPart::new(Edge::Fade, 1), node)).with_children(|p| match page {
-                            Page::Runs => runs::spawn(p, fonts, &c),
-                            Page::Setup => setup::spawn(p, fonts, &c, &ui),
-                            Page::Run => run::spawn(p, fonts, &c),
-                            Page::Ladder => ladder::spawn(p, fonts, &c),
+                        // On a phone the page scrolls between the header and the status line.
+                        let (node, body) = if compact {
+                            let node = Node { position_type: PositionType::Absolute, left: px(0), top: px(COMPACT_TOP), width: percent(100), height: px(PHONE_PAGE_H), overflow: Overflow::scroll_y(), ..default() };
+                            (node, Node { width: percent(100), height: px(page.reflow().height), flex_shrink: 0.0, ..default() })
+                        } else {
+                            let full = Node { position_type: PositionType::Absolute, width: percent(100), height: percent(100), ..default() };
+                            (full.clone(), full)
+                        };
+                        let mut p = stage.spawn((PageNode(page), ScreenPart::new(Edge::Fade, 1), node));
+                        if compact {
+                            // No glow room: the page would show under the header and the status line.
+                            p.insert((ScrollPosition::default(), Scrollbar::vertical().room(0)));
+                        }
+                        p.with_children(|p| {
+                            p.spawn((PageBody(page), body)).with_children(|p| match page {
+                                Page::Runs => runs::spawn(p, fonts, &c),
+                                Page::Setup => setup::spawn(p, fonts, &c, &ui),
+                                Page::Run => run::spawn(p, fonts, &c),
+                                Page::Ladder => ladder::spawn(p, fonts, &c),
+                            });
                         });
                     }
-                    stage.spawn((LayerText::Status, ScreenPart::new(Edge::Bottom, 3), label(fonts, "", 9.0, c(Tone::Label, 1.0)), abs(Vec2::new(36.0, 690.0), Some(Vec2::new(1208.0, 20.0)))));
+                    let status = if compact {
+                        Node { overflow: Overflow::clip(), ..abs(Vec2::new(COMPACT_LEFT, COMPACT_STAGE.y - COMPACT_STATUS + 6.0), Some(Vec2::new(PHONE_W, 16.0))) }
+                    } else {
+                        abs(Vec2::new(36.0, 690.0), Some(Vec2::new(1208.0, 20.0)))
+                    };
+                    let mut line = stage.spawn((LayerText::Status, ScreenPart::new(Edge::Bottom, 3), label(fonts, "", 9.0, c(Tone::Label, 1.0)), status));
+                    if compact {
+                        line.insert(TextLayout::no_wrap());
+                    }
                 });
             });
             // Top left: the way back, where we are, the title; top right: the page's pills, CLOSE (the frame's corners).
@@ -595,6 +737,26 @@ fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>) {
 mod tests {
     use super::*;
     use world::evolution::RunEntry;
+
+    /// On a phone every page's columns (left, width, top) land inside the window's width and the page's content.
+    #[test]
+    fn the_pages_reflow_inside_a_phone() {
+        let columns = [
+            (Page::Runs, vec![(60.0, 1160.0, 100.0)]),
+            (Page::Setup, vec![(36.0, 600.0, 90.0), (664.0, 580.0, 90.0)]),
+            (Page::Run, vec![(36.0, 1208.0, 88.0), (36.0, 380.0, 144.0), (444.0, 392.0, 138.0), (864.0, 380.0, 140.0)]),
+            (Page::Ladder, vec![(60.0, 600.0, 100.0), (690.0, 530.0, 100.0)]),
+        ];
+        for (page, cols) in columns {
+            let flow = page.reflow();
+            for (x, w, y) in cols {
+                let (_, by, max) = flow.regions.iter().find(|(r, ..)| r.contains(Vec2::new(x, y))).unwrap();
+                let w = f32::min(w, max.x);
+                assert!(x + by.x >= 0.0 && x + by.x + w <= COMPACT_STAGE.x, "{page:?} at {x}");
+                assert!(y + by.y >= 0.0 && y + by.y < flow.height, "{page:?} at {x}");
+            }
+        }
+    }
 
     /// The building's words follow the lab: locked until its research node, no run, a run's generations and best.
     #[test]
