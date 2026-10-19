@@ -7,20 +7,19 @@
     (
         id: "swarm_patrol",
         name: "Spitter patrol",
-        summary: "Three or four Swarm spitters on patrol, quick to close in.",
+        summary: "Three to five Swarm spitters on patrol, quick to close in.",
         tags: ["swarm"],
-        ships: [(ship: "swarm_spitter", count: (3, 4))],
-        wake_radius: 300,
+        ships: [(ship: "swarm_spitter", count: (3, 5))], // 3-4 and a wake radius of 300 until 19 Oct 2026 (later)
+        wake_radius: 220,
     ),
     (
         id: "hive_carrier",
         name: "Hive carrier",
-        summary: "A Swarm carrier with a spitter at its side: it floods the space round it with drones the moment it sees you.",
+        summary: "A Swarm carrier alone: it floods the space round it with drones the moment it sees you.",
         description: "The [[ship:swarm_carrier]] holds back while its twelve [[ship:swarm_drone|drones]] fight. Drones die with their hangar: dive through the flood for a flank, or thin the flood and wait for the rebuild.",
         tags: ["swarm", "carrier"],
         ships: [
-            (ship: "swarm_carrier", count: (1, 1)),
-            (ship: "swarm_spitter", count: (0, 1)),
+            (ship: "swarm_carrier", count: (1, 1)), // a spitter (0-1) at its side until 19 Oct 2026 (later)
         ],
         wake_radius: 350,
     ),

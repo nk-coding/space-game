@@ -7,6 +7,12 @@
   (two before). Patrol voyages clear 73–80 %, raid voyages 70–79 % (they cleared every time); the carrier site alone is
   unchanged (45–62 %), but a voyage with a patrol before it is harder: the carrier voyage 21–37 %, the hive 14–37 %
   (`docs/results/swarm-balance-2026-10-19.md`, follow-up).
+  2026-10-19 (later): the voyages before a boss, retuned in the encounters (lead default; the spitter is unchanged):
+  a spitter patrol has three to five spitters (three or four) and wakes at 220 m (300), so the fleet that creeps up
+  on it opens fire first; the hive carrier comes without its spitter (0–1). The Keeper-capable fleets clear the
+  patrol-then-carrier voyage 43–49 % (32–37 before), the patrol-then-hive voyage 44–45 % (35–37), the outer-reach
+  fleet 29 and 23 % (21, 14); patrol voyages 68–79 %, raids 70–79 % (unchanged), the carrier site alone 55–69 %
+  (240 seeds, `docs/results/swarm-balance-2026-10-19.md`, second follow-up).
 - Date: 2026-10-19
 - Decided by: lead session (default for Niklas to review)
 - Related: [GDR-0018](0018-weapon-families.md) (the drones family, hangar blocks), [GDR-0027](0027-races.md) (the Swarm),

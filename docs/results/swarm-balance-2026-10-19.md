@@ -114,3 +114,48 @@ Screenshots (1280×720, the web build `game-ea6f6f67fce6c9d8`): `hive-carrier-fl
 Runner and two rim skiffs against a hive carrier, 140 m apart, seed 4, ten seconds in: the flood out round the Runner)
 and `galaxy-map-middle-band-2026-10-19.png` (a new test save `?save=middletest`, the map zoomed out: the middle band's
 ring, sealed, between the outer reach and the inner band).
+
+## Second follow-up: the voyages before a boss (19 Oct 2026, later still)
+
+With spitters that face their target, a patrol before the carrier or the hive cost the fleet too much hull (it is not
+repaired between sites): the Keeper-capable fleets cleared the carrier voyage 32–37 % and the hive voyage 35–37 %,
+below the Keeper's gate. Retuned in the encounter data only (the spitter's behavior and stats unchanged):
+
+- `swarm_patrol`: three to five spitters (three or four), wake radius 220 m (300). The runner's pilot stops 40 m
+  outside a sleeping site's wake radius and creeps in, so at 220 m the patrol wakes inside the fleet's reach and the
+  fleet fires first; the fifth spitter keeps a patrol voyage from getting easy.
+- `hive_carrier`: the carrier alone (a spitter 0–1 at its side before).
+
+Seeds 1–240, the test voyages above, clear %:
+
+| Voyage | R + C | R + 2S | R + 2C | before (R + C / R + 2S / R + 2C) |
+|---|---|---|---|---|
+| t_patrol | 68 % | 79 % | 79 % | 73 / 76 / 80 |
+| t_raid (unchanged) | 70 % | 77 % | 79 % | 70 / 77 / 79 |
+| t_carrier (a patrol, Swarm dead, the carrier) | **29 %** | **43 %** | **49 %** | 21 / 32 / 37 |
+| t_carr1 (the carrier site alone) | 55 % | 62 % | 69 % | 45 / 62 / 62 |
+| t_nest (unchanged) | 50 % | 55 % | 63 % | 50 / 55 / 63 |
+| t_hive (a patrol, the hive) | **23 %** | **45 %** | **44 %** | 14 / 37 / 35 |
+
+So the carrier voyage is about a Keeper's gate again for a Keeper-capable fleet (43–49 %), the hive voyage a little
+under it (44–45 %), the outer-reach fleet clearly lower (29 and 23 %); patrols and raids stay a modest threat.
+
+Tried on the way (seeds 1–240; R + C / R + 2S / R + 2C):
+
+| Change | t_patrol | t_carrier | t_hive |
+|---|---|---|---|
+| the carrier alone | 73 / 76 / 80 | 31 / 38 / 45 | 14 / 37 / 35 |
+| patrols 2–3 | 98 / 97 / 98 | 32 / 49 / 49 | 17 / 51 / 45 |
+| patrols 2–4 | 87 / 90 / 88 | 28 / 40 / 43 | 13 / 45 / 40 |
+| the carrier alone, patrols 2–4 | 87 / 90 / 88 | 35 / 49 / 46 | 13 / 45 / 40 |
+| the carrier alone, patrols 3 | 95 / 96 / 95 | 36 / 53 / 51 | 16 / 46 / 41 |
+| the carrier alone, patrols wake at 200 m | 88 / 90 / 89 | 32 / 45 / 47 | 23 / 45 / 52 |
+| the carrier alone, patrols wake at 250 m | 89 / 92 / 92 | 33 / 48 / 51 | 22 / 48 / 43 |
+| the carrier alone, patrols wake at 270 m | 88 / 90 / 94 | 32 / 48 / 52 | 21 / 45 / 45 |
+| the carrier alone, patrols 3–5 waking at 200 m | 71 / 72 / 70 | 27 / 39 / 40 | 20 / 38 / 46 |
+| the carrier alone, patrols 3–5 waking at 250 m | 66 / 73 / 70 | 22 / 42 / 42 | 16 / 40 / 41 |
+| the carrier alone, patrols 3–5 waking at 220 m (chosen) | 68 / 79 / 79 | 29 / 43 / 49 | 23 / 45 / 44 |
+
+A smaller patrol is what the boss voyages want but makes a patrol voyage filler again (87–98 %); a patrol that wakes
+late is easier everywhere; the two together keep patrols at 68–79 % and lift the voyages that meet one before a boss by 8–12 points. The
+runs differ by a few points from one wake radius to the next (240 seeds: about ±3 points).
