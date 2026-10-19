@@ -239,7 +239,7 @@ impl Plugin for UiKitPlugin {
             .add_message::<UiClick>()
             .configure_sets(Update, UiStyleSet.after(UiInputSet))
             .add_systems(Startup, (load_fonts, spawn_tip.after(load_fonts)))
-            .add_systems(Update, (classify, hit_test, type_into_fields).chain().in_set(UiInputSet))
+            .add_systems(Update, (classify, compact_text, hit_test, type_into_fields).chain().in_set(UiInputSet))
             .add_systems(Update, (style_widgets, show_locks, show_tip).in_set(UiStyleSet));
         transition::plugin(app);
         scrollbar::plugin(app);
@@ -400,6 +400,56 @@ pub fn compact_scale(size: Vec2) -> f32 {
     (size.x / COMPACT_SIZE.x).min(size.y / COMPACT_SIZE.y).clamp(COMPACT_SCALE.0, COMPACT_SCALE.1)
 }
 
+/// Type for a phone: text under a node with this is drawn at least this many px in the [`LayoutClass::Compact`]
+/// class (its letter spacing grown with it), at the size it was made with in the wide class. For a screen whose
+/// phone layout keeps its widgets but not its smallest type, the labels of 7 to 8 px a 1280 × 720 layout uses
+/// (docs/client.md "Phones").
+#[derive(Component, Clone, Copy, Debug, PartialEq)]
+pub struct CompactText(pub f32);
+
+/// A text's size and letter spacing as they were made, kept while [`CompactText`] grows them.
+#[derive(Component, Clone, Copy, Debug, PartialEq)]
+struct MadeSize(f32, f32);
+
+/// The size a text made `made` px big is drawn at under a [`CompactText`] `floor` in the `class`.
+pub fn compact_size(made: f32, floor: f32, class: LayoutClass) -> f32 {
+    if class.is_compact() { made.max(floor) } else { made }
+}
+
+/// Applies [`CompactText`]: to every text under one when the class changes, else to the texts just made.
+#[allow(clippy::type_complexity)]
+fn compact_text(
+    class: Res<LayoutClass>,
+    roots: Query<&CompactText>,
+    parents: Query<&ChildOf>,
+    every: Query<Entity, With<TextFont>>,
+    mut texts: ParamSet<(Query<Entity, Added<TextFont>>, Query<(&mut TextFont, Option<&mut LetterSpacing>, Option<&MadeSize>)>)>,
+    mut commands: Commands,
+) {
+    if roots.is_empty() {
+        return;
+    }
+    let which: Vec<Entity> = if class.is_changed() { every.iter().collect() } else { texts.p0().iter().collect() };
+    let mut texts = texts.p1();
+    for e in which {
+        let Some(floor) = std::iter::once(e).chain(parents.iter_ancestors(e)).find_map(|a| roots.get(a).ok()) else { continue };
+        let Ok((mut font, spacing, made)) = texts.get_mut(e) else { continue };
+        let FontSize::Px(now) = font.font_size else { continue };
+        let space = spacing.as_deref().map_or(0.0, |s| if let LetterSpacing::Px(p) = s { *p } else { 0.0 });
+        let made = made.copied().unwrap_or(MadeSize(now, space));
+        let want = compact_size(made.0, floor.0, *class);
+        if made.0 > 0.0 && want != now {
+            font.font_size = FontSize::Px(want);
+            if let Some(mut s) = spacing
+                && matches!(*s, LetterSpacing::Px(_))
+            {
+                *s = LetterSpacing::Px(made.1 * want / made.0);
+            }
+            commands.entity(e).try_insert(made);
+        }
+    }
+}
+
 /// Keeps [`LayoutClass`] with the primary window (written only when it changes, so screens can react to the change).
 fn classify(window: Single<&Window, With<PrimaryWindow>>, mut class: ResMut<LayoutClass>) {
     let c = LayoutClass::of(window.size());
@@ -458,6 +508,14 @@ mod tests {
             repeat: false,
             window: Entity::PLACEHOLDER,
         }
+    }
+
+    /// Text under `CompactText` grows to the floor on a phone only, and never shrinks.
+    #[test]
+    fn compact_text_has_a_floor_on_a_phone() {
+        assert_eq!(compact_size(7.5, 9.0, LayoutClass::Compact), 9.0);
+        assert_eq!(compact_size(12.0, 9.0, LayoutClass::Compact), 12.0);
+        assert_eq!(compact_size(7.5, 9.0, LayoutClass::Wide), 7.5);
     }
 
     #[test]
