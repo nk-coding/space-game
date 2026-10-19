@@ -2360,6 +2360,26 @@ but the type is too small to read). Numbers are placeholders.
     out STARTS and MADE and wrap their buttons under them. Lists inside a page scroll on their own when a finger
     starts on them.
 
+- **Home and its layers** (D1, 19 Oct 2026; screenshots `docs/results/phone-home-2026-10-19.png`,
+  `phone-fleet-2026-10-19.png`, `phone-workshop-2026-10-19.png`, `phone-settings-2026-10-19.png`): on a phone home's
+  `ui_scale` is `compact_scale` for home and every layer over it (FLEET, WORKSHOP, the LOG, EVOLUTION, SETTINGS, the
+  debrief; SETTINGS over flight too), each root with `CompactText(9)` (home's on each place label, not on the name
+  plate, whose letters follow the zoom). The layers keep their entities and swap their nodes: `home::ByClass` holds
+  a node's wide and compact form and puts the window's one in place when the class changes (its `display` stays as
+  the screen sets it, unless a form hides it), so the wide layouts are exactly as before.
+  - *Home*: the station is fitted with the phone-sized labels as before (`overview`); the building area's label
+    hangs inside the area's top (`Layout::label(place, compact)`: at the bottom it ran into the gate's line), one
+    note (the most serious) 230 px wide under the gate's label.
+  - *FLEET* (`fleet::Lay::COMPACT`, 844 × 390): the slots' words beside their 96 × 60 boxes (left of the left ones),
+    the flagship 160 × 88 with a smaller ring, its words FLAGSHIP only, three 262 × 68 cards in the row (the rest
+    scroll), the line about escorts left out; the crumb sits under the frame's top like every screen's.
+  - *WORKSHOP*: the parts list (536 px) and the materials (256 px) side by side across the stage, the status line
+    under them; no room between them for the hover card (it shows after its delay, so a tap does not raise it).
+  - *LOG*, *SETTINGS*: the list across the stage under the header (SETTINGS: names 150 px, chips 96 px, the display
+    choices' words 300 px), the bottom line 10 px from the window's bottom. Taps on the tabs and chips and a finger's
+    scroll of the controls list checked headless.
+  - *Debrief*: the panel 400 px wide with less padding; it scrolls as before.
+
 What still breaks at 844 × 390 (audit of 19 Oct 2026, DPR 3), grouped into work packages with disjoint files:
 
 | Package | Screens and files | What breaks | Size |
@@ -2367,7 +2387,7 @@ What still breaks at 844 × 390 (audit of 19 Oct 2026, DPR 3), grouped into work
 | A. Flight and viewer | flight HUD, pause menu, fleet bar, fight viewer: `world/src/flight_hud/`, `hud.rs`, `controls.rs`, `fleet_bar.rs`, `replay.rs`, `camera.rs` | the HUD stays at the UI size (1.0, readable and fitting) but its title wraps ("TEST RANGE · WAVE" / "1"; the fight viewer's long title in four lines over the top centre: `hud.title_side` keeps 300 px a side of 844); touch widgets wait for a first touch (plan 4.2: on from the start on touch); the help line ("CLICK OR L TO LOCK") shows on touch; the viewer's scrubber and the free camera's drag are mouse-only; set the HUD's scale to `compact_scale` in flight from a world system | L |
 | B. Drydock | `game/src/drydock/**`, `world/src/part_card.rs` | fitted at 0.54: type 4–7 dp, pills about 15 dp high; painting, erasing, selecting on the grid (`tools.rs`) and panning (`view.rs`: middle button, Space + drag, wheel) are mouse-only, no pinch; phone layout per plan 4.3 | L |
 | C. BEHAVIOR | `game/src/behavior_ui/**` | fitted at 0.54, unreadable; a row's reorder drag (8 px) fights the finger's scroll; phone layout per plan 4.4 (inspector right, ADD NODE, ring menu) | L |
-| D1. Shipyard screens | home `home.rs`, `shipyard/`, FLEET `fleet.rs`, workshop `workshop.rs`, LOG `voyage_log.rs`, debrief `debrief.rs`, settings `settings.rs` | all fitted at 0.54, so their labels, lists and pills are unreadable though stations, rows and pills take taps; FLEET's crumb sits at the window's top edge; each needs `compact_scale` and a phone layout (home's `ui_scale` already gives the EVOLUTION layer the phone's scale while it is open) | L (M each) |
+| D1. Shipyard screens | home `home.rs`, `shipyard/`, FLEET `fleet.rs`, workshop `workshop.rs`, LOG `voyage_log.rs`, debrief `debrief.rs`, settings `settings.rs` | **done 19 Oct 2026** (above). Left: FLEET's card row and the LOG's rows not seen on a phone with saved designs or voyages (laid out for them: a card 262 px, a row's haul gets about 320 px and may take two lines); home's camera flies into the drydock's opening view measured at home's scale, which on a phone is no longer the drydock's (0.54) until B gives the drydock its own, so the flight's end may jump; the flight menu (pause) is package A's | L (M each) |
 | D2. Research, voyage map, evolution | `research/`, `map/`, `evolution/` | **done 19 Oct 2026** (above: phone layouts at `compact_scale`, the map area measured from the chrome). Left: the map's jump-range outline is cut at the panel only; text cut by the map area's edge is cut through its letters; the evolution pages are the wide columns stacked (not a phone design of their own), THE RUN page not checked with a run on a phone; no pinch check (headless has one finger) | M |
 
 ## Adding visuals
