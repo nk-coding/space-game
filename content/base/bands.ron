@@ -2,9 +2,10 @@
 // clusters fill its ring at the galaxy's spacing; its `gates` lie near its inner edge, each at the end of a trail (the
 // rim's first is the Warden's, a set piece whose trail is the slice's voyages, GDR-0098);
 // `trails` adds caches, graveyards and the outer reach's elder groves (lore trails come from `lore/`). The rim and
-// the outer reach are real (the outer reach's Grown, guardians and elders 18 Oct 2026, GDR-0103); the other bands
-// are stubs (tag `stub`) until their races and guardians exist. PLACEHOLDER NUMBERS (lead, 16 Oct 2026, GDR-0094;
-// the outer reach's 18 Oct 2026, GDR-0103).
+// the outer reach are real (the outer reach's Grown, guardians and elders 18 Oct 2026, GDR-0103), and so is the
+// middle band (the Swarm, 19 Oct 2026, GDR-0117); the other bands are stubs (tag `stub`) until their races and
+// guardians exist. PLACEHOLDER NUMBERS (lead, 16 Oct 2026, GDR-0094; the outer reach's 18 Oct 2026, GDR-0103; the
+// middle band's 19 Oct 2026, GDR-0117).
 [
     (
         id: "rim",
@@ -56,11 +57,27 @@
     (
         id: "middle",
         name: "The middle band",
-        summary: "Halfway to the core. Uncharted.",
-        tags: ["stub"],
+        summary: "Halfway to the core: the Swarm's band, where hive carriers flood the space with drones and the hives hum in the deep.",
         edge: 3.2,
-        clusters: [(id: "uncharted_deep", weight: 1)],
+        // The Swarm (19 Oct 2026, GDR-0117): `border` as the outer reach's (rolled only within 0.4 S of its outer edge).
+        clusters: [
+            (id: "swarm_reach", weight: 3),
+            (id: "brood_deep", weight: 2),
+            (id: "raided_border", weight: 4, border: 0.4),
+        ],
         gates: (count: 3, trail: "deep_gate"),
+        trails: [(trail: "swarm_hive", count: 2)],
+        sky: (
+            planets: [
+                (kind: "jovian", weight: 3), (kind: "ice_giant", weight: 3), (kind: "ringed", weight: 2), (kind: "rock", weight: 2),
+                (kind: "eyeball", weight: 1), (kind: "desert", weight: 1), (kind: "living", weight: 1),
+            ],
+            moons: [(kind: "grey_moon", weight: 3), (kind: "rubble_moon", weight: 2), (kind: "geyser_moon", weight: 1), (kind: "icy_moon", weight: 1)],
+            nebula: ("#2c4fb8", "#7a9a2c"),
+            nebula_core: "#9fd0ff",
+            nebula_strength: 1.0,
+            galaxy: 0.75,
+        ),
     ),
     (
         id: "inner",

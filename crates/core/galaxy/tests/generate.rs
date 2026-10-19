@@ -188,5 +188,5 @@ fn interiors_follow_their_cluster_types_and_hold_the_trail_places() {
 #[test]
 fn the_generation_hash_is_pinned() {
     let c = data::base_content();
-    assert_eq!(format!("{:016x}", generate(&c, "galaxy", 1).unwrap().hash()), "04cb7c29dde8bc36");
+    assert_eq!(format!("{:016x}", generate(&c, "galaxy", 1).unwrap().hash()), "1dcf5256cc2be5fc");
 }

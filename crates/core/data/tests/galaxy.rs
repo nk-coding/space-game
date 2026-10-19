@@ -25,14 +25,14 @@ fn has(problems: &[Problem], id: &str, field: &str, needle: &str) {
 }
 
 #[test]
-fn the_base_galaxy_is_the_rim_the_outer_reach_and_three_stub_bands() {
+fn the_base_galaxy_is_the_rim_the_outer_reach_the_middle_band_and_two_stub_bands() {
     let c = data::base_content();
     let g = c.galaxies.get("galaxy").unwrap();
     assert_eq!(g.bands, ["rim", "outer", "middle", "inner", "core"]);
     // Niklas, 16 Oct 2026 (GDR-0093): the drive jumps 2.5 S at the start.
     assert_eq!(g.jump_range, 2.5);
     assert!(g.spacing <= 0.9, "the first loop's voyages lie 0.9 S and more apart: they must fit");
-    for b in &g.bands[2..] {
+    for b in &g.bands[3..] {
         assert!(c.bands.get(b).unwrap().tags.iter().any(|t| t == "stub"), "{b} is a stub");
     }
     // The outer reach (GDR-0103): no stub, a precursor guardian at each gate, the elders at sites of their own.
@@ -48,6 +48,13 @@ fn the_base_galaxy_is_the_rim_the_outer_reach_and_three_stub_bands() {
     let inner = c.trails.get(&c.bands.get("inner").unwrap().gates.as_ref().unwrap().trail).unwrap();
     assert_eq!((inner.reward, inner.target.as_str()), (Reward::Gate, "spire_gate"));
     assert_eq!(inner.gives.materials.get("gate_shard"), Some(&2));
+    // The middle band (GDR-0117): the Swarm's, no stub, the hives at sites of their own.
+    let middle = c.bands.get("middle").unwrap();
+    assert!(!middle.tags.iter().any(|t| t == "stub"));
+    assert!(middle.clusters.iter().all(|w| !c.cluster_types.get(&w.id).unwrap().tags.iter().any(|t| t == "stub")));
+    let hive = c.trails.get("swarm_hive").unwrap();
+    assert_eq!((hive.reward, hive.target.as_str()), (Reward::Salvage, "hive_site"));
+    assert!(middle.trails.iter().any(|t| t.trail == "swarm_hive"));
     let elder = c.trails.get("elder_grove").unwrap();
     assert_eq!((elder.reward, elder.target.as_str()), (Reward::Salvage, "elder_grove"));
     assert!(outer.trails.iter().any(|t| t.trail == "elder_grove"));

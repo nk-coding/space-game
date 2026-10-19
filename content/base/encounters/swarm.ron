@@ -1,0 +1,71 @@
+// What waits in the middle band (GDR-0027: the Swarm, hostile by nature; GDR-0117): spitter patrols, hive carriers
+// that flood the space round them with drones, the Swarm's own dead, their raids on the Grown past the band's border,
+// and the hives, their bosses, at the end of trails of their own. The Swarm are not wary: they wake when a ship
+// comes near. PLACEHOLDER NUMBERS (lead defaults, 19 Oct 2026; counts tuned with the headless voyage runner,
+// docs/results/swarm-balance-2026-10-19.md).
+[
+    (
+        id: "swarm_patrol",
+        name: "Spitter patrol",
+        summary: "Two or three Swarm spitters on patrol, quick to close in.",
+        tags: ["swarm"],
+        ships: [(ship: "swarm_spitter", count: (2, 3))],
+        wake_radius: 300,
+    ),
+    (
+        id: "hive_carrier",
+        name: "Hive carrier",
+        summary: "A Swarm carrier with a spitter at its side: it floods the space round it with drones the moment it sees you.",
+        description: "The [[ship:swarm_carrier]] holds back while its twelve [[ship:swarm_drone|drones]] fight. Drones die with their hangar: dive through the flood for a flank, or thin the flood and wait for the rebuild.",
+        tags: ["swarm", "carrier"],
+        ships: [
+            (ship: "swarm_carrier", count: (1, 1)),
+            (ship: "swarm_spitter", count: (0, 1)),
+        ],
+        wake_radius: 350,
+    ),
+    (
+        id: "brood_nest",
+        name: "Brood nest",
+        summary: "A hive carrier at rest among its spitters' wrecks: rich Swarm salvage, if the flood can be beaten.",
+        tags: ["swarm", "carrier", "wrecks"],
+        ships: [(ship: "swarm_carrier", count: (1, 1))],
+        wrecks: [(ship: "swarm_spitter", count: (1, 2), damage: 0.4)],
+        wake_radius: 350,
+    ),
+    (
+        id: "swarm_dead",
+        name: "Swarm dead",
+        summary: "Swarm wrecks drifting alone, their nerve nodes long still.",
+        tags: ["swarm", "wrecks"],
+        wrecks: [
+            (ship: "swarm_spitter", count: (1, 2), damage: 0.3),
+            (ship: "swarm_carrier", count: (0, 1), damage: 0.4),
+        ],
+        wake_radius: 200,
+    ),
+    (
+        id: "swarm_raid",
+        name: "Swarm raid",
+        summary: "Spitters picking over a grove they raided past the border: the Grown's dead lie round them.",
+        description: "The Swarm are the one race that raids its neighbours (GDR-0027). What they left of the grove is still rich in Grown salvage.",
+        lore: "The groves nearest the middle band are all scarred on the same side.",
+        tags: ["swarm", "wrecks"],
+        ships: [(ship: "swarm_spitter", count: (2, 2))],
+        wrecks: [(ship: "grown_rammer", count: (1, 2), damage: 0.5)],
+        wake_radius: 300,
+    ),
+    (
+        id: "hive_site",
+        name: "Swarm hive",
+        summary: "One of the Swarm's hives, anchored deep in the middle band, two spitters on guard.",
+        description: "The [[ship:swarm_hive]] cannot chase you, but its four hangars send twenty-four drones at whatever it sees. Take the hangars one by one: every drone dies with its own. Beaten, it is the richest Swarm salvage there is.",
+        lore: "You hear it before you see it.",
+        tags: ["boss", "swarm", "station"],
+        ships: [
+            (ship: "swarm_hive", count: (1, 1)),
+            (ship: "swarm_spitter", count: (2, 2)),
+        ],
+        wake_radius: 400,
+    ),
+]

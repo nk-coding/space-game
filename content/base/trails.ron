@@ -64,6 +64,17 @@
         gives: (materials: {"heartwood": 3}), // an elder's heartwood (18 Oct 2026, materials/grown.ron)
     ),
     (
+        id: "swarm_hive",
+        name: "A Swarm hive",
+        summary: "A trail to one of the Swarm's hives, anchored deep in the middle band: rich salvage, if the flood can be beaten.",
+        reward: Salvage,
+        length: (2, 3),
+        target: "hive_site",
+        sources: ["distress_call", "old_beacon"],
+        hint: "A hum",
+        gives: (materials: {"nerve_core": 3, "resin": 6}), // the hive's brood stores (19 Oct 2026, GDR-0117)
+    ),
+    (
         id: "precursor_cache",
         name: "A precursor cache",
         summary: "A sealed cache of precursor work: research data and programmable matter, straight into store.",
