@@ -336,11 +336,12 @@ pub fn spawn_hud(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>
                     c.spawn((HudText::TargetSub, label(&fonts, "", hud.sub, dim)));
                     scan::spawn(c, &fonts, ui);
                 });
-            // Top centre: title.
-            root.spawn((ScreenPart::new(Edge::Top, 0), Node { position_type: PositionType::Absolute, top: px(f.top), width: percent(100), flex_direction: FlexDirection::Column, align_items: AlignItems::Center, row_gap: px(2), ..default() }))
+            // Top centre: title, between the columns (`hud.title_side`); a long one (a fight viewer's) wraps, centred.
+            let centred = || TextLayout::justify(bevy::text::Justify::Center);
+            root.spawn((ScreenPart::new(Edge::Top, 0), Node { flex_direction: FlexDirection::Column, align_items: AlignItems::Center, row_gap: px(2), ..abs(Some(hud.title_side), Some(hud.title_side), Some(f.top), None) }))
                 .with_children(|c| {
-                    c.spawn((HudText::Title, label(&fonts, "", hud.title, white)));
-                    c.spawn((HudText::Subtitle, label(&fonts, "", hud.subtitle, grey)));
+                    c.spawn((HudText::Title, label(&fonts, "", hud.title, white), centred()));
+                    c.spawn((HudText::Subtitle, label(&fonts, "", hud.subtitle, grey), centred()));
                 });
             // Centre: banner, and the line under it (voyages).
             root.spawn(Node { position_type: PositionType::Absolute, top: percent(25), width: percent(100), flex_direction: FlexDirection::Column, align_items: AlignItems::Center, row_gap: px(10), ..default() })

@@ -200,7 +200,9 @@ generation (its best child's hardest fight); paste one after `fight=`, e.g.
 - **Stand-in pilots** (GDR-0092 step 6: a code whose side 0 entry has a `pilot`, the lab's fights FLOWN BY a
   stand-in): the referee gives the piloted ship the stand-in's input every think (`sim::flight::stand_in`), so the
   viewer plays it unchanged; the subtitle adds `· FLOWN BY STAND-IN · CASUAL` (the pilot's `lab.ron` name).
-- **HUD**: title `REPLAY · HALVEX RUNNER VS 3 × AUTOMATON RAIDER · SEED 3`; subtitle `0:23 / 1:30 · 2× · BUILD POINTS
+- **HUD**: title `REPLAY · HALVEX RUNNER VS 3 × AUTOMATON RAIDER · SEED 3` (between the HUD's columns,
+  `hud.title_side` from each edge: a longer one wraps, centred, into a second line instead of running over the hull and
+  the target, 19 Oct 2026); subtitle `0:23 / 1:30 · 2× · BUILD POINTS
   120 / 132 VS 12 / 47`; a timeline under the view (how far the fight is in teal, how far it has been simulated in
   grey, a mark per vessel lost: teal side 0's, coral side 1's, at most 24); the controls overlay (/ or the menu's CONTROLS) lists the
   replay keys.

@@ -98,6 +98,8 @@ pub struct HudType {
     pub title: f32,
     pub subtitle: f32,
     pub group_gap: f32,
+    /// The room each side of the title keeps for the HUD's columns: the title and subtitle wrap between them.
+    pub title_side: f32,
 }
 
 /// The frame, read from the style tokens once.
@@ -152,6 +154,7 @@ pub fn frame() -> &'static Frame {
                 title: n("hud.title"),
                 subtitle: n("hud.subtitle"),
                 group_gap: n("hud.group_gap"),
+                title_side: n("hud.title_side"),
             },
         }
     })
