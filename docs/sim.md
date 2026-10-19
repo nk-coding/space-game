@@ -1686,6 +1686,7 @@ example runs found": evolved designs shutter their cannons behind reactors that 
 | `Beam` | continuous hit-scan; each tick `dps × work × DT` to the first block in range; `Sim::beams()` lists this tick's beams (`from`, `to`, `hit`) |
 | `Pulse(rate)` | a cooldown per gun (`rate × fire_rate` shots/s, slower when browned out; at most `weapons::tuning::MAX_SHOTS_PER_TICK` = 8 shots per tick, 240/s, also for projectiles: a faster rate is capped there and the rest waits in the cooldown); each pulse is a hit-scan dealing `damage / rate` to the first block |
 | `Projectile(rate, speed, penetration, recoil)` | same cooldown; a `Projectile` entity at the muzzle with the muzzle's velocity (`v + ω × r`) plus `speed`, living `range / speed` s |
+| `Missile(rate, salvo, speed, accel, turn, life, hp, radius)` | same cooldown; a salvo of homing missiles ([below](#missiles-and-point-defence-gdr-0115)) |
 
 - **Lasers** (beam, pulse) burn the first block only.
 - **Simultaneous fire** (ADR-0037, 14 Oct 2026): the guns of all ships fire at once within a tick. Every beam
@@ -1728,11 +1729,56 @@ Events (in `Sim::events()`, for visuals and sound):
 |---|---|
 | `ShotFired { ship, piece, gun, kind, from, to, projectile }` | every pulse (`to` = where it ended) and every projectile (`to` = end of its range); not for beams |
 | `Hit { by, ship, piece, part, point, normal, damage, absorbed, family }` | damage reached a part (after shields); beams: once per tick on target |
-| `ProjectileSpawned { id, owner, pos, vel }`, `ProjectileGone { id, pos, reason }` | `reason` = `Hit`, `Absorbed` or `Expired` |
+| `ProjectileSpawned { id, owner, pos, vel }`, `ProjectileGone { id, pos, reason }` | `reason` = `Hit`, `Absorbed`, `Expired` or `ShotDown` (a missile, point defence) |
 | `Ricochet { id, point, normal, vel }` | a kinetic shot glanced off a slope |
 | `ShieldHit { by, ship, piece, part, point, absorbed, left, depleted }` | a shot entered a bubble (`point` = entry), or a bubble covering a plume's hit point or a ram's contact point took its share; `depleted` = it collapsed |
 | `PlumeHit { by, engine, ship, piece, part, point, damage, heat, absorbed }` | an engine plume burned a part, one per lane and part per tick ([Engine plumes](#engine-plumes)) |
 | `Explosion { ship, piece, part, at, radius, damage }` | a destroyed part exploded (a chain reaction, after its `PartDestroyed`; [Damage and breakage](#damage-and-breakage)) |
+| `Warhead { by, id, at, radius, damage }` | a missile's warhead went off where it struck (its `Hit`s right before, its `ProjectileGone` after; [Missiles](#missiles-and-point-defence-gdr-0115)) |
+
+### Missiles and point defence (GDR-0115)
+
+`combat/missile.rs`, 19 Oct 2026. `Delivery::Missile(rate, salvo, speed, accel, turn, life, hp, radius)`: the
+launcher's cooldown as for pulses; each shot is a salvo of `salvo` missiles, `Projectile`s with a `Seeker`
+(`Projectile::missile`, hashed: target, top speed, acceleration, turn rate, hit points, blast radius). Each missile
+deals `damage / rate / salvo` (`GunMount::shot_damage`).
+
+- **Launch**: the salvo fans out over ±`SALVO_FAN` (0.14 rad) of the launcher's facing, each missile turned by a
+  jitter of ±`LAUNCH_JITTER` (0.03 rad) from the `Weapons` stream; it leaves at the muzzle's velocity plus
+  `LAUNCH_SPEED` (35 %) of its top speed. At most `MAX_MISSILES` (96) live in the world: a launcher whose salvo
+  finds the world full fires what fits, or waits, ready.
+- **Seeker**: the nearest hostile vessel (not the shooter, not its owner's: `friendly`) whose controlling piece's
+  centre of mass lies within `SEEK_CONE` (60°) of the missile's course and within what it can still fly
+  (`top speed × life left`), picked at launch and again on every tick its target is no hostile vessel any more
+  (destroyed, salvage). Ties go to the lower ship index.
+- **Flight**: before its segment is cast, the course turns towards the target's lead point
+  (`lead_point` at the missile's speed, at least half its top speed) by at most `turn × DT`; the speed grows by
+  `accel × DT` up to the top speed (a missile launched faster keeps its speed). Then it flies as any projectile:
+  no friendly fire, bubbles take their `Missile` share (the base emitters absorb it whole, GDR-0021) and a fully
+  absorbed missile is gone (`Absorbed`), a missile that outlives its `life` fizzles (`Expired`). No ricochets, no
+  penetration.
+- **Warhead**: on a hull it goes off `FUSE_DEPTH` (0.05 m) inside the struck cell, on a rock at the rock's surface:
+  `damage` within `radius` by the chain-reaction rule (`chain::piece_hits`, the per-piece half of GDR-0085's reach
+  scan): every alive part of every piece with a cell in reach, times its `blast_factor` and the `blast_factor` of its
+  piece's intact armour on the line, on every ship but the shooter's and its owner's other vessels (an aimed weapon,
+  GDR-0048). Bubbles the blast crosses (covering a target cell, not the blast's centre) absorb first
+  (`blast_shields`, skipping the shooter's and friendly bubbles). Each hit is a `Hit` of family `Missile`; parts it
+  destroys explode at breakage resolution as usual.
+- **Behaviors**: `Sim::count_incoming` counts, before each think pass, the live missiles homing on each ship
+  (`behavior::Scratch::incoming`); the condition `missiles_incoming` reads it (a count). The `skirmisher` no longer
+  dodges by orbiting while missiles home on it (it cannot out-turn them; it fights on instead).
+- **Point defence** (`WeaponSpec::defence: (arc, ship_mass)`, a pulse gun; `GunMount::defence`): it fires on its own
+  whenever its piece is active (its power consumer is `Other`: always on, the trigger does not matter), each shot
+  at the nearest live hostile missile within its range and `arc` of its facing (ties: lower projectile id): the
+  missile loses the shot's damage, at 0 hit points it is gone (`ProjectileGone { reason: ShotDown }`, removed after
+  the guns). With no missile in reach it shoots at the nearest hostile vessel of at most `ship_mass` t (its
+  controlling piece) within reach and arc, a hit-scan pulse at its centre of mass; with neither it holds, ready.
+  Point defence is left out of fire at will, the smart lock aim, firepower and reach (`gun_works`), and of the
+  runner's closing reach. The PD shot sees no line of sight to a missile (missiles have no colliders; lead default).
+- **Fire at will** launches when the target is within `missile::tuning::FIRE_CONE` (0.25 rad) of the launcher's
+  facing (aimed at the target, not a lead point): the seeker does the rest.
+
+Numbers (`content/base/parts/missiles.ron`, placeholders): see GDR-0115 and `docs/results/missiles-2026-10-19.md`.
 
 ### Aiming and leading
 

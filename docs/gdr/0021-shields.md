@@ -5,6 +5,8 @@
   2026-10-17: the shield emitter's capacity 3 → 2 (Niklas, [GDR-0100](0100-fight-balance-targets.md) B2; regen 0.2
   stays): a bubble collapses in about one wave in six under sustained fire
   (`docs/results/slice-balance-2026-10-17b.md`). The rules above are unchanged.
+  2026-10-19: missiles exist ([GDR-0115](0115-missiles-and-point-defence.md)): a bubble takes a missile whole up to its
+  charge, as decided; a missile it does not stop goes off at the hull with what is left.
 - Date: 2026-10-10 (bubbles); 2026-10-11 (v1 rules confirmed)
 - Decided by: Niklas
 - Related: [GDR-0014](0014-power-tiers-and-weights.md), [GDR-0018](0018-weapon-families.md), [GDR-0019](0019-damage-model.md), [GDR-0020](0020-damage-v1-defaults.md), `docs/sim.md` "Weapons"

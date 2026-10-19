@@ -127,7 +127,9 @@ ship's centre.
 
 The pack rule comes first: finishing a kill inside three enemies' guns is how hunters die. Swap the two upper
 rules if your design is tough enough to dive in. [[behavior_node:enemies_near]] counts every active enemy ship
-within the radius, not only the target.
+within the radius, not only the target. Against rocket ships, [[behavior_node:missiles_incoming]] counts the enemy
+missiles homing on you: dodging by orbiting does not shake them, so a rule like
+`when missiles_incoming >= 2 -> approach(60%)` closes in and fights instead.
 
 ## 7. Wingman
 

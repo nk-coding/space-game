@@ -44,7 +44,7 @@ There is no `end`, no `or` and no nesting. For "this **or** that", write two rul
 
 - **Flags** are true or false and stand alone: `shield_down`, `under_attack`, `target_in_range(60m)`.
 - **Values** measure something and must be compared with `<`, `<=`, `>` or `>=`: `hull < 30%`,
-  `enemies_near(150m) >= 3`, `cycle(9s) >= 5s`.
+  `enemies_near(150m) >= 3`, `missiles_incoming >= 2` (enemy missiles homing on the ship, GDR-0115), `cycle(9s) >= 5s`.
 - `not` in front turns a condition around: `not target_in_range(100%)`.
 - A condition about the target (`target_in_range`, `target_hull`, `target_on_me`, `cycle`, `target_time`, ...) is
   **false while there is no target**, with or without `not`. An action that needs a target does not run without

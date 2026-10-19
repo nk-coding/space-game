@@ -1,6 +1,6 @@
 ---
 title: "Weapons"
-description: "How guns fire - beams, pulses and projectiles, range and the line of fire, ricochets, aiming and leading, weapon groups, fire at will, firepower, and what power, heat and capacitors do to guns."
+description: "How guns fire - beams, pulses, projectiles and missiles, point defence, range and the line of fire, ricochets, aiming and leading, weapon groups, fire at will, firepower, and what power, heat and capacitors do to guns."
 ---
 
 # Weapons
@@ -15,7 +15,9 @@ decide when guns fire.
 
 Each weapon belongs to a **family**, and shields treat the families differently
 ([shields](/mechanics/damage#shields)). The lasers are energy weapons; the [[part:automaton_cannon]] is a kinetic
-gun (research builds you a slower copy, the [[part:reverse_engineered_cannon]]). The game knows more families (missiles, disruption, drones, utility) that have no guns yet.
+gun (research builds you a slower copy, the [[part:reverse_engineered_cannon]]); the [[part:rocket_pod]] and the
+[[part:torpedo_launcher]] fire missiles ([below](#missiles)). The game knows more families (disruption, drones,
+utility) that have no guns yet.
 
 <StatTable stats="damage,range,shot_rate,shot_speed,penetration,recoil" />
 
@@ -35,6 +37,8 @@ Guns deliver their damage in one of three ways.
   [[stat:shot_speed]] on top of your ship's own velocity, and flies until it has covered its range (counted from
   your ship as it moves). It can miss a target that dodges, so aim ahead of a moving one
   ([aiming](#aiming-and-leading)).
+- **Missile** (the [[part:rocket_pod]], the [[part:torpedo_launcher]]): a shot that steers itself
+  ([missiles](#missiles)).
 
 Lasers burn the first block only. A projectile hits a block and, if that block breaks, carries the damage it had
 left into the next block behind it, up to [[stat:penetration]] blocks in all (1: it stops in the first). The rest
@@ -54,6 +58,37 @@ Your shots fly straight through your own ship and every one of your vessels: no 
 shields. They hit enemies, wrecks and other salvage. Your own ship's debris is part of your ship, so your guns pass
 it too.
 
+## Missiles
+
+A launcher fires a **salvo**: [[part:rocket_pod.salvo]] rockets at a time from the [[part:rocket_pod]], one torpedo
+from the [[part:torpedo_launcher]], [[stat:shot_rate]] salvos per second. A missile leaves slowly, speeds up at
+[[stat:missile_accel]] to its [[stat:shot_speed]], and turns its course at up to [[stat:missile_turn]] towards the
+nearest enemy vessel ahead of it (within [[sim:missile_seek_cone]] of its course), leading it as it moves. It picks
+a new one if that one is destroyed. After [[stat:missile_life]] it is spent and falls dark.
+
+Where a missile strikes a hull, its **warhead** goes off: every part within its [[stat:warhead_radius]] takes its
+damage once, the way a [chain reaction](/mechanics/damage#explosions-and-chain-reactions) hits. Armour takes its share and shields
+the parts behind it. A missile's damage per second is shared over its salvo: a rocket of the pod deals
+[[part:rocket_pod.damage]] ÷ [[part:rocket_pod.shot_rate]] ÷ [[part:rocket_pod.salvo]] to each part it reaches.
+Your missiles never hurt your own vessels.
+
+Missiles have their counters:
+
+- **Shields** absorb a missile whole, up to what the bubble has left.
+- **Point defence** shoots them down: each missile has [[stat:missile_hp]] hit points.
+- **Speed**: a small ship that turns hard can out-turn a slow torpedo.
+
+At most [[sim:max_missiles]] missiles fly at once in a fight; a launcher waits while the sky is full.
+
+### Point defence
+
+The [[part:point_defence]] is a quick, short-range pulse turret that **picks its own targets**: it aims anywhere
+within [[part:point_defence.defence_arc]] of the side it faces and fires on its own whenever its vessel runs,
+whatever the trigger. Each shot goes at the nearest enemy missile in its reach; with none it shoots at the nearest
+enemy vessel of at most [[part:point_defence.defence_mass]], so it also stings small raiders that come close. It draws
+its power all the time, and like any gun it needs a clear line of fire through the side it faces. It is never part
+of your firepower, your reach or the lock's aim.
+
 ## The line of fire
 
 A gun fires through the side it faces, and **its own piece must not be in the way**: no part of the same piece may
@@ -63,7 +98,8 @@ no power. If the part in front is shot off, or breaks away, the gun has a clear 
 Guns can face any side. A gun on the flank fires sideways, one at the tail fires backwards.
 
 In the drydock the ARCS overlay draws every gun's line of fire to its range: dashed when clear, coral up to the first
-part in the way. The status line warns GUN BLOCKED.
+part in the way. It also shows the arc a point-defence turret aims within and the cone a missile launcher launches
+within. The status line warns GUN BLOCKED.
 
 ## Aiming and leading
 
@@ -106,8 +142,9 @@ Groups are the pilot's: ships flying a behavior fire each gun at will instead.
 
 A ship flying a behavior, and every escort you don't pilot, fires **each gun on its own**: a gun fires when the
 target is within [[sim:fire_range]] of that gun's range and within [[sim:fire_cone]] of the direction it faces,
-both measured from its muzzle. A projectile gun checks the lead point instead of the target. So broadside and rear
-guns fire whenever the target crosses their line.
+both measured from its muzzle. A projectile gun checks the lead point instead of the target. A missile launcher
+launches within the wider [[sim:missile_fire_cone]]: its missiles turn onto the target themselves. So broadside and
+rear guns fire whenever the target crosses their line.
 
 <svg class="diagram" viewBox="0 0 440 210" role="img" aria-label="A forward gun with a clear line of fire and a narrow fire cone, and a side gun blocked by its own armour">
   <rect x="100" y="110" width="20" height="20" class="f-steel s-dim"/>
@@ -195,6 +232,10 @@ own damage and shots per second after its bonuses, boosted numbers in gold. For 
   enough that they don't drop below their minimum in a fight.
 - **Cannons** throw shots that must be led, and slopes can turn them away, but shields take only part of their
   damage. A cannon whose penetration is above 1 also carries on through the blocks it breaks.
+- **Missiles** need no aim and hit big, slow ships hard, but shields absorb them whole and point defence shoots
+  them down. Rockets hit everything around where they strike, so they strip machines off a lightly plated hull.
+- **Point defence** pays off against a missile-heavy enemy: one or two turrets facing the threat turn most rockets
+  away.
 - **Facing**: a forward battery suits a ship that turns well; broadside guns suit a behavior that circles its target.
 
 See also [[category:weapons]] and the [[page:drydock_rules]].

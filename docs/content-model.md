@@ -246,6 +246,12 @@ Optional component blocks (a part has any combination):
 | `Beam` | — | continuous hit-scan: `damage` per second while firing, burns the first block it touches |
 | `Pulse(rate: r)` | `rate` (shots/s, at most 60) | hit-scan pulses, each dealing `damage / rate`, first block only |
 | `Projectile(rate: r, speed: v, penetration: n, recoil: j)` | shots/s, m/s, blocks, kN·s | a flying shot (inherits the ship's velocity), lives `range / speed` s, hits up to `n` blocks (the first included; what breaks one carries on into the next), pushes the shooter back with `j` per shot; kinetic shots ricochet off slopes hit at a shallow angle |
+| `Missile(rate: r, salvo: n, speed: v, accel: a, turn: t, life: s, hp: h, radius: m)` | salvos/s, missiles (default 1), m/s, m/s², °/s, s, HP, m | homing missiles (GDR-0115): `n` per shot, each dealing `damage / rate / n` once to every part within `m` of where it strikes (the chain-reaction rule); they accelerate to `v`, turn at up to `t` towards the nearest enemy ahead, live `s` seconds and have `h` hit points for point defence |
+
+`weapon.defence: (arc: deg, ship_mass: t)` (GDR-0115, pulse guns only) makes a gun **point defence**: it aims itself
+within `arc` of its facing and fires on its own at enemy missiles, then at enemy vessels of at most `ship_mass`.
+Missile stat lines: `salvo`, `missile_accel`, `missile_turn`, `missile_life`, `missile_hp`, `warhead_radius`; point
+defence: `defence_arc`, `defence_mass` (19 Oct 2026).
 
 Stat lines: `range`, `shot_rate`, `shot_speed`, `penetration`, `recoil`, `shield_capacity`, `shield_regen`
 (added 11 Oct 2026). The capacitor's `fire_rate` bonus multiplies the shot rate (beams: their damage).

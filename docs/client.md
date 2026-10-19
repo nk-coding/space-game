@@ -428,6 +428,12 @@ PostUpdate            ship_view::sync_piece_views (render_pose(alpha) → Transf
   only, no new texture). `SimEvent::Collected` plays a teal flash where the item was and a pulse streak from there
   into the collecting vessel (`Effects::flash`, `Effects::pulse`); a piece emptied by stripping goes without the
   usual burst.
+- **Missiles** (19 Oct 2026, GDR-0115; `fx.rs`, `sim_bridge.rs`): a projectile with a seeker is drawn as a body
+  along its course (longer and wider with its blast radius: a torpedo reads bigger than a rocket) in the shooter's
+  weapon colour, a flickering hot nozzle at its back and a smoke trail (trail particles, like an engine's, capped with
+  them at 2048). `SimEvent::Warhead` plays the chain blast below at the strike point in the shooter's weapon colour;
+  a missile shot down (`ProjectileGone { reason: ShotDown }`) pops in a small burst. Point-defence shots are pulses
+  (`ShotFired`), drawn from the turret to the missile. The fight viewer replays all of it through the same view.
 - **Chain-reaction blasts** (`fx/blast.rs`, 14 Oct 2026; GDR-0084): `SimEvent::Explosion` plays a blast where the
   part is drawn (its centroid through the view's transform; the sim's `at` only without a view), carried with its
   piece's velocity, in the power colour (`#e2b15c`) with coral embers: a white-hot flash (0.15 s), a soft glow over
