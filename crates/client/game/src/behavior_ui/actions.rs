@@ -14,7 +14,7 @@ use data::input::Action;
 use world::settings::Act;
 use bevy_egui::EguiContexts;
 use data::behavior::edit::{NodeRef, RuleId};
-use kit::ui_kit::{Pill, Ring, TextField, UiClick, UiPointer};
+use kit::ui_kit::{LayoutClass, Pill, Ring, TextField, UiClick, UiPointer};
 use world::mode::AppMode;
 
 use crate::drydock::actions::DrydockAction;
@@ -23,6 +23,7 @@ use super::edit::{Edit, EditState};
 use super::inspect::Selection;
 use super::list::BehaviorList;
 use super::screen::SearchField;
+use super::touch::SwallowClick;
 use super::{BehaviorDraft, BehaviorTab, BehaviorUi, BehaviorView, TestMode};
 
 #[derive(Message, Clone, Debug, PartialEq)]
@@ -43,6 +44,8 @@ pub enum BehaviorAction {
     TestMode(TestMode),
     /// TEST IN RANGE (T) in [`BehaviorUi::test_mode`] (`saving.rs` starts the test).
     TestInRange,
+    /// The phone's caret ring beside TEST IN RANGE: opens or closes the popover of its modes.
+    Modes,
 
     // Editing (`edit.rs`), through the editing model.
     /// `+ RULE`: `always ->` the palette's first action, above a trailing `always` rule.
@@ -76,8 +79,14 @@ pub struct BehaviorButton(pub BehaviorAction);
 pub(super) fn clicks(
     mut clicks: MessageReader<UiClick>,
     buttons: Query<(&BehaviorButton, Option<&Pill>, Option<&Ring>)>,
+    mut swallow: ResMut<SwallowClick>,
     mut out: MessageWriter<BehaviorAction>,
 ) {
+    // A finger lifted after panning the graph or dragging a rule clicks nothing.
+    if std::mem::take(&mut swallow.0) {
+        clicks.clear();
+        return;
+    }
     for c in clicks.read() {
         if let Ok((b, pill, ring)) = buttons.get(c.0)
             && !pill.is_some_and(|p| p.disabled)
@@ -97,6 +106,7 @@ pub(super) fn shortcuts(
     edit: Res<EditState>,
     ui: Res<BehaviorUi>,
     list: Res<BehaviorList>,
+    class: Res<LayoutClass>,
     mut contexts: EguiContexts,
     mut search: Query<&mut TextField, With<SearchField>>,
     mut out: MessageWriter<BehaviorAction>,
@@ -112,7 +122,8 @@ pub(super) fn shortcuts(
     }
     // Search gives the search field the keyboard; the other keys of that frame are typing, not shortcuts (keys of
     // one frame come in no order).
-    if act.just_pressed(Action::Search) {
+    // (A phone's layout has no search field.)
+    if act.just_pressed(Action::Search) && !class.is_compact() {
         for mut f in &mut search {
             f.focus();
         }
@@ -141,6 +152,10 @@ pub(super) fn apply(
     mut next: ResMut<NextState<AppMode>>,
 ) {
     for a in actions.read() {
+        // Anything else closes the modes' popover.
+        if ui.modes_open && !matches!(a, BehaviorAction::Modes | BehaviorAction::TestMode(_)) {
+            ui.modes_open = false;
+        }
         match a {
             BehaviorAction::Back => next.set(AppMode::Drydock),
             BehaviorAction::Menu => next.set(AppMode::Home),
@@ -162,7 +177,11 @@ pub(super) fn apply(
             BehaviorAction::Behaviors if ui.tab == BehaviorTab::Assists => ui.tab = BehaviorTab::Behavior,
             BehaviorAction::Select(n) => ui.selected = Some(Selection::Node(*n)),
             BehaviorAction::Deselect => ui.selected = None,
-            BehaviorAction::TestMode(m) => ui.test_mode = *m,
+            BehaviorAction::TestMode(m) => {
+                ui.test_mode = *m;
+                ui.modes_open = false;
+            }
+            BehaviorAction::Modes => ui.modes_open = !ui.modes_open,
             // `edit::apply` (editing), `saving.rs` (Save, TestInRange), `list.rs` (Behaviors).
             BehaviorAction::TestInRange
             | BehaviorAction::Save

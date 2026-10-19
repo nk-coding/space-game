@@ -17,7 +17,7 @@ use bevy::window::PrimaryWindow;
 use kit::style::ui_color;
 use kit::ui_icons::Glyph;
 use kit::ui_kit::{
-    Hot, Pill, Ring, TextField, Tone, ValueBar, field_text, glow, prose, ring_glyph, ring_node, spawn_bar, spawn_pill, tracked,
+    Hot, Pill, Ring, TextField, Tone, UiPointer, ValueBar, field_text, glow, prose, ring_glyph, ring_node, spawn_bar, spawn_pill, tracked,
 };
 
 use crate::drydock::report::DrydockReport;
@@ -27,6 +27,7 @@ use super::draft::BehaviorDraft;
 use super::edit::{Edit, EditState, apply_edit};
 use super::inspect::{Button, ChoiceRow, Control, Inspection, NoteTarget, NumberRow, SCRIPT_TAG, SliderSpec, SwitchRow};
 use super::screen::{Kit, LINE_W, role_color};
+use super::touch::SLOP;
 
 /// Space above each block of the inspector.
 const GAP: f32 = 12.0;
@@ -84,7 +85,8 @@ pub(super) fn spawn_inspection(p: &mut ChildSpawnerCommands, kit: &Kit, i: &Insp
         None => kit.ui.number,
     };
     p.spawn(tracked(kit.fonts, &i.kicker, 9.0, kit.c(Tone::Label, 1.0), 0.32));
-    p.spawn((prose(kit.fonts, &i.name, 25.0, ui_color(name_color, 1.0)), Node { margin: UiRect::top(px(5)), ..default() }));
+    let name = if kit.class.is_compact() { 20.0 } else { 25.0 };
+    p.spawn((prose(kit.fonts, &i.name, name, ui_color(name_color, 1.0)), Node { margin: UiRect::top(px(5)), ..default() }));
     if !i.summary.is_empty() {
         p.spawn((prose(kit.fonts, &i.summary, 11.5, kit.c(Tone::Label, 1.0)), Node { margin: UiRect::top(px(6)), ..default() }));
     }
@@ -339,10 +341,13 @@ pub(super) fn drop_drags(mut slider: ResMut<SliderDrag>, mut rows: ResMut<super:
 }
 
 /// The held slider follows the pointer (one undo step per drag); its fill, knob and value text follow in place.
+/// A finger on a slider moves it only once it goes sideways past `touch::SLOP` (up and down scrolls the inspector),
+/// or when it lifts where it went down (a tap: the value there, one undo step).
 #[allow(clippy::too_many_arguments)]
 pub(super) fn drag_sliders(
     window: Single<&Window, With<PrimaryWindow>>,
     touches: Res<Touches>,
+    pointer: Res<UiPointer>,
     time: Res<Time<Real>>,
     mut drag: ResMut<SliderDrag>,
     mut draft: ResMut<BehaviorDraft>,
@@ -350,14 +355,48 @@ pub(super) fn drag_sliders(
     mut sliders: Query<(Entity, &mut Slider, &Hot, &ComputedNode, &UiGlobalTransform)>,
     mut parts: Query<&mut Node, Without<Slider>>,
     mut texts: Query<&mut Text>,
+    mut finger: Local<Option<(Entity, Vec2, bool)>>,
 ) {
-    let held = sliders.iter_mut().find(|(_, s, hot, ..)| hot.pressed && s.spec.target.is_some());
-    let Some((e, mut slider, _, node, tf)) = held else {
+    let scale = window.scale_factor();
+    let held = sliders.iter().find(|(_, s, hot, ..)| hot.pressed && s.spec.target.is_some()).map(|(e, ..)| e);
+    // A finger: which slider it is on, where it went down, whether it moves it yet.
+    let mut tap = None;
+    match pointer.finger() {
+        Some(id) => {
+            let at = touches.get_pressed(id).map(|t| t.position() * scale);
+            match (held, at) {
+                (Some(e), Some(at)) => match *finger {
+                    Some((on, from, false)) if on == e => {
+                        let m = at - from;
+                        if m.x.abs() < SLOP * scale || m.x.abs() <= m.y.abs() {
+                            return;
+                        }
+                        *finger = Some((e, from, true));
+                    }
+                    Some((on, _, true)) if on == e => {}
+                    _ => {
+                        *finger = Some((e, at, false));
+                        return;
+                    }
+                },
+                _ => {
+                    if let Some((e, from, false)) = finger.take()
+                        && touches.just_released(id)
+                    {
+                        tap = Some((e, from.x));
+                    }
+                }
+            }
+        }
+        None => *finger = None,
+    }
+    let Some(e) = held.or(tap.map(|t| t.0)) else {
         if drag.0.take().is_some() {
             draft.end_stroke();
         }
         return;
     };
+    let Ok((e, mut slider, _, node, tf)) = sliders.get_mut(e) else { return };
     if drag.0 != Some(e) {
         drag.0 = Some(e);
         // The text has errors: the slider stays put (`draft.edit` refuses below), and the note says why.
@@ -366,10 +405,24 @@ pub(super) fn drag_sliders(
         }
         draft.edit(|ed| ed.begin_stroke());
     }
-    let scale = window.scale_factor();
-    let Some(at) = window.physical_cursor_position().or_else(|| touches.first_pressed_position().map(|p| p * scale)) else { return };
-    let left = tf.translation.x - node.size.x / 2.0;
-    let share = ((at.x - left) / node.size.x.max(1.0)).clamp(0.0, 1.0);
+    let x = match tap {
+        Some((_, x)) => Some(x),
+        None => window.physical_cursor_position().or_else(|| touches.first_pressed_position().map(|p| p * scale)).map(|p| p.x),
+    };
+    if let Some(x) = x {
+        let left = tf.translation.x - node.size.x / 2.0;
+        let share = ((x - left) / node.size.x.max(1.0)).clamp(0.0, 1.0);
+        set_slider(&mut slider, share, &mut draft, &mut state, time.elapsed_secs(), &mut parts, &mut texts);
+    }
+    // A tap is its own undo step.
+    if tap.is_some() {
+        drag.0 = None;
+        draft.end_stroke();
+    }
+}
+
+/// Puts a slider at `share` of its track (snapped to the step there): the edit, then its fill, knob and value text.
+fn set_slider(slider: &mut Slider, share: f32, draft: &mut BehaviorDraft, state: &mut EditState, now: f32, parts: &mut Query<&mut Node, Without<Slider>>, texts: &mut Query<&mut Text>) {
     let spec = slider.spec;
     let x = spec.scale.at(share);
     let Some(target) = spec.target.filter(|_| x != spec.value) else { return };
@@ -387,7 +440,7 @@ pub(super) fn drag_sliders(
                 t.0 = spec.scale.kind.value(x).to_string().to_uppercase();
             }
         }
-        Some(Err(why)) => state.refuse(why.to_string(), time.elapsed_secs()),
+        Some(Err(why)) => state.refuse(why.to_string(), now),
         None => {}
     }
 }

@@ -16,7 +16,7 @@ use bevy::ui::ComputedNode;
 use data::Content;
 use kit::style::{Style, ui_color};
 use kit::ui_kit::{
-    HudFonts, Hot, Pill, ScrollRows, Scrollbar, TextField, Tip, Tone, UiBlock, UiClick, UiPointer, field_text, label, number, prose, set_color, set_text, spawn_pill,
+    CompactText, HudFonts, Hot, Pill, ScrollRows, Scrollbar, TextField, Tip, Tone, UiBlock, UiClick, UiPointer, field_text, label, number, prose, set_color, set_text, spawn_pill,
     sub_tone, tracked,
 };
 use world::player::PlayerDesign;
@@ -27,6 +27,7 @@ use world::storage::now_unix;
 
 use super::draft::{BehaviorDraft, design_behavior};
 use super::saving::{Lib, opened_note};
+use crate::home::by_class;
 use super::{BehaviorAction, BehaviorUi, BehaviorView};
 
 /// Rows per list; longer lists scroll (by pixels: the pool has one row more, for a row cut at an edge).
@@ -162,6 +163,18 @@ pub(super) enum ListText {
 }
 
 pub(super) fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>, clear: Res<ClearColor>) {
+    let none = || Node { display: Display::None, ..default() };
+    let layer = |bottom: f32, pad: (f32, f32, f32), gap: f32| Node {
+        position_type: PositionType::Absolute,
+        left: px(0),
+        right: px(0),
+        top: px(0),
+        bottom: px(bottom),
+        flex_direction: FlexDirection::Column,
+        padding: UiRect::new(px(pad.0), px(pad.0), px(pad.1), px(pad.2)),
+        row_gap: px(gap),
+        ..default()
+    };
     let ui = style.ui;
     let c = |tone: Tone, a: f32| ui_color(tone.color(&ui), a);
     let fonts = &*fonts;
@@ -172,22 +185,15 @@ pub(super) fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Sty
         .spawn((
             ListRoot,
             UiBlock,
+            CompactText(super::screen::COMPACT_TEXT),
             // Hot, so a click on the veil reaches no widget under it.
             Hot::default(),
             GlobalZIndex(20),
             Visibility::Hidden,
             BackgroundColor(ui_color(clear.0, 0.985)),
-            Node {
-                position_type: PositionType::Absolute,
-                left: px(0),
-                right: px(0),
-                top: px(0),
-                bottom: px(66),
-                flex_direction: FlexDirection::Column,
-                padding: UiRect::new(px(100), px(100), px(18), px(10)),
-                row_gap: px(18),
-                ..default()
-            },
+            // On a phone (docs/plans/android.md 4.4): narrow margins over the bottom bar, the two lists side by side
+            // as wide as the window lets them, NEW BEHAVIOR in the header.
+            by_class(layer(66.0, (100.0, 18.0, 10.0), 18.0), layer(52.0, (12.0, 8.0, 4.0), 8.0)),
         ))
         .with_children(|root| {
             root.spawn(Node { justify_content: JustifyContent::SpaceBetween, ..row(14.0) }).with_children(|h| {
@@ -195,11 +201,19 @@ pub(super) fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Sty
                     col.spawn(label(fonts, "BEHAVIOR  ›  BEHAVIORS", 10.0, c(Tone::Label, 1.0)));
                     col.spawn(number(fonts, "Your behaviors and templates", 20.0, c(Tone::Number, 1.0)));
                 });
-                spawn_pill(h, fonts, "CLOSE", 9.5, 30.0, None, pill, (ListButton::Close, Tip::key("CLOSE", "ESC")));
+                h.spawn(row(8.0)).with_children(|r| {
+                    r.spawn(by_class(none(), Node::default())).with_children(|n| {
+                        spawn_pill(n, fonts, "NEW BEHAVIOR", 9.5, 30.0, None, pill, ListButton::New);
+                    });
+                    spawn_pill(r, fonts, "CLOSE", 9.5, 30.0, None, pill, (ListButton::Close, Tip::key("CLOSE", "ESC")));
+                });
             });
-            root.spawn(Node { flex_direction: FlexDirection::Row, column_gap: px(48), flex_grow: 1.0, min_height: px(0), ..default() }).with_children(|lists| {
+            let lists = |gap: f32| Node { flex_direction: FlexDirection::Row, column_gap: px(gap), flex_grow: 1.0, min_height: px(0), ..default() };
+            root.spawn(by_class(lists(48.0), lists(16.0))).with_children(|lists| {
                 for (list, width) in [(0, 600.0), (1, 432.0)] {
-                    lists.spawn(Node { width: px(width), flex_direction: FlexDirection::Column, row_gap: px(10), min_height: px(0), ..default() }).with_children(|col| {
+                    let col = Node { width: px(width), flex_direction: FlexDirection::Column, row_gap: px(10), min_height: px(0), ..default() };
+                    let c_col = Node { width: Val::Auto, flex_grow: 1.0, flex_basis: px(0), min_width: px(0), row_gap: px(6), ..col.clone() };
+                    lists.spawn(by_class(col, c_col)).with_children(|col| {
                         col.spawn((ListText::Section(list), label(fonts, "", 9.0, c(Tone::Dim, 1.0)), Node { margin: UiRect::left(px(12)), ..default() }));
                         col.spawn((
                             ListNode(list),
@@ -269,8 +283,8 @@ pub(super) fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Sty
                     spawn_pill(b, fonts, "KEEP", 9.5, 30.0, None, pill, ListButton::KeepDelete);
                 });
             });
-            root.spawn((Node { height: px(1), flex_shrink: 0.0, ..default() }, BackgroundColor(c(Tone::Label, 0.14))));
-            root.spawn(row(8.0)).with_children(|r| {
+            root.spawn((by_class(Node { height: px(1), flex_shrink: 0.0, ..default() }, none()), BackgroundColor(c(Tone::Label, 0.14))));
+            root.spawn(by_class(row(8.0), none())).with_children(|r| {
                 r.spawn(head("NEW", 80.0));
                 spawn_pill(r, fonts, "NEW BEHAVIOR  ·  ONE RULE", 9.5, 30.0, None, pill, ListButton::New);
             });

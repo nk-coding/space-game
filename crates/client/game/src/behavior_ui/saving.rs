@@ -24,7 +24,7 @@ use data::{Behavior, Content};
 use sim::DesignReport;
 use kit::params::Params;
 use kit::style::{Style, ui_color};
-use kit::ui_kit::{HudFonts, Hot, TextField, Tone, UiClick, field_text, label, name_in_place, prose, set_color, set_text as set_ui_text};
+use kit::ui_kit::{HudFonts, Hot, LayoutClass, TextField, Tone, UiClick, field_text, label, name_in_place, prose, set_color, set_text as set_ui_text};
 use world::mode::AppMode;
 use world::player::PlayerDesign;
 use world::player::behaviors::{NEW_SUMMARY, PlayerBehaviors, errors_note, set_program, set_text};
@@ -515,7 +515,7 @@ pub(super) fn spawn_title(parent: &mut ChildSpawnerCommands, fonts: &HudFonts, n
     // As tall as the field in both states, so opening it does not move the ring button beside the block (as in the
     // drydock's title).
     parent.spawn(Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(12), height: px(FIELD_H), ..default() }).with_children(|t| {
-        t.spawn((TitleButton, Hot::default(), Node::default())).with_child((ScreenText::Name, prose(fonts, "", kit::ui_kit::frame().title, name)));
+        t.spawn((TitleButton, Hot::default(), Node::default())).with_child((ScreenText::Name, prose(fonts, "", kit::ui_kit::frame().title, name), TextLayout::no_wrap()));
         t.spawn((
             TitleField,
             TextField { placeholder: "Name".into(), max_chars: MAX_NAME, ..default() },
@@ -536,7 +536,7 @@ pub(super) fn spawn_title(parent: &mut ChildSpawnerCommands, fonts: &HudFonts, n
         .with_children(|f| {
             f.spawn(field_text(fonts, 16.0));
         });
-        t.spawn((TitleNote, label(fonts, "", 8.5, dim)));
+        t.spawn((TitleNote, label(fonts, "", 8.5, dim), TextLayout::no_wrap()));
     });
 }
 
@@ -566,6 +566,7 @@ pub(super) fn title(
 }
 
 /// The saved state after the name follows the draft, the design and the saved behaviors.
+#[allow(clippy::too_many_arguments)]
 pub(super) fn sync_title(
     draft: Res<BehaviorDraft>,
     design: Res<PlayerDesign>,
@@ -573,14 +574,21 @@ pub(super) fn sync_title(
     content: Res<GameContent>,
     style: Res<Style>,
     tab: Res<AssistTab>,
+    class: Res<LayoutClass>,
     note: Single<(&mut Text, &mut TextColor), With<TitleNote>>,
 ) {
-    if !draft.is_changed() && !design.is_changed() && !behaviors.is_changed() {
+    if !draft.is_changed() && !design.is_changed() && !behaviors.is_changed() && !class.is_changed() {
         return;
     }
     let content = &content.0;
     let flown = design_behavior(content, &behaviors, design.blueprint());
-    let (s, tone) = if tab.open() { ("SAVED WITH THE DESIGN".into(), Tone::Dim) } else { header_tag(&draft, content, &behaviors, flown) };
+    let (mut s, tone): (String, Tone) = if tab.open() { ("SAVED WITH THE DESIGN".into(), Tone::Dim) } else { header_tag(&draft, content, &behaviors, flown) };
+    // A phone has room for the state only (UNSAVED, TEMPLATE, SAVED), not what follows it.
+    if class.is_compact()
+        && let Some(cut) = s.find("  ·  ")
+    {
+        s.truncate(cut);
+    }
     let (mut text, mut color) = note.into_inner();
     set_ui_text(&mut text, &s);
     set_color(&mut color, ui_color(tone.color(&style.ui), 1.0));

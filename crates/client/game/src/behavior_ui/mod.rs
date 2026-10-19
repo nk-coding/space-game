@@ -18,7 +18,8 @@
 //! * [`actions`]: [`BehaviorAction`], the one message the screen's buttons and keys send; the UI-state handler.
 //! * [`screen`]: the screen's nodes (`ui_kit` widgets), rebuilt from the data above when it changes.
 //! * [`controls`]: the inspector's controls as nodes; slider drags and note fields.
-//! * [`reorder`]: dragging a rule's row to another place in the list.
+//! * [`reorder`]: dragging a rule's row to another place in the list (a finger holds it first).
+//! * [`touch`]: the screen under a finger: the phone's graph pans sideways, a pan's release clicks nothing.
 //! * [`text_view`]: the TEXT view (an egui text editor in the look) with live errors.
 //! * [`dashed`]: the dashed pill outline (Rhai nodes, `+ RULE`), a UI material.
 //! * [`saving`]: the name and saved state in the header, SAVE, the working draft (unsaved edits survive leaving
@@ -48,6 +49,7 @@ pub mod reorder;
 pub mod saving;
 pub mod screen;
 pub mod text_view;
+pub mod touch;
 pub mod values;
 
 use bevy::prelude::*;
@@ -55,7 +57,7 @@ use bevy::state::state::StateTransitionEvent;
 use bevy::ui::UiScale;
 use bevy::window::PrimaryWindow;
 use bevy_egui::EguiPrimaryContextPass;
-use kit::ui_kit::{ScreenFx, show_screen, snap_screen, UiInputSet, UiStyleSet};
+use kit::ui_kit::{LayoutClass, ScreenFx, compact_scale, show_screen, snap_screen, UiInputSet, UiStyleSet};
 use world::camera::{CameraRig, CameraSet};
 use world::fx::FxFlush;
 use world::mode::AppMode;
@@ -109,6 +111,8 @@ pub struct BehaviorUi {
     pub test_mode: TestMode,
     /// The palette search.
     pub search: String,
+    /// The phone's popover of TEST IN RANGE's modes is open.
+    pub modes_open: bool,
     /// The screen was opened from home (the shipyard's behavior building), so Esc goes back there; from the
     /// drydock it goes back to the drydock. A test flight keeps the way in.
     pub from_home: bool,
@@ -142,6 +146,7 @@ impl Plugin for BehaviorPlugin {
             .init_resource::<controls::SliderDrag>()
             .init_resource::<controls::DesignReach>()
             .init_resource::<reorder::RowDrag>()
+            .init_resource::<touch::SwallowClick>()
             .init_resource::<saving::DraftSlot>()
             .init_resource::<saving::ScreenNote>()
             .init_resource::<list::BehaviorList>()
@@ -163,11 +168,14 @@ impl Plugin for BehaviorPlugin {
             .add_systems(OnExit(AppMode::Behavior), (assists::leave, give_back_zoom, controls::drop_drags, list::leave, saving::leave, text_view::leave).chain())
             .add_systems(OnTransition { exited: AppMode::Behavior, entered: AppMode::Flight }, |mut s: ResMut<UiScale>, size: Res<kit::ui_kit::UiSize>| s.0 = size.0)
             .add_systems(Update, show.run_if(state_changed::<AppMode>))
+            .add_systems(Update, screen::fit_scrolls.after(UiInputSet).before(UiStyleSet))
             .add_systems(PostUpdate, screen::draw_dots.after(CameraSet).before(FxFlush))
             .add_systems(
                 Update,
                 (
-                    (actions::clicks, actions::shortcuts, screen::sync_search, controls::commit_notes, reorder::drag_rows).in_set(BehaviorSet::Input),
+                    // A finger's hold on a row or its pan of the graph comes first: lifting it then clicks nothing.
+                    ((reorder::drag_rows, touch::pan_graph).chain().before(actions::clicks), actions::clicks, actions::shortcuts, screen::sync_search, controls::commit_notes)
+                        .in_set(BehaviorSet::Input),
                     // One order: the UI state, then what replaces or saves the draft, then edits of the draft on the
                     // screen (they see a replaced draft's new ids), then the autosave (it sees every edit of the frame,
                     // so leaving the screen in the same frame keeps it).
@@ -193,6 +201,7 @@ impl Plugin for BehaviorPlugin {
                         screen::sync_texts,
                         screen::sync_note,
                         screen::sync_pills,
+                        screen::sync_modes,
                         edit::sync_rings,
                         screen::style_chips,
                         screen::style_rows,
@@ -264,10 +273,11 @@ fn show(mode: Res<State<AppMode>>, mut transitions: MessageReader<StateTransitio
     }
 }
 
-/// The window: the UI scale (min(w / 1280, h / 720), 1 to 2) and the camera rig's viewport, which places the
-/// icons and the dot grid (world sprites under the UI) on screen.
-fn fit_window(window: Single<&Window, With<PrimaryWindow>>, size: Res<kit::ui_kit::UiSize>, mut ui_scale: ResMut<UiScale>, mut rig: ResMut<CameraRig>) {
-    let s = kit::ui_kit::ui_scale_for(&window, *size);
+/// The window: the UI scale (min(w / 1280, h / 720), 1 to 2; on a phone, the compact class, the phone layout for
+/// 844 × 390 at `compact_scale`) and the camera rig's viewport, which places the icons and the dot grid (world sprites
+/// under the UI) on screen.
+fn fit_window(window: Single<&Window, With<PrimaryWindow>>, size: Res<kit::ui_kit::UiSize>, class: Res<LayoutClass>, mut ui_scale: ResMut<UiScale>, mut rig: ResMut<CameraRig>) {
+    let s = if class.is_compact() { compact_scale(window.size()) * size.0 } else { kit::ui_kit::ui_scale_for(&window, *size) };
     if (ui_scale.0 - s).abs() > 1e-3 {
         ui_scale.0 = s;
     }

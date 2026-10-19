@@ -1,5 +1,6 @@
 //! The TEXT view: the behavior, or on the PILOT ASSISTS tab the design's assists, as editable text
-//! (`docs/behavior-format.md`), one line per rule, with live errors.
+//! (`docs/behavior-format.md`), one line per rule, with live errors. On a phone (the compact class) it is read-only
+//! until the game has a soft keyboard there: it scrolls, the graph edits.
 //!
 //! bevy_ui has no text input, so the editor is an egui multi-line `TextEdit`, placed over the graph area's node and styled to the look: Barlow, no frame or box, the
 //! names coloured like the graph (conditions violet, actions teal, Rhai gold, keywords grey), dim line numbers
@@ -20,6 +21,7 @@ use data::behavior::{KEYWORDS, ListKind, Program};
 use data::{BehaviorNode, NodeRole, Table};
 use kit::clipboard::Clipboard;
 use kit::style::Style;
+use kit::ui_kit::LayoutClass;
 use world::sim_bridge::GameContent;
 
 use super::draft::BehaviorDraft;
@@ -196,6 +198,7 @@ pub(super) fn editor(
     content: Res<GameContent>,
     style: Res<Style>,
     ui_scale: Res<UiScale>,
+    class: Res<LayoutClass>,
     window: Single<&Window, With<PrimaryWindow>>,
     viewport: Single<(&ComputedNode, &UiGlobalTransform), With<TextViewport>>,
     clear: Res<ClearColor>,
@@ -285,11 +288,13 @@ pub(super) fn editor(
                 .desired_width(f32::INFINITY)
                 .desired_rows(((rect.height() / row_h) as usize).saturating_sub(1).max(1))
                 .lock_focus(true)
+                // On a phone it is read-only for now (no soft keyboard yet; docs/plans/android.md 3.7): it scrolls.
+                .interactive(!class.is_compact())
                 .layouter(&mut layouter)
                 .show(ui);
             changed = out.response.changed();
             // Switching to TEXT puts the caret into the text.
-            if opened {
+            if opened && !class.is_compact() {
                 out.response.request_focus();
             }
             // While it has the keyboard: Ctrl+C copies the selection, Ctrl+V pastes (egui inserts the text; the web

@@ -22,7 +22,7 @@
 use bevy::prelude::*;
 use data::input::Action;
 use world::settings::ActionTip;
-use bevy::ui::{ComputedNode, UiGlobalTransform, UiScale};
+use bevy::ui::{ComputedNode, OverflowClipMargin, UiGlobalTransform, UiScale};
 use bevy::window::PrimaryWindow;
 use data::NodeRole;
 use data::behavior::ListKind;
@@ -30,13 +30,15 @@ use data::behavior::edit::RuleId;
 use kit::style::{Style, UiPalette, ui_color};
 use kit::ui_icons::{Glyph, UiIcon};
 use kit::ui_kit::{
-    HudFonts, Edge, Hot, Pill, ScreenFx, ScreenPart, Scrollbar, TextField, Tip, Tone, crumb, field_text, frame, glow, label, prose, spawn_back, ring_node, set_color, set_text, spawn_pill,
+    CompactText, HudFonts, Edge, Hot, LayoutClass, Pill, ScreenFx, ScreenPart, Scrollbar, TextField, Tip, Tone, UiBlock, crumb, field_text, frame, glow, label, prose, spawn_back, ring_node, set_color, set_text, spawn_pill,
     tracked,
 };
 use world::camera::CameraRig;
 use world::fx::{FxQueue, FxRegions};
 use world::player::behaviors::PlayerBehaviors;
 use world::sim_bridge::GameContent;
+
+use crate::home::by_class;
 
 use super::actions::{BehaviorAction, BehaviorButton};
 use bevy::ui_render::prelude::MaterialNode;
@@ -60,14 +62,56 @@ const SIDE: f32 = 22.0;
 const RIGHT_W: f32 = 296.0;
 /// The graph area ends this far from the right edge (the right column, its divider and a gap).
 const GRAPH_RIGHT: f32 = SIDE + RIGHT_W + 34.0;
-/// The graph's columns: the root, the trunk; its rows.
-pub(super) const ROOT_W: f32 = 150.0;
-const TRUNK_W: f32 = 30.0;
-const ROW_H: f32 = 52.0;
-const SLOT_ROW_H: f32 = 30.0;
-const CHIP_H: f32 = 34.0;
-const CHIP_FONT: f32 = 14.5;
 pub(super) const LINE_W: f32 = 1.2;
+/// The phone layout (the compact class, 844 × 390 at `compact_scale`, `docs/plans/android.md` 4.4, GDR-0119): the
+/// columns' distance from the window's sides and top, the graph's bottom (the status line sits under it, over the
+/// bottom bar), the right column's width and bottom, the bottom bar (*placeholders*).
+const C_SIDE: f32 = 12.0;
+const C_TOP: f32 = 60.0;
+const C_GRAPH_BOTTOM: f32 = 68.0;
+const C_RIGHT_W: f32 = 214.0;
+const C_RIGHT_BOTTOM: f32 = 52.0;
+const C_GRAPH_RIGHT: f32 = C_SIDE + C_RIGHT_W + 14.0;
+const C_BAR_H: f32 = 36.0;
+const C_BAR_BOTTOM: f32 = 8.0;
+/// The breadcrumb and the name keep to this width on a phone (a long name is cut).
+const C_HEAD_W: f32 = 240.0;
+/// The top of the modes' popover under TEST IN RANGE on a phone.
+const C_POPOVER_TOP: f32 = 58.0;
+/// The graph's glow room on a phone (px; the kit's is 30).
+const C_GRAPH_ROOM: f32 = 6.0;
+/// The palette's least height on a phone (about three rows of pills).
+const C_PALETTE_MIN: f32 = 96.0;
+/// The least text size on a phone (`kit::ui_kit::CompactText`), as on the other screens.
+pub(super) const COMPACT_TEXT: f32 = crate::home::COMPACT_TEXT;
+
+/// The graph's sizes in a layout class: the root's and the trunk's columns, a rule's row, a dead line's row, a chip's
+/// height, text and padding, the gap between chips, a note's text.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(super) struct GraphDims {
+    pub(super) root_w: f32,
+    trunk_w: f32,
+    row_h: f32,
+    slot_row_h: f32,
+    chip_h: f32,
+    chip_font: f32,
+    chip_pad: f32,
+    gap: f32,
+    note_font: f32,
+    root_title: f32,
+}
+
+/// 1280 × 720 and up.
+const WIDE: GraphDims =
+    GraphDims { root_w: 150.0, trunk_w: 30.0, row_h: 52.0, slot_row_h: 30.0, chip_h: 34.0, chip_font: 14.5, chip_pad: 16.0, gap: 8.0, note_font: 12.0, root_title: 16.0 };
+/// A phone (as the mockup: chips about 30 dp high; under a finger they are hit 48 dp high).
+const COMPACT: GraphDims =
+    GraphDims { root_w: 104.0, trunk_w: 24.0, row_h: 46.0, slot_row_h: 26.0, chip_h: 30.0, chip_font: 12.5, chip_pad: 12.0, gap: 6.0, note_font: 11.0, root_title: 14.0 };
+
+/// The graph's sizes in the window's layout class.
+pub(super) fn graph_dims(class: LayoutClass) -> &'static GraphDims {
+    if class.is_compact() { &COMPACT } else { &WIDE }
+}
 /// How much inactive rules (no rule slot) are dimmed.
 const INACTIVE: f32 = 0.4;
 /// A dash and the gap after it (logical px).
@@ -105,9 +149,9 @@ pub(super) struct PaletteList;
 #[derive(Component)]
 pub struct SearchField;
 
-/// What the graph was built from: the program revision and the rule slots.
+/// What the graph was built from: the program revision, the rule slots and the layout class.
 #[derive(Resource, Default)]
-pub struct GraphBuilt(Option<(u64, u32)>);
+pub struct GraphBuilt(Option<(u64, u32, LayoutClass)>);
 
 /// Texts that follow the state.
 #[derive(Component, Clone, Copy, Debug, PartialEq, Eq)]
@@ -159,9 +203,15 @@ impl RowBand {
 pub(super) struct Kit<'a> {
     pub(super) fonts: &'a HudFonts,
     pub(super) ui: UiPalette,
+    /// The window's layout class (a phone's sizes).
+    pub(super) class: LayoutClass,
 }
 
 impl Kit<'_> {
+    pub(super) fn g(&self) -> &'static GraphDims {
+        graph_dims(self.class)
+    }
+
     pub(super) fn c(&self, tone: Tone, a: f32) -> Color {
         ui_color(tone.color(&self.ui), a)
     }
@@ -192,11 +242,16 @@ pub(super) fn role_color(ui: &UiPalette, role: NodeRole, rhai: bool) -> Color {
 // The frame
 
 pub(super) fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>) {
-    let kit = Kit { fonts: &fonts, ui: style.ui };
+    let kit = Kit { fonts: &fonts, ui: style.ui, class: LayoutClass::Wide };
     let fonts = &*fonts;
+    // Every part placed for both layout classes (`home::ByClass`, scrolling areas `ScrollFit`): the wide layout as it
+    // was, the phone layout (`C_*`, docs/plans/android.md 4.4); a part only one of them has is hidden in the other.
+    let none = || Node { display: Display::None, ..default() };
+    let row = |gap: f32| Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(gap), flex_shrink: 0.0, ..default() };
     commands
         .spawn((
             BehaviorRoot,
+            CompactText(COMPACT_TEXT),
             // Opens and closes with a transition (`ui_kit::ScreenFx`); the station fades out behind it, on the
             // veiled backdrop the other screens over the station share.
             world::backdrop::VeilsBackdrop,
@@ -210,57 +265,85 @@ pub(super) fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Sty
             root.spawn((ScreenPart::new(Edge::Top, 0), f.top_left()))
                 .with_children(|tl| {
                     spawn_back(tl, &kit.ui, (BehaviorButton(BehaviorAction::Menu), Tip::new("SHIPYARD")));
-                    tl.spawn(f.heading()).with_children(|col| {
-                        col.spawn((ScreenText::Breadcrumb, crumb(fonts, "", &kit.ui)));
+                    // On a phone a long name is cut, so the pills on the right keep their room.
+                    tl.spawn(by_class(f.heading(), Node { max_width: px(C_HEAD_W), overflow: Overflow::clip(), ..f.heading() })).with_children(|col| {
+                        col.spawn((ScreenText::Breadcrumb, crumb(fonts, "", &kit.ui), TextLayout::no_wrap()));
                         // The name (a click renames it) and its saved state (`saving.rs`).
                         super::saving::spawn_title(col, fonts, kit.c(Tone::Number, 1.0), kit.c(Tone::Dim, 1.0), kit.c(Tone::Label, 0.3));
                     });
-                    tl.spawn((
-                        Node {
-                            height: px(30),
-                            padding: UiRect::horizontal(px(16)),
-                            margin: UiRect::left(px(22)),
-                            border: UiRect::all(px(LINE_W)),
-                            border_radius: BorderRadius::MAX,
-                            align_items: AlignItems::Center,
-                            ..default()
-                        },
-                        BorderColor::all(kit.c(Tone::Violet, 0.7)),
-                        BackgroundColor(kit.c(Tone::Violet, 0.06)),
-                    ))
-                    .with_children(|p| {
-                        p.spawn((ScreenText::Slots, tracked(fonts, "", 9.5, kit.c(Tone::Violet, 1.0), 0.3)));
-                    });
+                    let slots = |h: f32, pad: f32, left: f32| Node {
+                        height: px(h),
+                        padding: UiRect::horizontal(px(pad)),
+                        margin: UiRect::left(px(left)),
+                        border: UiRect::all(px(LINE_W)),
+                        border_radius: BorderRadius::MAX,
+                        align_items: AlignItems::Center,
+                        flex_shrink: 0.0,
+                        ..default()
+                    };
+                    tl.spawn((by_class(slots(30.0, 16.0, 22.0), slots(26.0, 12.0, 4.0)), BorderColor::all(kit.c(Tone::Violet, 0.7)), BackgroundColor(kit.c(Tone::Violet, 0.06))))
+                        .with_children(|p| {
+                            p.spawn((ScreenText::Slots, tracked(fonts, "", 9.5, kit.c(Tone::Violet, 1.0), 0.3)));
+                        });
                 });
 
             // Over the graph area: the design's two rule lists (GDR-0088), each shown as GRAPH or TEXT (top right).
-            root.spawn((ScreenPart::new(Edge::Top, 0), Node { flex_direction: FlexDirection::Row, column_gap: px(8), ..abs(Some(SIDE), None, Some(TABS_TOP), None) })).with_children(|t| {
-                spawn_pill(t, fonts, "BEHAVIOR", 10.0, 30.0, None, Pill::new(Tone::Teal), (BehaviorButton(BehaviorAction::Tab(BehaviorTab::Behavior)), Tip::new("BEHAVIOR: HOW THE DESIGN FLIES WHEN NOBODY PILOTS IT")));
-                spawn_pill(t, fonts, "PILOT ASSISTS", 10.0, 30.0, None, Pill::new(Tone::Teal), (BehaviorButton(BehaviorAction::Tab(BehaviorTab::Assists)), Tip::new("PILOT ASSISTS: HELP WHILE YOU FLY THIS DESIGN")));
-            });
+            // On a phone the tabs sit in the bottom bar.
+            let tabs = Node { flex_direction: FlexDirection::Row, column_gap: px(8), ..abs(Some(SIDE), None, Some(TABS_TOP), None) };
+            root.spawn((ScreenPart::new(Edge::Top, 0), by_class(tabs, none()))).with_children(|t| spawn_tabs(t, fonts, 10.0, 30.0));
 
-            // Top right: GRAPH / TEXT, TEST IN RANGE and its two modes under it.
-            root.spawn((ScreenPart::new(Edge::Top, 0), Node { align_items: AlignItems::FlexStart, column_gap: px(28), ..f.top_right() }))
+            // Top right: GRAPH / TEXT, TEST IN RANGE and its two modes under it; on a phone the modes are in a
+            // popover under a caret ring beside TEST IN RANGE.
+            let tr = Node { align_items: AlignItems::FlexStart, column_gap: px(28), ..f.top_right() };
+            root.spawn((ScreenPart::new(Edge::Top, 0), by_class(tr, Node { column_gap: px(8), ..f.top_right() })))
                 .with_children(|tr| {
-                    tr.spawn(Node { flex_direction: FlexDirection::Row, column_gap: px(8), margin: UiRect::top(px(3)), ..default() }).with_children(|v| {
-                        for (text, view) in [("GRAPH", BehaviorView::Graph), ("TEXT", BehaviorView::Text)] {
-                            spawn_pill(v, fonts, text, 10.0, 34.0, None, Pill::new(Tone::Teal), BehaviorButton(BehaviorAction::View(view)));
-                        }
+                    tr.spawn(by_class(Node { margin: UiRect::top(px(3)), ..row(8.0) }, none())).with_children(|v| spawn_views(v, fonts, 10.0, 34.0));
+                    tr.spawn(by_class(none(), row(6.0))).with_children(|v| spawn_views(v, fonts, 9.0, 28.0));
+                    let play = || UiIcon::Glyph { glyph: Glyph::Play, color: kit.ui.teal };
+                    let test = || (BehaviorButton(BehaviorAction::TestInRange), Tip::new("TEST IN RANGE"), ActionTip(Action::TestFlight));
+                    let primary = Pill { primary: true, ..Pill::new(Tone::Teal) };
+                    let col = Node { flex_direction: FlexDirection::Column, align_items: AlignItems::FlexEnd, row_gap: px(8), ..default() };
+                    tr.spawn(by_class(col, none())).with_children(|t| {
+                        spawn_pill(t, fonts, "TEST IN RANGE", 12.0, 40.0, Some(play()), primary, test());
+                        t.spawn(row(6.0)).with_children(|m| spawn_modes(m, fonts, 8.5, 24.0));
                     });
-                    tr.spawn(Node { flex_direction: FlexDirection::Column, align_items: AlignItems::FlexEnd, row_gap: px(8), ..default() }).with_children(|t| {
-                        let play = UiIcon::Glyph { glyph: Glyph::Play, color: kit.ui.teal };
-                        spawn_pill(t, fonts, "TEST IN RANGE", 12.0, 40.0, Some(play), Pill { primary: true, ..Pill::new(Tone::Teal) }, (BehaviorButton(BehaviorAction::TestInRange), Tip::new("TEST IN RANGE"), ActionTip(Action::TestFlight)));
-                        t.spawn(Node { flex_direction: FlexDirection::Row, column_gap: px(6), ..default() }).with_children(|m| {
-                            for (text, mode) in [("WATCH", TestMode::Watch), ("FLY ALONGSIDE", TestMode::Alongside)] {
-                                spawn_pill(m, fonts, text, 8.5, 24.0, None, Pill::new(Tone::Teal), BehaviorButton(BehaviorAction::TestMode(mode)));
-                            }
+                    tr.spawn(by_class(none(), row(8.0))).with_children(|t| {
+                        t.spawn((ring_node(30.0), BehaviorButton(BehaviorAction::Modes), Tip::new("WATCH OR FLY ALONGSIDE"))).with_children(|r| {
+                            r.spawn((UiIcon::Glyph { glyph: Glyph::Caret, color: kit.ui.dim }, Node { width: px(14), height: px(14), ..default() }));
                         });
+                        spawn_pill(t, fonts, "TEST IN RANGE", 10.5, 34.0, Some(play()), primary, test());
                     });
                 });
+            // The phone's popover of the two modes (shown by `sync_modes`), over the right column's top.
+            root.spawn((
+                ModesPopover,
+                UiBlock,
+                Hot::default(),
+                GlobalZIndex(10),
+                Node {
+                    display: Display::None,
+                    flex_direction: FlexDirection::Column,
+                    align_items: AlignItems::FlexEnd,
+                    row_gap: px(6),
+                    padding: UiRect::all(px(8)),
+                    border: UiRect::all(px(LINE_W)),
+                    border_radius: BorderRadius::all(px(16)),
+                    ..abs(None, Some(f.edge), Some(C_POPOVER_TOP), None)
+                },
+                BorderColor::all(kit.c(Tone::Label, 0.3)),
+                BackgroundColor(ui_color(style.background.outer(), 0.97)),
+            ))
+            .with_children(|m| spawn_modes(m, fonts, 9.0, 30.0));
 
             // The graph area (and, in the TEXT view, the editor's rectangle).
             // A click on its empty space deselects.
             // It fades in place: the TEXT view's editor and the dot grid are placed from its rectangle.
+            // On a phone it also scrolls sideways (a finger's drag, `touch.rs`): a long rule is not cut off there.
+            let graph = |l: f32, r: f32, b: f32, x: OverflowAxis| Node {
+                overflow: Overflow { x, y: OverflowAxis::Scroll },
+                flex_direction: FlexDirection::Column,
+                ..abs(Some(l), Some(r), Some(if x == OverflowAxis::Clip { TOP } else { C_TOP }), Some(b))
+            };
             root.spawn((
                 GraphViewport,
                 ScreenPart::new(Edge::Fade, 1),
@@ -270,95 +353,188 @@ pub(super) fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Sty
                 ScrollPosition::default(),
                 Scrollbar::vertical(),
                 // Long rules are clipped at the right edge, not drawn over the inspector.
-                Node {
-                    overflow: Overflow { x: OverflowAxis::Clip, y: OverflowAxis::Scroll },
-                    flex_direction: FlexDirection::Column,
-                    ..abs(Some(SIDE), Some(GRAPH_RIGHT), Some(TOP), Some(BOTTOM))
-                },
+                // On a phone its glow room is small: its rules would show over the inspector's column.
+                scroll_fit(graph(SIDE, GRAPH_RIGHT, BOTTOM, OverflowAxis::Clip), graph(C_SIDE, C_GRAPH_RIGHT, C_GRAPH_BOTTOM, OverflowAxis::Scroll), Some(C_GRAPH_ROOM)),
             ))
             .with_children(|g| {
                 g.spawn((GraphContent, Node { flex_direction: FlexDirection::Column, flex_shrink: 0.0, padding: UiRect::vertical(px(6)), ..default() }));
             });
 
             // The divider and the right column: the inspector, ADD NODE with its search and the palette.
-            root.spawn((ScreenPart::new(Edge::Right, 1), Node { width: px(1), ..abs(None, Some(SIDE + RIGHT_W + 16.0), Some(TOP), Some(BOTTOM)) }, BackgroundColor(kit.c(Tone::Label, 0.14))));
-            root.spawn((ScreenPart::new(Edge::Right, 1), Node { width: px(RIGHT_W), flex_direction: FlexDirection::Column, ..abs(None, Some(SIDE), Some(TOP), Some(BOTTOM)) })).with_children(|rp| {
+            let divider = |right: f32, top: f32, bottom: f32| Node { width: px(1), ..abs(None, Some(right), Some(top), Some(bottom)) };
+            root.spawn((
+                ScreenPart::new(Edge::Right, 1),
+                by_class(divider(SIDE + RIGHT_W + 16.0, TOP, BOTTOM), divider(C_SIDE + C_RIGHT_W + 7.0, C_TOP, C_RIGHT_BOTTOM)),
+                BackgroundColor(kit.c(Tone::Label, 0.14)),
+            ));
+            let column = |w: f32, side: f32, top: f32, bottom: f32| Node { width: px(w), flex_direction: FlexDirection::Column, ..abs(None, Some(side), Some(top), Some(bottom)) };
+            root.spawn((ScreenPart::new(Edge::Right, 1), by_class(column(RIGHT_W, SIDE, TOP, BOTTOM), column(C_RIGHT_W, C_SIDE, C_TOP, C_RIGHT_BOTTOM)))).with_children(|rp| {
                 rp.spawn((InspectorBody, ScrollPosition::default(), Scrollbar::vertical(), Node { flex_direction: FlexDirection::Column, min_height: px(0), overflow: Overflow::scroll_y(), ..default() }));
-                rp.spawn((Node { height: px(1), margin: UiRect::vertical(px(18)), flex_shrink: 0.0, ..default() }, BackgroundColor(kit.c(Tone::Label, 0.14))));
-                rp.spawn((ScreenText::AddNode, label(fonts, "ADD NODE", 9.0, kit.c(Tone::Label, 1.0)), Node { margin: UiRect::bottom(px(10)), flex_shrink: 0.0, ..default() }));
+                let line = |gap: f32| Node { height: px(1), margin: UiRect::vertical(px(gap)), flex_shrink: 0.0, ..default() };
+                rp.spawn((by_class(line(18.0), line(10.0)), BackgroundColor(kit.c(Tone::Label, 0.14))));
+                let add = |gap: f32| Node { margin: UiRect::bottom(px(gap)), flex_shrink: 0.0, ..default() };
+                rp.spawn((ScreenText::AddNode, label(fonts, "ADD NODE", 9.0, kit.c(Tone::Label, 1.0)), by_class(add(10.0), add(6.0))));
+                // No search on a phone (no soft keyboard yet, and the column is short): the palette scrolls.
+                let search = Node {
+                    height: px(32),
+                    flex_shrink: 0.0,
+                    flex_direction: FlexDirection::Row,
+                    align_items: AlignItems::Center,
+                    padding: UiRect::horizontal(px(14)),
+                    column_gap: px(10),
+                    margin: UiRect::bottom(px(12)),
+                    border: UiRect::all(px(LINE_W)),
+                    border_radius: BorderRadius::MAX,
+                    ..default()
+                };
                 rp.spawn((
                     SearchField,
                     TextField { placeholder: "Search nodes".into(), max_chars: 24, ..default() },
                     Hot::default(),
                     Tip::new("SEARCH NODES"),
                     ActionTip(Action::Search),
-                    Node {
-                        height: px(32),
-                        flex_shrink: 0.0,
-                        flex_direction: FlexDirection::Row,
-                        align_items: AlignItems::Center,
-                        padding: UiRect::horizontal(px(14)),
-                        column_gap: px(10),
-                        margin: UiRect::bottom(px(12)),
-                        border: UiRect::all(px(LINE_W)),
-                        border_radius: BorderRadius::MAX,
-                        ..default()
-                    },
+                    by_class(search, none()),
                     BorderColor::all(kit.c(Tone::Label, 0.3)),
                 ))
                 .with_children(|f| {
                     f.spawn((UiIcon::Glyph { glyph: Glyph::Search, color: kit.ui.label }, Node { width: px(13), height: px(13), flex_shrink: 0.0, ..default() }));
                     f.spawn((field_text(fonts, 12.0), Node { flex_grow: 1.0, ..default() }));
                 });
+                let palette = |least: f32| Node {
+                    flex_direction: FlexDirection::Row,
+                    flex_wrap: FlexWrap::Wrap,
+                    align_content: AlignContent::FlexStart,
+                    column_gap: px(6),
+                    row_gap: px(7),
+                    flex_grow: 1.0,
+                    flex_basis: px(0),
+                    min_height: px(least),
+                    overflow: Overflow::scroll_y(),
+                    ..default()
+                };
                 rp.spawn((
                     PaletteList,
                     ScrollPosition::default(),
                     // No glow room: its pills don't glow, and the search field is just above.
                     Scrollbar::vertical().room(0),
-                    Node {
-                        flex_direction: FlexDirection::Row,
-                        flex_wrap: FlexWrap::Wrap,
-                        align_content: AlignContent::FlexStart,
-                        column_gap: px(6),
-                        row_gap: px(7),
-                        flex_grow: 1.0,
-                        flex_basis: px(0),
-                        min_height: px(PALETTE_MIN),
-                        overflow: Overflow::scroll_y(),
-                        ..default()
-                    },
+                    scroll_fit(palette(PALETTE_MIN), palette(C_PALETTE_MIN), None),
                 ));
             });
 
             // Bottom: back to the drydock, undo / redo, the status line (and a refusal after it); the behavior list
-            // and SAVE (as in the drydock).
-            root.spawn((ScreenPart::new(Edge::Bottom, 2), Node { height: px(40), flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(10), ..abs(Some(SIDE), Some(20.0), None, Some(14.0)) }))
-                .with_children(|bb| {
-                    spawn_pill(bb, fonts, "‹  DRYDOCK", 10.0, 32.0, None, Pill::new(Tone::Teal), (BehaviorButton(BehaviorAction::Back), Tip::new("DRYDOCK")));
-                    bb.spawn(Node { width: px(8), ..default() });
-                    for (g, action, tip) in [(Glyph::Undo, BehaviorAction::Undo, (Tip::new("UNDO"), ActionTip(Action::Undo))), (Glyph::Redo, BehaviorAction::Redo, (Tip::new("REDO"), ActionTip(Action::Redo)))] {
-                        bb.spawn((ring_node(34.0), BehaviorButton(action), tip)).with_children(|r| {
-                            r.spawn((UiIcon::Glyph { glyph: g, color: kit.ui.dim }, Node { width: px(18), height: px(18), ..default() }));
-                        });
-                    }
-                    bb.spawn((
-                        ScreenText::Status,
-                        label(fonts, "", 10.0, kit.c(Tone::Label, 1.0)),
-                        Node { flex_grow: 1.0, flex_shrink: 1.0, min_width: px(0), margin: UiRect::left(px(14)), ..default() },
-                    ))
-                        .with_child((
-                            NoteSpan,
-                            TextSpan::new(""),
-                            TextFont { font: fonts.regular.clone().into(), font_size: FontSize::Px(10.0), ..default() },
-                            TextColor(kit.c(Tone::Coral, 1.0)),
-                            bevy::text::LetterSpacing::Px(3.0),
-                        ));
-                    bb.spawn(Node { flex_direction: FlexDirection::Row, column_gap: px(10), flex_shrink: 0.0, ..default() }).with_children(|r| {
-                        spawn_pill(r, fonts, "BEHAVIORS", 9.5, 30.0, None, Pill::new(Tone::Teal), BehaviorButton(BehaviorAction::Behaviors));
-                        spawn_pill(r, fonts, "SAVE", 9.5, 30.0, None, Pill::new(Tone::Teal), (BehaviorButton(BehaviorAction::Save), Tip::new("SAVE"), ActionTip(Action::Save)));
+            // and SAVE (as in the drydock). On a phone the tabs come after DRYDOCK and the status line moves over
+            // the bar, under the graph.
+            let bar = |side: (f32, f32), bottom: f32, h: f32| Node { height: px(h), ..abs(Some(side.0), Some(side.1), None, Some(bottom)) };
+            root.spawn((
+                ScreenPart::new(Edge::Bottom, 2),
+                by_class(Node { column_gap: px(10), ..bar((SIDE, 20.0), 14.0, 40.0) }, Node { column_gap: px(8), ..bar((C_SIDE, C_SIDE), C_BAR_BOTTOM, C_BAR_H) }),
+            ))
+            .with_children(|bb| {
+                spawn_pill(bb, fonts, "‹  DRYDOCK", 10.0, 32.0, None, Pill::new(Tone::Teal), (BehaviorButton(BehaviorAction::Back), Tip::new("DRYDOCK")));
+                bb.spawn(Node { width: px(8), ..default() });
+                bb.spawn(by_class(none(), Node { margin: UiRect::right(px(8)), ..row(6.0) })).with_children(|t| spawn_tabs(t, fonts, 9.0, 28.0));
+                for (g, action, tip) in [(Glyph::Undo, BehaviorAction::Undo, (Tip::new("UNDO"), ActionTip(Action::Undo))), (Glyph::Redo, BehaviorAction::Redo, (Tip::new("REDO"), ActionTip(Action::Redo)))] {
+                    bb.spawn((ring_node(34.0), BehaviorButton(action), tip)).with_children(|r| {
+                        r.spawn((UiIcon::Glyph { glyph: g, color: kit.ui.dim }, Node { width: px(18), height: px(18), ..default() }));
                     });
+                }
+                let status = Node { flex_grow: 1.0, flex_shrink: 1.0, min_width: px(0), margin: UiRect::left(px(14)), ..default() };
+                spawn_status(bb, &kit, by_class(status, none()));
+                let right = row(10.0);
+                bb.spawn(by_class(right.clone(), Node { margin: UiRect::left(Val::Auto), ..right })).with_children(|r| {
+                    spawn_pill(r, fonts, "BEHAVIORS", 9.5, 30.0, None, Pill::new(Tone::Teal), BehaviorButton(BehaviorAction::Behaviors));
+                    spawn_pill(r, fonts, "SAVE", 9.5, 30.0, None, Pill::new(Tone::Teal), (BehaviorButton(BehaviorAction::Save), Tip::new("SAVE"), ActionTip(Action::Save)));
                 });
+            });
+            // The phone's status line: under the graph, over the bottom bar.
+            let strip = Node { height: px(16), align_items: AlignItems::Center, overflow: Overflow::clip(), ..abs(Some(C_SIDE + 4.0), Some(C_GRAPH_RIGHT), None, Some(C_BAR_BOTTOM + C_BAR_H + 4.0)) };
+            root.spawn((ScreenPart::new(Edge::Bottom, 2), by_class(none(), strip))).with_children(|s| spawn_status(s, &kit, Node::default()));
         });
+}
+
+/// BEHAVIOR and PILOT ASSISTS.
+fn spawn_tabs(t: &mut ChildSpawnerCommands, fonts: &HudFonts, size: f32, height: f32) {
+    spawn_pill(t, fonts, "BEHAVIOR", size, height, None, Pill::new(Tone::Teal), (BehaviorButton(BehaviorAction::Tab(BehaviorTab::Behavior)), Tip::new("BEHAVIOR: HOW THE DESIGN FLIES WHEN NOBODY PILOTS IT")));
+    spawn_pill(t, fonts, "PILOT ASSISTS", size, height, None, Pill::new(Tone::Teal), (BehaviorButton(BehaviorAction::Tab(BehaviorTab::Assists)), Tip::new("PILOT ASSISTS: HELP WHILE YOU FLY THIS DESIGN")));
+}
+
+/// GRAPH and TEXT.
+fn spawn_views(v: &mut ChildSpawnerCommands, fonts: &HudFonts, size: f32, height: f32) {
+    for (text, view) in [("GRAPH", BehaviorView::Graph), ("TEXT", BehaviorView::Text)] {
+        spawn_pill(v, fonts, text, size, height, None, Pill::new(Tone::Teal), BehaviorButton(BehaviorAction::View(view)));
+    }
+}
+
+/// WATCH and FLY ALONGSIDE, the modes of TEST IN RANGE.
+fn spawn_modes(m: &mut ChildSpawnerCommands, fonts: &HudFonts, size: f32, height: f32) {
+    for (text, mode) in [("WATCH", TestMode::Watch), ("FLY ALONGSIDE", TestMode::Alongside)] {
+        spawn_pill(m, fonts, text, size, height, None, Pill::new(Tone::Teal), BehaviorButton(BehaviorAction::TestMode(mode)));
+    }
+}
+
+/// The status line with the refusal after it, in `node`.
+fn spawn_status(p: &mut ChildSpawnerCommands, kit: &Kit, node: impl Bundle) {
+    p.spawn((ScreenText::Status, label(kit.fonts, "", 10.0, kit.c(Tone::Label, 1.0)), node)).with_child((
+        NoteSpan,
+        TextSpan::new(""),
+        TextFont { font: kit.fonts.regular.clone().into(), font_size: FontSize::Px(10.0), ..default() },
+        TextColor(kit.c(Tone::Coral, 1.0)),
+        bevy::text::LetterSpacing::Px(3.0),
+    ));
+}
+
+/// A scrolling area's wide and phone forms, as `home::ByClass`, keeping what the kit's `Scrollbar` writes into its
+/// node (the bar's gutter; the glow room, unless the phone's form has its own), which a swapped node would lose.
+#[derive(Component, Clone, Debug)]
+pub(super) struct ScrollFit {
+    wide: Node,
+    compact: Node,
+    /// The phone's glow room (px), when it is not the kit's.
+    room: Option<f32>,
+    /// The kit's glow room, as it set it when it attached the bar.
+    kit: OverflowClipMargin,
+    /// The class whose form is in place.
+    applied: Option<LayoutClass>,
+}
+
+fn scroll_fit(wide: Node, compact: Node, room: Option<f32>) -> impl Bundle {
+    (wide.clone(), ScrollFit { wide, compact, room, kit: OverflowClipMargin::default(), applied: None })
+}
+
+/// Puts the window's form of each [`ScrollFit`] node in place (after the kit has attached the bars).
+pub(super) fn fit_scrolls(class: Res<LayoutClass>, mut nodes: Query<(&mut ScrollFit, &mut Node)>) {
+    for (mut fit, mut node) in &mut nodes {
+        if fit.applied == Some(*class) {
+            continue;
+        }
+        if fit.applied != Some(LayoutClass::Compact) {
+            fit.kit = node.overflow_clip_margin;
+        }
+        fit.applied = Some(*class);
+        let (mut want, margin) = match (class.is_compact(), fit.room) {
+            (true, Some(room)) => (fit.compact.clone(), OverflowClipMargin::padding_box().with_margin(room)),
+            (true, None) => (fit.compact.clone(), fit.kit),
+            (false, _) => (fit.wide.clone(), fit.kit),
+        };
+        want.padding = node.padding;
+        want.overflow_clip_margin = margin;
+        want.display = node.display;
+        if *node != want {
+            *node = want;
+        }
+    }
+}
+
+/// The phone's popover of TEST IN RANGE's modes.
+#[derive(Component)]
+pub(super) struct ModesPopover;
+
+/// The modes' popover shows while it is open, on a phone.
+pub(super) fn sync_modes(ui: Res<BehaviorUi>, class: Res<LayoutClass>, mut popover: Single<&mut Node, With<ModesPopover>>) {
+    let want = if ui.modes_open && class.is_compact() { Display::Flex } else { Display::None };
+    if popover.display != want {
+        popover.display = want;
+    }
 }
 
 // ---------------------------------------------------------------------------------------------------------
@@ -429,17 +605,18 @@ fn spawn_chip(p: &mut ChildSpawnerCommands, kit: &Kit, outlines: &mut OutlineKit
     let color = role_color(&kit.ui, chip.role, false);
     let k = if active { 1.0 } else { INACTIVE };
     let dashed = chip.rhai.then(|| outlines.take(outline_color(ui_color(color, 0.6 * k))));
+    let g = kit.g();
     let mut e = p.spawn((
         ChipLook { color, dashed: dashed.clone(), fill: true, active, select: Some(Selection::Node(chip.node)) },
         Hot::default(),
         BehaviorButton(BehaviorAction::Select(chip.node)),
         Node {
-            height: px(CHIP_H),
-            padding: UiRect::horizontal(px(16)),
+            height: px(g.chip_h),
+            padding: UiRect::horizontal(px(g.chip_pad)),
             border: UiRect::all(px(LINE_W)),
             border_radius: BorderRadius::MAX,
             align_items: AlignItems::Center,
-            column_gap: px(7),
+            column_gap: px(g.gap - 1.0),
             flex_shrink: 0.0,
             ..default()
         },
@@ -451,14 +628,14 @@ fn spawn_chip(p: &mut ChildSpawnerCommands, kit: &Kit, outlines: &mut OutlineKit
     }
     e.with_children(|c| {
         if chip.not {
-            c.spawn(prose(kit.fonts, "not", CHIP_FONT, kit.c(Tone::Violet, k)));
+            c.spawn(prose(kit.fonts, "not", g.chip_font, kit.c(Tone::Violet, k)));
         }
-        c.spawn(prose(kit.fonts, &chip.name, CHIP_FONT, kit.c(Tone::Number, 0.95 * k)));
+        c.spawn(prose(kit.fonts, &chip.name, g.chip_font, kit.c(Tone::Number, 0.95 * k)));
         if !chip.args.is_empty() {
-            c.spawn((ChipValues, prose(kit.fonts, &chip.args, CHIP_FONT, kit.c(Tone::Label, k))));
+            c.spawn((ChipValues, prose(kit.fonts, &chip.args, g.chip_font, kit.c(Tone::Label, k))));
         }
         if !chip.compare.is_empty() {
-            c.spawn(prose(kit.fonts, &chip.compare, CHIP_FONT, kit.c(Tone::Number, 0.95 * k)));
+            c.spawn(prose(kit.fonts, &chip.compare, g.chip_font, kit.c(Tone::Number, 0.95 * k)));
         }
         if chip.rhai {
             c.spawn((tracked(kit.fonts, SCRIPT_TAG, 8.5, kit.c(Tone::Gold, k), 0.3), Node { margin: UiRect::left(px(3)), ..default() }));
@@ -469,13 +646,14 @@ fn spawn_chip(p: &mut ChildSpawnerCommands, kit: &Kit, outlines: &mut OutlineKit
 /// The `always` of a rule without conditions: a plain grey chip, not a node; a click selects the rule.
 fn spawn_always(p: &mut ChildSpawnerCommands, kit: &Kit, rule: RuleId, active: bool) {
     let k = if active { 1.0 } else { INACTIVE };
+    let g = kit.g();
     p.spawn((
         ChipLook { color: kit.ui.label, dashed: None, fill: false, active, select: Some(Selection::Rule(rule)) },
         Hot::default(),
         BehaviorButton(BehaviorAction::SelectRule(rule)),
         Node {
-            height: px(CHIP_H),
-            padding: UiRect::horizontal(px(16)),
+            height: px(g.chip_h),
+            padding: UiRect::horizontal(px(g.chip_pad)),
             border: UiRect::all(px(LINE_W)),
             border_radius: BorderRadius::MAX,
             align_items: AlignItems::Center,
@@ -485,7 +663,7 @@ fn spawn_always(p: &mut ChildSpawnerCommands, kit: &Kit, rule: RuleId, active: b
         BorderColor::all(Color::NONE),
         BackgroundColor(Color::NONE),
     ))
-    .with_child(prose(kit.fonts, "always", CHIP_FONT, kit.c(Tone::Label, k)));
+    .with_child(prose(kit.fonts, "always", g.chip_font, kit.c(Tone::Label, k)));
 }
 
 /// A cell of a rule's row: a click on its empty space selects the rule; lit while the rule is selected.
@@ -496,7 +674,7 @@ fn row_cell(rule: RuleId, node: Node) -> impl Bundle {
 /// The trunk cell of a rule: the vertical line (from the first rule's centre to the last one's), the dot and
 /// the stub to the first chip.
 fn spawn_trunk(p: &mut ChildSpawnerCommands, kit: &Kit, height: f32, line: (bool, bool), dot: Option<bool>) {
-    p.spawn(Node { width: px(TRUNK_W), height: px(height), ..default() }).with_children(|t| {
+    p.spawn(Node { width: px(kit.g().trunk_w), height: px(height), ..default() }).with_children(|t| {
         let mid = height / 2.0;
         let (above, below) = line;
         if above || below {
@@ -518,7 +696,7 @@ fn spawn_trunk(p: &mut ChildSpawnerCommands, kit: &Kit, height: f32, line: (bool
 /// A line above rules that don't run: dashed coral, with its label (the slot line above the first rule without a
 /// slot; the never-reached line under an `always` rule with rules below it).
 fn spawn_dead_line(p: &mut ChildSpawnerCommands, kit: &Kit, label: &str, span: bool) {
-    let mut node = Node { height: px(SLOT_ROW_H), flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(10), ..default() };
+    let mut node = Node { height: px(kit.g().slot_row_h), flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(10), ..default() };
     if span {
         node.grid_column = GridPlacement::span(3);
     }
@@ -538,6 +716,7 @@ pub(super) fn rebuild_graph(
     draft: Res<BehaviorDraft>,
     context: Res<EditorContext>,
     drag: Res<SliderDrag>,
+    class: Res<LayoutClass>,
     fonts: Res<HudFonts>,
     style: Res<Style>,
     mut built: ResMut<GraphBuilt>,
@@ -545,19 +724,20 @@ pub(super) fn rebuild_graph(
     mut outlines: Local<Outlines>,
     graph: Single<Entity, With<GraphContent>>,
 ) {
-    let key = (draft.revision(), context.slots);
+    let key = (draft.revision(), context.slots, *class);
     let Some(ed) = draft.editor() else { return };
     if built.0 == Some(key) || drag.0.is_some() {
         return;
     }
     built.0 = Some(key);
     let g = GraphView::of(ed, context.slots);
-    let kit = Kit { fonts: &fonts, ui: style.ui };
+    let kit = Kit { fonts: &fonts, ui: style.ui, class: *class };
+    let d = kit.g();
     let materials = &mut OutlineKit { pool: &mut outlines, assets: &mut materials, used: 0 };
     commands.entity(*graph).despawn_children().with_children(|gc| {
         // The target line; pilot assists say theirs is the pilot's lock (GDR-0088: no target they pick unseen).
-        gc.spawn(Node { height: px(ROW_H), flex_direction: FlexDirection::Row, align_items: AlignItems::Center, flex_shrink: 0.0, ..default() }).with_children(|r| {
-            r.spawn(Node { width: px(ROOT_W + TRUNK_W), flex_direction: FlexDirection::Row, align_items: AlignItems::Center, justify_content: JustifyContent::FlexEnd, column_gap: px(10), flex_shrink: 0.0, ..default() })
+        gc.spawn(Node { height: px(d.row_h), flex_direction: FlexDirection::Row, align_items: AlignItems::Center, flex_shrink: 0.0, ..default() }).with_children(|r| {
+            r.spawn(Node { width: px(d.root_w + d.trunk_w), flex_direction: FlexDirection::Row, align_items: AlignItems::Center, justify_content: JustifyContent::FlexEnd, column_gap: px(10), flex_shrink: 0.0, ..default() })
                 .with_children(|l| {
                     l.spawn(tracked(kit.fonts, "TARGET", 8.5, kit.c(Tone::Dim, 1.0), 0.3));
                     spawn_line(l, Node { width: px(26), height: px(LINE_W), margin: UiRect::right(px(10)), ..default() }, kit.c(Tone::Label, 0.4));
@@ -576,16 +756,16 @@ pub(super) fn rebuild_graph(
         });
         let (slot_line, never_line) = (g.slot_line(), g.never_line());
         if slot_line == Some(0) {
-            gc.spawn(Node { flex_direction: FlexDirection::Row, flex_shrink: 0.0, padding: UiRect::left(px(ROOT_W + TRUNK_W)), ..default() })
+            gc.spawn(Node { flex_direction: FlexDirection::Row, flex_shrink: 0.0, padding: UiRect::left(px(d.root_w + d.trunk_w)), ..default() })
                 .with_children(|s| spawn_dead_line(s, &kit, &slot_line_label(g.slots), false));
         }
         // The rules: the root, the trunk and one row per rule, actions in one column.
         gc.spawn(Node { flex_direction: FlexDirection::Row, flex_shrink: 0.0, ..default() }).with_children(|block| {
-            block.spawn(Node { width: px(ROOT_W), flex_shrink: 0.0, flex_direction: FlexDirection::Row, align_items: AlignItems::Center, ..default() }).with_children(|rc| {
+            block.spawn(Node { width: px(d.root_w), flex_shrink: 0.0, flex_direction: FlexDirection::Row, align_items: AlignItems::Center, ..default() }).with_children(|rc| {
                 rc.spawn((
                     Node {
                         flex_direction: FlexDirection::Column,
-                        padding: UiRect::new(px(18), px(22), px(10), px(11)),
+                        padding: if kit.class.is_compact() { UiRect::new(px(12), px(14), px(8), px(9)) } else { UiRect::new(px(18), px(22), px(10), px(11)) },
                         row_gap: px(3),
                         border: UiRect::all(px(LINE_W)),
                         border_radius: BorderRadius::all(px(24)),
@@ -597,7 +777,7 @@ pub(super) fn rebuild_graph(
                 .with_children(|root| {
                     // A behavior runs its first matching rule; each assist decides its own channel.
                     let (title, sub) = if g.assists { ("Assists", "EACH CHANNEL") } else { ("Priority", "FIRST MATCH") };
-                    root.spawn(prose(kit.fonts, title, 16.0, kit.c(Tone::Number, 1.0)));
+                    root.spawn(prose(kit.fonts, title, d.root_title, kit.c(Tone::Number, 1.0)));
                     root.spawn(tracked(kit.fonts, sub, 7.5, kit.c(Tone::Label, 1.0), 0.3));
                 });
                 if !g.rules.is_empty() {
@@ -607,7 +787,13 @@ pub(super) fn rebuild_graph(
             block
                 .spawn(Node {
                     display: Display::Grid,
-                    grid_template_columns: vec![GridTrack::px(TRUNK_W), GridTrack::max_content(), GridTrack::max_content(), GridTrack::flex(1.0)],
+                    // On a phone the notes keep their one line (the graph pans sideways to them).
+                    grid_template_columns: vec![
+                        GridTrack::px(d.trunk_w),
+                        GridTrack::max_content(),
+                        GridTrack::max_content(),
+                        if kit.class.is_compact() { GridTrack::max_content() } else { GridTrack::flex(1.0) },
+                    ],
                     flex_grow: 1.0,
                     ..default()
                 })
@@ -616,36 +802,36 @@ pub(super) fn rebuild_graph(
                     for (i, row) in g.rules.iter().enumerate() {
                         for (line, label) in [(never_line, NEVER_LINE_LABEL.to_string()), (slot_line, slot_line_label(g.slots))] {
                             if line == Some(i) && i > 0 {
-                                spawn_trunk(grid, &kit, SLOT_ROW_H, (true, true), None);
+                                spawn_trunk(grid, &kit, d.slot_row_h, (true, true), None);
                                 spawn_dead_line(grid, &kit, &label, true);
                             }
                         }
                         // Dimmed: no slot, or never reached.
                         let runs = row.active && row.reached;
                         let k = if runs { 1.0 } else { INACTIVE };
-                        spawn_trunk(grid, &kit, ROW_H, (i > 0, i < last), Some(runs));
-                        let cell = Node { height: px(ROW_H), flex_direction: FlexDirection::Row, align_items: AlignItems::Center, ..default() };
-                        grid.spawn(row_cell(row.id, Node { column_gap: px(8), ..cell.clone() })).with_children(|cc| {
+                        spawn_trunk(grid, &kit, d.row_h, (i > 0, i < last), Some(runs));
+                        let cell = Node { height: px(d.row_h), flex_direction: FlexDirection::Row, align_items: AlignItems::Center, ..default() };
+                        grid.spawn(row_cell(row.id, Node { column_gap: px(d.gap), ..cell.clone() })).with_children(|cc| {
                             if row.conds.is_empty() {
                                 spawn_always(cc, &kit, row.id, runs);
                             }
                             for c in &row.conds {
                                 spawn_chip(cc, &kit, materials, c, runs);
                             }
-                            spawn_line(cc, Node { flex_grow: 1.0, min_width: px(26), height: px(LINE_W), margin: UiRect::horizontal(px(8)), ..default() }, kit.c(Tone::Label, 0.4 * k));
+                            spawn_line(cc, Node { flex_grow: 1.0, min_width: px(26), height: px(LINE_W), margin: UiRect::horizontal(px(d.gap)), ..default() }, kit.c(Tone::Label, 0.4 * k));
                         });
                         grid.spawn(row_cell(row.id, cell.clone())).with_children(|ac| spawn_chip(ac, &kit, materials, &row.action, runs));
-                        grid.spawn(row_cell(row.id, Node { padding: UiRect::new(px(16), px(8), px(0), px(0)), overflow: Overflow::clip(), ..cell }))
+                        grid.spawn(row_cell(row.id, Node { padding: UiRect::new(px(d.chip_pad), px(8), px(0), px(0)), overflow: Overflow::clip(), ..cell }))
                             .with_children(|nc| {
                                 if let Some(note) = &row.note {
-                                    nc.spawn(prose(kit.fonts, note, 12.0, kit.c(Tone::Dim, k)));
+                                    nc.spawn(prose(kit.fonts, note, d.note_font, kit.c(Tone::Dim, k)));
                                 }
                             });
                     }
                 });
         });
         // + RULE.
-        gc.spawn(Node { flex_direction: FlexDirection::Row, flex_shrink: 0.0, padding: UiRect::new(px(ROOT_W + TRUNK_W), px(0), px(12), px(8)), ..default() })
+        gc.spawn(Node { flex_direction: FlexDirection::Row, flex_shrink: 0.0, padding: UiRect::new(px(d.root_w + d.trunk_w), px(0), px(12), px(8)), ..default() })
             .with_children(|r| {
                 let m = materials.take(outline_color(kit.c(Tone::Label, 0.5)));
                 r.spawn((
@@ -654,8 +840,8 @@ pub(super) fn rebuild_graph(
                     Hot::default(),
                     BehaviorButton(BehaviorAction::AddRule),
                     Node {
-                        height: px(CHIP_H),
-                        padding: UiRect::horizontal(px(20)),
+                        height: px(d.chip_h),
+                        padding: UiRect::horizontal(px(d.chip_pad + 4.0)),
                         border: UiRect::all(px(LINE_W)),
                         align_items: AlignItems::Center,
                         border_radius: BorderRadius::MAX,
@@ -681,6 +867,7 @@ pub(super) struct InspectorKey {
     name: String,
     source: Option<String>,
     refusals: u64,
+    class: LayoutClass,
 }
 
 /// Rebuilds the inspector when the selection, the program, REPLACE, the slots or the behavior (its name, which one
@@ -695,6 +882,7 @@ pub(super) fn rebuild_inspector(
     edit: Res<EditState>,
     reach: Res<DesignReach>,
     drag: Res<SliderDrag>,
+    class: Res<LayoutClass>,
     content: Res<GameContent>,
     behaviors: Res<PlayerBehaviors>,
     fonts: Res<HudFonts>,
@@ -714,6 +902,7 @@ pub(super) fn rebuild_inspector(
         name: draft.name.clone(),
         source: draft.source.clone(),
         refusals: edit.refusals(),
+        class: *class,
     };
     if built.as_ref() == Some(&key) {
         return;
@@ -731,7 +920,7 @@ pub(super) fn rebuild_inspector(
             behavior_inspection(&draft.name, source, ed.rules().len())
         }
     });
-    let kit = Kit { fonts: &fonts, ui: style.ui };
+    let kit = Kit { fonts: &fonts, ui: style.ui, class: *class };
     commands.entity(body).despawn_children().with_children(|p| spawn_inspection(p, &kit, &i));
 }
 
@@ -753,7 +942,7 @@ pub(super) fn rebuild_palette(
         return;
     }
     *built = Some((ui.search.clone(), kind));
-    let kit = Kit { fonts: &fonts, ui: style.ui };
+    let kit = Kit { fonts: &fonts, ui: style.ui, class: LayoutClass::Wide };
     let (list, mut scroll) = list.into_inner();
     scroll.0 = Vec2::ZERO;
     let entries = palette(&content.0.behavior_nodes, kind, &ui.search);
@@ -865,10 +1054,12 @@ pub(super) fn sync_texts(
 }
 
 /// The last refusal after the status line, while it is fresh.
-pub(super) fn sync_note(edit: Res<EditState>, time: Res<Time<Real>>, mut span: Single<&mut TextSpan, With<NoteSpan>>) {
+pub(super) fn sync_note(edit: Res<EditState>, time: Res<Time<Real>>, mut spans: Query<&mut TextSpan, With<NoteSpan>>) {
     let want = edit.current_note(time.elapsed_secs()).map_or(String::new(), |t| format!("  ·  {}", t.to_uppercase()));
-    if span.0 != want {
-        span.0 = want;
+    for mut span in &mut spans {
+        if span.0 != want {
+            span.0 = want.clone();
+        }
     }
 }
 
@@ -1012,6 +1203,7 @@ pub(super) fn draw_dots(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use bevy::ecs::system::RunSystemOnce;
     use data::behavior::TextError;
     use data::behavior::edit::NodeRef;
 
@@ -1045,5 +1237,31 @@ mod tests {
         assert_eq!(status_line(&a, BehaviorView::Text, 0), ("VALID  ·  2 ASSISTS".into(), Tone::Teal));
         a.set_text("always -> orbit\n");
         assert_eq!(status_line(&a, BehaviorView::Text, 0), ("1 ERROR  ·  FIRST ON LINE 1, COLUMN 11".into(), Tone::Coral));
+    }
+
+    #[test]
+    fn a_scrolling_area_keeps_the_kits_gutter_and_glow_room_in_both_classes() {
+        let mut world = World::new();
+        world.insert_resource(LayoutClass::Wide);
+        let e = world.spawn(scroll_fit(Node { width: px(100), ..default() }, Node { width: px(50), ..default() }, Some(6.0))).id();
+        // The kit attaches the bar: a gutter and the glow room.
+        let kit = OverflowClipMargin::padding_box().with_margin(30.0);
+        {
+            let mut n = world.get_mut::<Node>(e).unwrap();
+            n.padding.right = px(10);
+            n.overflow_clip_margin = kit;
+        }
+        let node = |world: &mut World| world.get::<Node>(e).unwrap().clone();
+        world.run_system_once(fit_scrolls).unwrap();
+        let n = node(&mut world);
+        assert_eq!((n.width, n.padding.right, n.overflow_clip_margin), (px(100), px(10), kit));
+        world.insert_resource(LayoutClass::Compact);
+        world.run_system_once(fit_scrolls).unwrap();
+        let n = node(&mut world);
+        assert_eq!((n.width, n.padding.right, n.overflow_clip_margin), (px(50), px(10), OverflowClipMargin::padding_box().with_margin(6.0)));
+        world.insert_resource(LayoutClass::Wide);
+        world.run_system_once(fit_scrolls).unwrap();
+        let n = node(&mut world);
+        assert_eq!((n.width, n.padding.right, n.overflow_clip_margin), (px(100), px(10), kit));
     }
 }
