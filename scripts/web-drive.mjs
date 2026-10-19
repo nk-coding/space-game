@@ -6,7 +6,8 @@
 // Steps, separated by ';':
 //   wait <ms> | down <key> | up <key> | press <key> | type <text>
 //   move <x> <y> | mousedown <x> <y> [left|right|middle] | mouseup [left|right|middle] | click <x> <y>
-//   wheel <dy> | tap <x> <y> | touchdrag <x0> <y0> <x1> <y1> <holdMs> (one finger, CDP touch events)
+//   wheel <dy> | tap <x> <y> | touchdrag <x0> <y0> <x1> <y1> <holdMs> [<preMs>] (one finger, CDP touch events;
+//   held <preMs> still before it moves, e.g. a long press, and <holdMs> at the end before it lifts)
 //   shot <file.png> | crop <x> <y> <w> <h> <file.png> (a part of the page; enlarge with scripts/png-zoom.py)
 //   eval <js> | reload (the page again, same storage)
 //   upload <file> (the next file chooser gets this file) | clip <text> (put text on the clipboard) | readclip
@@ -71,9 +72,10 @@ for (const raw of steps.split(';').map(s => s.trim()).filter(Boolean)) {
     case 'wheel': await page.mouse.wheel(0, n(0)); break;
     case 'tap': await page.touchscreen.tap(n(0), n(1)); break;
     case 'touchdrag': {
-      const [x0, y0, x1, y1, hold] = a.map(Number);
+      const [x0, y0, x1, y1, hold, pre] = a.map(Number);
       const pt = (x, y) => [{ x, y, id: 7 }];
       await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: pt(x0, y0) });
+      if (pre) await page.waitForTimeout(pre);
       for (let k = 1; k <= 6; k++) {
         await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: pt(x0 + (x1 - x0) * k / 6, y0 + (y1 - y0) * k / 6) });
         await page.waitForTimeout(60);
