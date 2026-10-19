@@ -333,7 +333,8 @@ impl Layout {
     /// area's top instead of its bottom (it ran into the gate's line under the ring).
     pub fn label(&self, place: Place, compact: bool) -> (Vec2, Align) {
         match place {
-            Place::Drydock if compact => (Vec2::new(self.area.center().x, self.area.max.y - 1.3), Align::Middle),
+            // 10 px further in than its 1.3 m: clear of EVOLUTION's two lines over the stack, left of it.
+            Place::Drydock if compact => (Vec2::new(self.area.center().x, self.area.max.y - 1.3 - 10.0 * self.metres_per_px()), Align::Middle),
             Place::Drydock => (Vec2::new(self.area.center().x, self.area.min.y + 1.3), Align::Middle),
             Place::Behavior => (self.mind.centre - Vec2::Y * 5.8, Align::Middle),
             Place::Research => (self.research.centre + Vec2::new(-5.4, 2.2), Align::End),

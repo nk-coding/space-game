@@ -708,7 +708,8 @@ fn fill_materials(p: &mut ChildSpawnerCommands, fonts: &HudFonts, ui: &kit::styl
                 Some(n) => (format!("NEEDS {n}"), if m.have < n { Tone::Coral } else { Tone::Teal }),
                 None => (String::new(), Tone::Dim),
             };
-            r.spawn((label(fonts, &need, 8.5, c(tone)), Node { width: px(76), flex_shrink: 0.0, ..default() }));
+            // Room for NEEDS only while a part is shown: on a phone the names need it (they were cut at 100 px).
+            r.spawn((label(fonts, &need, 8.5, c(tone)), Node { width: px(if shown.is_some() { 76.0 } else { 0.0 }), flex_shrink: 0.0, ..default() }));
         });
     }
 }

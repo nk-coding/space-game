@@ -356,7 +356,8 @@ fn fill(p: &mut ChildSpawnerCommands, fonts: &HudFonts, style: &Style, rows: &[L
     let cell = |width: f32| Node { width: px(width), flex_shrink: 0.0, ..default() };
     for r in rows {
         p.spawn((
-            Node { height: px(ROW), flex_shrink: 0.0, flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(16), border: UiRect::bottom(px(1)), ..default() },
+            // At least ROW high: a long haul on a phone takes a few lines and the row grows with it.
+            Node { min_height: px(ROW), padding: UiRect::vertical(px(6)), flex_shrink: 0.0, flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(16), border: UiRect::bottom(px(1)), ..default() },
             BorderColor::all(ui_color(ui.dim, 0.25)),
         ))
         .with_children(|row| {

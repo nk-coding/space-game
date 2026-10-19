@@ -689,14 +689,13 @@ fn build(mut commands: Commands, compact: bool, fonts: &HudFonts, style: &Style)
                             });
                         });
                     }
-                    let status = if compact {
-                        Node { overflow: Overflow::clip(), ..abs(Vec2::new(COMPACT_LEFT, COMPACT_STAGE.y - COMPACT_STATUS + 6.0), Some(Vec2::new(PHONE_W, 16.0))) }
-                    } else {
-                        abs(Vec2::new(36.0, 690.0), Some(Vec2::new(1208.0, 20.0)))
-                    };
-                    let mut line = stage.spawn((LayerText::Status, ScreenPart::new(Edge::Bottom, 3), label(fonts, "", 9.0, c(Tone::Label, 1.0)), status));
+                    let line = (LayerText::Status, ScreenPart::new(Edge::Bottom, 3), label(fonts, "", 9.0, c(Tone::Label, 1.0)));
                     if compact {
-                        line.insert(TextLayout::no_wrap());
+                        // Within the margins, two lines when it is long, its last line at the stage's bottom (cut to one
+                        // line it ran past both edges, centred on its box).
+                        stage.spawn((line, Node { position_type: PositionType::Absolute, left: px(COMPACT_LEFT), width: px(PHONE_W), bottom: px(3), ..default() }));
+                    } else {
+                        stage.spawn((line, abs(Vec2::new(36.0, 690.0), Some(Vec2::new(1208.0, 20.0)))));
                     }
                 });
             });
