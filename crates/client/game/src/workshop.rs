@@ -47,7 +47,7 @@ use data::{Career, Content};
 use kit::style::{Style, ui_color};
 use kit::ui_icons::{Glyph, UiIcon};
 use kit::ui_kit::{
-    Edge, Hot, HudFonts, ListRow, ListSpec, Pill, Ring, ScreenFx, ScreenPart, Scrollbar, Tip, Tone, UiClick, UiInputSet, UiPointer, UiStyleSet, fill_list, frame, label, number, prose,
+    CompactText, Edge, Hot, HudFonts, ListRow, ListSpec, Pill, Ring, ScreenFx, ScreenPart, Scrollbar, Tip, Tone, UiClick, UiInputSet, UiPointer, UiStyleSet, fill_list, frame, label, number, prose,
     ring_glyph, ring_node, show_screen, spawn_close, spawn_grouped_list, spawn_head, spawn_pill, tracked,
 };
 use world::career::{EscortDesigns, Note, PlayerCareer};
@@ -59,14 +59,35 @@ use world::storage::Storage;
 use world::voyage::debrief::amount;
 
 use crate::drydock::panels::part_icon;
-use crate::home::HomeAction;
+use crate::home::{COMPACT_TEXT, HomeAction, by_class};
 
-/// The layout's size (logical px), like the LOG's.
-const STAGE: Vec2 = Vec2::new(1280.0, 720.0);
-/// The two columns' boxes on the stage: the parts, the materials; the hover card shows in the room between them
-/// (`card.offset` past the list's edge and its scrollbar, its `card.width`, the same gap again before the materials).
-const PARTS: (Vec2, Vec2) = (Vec2::new(40.0, 84.0), Vec2::new(628.0, 568.0));
-const MATERIALS: (Vec2, Vec2) = (Vec2::new(960.0, 84.0), Vec2::new(280.0, 568.0));
+/// Where the screen's parts go (stage px), like the LOG's: the stage, the two columns' boxes (the parts, the
+/// materials) and the status line's top left. [`Lay::WIDE`]: 1280 × 720; the hover card shows in the room between
+/// the columns (`card.offset` past the list's edge and its scrollbar, its `card.width`, the same gap again before
+/// the materials). [`Lay::COMPACT`]: a phone's 844 × 390 at `compact_scale` (docs/client.md "Phones"): the columns
+/// side by side with no room between them.
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct Lay {
+    stage: Vec2,
+    parts: (Vec2, Vec2),
+    materials: (Vec2, Vec2),
+    said: Vec2,
+}
+
+impl Lay {
+    const WIDE: Lay = Lay {
+        stage: Vec2::new(1280.0, 720.0),
+        parts: (Vec2::new(40.0, 84.0), Vec2::new(628.0, 568.0)),
+        materials: (Vec2::new(960.0, 84.0), Vec2::new(280.0, 568.0)),
+        said: Vec2::new(40.0, 664.0),
+    };
+    const COMPACT: Lay = Lay {
+        stage: Vec2::new(844.0, 390.0),
+        parts: (Vec2::new(16.0, 64.0), Vec2::new(536.0, 290.0)),
+        materials: (Vec2::new(572.0, 64.0), Vec2::new(256.0, 290.0)),
+        said: Vec2::new(16.0, 362.0),
+    };
+}
 const ROW: f32 = 44.0;
 /// The most a count goes to, and a shift-click's step.
 const COUNT_MAX: u32 = 99;
@@ -704,9 +725,14 @@ fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>, conten
         ..default()
     };
     let list = |(at, size): (Vec2, Vec2)| Node { flex_direction: FlexDirection::Column, overflow: Overflow::scroll_y(), padding: UiRect::right(px(14)), ..abs(at, Some(size)) };
+    // Every part is laid out for both layout classes (`home::ByClass`).
+    let (wl, cl) = (Lay::WIDE, Lay::COMPACT);
+    let stage_node = |l: Lay| Node { width: px(l.stage.x), height: px(l.stage.y), flex_shrink: 0.0, ..default() };
+    let parts = |l: Lay| Node { flex_direction: FlexDirection::Column, row_gap: px(10), ..abs(l.parts.0, Some(l.parts.1)) };
     commands
         .spawn((
             WorkshopRoot,
+            CompactText(COMPACT_TEXT),
             world::backdrop::VeilsBackdrop,
             ScreenFx::closed().dimming(),
             Node { position_type: PositionType::Absolute, width: percent(100), height: percent(100), ..default() },
@@ -714,9 +740,9 @@ fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>, conten
         ))
         .with_children(|root| {
             root.spawn(Node { position_type: PositionType::Absolute, width: percent(100), height: percent(100), justify_content: JustifyContent::Center, align_items: AlignItems::Center, ..default() }).with_children(|centre| {
-                centre.spawn(Node { width: px(STAGE.x), height: px(STAGE.y), flex_shrink: 0.0, ..default() }).with_children(|stage| {
+                centre.spawn(by_class(stage_node(wl), stage_node(cl))).with_children(|stage| {
                     // The parts: what the fleet is short of, then the kit's grouped list (search, chips, sections).
-                    stage.spawn((ScreenPart::new(Edge::Fade, 1), Node { flex_direction: FlexDirection::Column, row_gap: px(10), ..abs(PARTS.0, Some(PARTS.1)) })).with_children(|col| {
+                    stage.spawn((ScreenPart::new(Edge::Fade, 1), by_class(parts(wl), parts(cl)))).with_children(|col| {
                         col.spawn((PartsHead, Node { flex_direction: FlexDirection::Column, row_gap: px(8), flex_shrink: 0.0, ..default() }));
                         let spec = ListSpec {
                             placeholder: "Search parts".into(),
@@ -729,8 +755,8 @@ fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>, conten
                         let area = spawn_grouped_list(col, fonts, &ui, spec, Tip::new("SEARCH PARTS"), |_| {});
                         col.commands().entity(area).insert(PartList);
                     });
-                    stage.spawn((MaterialList, ScreenPart::new(Edge::Right, 1), Scrollbar::vertical(), ScrollPosition::default(), list(MATERIALS)));
-                    stage.spawn((Said, ScreenPart::new(Edge::Bottom, 0), abs(Vec2::new(40.0, 664.0), None)));
+                    stage.spawn((MaterialList, ScreenPart::new(Edge::Right, 1), Scrollbar::vertical(), ScrollPosition::default(), by_class(list(wl.materials), list(cl.materials))));
+                    stage.spawn((Said, ScreenPart::new(Edge::Bottom, 0), by_class(abs(wl.said, None), abs(cl.said, None))));
                 });
             });
             // Top left: the way back, where we are; top right: CLOSE (the frame's corners).

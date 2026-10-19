@@ -31,7 +31,7 @@ use kit::params::{Params, RenderToggles};
 use kit::style::{Style, ui_color};
 use kit::ui_icons::Glyph;
 use kit::ui_kit::{
-    Edge, HudFonts, Pill, PillText, ScreenFx, ScreenPart, Scrollbar, Tip, Tone, UiClick, UiInputSet, UiPointer, UiSize, UiStyleSet, label, prose, ring_glyph,
+    CompactText, LayoutClass, compact_scale, Edge, HudFonts, Pill, PillText, ScreenFx, ScreenPart, Scrollbar, Tip, Tone, UiClick, UiInputSet, UiPointer, UiSize, UiStyleSet, label, prose, ring_glyph,
     ring_node, set_text, show_screen, spawn_pill, ui_scale_for, crumb, frame, spawn_back, spawn_close, title, top_pill,
 };
 use world::mode::AppMode;
@@ -40,15 +40,31 @@ use world::sim_bridge::GameContent;
 use world::storage::Storage;
 
 use crate::fleet::Fleet;
+use crate::home::{COMPACT_TEXT, by_class};
 use crate::voyage_log::VoyageLog;
 
-/// The layout's size (logical px), like FLEET's.
-const STAGE: Vec2 = Vec2::new(1280.0, 720.0);
-/// The controls list: its box on the stage, a row's height.
-const LIST: (Vec2, Vec2) = (Vec2::new(120.0, 104.0), Vec2::new(1040.0, 540.0));
+/// Where the screen's parts go (stage px), like FLEET's: [`Lay::WIDE`] a 1280 × 720 stage, [`Lay::COMPACT`] a
+/// phone's 844 × 390 at `compact_scale` (docs/client.md "Phones": the list across the stage, narrower names and
+/// chips).
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct Lay {
+    stage: Vec2,
+    /// The controls list's box; the bottom line's gap to the stage's bottom.
+    list: (Vec2, Vec2),
+    bottom: f32,
+    /// The widths of an action's name, a display choice's words and an input chip.
+    name_w: f32,
+    about_w: f32,
+    chip_w: f32,
+}
+
+impl Lay {
+    const WIDE: Lay = Lay { stage: Vec2::new(1280.0, 720.0), list: (Vec2::new(120.0, 104.0), Vec2::new(1040.0, 540.0)), bottom: 22.0, name_w: 220.0, about_w: 420.0, chip_w: 132.0 };
+    const COMPACT: Lay = Lay { stage: Vec2::new(844.0, 390.0), list: (Vec2::new(16.0, 64.0), Vec2::new(812.0, 276.0)), bottom: 10.0, name_w: 150.0, about_w: 300.0, chip_w: 96.0 };
+}
+
+/// A row's height in the controls list.
 const ROW: f32 = 34.0;
-/// An input chip's width.
-const CHIP_W: f32 = 132.0;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 enum Tab {
@@ -385,13 +401,14 @@ fn show(
     }
 }
 
-/// Over flight (whose UI scale is the plain UI size) the stage is fitted to the window while open, and the flight's
-/// scale comes back when it closes.
+/// Over flight (whose UI scale is the plain UI size) the stage is fitted to the window while open (on a phone the
+/// phone layout's scale, as at home), and the flight's scale comes back when it closes.
 fn fit(
     mode: Res<State<AppMode>>,
     layer: Res<SettingsLayer>,
     window: Single<&Window, With<PrimaryWindow>>,
     size: Res<UiSize>,
+    class: Res<LayoutClass>,
     mut ui: ResMut<SettingsUi>,
     mut scale: ResMut<UiScale>,
 ) {
@@ -401,7 +418,7 @@ fn fit(
     }
     if layer.open {
         ui.flight_scale.get_or_insert(scale.0);
-        let s = ui_scale_for(&window, *size);
+        let s = if class.is_compact() { compact_scale(window.size()) * size.0 } else { ui_scale_for(&window, *size) };
         if (scale.0 - s).abs() > 1e-3 {
             scale.0 = s;
         }
@@ -423,9 +440,13 @@ fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>, conten
         ..default()
     };
     let row = |gap: f32| Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(gap), ..default() };
+    // Every part is laid out for both layout classes (`home::ByClass`).
+    let (wl, cl) = (Lay::WIDE, Lay::COMPACT);
+    let width = |w: f32| Node { width: px(w), flex_shrink: 0.0, ..default() };
     commands
         .spawn((
             SettingsRoot,
+            CompactText(COMPACT_TEXT),
             world::backdrop::VeilsBackdrop,
             ScreenFx::closed().dimming(),
             GlobalZIndex(20),
@@ -443,18 +464,13 @@ fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>, conten
                 ..default()
             })
             .with_children(|centre| {
-                centre.spawn(Node { width: px(STAGE.x), height: px(STAGE.y), flex_shrink: 0.0, ..default() }).with_children(|stage| {
+                let stage_node = |l: Lay| Node { width: px(l.stage.x), height: px(l.stage.y), flex_shrink: 0.0, ..default() };
+                centre.spawn(by_class(stage_node(wl), stage_node(cl))).with_children(|stage| {
 
                     // CONTROLS: every action by section, scrolling.
-                    let (at, size) = LIST;
+                    let list = |l: Lay| Node { flex_direction: FlexDirection::Column, overflow: Overflow::scroll_y(), padding: UiRect::right(px(14)), ..abs(l.list.0, Some(l.list.1)) };
                     stage
-                        .spawn((
-                            Pane(Tab::Controls),
-                            ScreenPart::new(Edge::Fade, 1),
-                            Scrollbar::vertical(),
-                            ScrollPosition::default(),
-                            Node { flex_direction: FlexDirection::Column, overflow: Overflow::scroll_y(), padding: UiRect::right(px(14)), ..abs(at, Some(size)) },
-                        ))
+                        .spawn((Pane(Tab::Controls), ScreenPart::new(Edge::Fade, 1), Scrollbar::vertical(), ScrollPosition::default(), by_class(list(wl), list(cl))))
                         .with_children(|list| {
                             for section in Section::ALL {
                                 let entries: Vec<&data::Control> = content.0.controls.iter().filter(|e| e.section == section).collect();
@@ -465,10 +481,10 @@ fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>, conten
                                 for e in entries {
                                     let Some(action) = Action::from_id(&e.id) else { continue };
                                     list.spawn(Node { height: px(ROW), flex_shrink: 0.0, ..row(16.0) }).with_children(|r| {
-                                        r.spawn((label(fonts, &e.name.to_uppercase(), 10.0, c(Tone::Number, 1.0)), Node { width: px(220), flex_shrink: 0.0, ..default() }));
+                                        r.spawn((label(fonts, &e.name.to_uppercase(), 10.0, c(Tone::Number, 1.0)), by_class(width(wl.name_w), width(cl.name_w))));
                                         r.spawn((prose(fonts, &e.summary, 11.0, c(Tone::Label, 1.0)), Node { flex_grow: 1.0, flex_shrink: 1.0, ..default() }));
                                         for slot in 0..MAX_INPUTS {
-                                            r.spawn(Node { width: px(CHIP_W), flex_shrink: 0.0, ..default() }).with_children(|w| {
+                                            r.spawn(by_class(width(wl.chip_w), width(cl.chip_w))).with_children(|w| {
                                                 let chip = spawn_pill(w, fonts, "—", 10.0, 26.0, None, Pill::new(Tone::Teal), (SettingsButton::Chip(action, slot), Tip::new("CLICK, THEN PRESS A KEY")));
                                                 // Every chip as wide as its column, so the inputs line up.
                                                 w.commands().entity(chip).entry::<Node>().and_modify(|mut n| n.width = percent(100));
@@ -480,13 +496,14 @@ fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>, conten
                         });
 
                     // DISPLAY: three choices.
+                    let pane = |l: Lay| Node { flex_direction: FlexDirection::Column, row_gap: px(18), ..abs(l.list.0 + Vec2::new(0.0, 20.0), Some(Vec2::new(l.list.1.x, 300.0))) };
                     stage
-                        .spawn((Pane(Tab::Display), ScreenPart::new(Edge::Fade, 1), Node { flex_direction: FlexDirection::Column, row_gap: px(18), ..abs(at + Vec2::new(0.0, 20.0), Some(Vec2::new(size.x, 300.0))) }))
+                        .spawn((Pane(Tab::Display), ScreenPart::new(Edge::Fade, 1), by_class(pane(wl), pane(cl))))
                         .with_children(|d| {
                             let choice = |d: &mut ChildSpawnerCommands, name: &str, about: &str, options: Vec<(&str, SettingsButton)>| {
                                 d.spawn(row(16.0)).with_children(|r| {
-                                    r.spawn((label(fonts, name, 10.0, c(Tone::Number, 1.0)), Node { width: px(220), flex_shrink: 0.0, ..default() }));
-                                    r.spawn((prose(fonts, about, 11.0, c(Tone::Label, 1.0)), Node { width: px(420), flex_shrink: 0.0, ..default() }));
+                                    r.spawn((label(fonts, name, 10.0, c(Tone::Number, 1.0)), by_class(width(wl.name_w), width(cl.name_w))));
+                                    r.spawn((prose(fonts, about, 11.0, c(Tone::Label, 1.0)), by_class(width(wl.about_w), width(cl.about_w))));
                                     for (word, b) in options {
                                         spawn_pill(r, fonts, word, 9.5, 28.0, None, Pill::new(Tone::Teal), (b, Tip::new(word.to_string())));
                                     }
@@ -498,8 +515,16 @@ fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>, conten
                         });
 
                     // Bottom: the status line, CLEAR and RESET.
+                    let bottom = |l: Lay| Node {
+                        position_type: PositionType::Absolute,
+                        left: px(l.list.0.x),
+                        right: px(l.stage.x - l.list.0.x - l.list.1.x),
+                        bottom: px(l.bottom),
+                        justify_content: JustifyContent::SpaceBetween,
+                        ..row(12.0)
+                    };
                     stage
-                        .spawn((ScreenPart::new(Edge::Bottom, 2), Node { position_type: PositionType::Absolute, left: px(at.x), right: px(STAGE.x - at.x - size.x), bottom: px(22), justify_content: JustifyContent::SpaceBetween, ..row(12.0) }))
+                        .spawn((ScreenPart::new(Edge::Bottom, 2), by_class(bottom(wl), bottom(cl))))
                         .with_children(|b| {
                             b.spawn((SettingsText::Status, label(fonts, "", 9.5, c(Tone::Dim, 1.0))));
                             b.spawn((Pane(Tab::Controls), row(10.0))).with_children(|r| {

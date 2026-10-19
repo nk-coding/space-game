@@ -31,7 +31,7 @@ use bevy::prelude::*;
 use data::{Career, Content};
 use data::career::{Outcome, TrailSignal, VoyageResult};
 use kit::style::{Style, ui_color};
-use kit::ui_kit::{Edge, HudFonts, Pill, ScreenFx, ScreenPart, Scrollbar, Tip, Tone, UiClick, UiInputSet, UiStyleSet, frame, label, number, prose, show_screen, spawn_close, spawn_head, spawn_pill, tracked};
+use kit::ui_kit::{CompactText, Edge, HudFonts, Pill, ScreenFx, ScreenPart, Scrollbar, Tip, Tone, UiClick, UiInputSet, UiStyleSet, frame, label, number, prose, show_screen, spawn_close, spawn_head, spawn_pill, tracked};
 use world::career::{Note, PlayerCareer};
 use world::mode::AppMode;
 use world::sim_bridge::GameContent;
@@ -39,12 +39,13 @@ use world::storage::Storage;
 use world::voyage::{clock, signal_words};
 use world::voyage::debrief::{amount, outcome_words};
 
-use crate::home::HomeAction;
+use crate::home::{COMPACT_TEXT, HomeAction, by_class};
 
-/// The layout's size (logical px), like FLEET's.
-const STAGE: Vec2 = Vec2::new(1280.0, 720.0);
-/// The list: its box on the stage, a row's height.
-const LIST: (Vec2, Vec2) = (Vec2::new(120.0, 104.0), Vec2::new(1040.0, 580.0));
+/// The stage and the list's box on it, like FLEET's: 1280 × 720, and on a phone 844 × 390 at `compact_scale` with the
+/// list across it (docs/client.md "Phones").
+const STAGE: (Vec2, Vec2) = (Vec2::new(1280.0, 720.0), Vec2::new(844.0, 390.0));
+const LIST: [(Vec2, Vec2); 2] = [(Vec2::new(120.0, 104.0), Vec2::new(1040.0, 580.0)), (Vec2::new(16.0, 64.0), Vec2::new(812.0, 312.0))];
+/// A row's height.
 const ROW: f32 = 38.0;
 
 /// One voyage as the LOG shows it.
@@ -386,6 +387,7 @@ fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>) {
     commands
         .spawn((
             LogRoot,
+            CompactText(COMPACT_TEXT),
             world::backdrop::VeilsBackdrop,
             ScreenFx::closed().dimming(),
             Node { position_type: PositionType::Absolute, width: percent(100), height: percent(100), ..default() },
@@ -401,16 +403,11 @@ fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>) {
                 ..default()
             })
             .with_children(|centre| {
-                centre.spawn(Node { width: px(STAGE.x), height: px(STAGE.y), flex_shrink: 0.0, ..default() }).with_children(|stage| {
+                let stage_node = |size: Vec2| Node { width: px(size.x), height: px(size.y), flex_shrink: 0.0, ..default() };
+                centre.spawn(by_class(stage_node(STAGE.0), stage_node(STAGE.1))).with_children(|stage| {
                     // The voyages, scrolling.
-                    let (at, size) = LIST;
-                    stage.spawn((
-                        LogList,
-                        ScreenPart::new(Edge::Fade, 1),
-                        Scrollbar::vertical(),
-                        ScrollPosition::default(),
-                        Node { flex_direction: FlexDirection::Column, overflow: Overflow::scroll_y(), padding: UiRect::right(px(14)), ..abs(at, Some(size)) },
-                    ));
+                    let list = |(at, size): (Vec2, Vec2)| Node { flex_direction: FlexDirection::Column, overflow: Overflow::scroll_y(), padding: UiRect::right(px(14)), ..abs(at, Some(size)) };
+                    stage.spawn((LogList, ScreenPart::new(Edge::Fade, 1), Scrollbar::vertical(), ScrollPosition::default(), by_class(list(LIST[0]), list(LIST[1]))));
                 });
             });
             // Top left: the way back, where we are, the title; top right: the career's counts, CLOSE (the frame's corners).
