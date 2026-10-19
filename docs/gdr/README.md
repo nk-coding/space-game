@@ -124,6 +124,7 @@ overview and links to both series. Format and status rules: `CLAUDE.md`, section
 | [0113](0113-a-call-brings-reinforcements.md) | A call brings reinforcements: a picket post's first call warps a group in from the cluster's edge | Accepted | 2026-10-19 |
 | [0114](0114-mining-and-ore-refining.md) | Mining and ore refining: a mining laser cuts a rock's ore into the hold, the workshop's smelter refines it | Accepted (provisional, lead) | 2026-10-19 |
 | [0115](0115-missiles-and-point-defence.md) | Missiles home, blast by the chain-reaction rule and can be shot down; point defence aims itself | Accepted (provisional, lead) | 2026-10-19 |
+| [0116](0116-the-spire-guards-the-inner-bands-gates.md) | The Spire guards the inner band's gates: a long three-section spine with torpedoes and rockets under crystal wards that turn energy fire | Accepted (provisional, lead) | 2026-10-19 |
 <!-- index:end -->
 
 ## How to add, supersede and deprecate

@@ -10,6 +10,7 @@
   Runner with one escort clears a grove run 55 %, an outer gate 52 %).
   2026-10-18: the Grown's own materials (lead, content batch; "Open" here and in GDR-0103): heartwood (a destroyed heart leaves one, a heart's recipe and research take it, an elder's trail gives three) and grove spores (in the living parts' recipes, so stripping a grove's wrecks gives them back); spores line a new radiator, the spore-lined radiator, through a fourth Grown node (`spore_lining`).
   2026-10-18: A7's guardian at the middle band's gates (no longer the Warden as a stand-in): the Keeper, a step above the bastion ([GDR-0112](0112-the-keeper-guards-the-middle-bands-gates.md)).
+  2026-10-19: the inner band's gates have their own guardian, the Spire, a step above the Keeper ([GDR-0116](0116-the-spire-guards-the-inner-bands-gates.md)).
 - Date: 2026-10-17
 - Decided by: Niklas (interactively, 17 Oct 2026; the recommended option on every question)
 - Related: [GDR-0026](0026-procedural-galaxy-and-bands.md), [GDR-0027](0027-races.md), [GDR-0031](0031-materials-and-fabrication.md), [GDR-0022](0022-heat-per-part.md), [GDR-0021](0021-shields.md), [GDR-0024](0024-tech-trees-no-mk-levels.md), [GDR-0025](0025-research-from-salvage.md), [GDR-0047](0047-ramming-crushes-inward-bumps-free.md), [GDR-0073](0073-slice-tuning-v1.md), [GDR-0080](0080-exploration-searching-and-story.md), [GDR-0094](0094-galaxy-generator-defaults.md), [GDR-0098](0098-slice-in-the-galaxy-and-rim-rewards.md), [GDR-0100](0100-fight-balance-targets.md)

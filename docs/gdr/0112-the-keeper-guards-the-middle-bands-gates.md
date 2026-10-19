@@ -1,6 +1,7 @@
 # GDR-0112: The Keeper guards the middle band's gates: a ring of four shielded cannon pods round a beam-laser heart, each on a core of its own
 
 - Status: Accepted (provisional, lead), 18 Oct 2026, for Niklas to review
+  2026-10-19: the inner band no longer uses `deep_gate` and the Keeper: its gates have the Spire ([GDR-0116](0116-the-spire-guards-the-inner-bands-gates.md)).
 - Date: 2026-10-18
 - Decided by: lead session (content batch of 18 Oct 2026, the Keeper; default for Niklas to review)
 - Related: [GDR-0026](0026-procedural-galaxy-and-bands.md) (a guardian at every band gate), [GDR-0099](0099-the-grown-and-the-outer-reach.md) A7, [GDR-0103](0103-the-grown-in-play-defaults.md) (the bastion), [GDR-0031](0031-materials-and-fabrication.md) (gate shards), [GDR-0013](0013-vessels-and-piloting.md), [GDR-0100](0100-fight-balance-targets.md), `docs/results/picket-keeper-balance-2026-10-18.md`

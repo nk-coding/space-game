@@ -94,8 +94,9 @@ core is usually what you destroy to stop it, so look for intact cores in wrecks,
 A [[material:gate_shard]] is a shard of precursor gate lattice. Each gate's guardian gives one when it is beaten: the
 Warden the first time you clear [[voyage:wardens_gate]], every other guardian at the end of its gate's trail (a
 [[encounter:gate_sentinel]] at the rim, a [[encounter:bastion_gate|bastion]] in the outer reach,
-[[encounter:keeper_gate|the Keeper]] further in). Nothing else gives them, so the rim holds three and each band
-further in three more. Only research spends them:
+[[encounter:keeper_gate|the Keeper]] in the middle band; [[encounter:spire_gate|the Spire]] in the inner band gives
+two). Nothing else gives them, so the rim holds three, the outer reach and the middle band three more each and the
+inner band six. Only research spends them:
 [[research:reactive_plating]] and the [[research:automaton_forge]] take one each, the [[research:capital_drydock]]
 three.
 

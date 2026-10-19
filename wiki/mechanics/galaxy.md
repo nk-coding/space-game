@@ -76,8 +76,11 @@ the one [[encounter:the_warden]] keeps: the first four voyages are its trail, an
 it. The rim's other gates are kept by a [[encounter:gate_sentinel]]. The outer reach's gates ([[trail:outer_gate]]) are
 kept by a precursor guardian of their own, the [[ship:automaton_bastion]] ([[encounter:bastion_gate]]); the Grown's
 giants are no gate guardians but rest at an [[encounter:elder_grove]] at the end of a trail of their own. Further in
-([[trail:deep_gate]]) the [[ship:automaton_keeper]] keeps the gates ([[encounter:keeper_gate]]): a ring of four
-shielded pods round a heart, each pod on a core of its own, so you open it pod by pod.
+([[trail:deep_gate]]) the [[ship:automaton_keeper]] keeps the middle band's gates ([[encounter:keeper_gate]]): a ring
+of four shielded pods round a heart, each pod on a core of its own, so you open it pod by pod. The inner band's gates
+([[trail:inner_gate]]), the last before the core, are the [[ship:automaton_spire]]'s ([[encounter:spire_gate]]): a long
+spine of three sections under [[part:prism_ward|prism wards]] that take laser fire whole but let most shells and
+missiles through, so bring cannons or missiles, and point defence against its torpedoes and rockets.
 
 ## Trails and signals
 
@@ -90,6 +93,7 @@ the next place of the trail; the last place holds the reward:
 | [[trail:precursor_cache]] | [[trail:precursor_cache.length]] | a [[encounter:sealed_cache]]: beat its keepers and research data and programmable matter go straight into store, beside rich wrecks |
 | [[trail:graveyard]] | [[trail:graveyard.length]] | a [[encounter:deep_graveyard]] with far more salvage than usual |
 | [[trail:outer_gate]] | [[trail:outer_gate.length]] | an outer gate and its guardian, a [[encounter:bastion_gate]]: beaten, the gate opens and a [[material:gate_shard]] goes into store |
+| [[trail:inner_gate]] | [[trail:inner_gate.length]] | an inner gate and its guardian, the [[encounter:spire_gate]]: beaten, the gate opens and two [[material:gate_shard|gate shards]] go into store |
 | [[trail:elder_grove]] | [[trail:elder_grove.length]] | an [[encounter:elder_grove]]: a [[ship:grown_elder]] at rest, rich salvage if it can be beaten |
 | [[trail:memory]] | [[trail:memory.length]] | a [[encounter:memory_wreck]]: see it and its fragment of what happened joins the memory log |
 

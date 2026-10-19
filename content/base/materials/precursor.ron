@@ -14,7 +14,7 @@
         id: "gate_shard",
         name: "Gate shard",
         summary: "A shard of precursor gate lattice, left by a gate's guardian when it falls.",
-        description: "Each gate's guardian gives one when it is beaten: the [[voyage:wardens_gate|Warden]] the first time its gate is cleared, a [[encounter:gate_sentinel|gate sentinel]], a [[encounter:bastion_gate|bastion]] or [[encounter:keeper_gate|the Keeper]] at the end of its gate's trail. Research spends them to open what the shipyard could not work out alone: [[research:reactive_plating|reactive plating]], the [[research:automaton_forge|automaton forge]] and the [[research:capital_drydock|capital drydock]].",
+        description: "Each gate's guardian gives one when it is beaten: the [[voyage:wardens_gate|Warden]] the first time its gate is cleared, a [[encounter:gate_sentinel|gate sentinel]], a [[encounter:bastion_gate|bastion]] or [[encounter:keeper_gate|the Keeper]] at the end of its gate's trail, and [[encounter:spire_gate|the Spire]] two. Research spends them to open what the shipyard could not work out alone: [[research:reactive_plating|reactive plating]], the [[research:automaton_forge|automaton forge]] and the [[research:capital_drydock|capital drydock]].",
         icon: "gate-shard",
     ),
 ]

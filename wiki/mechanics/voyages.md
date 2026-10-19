@@ -135,6 +135,7 @@ the sites done of all (`SITES n / m`) and the time since you arrived.
 | [[encounter:core_graveyard]] | [[encounter:core_graveyard.wake_radius]] |
 | [[encounter:the_warden]] | [[encounter:the_warden.wake_radius]] |
 | [[encounter:keeper_gate]] | [[encounter:keeper_gate.wake_radius]] |
+| [[encounter:spire_gate]] | [[encounter:spire_gate.wake_radius]] |
 | [[encounter:seedling_shoal]] | [[encounter:seedling_shoal.wake_radius]] (wary: only a scan) |
 | [[encounter:precursor_outpost]] | [[encounter:precursor_outpost.wake_radius]] |
 | [[encounter:picket_post]] | [[encounter:picket_post.wake_radius]] |

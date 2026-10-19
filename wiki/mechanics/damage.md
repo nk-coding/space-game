@@ -235,6 +235,10 @@ to the charge it has left, and the rest flies on.
 
 The drydock's SHIELDS overlay draws every bubble at its real size.
 
+The inner gates' guardian carries a precursor variant, the [[part:prism_ward]]: its bubble takes energy fire whole
+([[part:prism_ward.absorb.energy]]) and holds far more, but takes only [[part:prism_ward.absorb.kinetic]] of a shell
+and [[part:prism_ward.absorb.missile]] of a missile, so guns and missiles get through where lasers do not.
+
 <StatTable stats="shield_radius,shield_capacity,shield_regen" />
 
 ## The numbers you see
