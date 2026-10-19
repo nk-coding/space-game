@@ -883,7 +883,8 @@ mod tests {
         assert_eq!(ids(next_wave(&designs, bp("rim_skiff"))), [hunter], "the starter meets a hunter");
         assert_eq!(ids(next_wave(&designs, bp("halvex_runner"))), [hunter, hunter, raider], "biggest first");
         assert_eq!(ids(next_wave(&designs, 300.0)), [warden, warden]);
-        assert_eq!(ids(next_wave(&designs, 40.0)), [raider], "20 points: a raider and a little left over");
+        // The one-pod lancer (GDR-0115's tuning of 19 Oct 2026) is the biggest that fits 40 points now.
+        assert_eq!(ids(next_wave(&designs, 40.0)), ["automaton_lancer"], "40 points: a lancer and a little left over");
         assert_eq!(ids(next_wave(&designs, 0.0)), [raider], "at least one ship");
         assert_eq!(next_wave(&designs, 100_000.0).len(), waves::WAVE_CAP as usize);
         assert!(next_wave(&[], 100.0).is_empty());
