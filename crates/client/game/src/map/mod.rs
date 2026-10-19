@@ -71,7 +71,10 @@ use kit::meshbuf::MeshBuf;
 use kit::params::RenderToggles;
 use kit::style::{Style, ui_color};
 use kit::ui_icons::{Glyph, UiIcon};
-use kit::ui_kit::{HudFonts, Edge, Hot, Pill, ScreenFx, ScreenPart, Tip, Tone, show_screen, snap_screen, UiBlock, UiClick, UiInputSet, UiPointer, UiStyleSet, crumb, frame, label, number, prose, spawn_back, title, ring_glyph, ring_node, set_color, set_text, spawn_pill, tracked};
+use kit::ui_kit::{
+    CompactText, HudFonts, Edge, Hot, LayoutClass, Pill, ScreenFx, ScreenPart, Scrollbar, Tip, Tone, show_screen, snap_screen, UiBlock, UiClick, UiInputSet, UiPointer, UiStyleSet, compact_scale, crumb, frame, label, number,
+    prose, spawn_back, title, ring_glyph, ring_node, set_color, set_text, spawn_pill, tracked,
+};
 use world::camera::{CameraRig, CameraSet};
 use world::career::{EscortDesigns, Granted, PlayerCareer, fleet_cores};
 use world::mode::AppMode;
@@ -100,6 +103,15 @@ const MAX_DOTS: usize = 12;
 /// The panel's width and padding (logical px).
 const PANEL_W: f32 = STAGE.x - PANEL_X;
 const PAD: f32 = 28.0;
+/// On a phone ([`LayoutClass::Compact`], docs/client.md "Phones"): the panel's width and padding (its rows scroll,
+/// SET COURSE stays at the bottom), the least text size (`kit::ui_kit::CompactText`), and the gap kept between the
+/// zoom buttons (top right of the map, beside the header) and the panel. The legend is left out.
+const COMPACT_PANEL_W: f32 = 300.0;
+const COMPACT_PAD: (f32, f32) = (18.0, 12.0);
+const COMPACT_TEXT: f32 = 9.0;
+const COMPACT_ZOOM_GAP: f32 = 14.0;
+/// The legend's box (stage px): from just over its first row's symbols to the stage's bottom.
+const LEGEND_TOP: f32 = 664.0;
 /// A signal's label stack is about this tall (stage px).
 const SIGNAL_LABEL: f32 = 42.0;
 
@@ -147,13 +159,24 @@ struct MapRoot;
 #[derive(Component)]
 struct Stage;
 
-/// What cuts the map's labels: the map left of the panel, run out to the window's edges.
+/// What cuts the map's labels: the map area the UI leaves free (left of the panel, run out to the window's edge,
+/// between the header and the legend; measured by `fit`). `MapClip(true)` cuts the top band names instead: the
+/// strip right of the header, over the area.
 #[derive(Component)]
-struct MapClip;
+struct MapClip(bool);
 
-/// The map's labels' frame inside the clip: the stage's part left of the panel.
+/// The labels' frame inside a clip: placed so it lies on the stage (its px are stage px).
 #[derive(Component)]
 struct MapFrame;
+
+/// The chrome `fit` measures and places: the header (top left), the panel, the legend and the zoom buttons.
+#[derive(Component, Clone, Copy, Debug, PartialEq, Eq)]
+enum Chrome {
+    Header,
+    Panel,
+    Legend,
+    Zoom,
+}
 
 /// One of the star map's meshes, its material (for its fade) and what it shows.
 #[derive(Component)]
@@ -204,13 +227,13 @@ impl Sheet {
 /// What a mesh was built for (its rebuild key).
 #[derive(Clone, Debug, PartialEq)]
 enum Built {
-    /// Built once.
-    Fixed,
+    /// The panel's place and whether the legend shows (the chrome's).
+    Chrome(Rect, bool),
     /// The bands open (the galaxy's).
     Bands(Vec<bool>),
     Far(Look),
-    /// The look and the view (zoom, offset).
-    Placed(Look, f32, Vec2),
+    /// The look and the view (zoom, offset, the map area).
+    Placed(Look, f32, Vec2, Rect),
 }
 
 #[derive(Component, Clone, Copy, Debug, PartialEq, Eq)]
@@ -404,13 +427,9 @@ fn spawn(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<AtlasMaterial>>,
 ) {
-    let (white, soft) = (atlas.region("fx/white"), atlas.region("fx/dot_soft"));
     for sheet in Sheet::ALL {
-        // The chrome never changes: built here.
-        let (mesh, built) = match sheet {
-            Sheet::Chrome => (draw::build_chrome(&style, &white, &soft), Some(Built::Fixed)),
-            Sheet::Galaxy | Sheet::Far | Sheet::Areas | Sheet::Detail => (MeshBuf::placeholder(), None),
-        };
+        // Each is built by `place_mesh` (the chrome once the panel's place is measured).
+        let (mesh, built) = (MeshBuf::placeholder(), None);
         let mesh = meshes.add(mesh);
         let material = atlas.group_material(&mut materials);
         commands.spawn((
@@ -441,19 +460,41 @@ fn spawn(
         align_items: AlignItems::Center,
         ..default()
     };
-    commands.spawn((MapRoot, ScreenFx::closed().covering(), root, Visibility::Hidden)).with_children(|root| {
+    commands.spawn((MapRoot, CompactText(COMPACT_TEXT), ScreenFx::closed().covering(), root, Visibility::Hidden)).with_children(|root| {
         root.spawn((Stage, Node { width: px(STAGE.x), height: px(STAGE.y), flex_shrink: 0.0, ..default() })).with_children(|stage| {
             // ---- The map (everything left of the panel) ----
             // It fades in place: the map's drawing is placed from the stage. Labels moved past its edges by the view
-            // are cut there (and can't be clicked): at the panel, and at the window's edges (`fit` runs the clip out
-            // past the stage, where the galaxy is drawn too in a window wider or taller than the stage).
+            // are cut there (and can't be clicked): the map area the UI leaves free (`fit` measures it: left of the
+            // panel, below the header, above the legend, out to the window's edge, where the galaxy is drawn too in
+            // a window wider or taller than the stage); the top band names in the strip right of the header.
             let clip = Node { position_type: PositionType::Absolute, left: px(0), top: px(0), width: px(PANEL_X), height: px(STAGE.y), overflow: Overflow::clip(), ..default() };
             let frame = Node { position_type: PositionType::Absolute, left: px(0), top: px(0), width: px(PANEL_X), height: px(STAGE.y), ..default() };
-            stage.spawn((ScreenPart::new(Edge::Fade, 0), MapClip, clip)).with_children(|clip| { clip.spawn((MapFrame, frame)).with_children(|m| {
+            let b = &geo.band;
+            stage.spawn((ScreenPart::new(Edge::Fade, 0), MapClip(true), clip.clone())).with_children(|clip| {
+                clip.spawn((MapFrame, frame.clone())).with_children(|m| {
+                    // The band names along the top: home's band between its edges, the next one past the gate (they
+                    // slide along the line with the arcs, `view::MapView::top_band_x`).
+                    let top = MapView::new(b.centre, b.outer).top_band_x(b);
+                    let centred = |x: f32| Node { position_type: PositionType::Absolute, left: px(x), top: px(TOP_Y - 5.0), width: px(0), justify_content: JustifyContent::Center, ..default() };
+                    // The next one's name says whether it is open (`sync_map`).
+                    if let Some(x) = top[0] {
+                        m.spawn((Anchored::TopBand(0, x), UiTransform::default(), centred(x))).with_child((label(fonts, &b.key.replace('_', " ").to_uppercase(), 8.5, c(Tone::Label, 0.8)), words));
+                    }
+                    if let (Some(x), Some(next)) = (top[1], b.next_key.as_deref()) {
+                        let node = Node { align_items: AlignItems::Center, ..column(2.0) };
+                        m.spawn((Anchored::TopBand(1, x), UiTransform::default(), centred(x))).with_children(|l| {
+                            l.spawn(node).with_children(|l| {
+                                l.spawn((MapText::TopNext, label(fonts, &next.replace('_', " ").to_uppercase(), 8.5, c(Tone::Coral, 0.8)), words));
+                                l.spawn((MapText::TopNextState, label(fonts, "", 6.5, c(Tone::Coral, 0.7)), words));
+                            });
+                        });
+                    }
+                });
+            });
+            stage.spawn((ScreenPart::new(Edge::Fade, 0), MapClip(false), clip)).with_children(|clip| { clip.spawn((MapFrame, frame)).with_children(|m| {
                 // Under everything else: the galaxy's band names (seen zoomed out), halfway across each band: home's
                 // and the next above the centre, the narrower deeper ones below it; under each its state (`sync_map`:
                 // `CHARTED · OPEN`, `UNCHARTED · OPEN`, `SEALED · BEAT THE WARDEN …`, `SEALED`).
-                let b = &geo.band;
                 let whole = MapView::new(b.centre, b.outer).whole();
                 for (k, ring) in geo.rings.iter().enumerate() {
                     let up = if k < 2 { -1.0 } else { 1.0 };
@@ -461,7 +502,7 @@ fn spawn(
                     let laid = whole.to_screen(at);
                     let node = Node { position_type: PositionType::Absolute, left: px(laid.x), top: px(laid.y - 11.0), width: px(0), align_items: AlignItems::Center, ..column(3.0) };
                     let tone = if ring.charted { Tone::Teal } else { Tone::Label };
-                    m.spawn((Anchored::Far(at), UiTransform::default(), Visibility::Hidden, node)).with_children(|l| {
+                    m.spawn((Anchored::Far(at, laid), UiTransform::default(), Visibility::Hidden, node)).with_children(|l| {
                         l.spawn((label(fonts, &ring.key.replace('_', " ").to_uppercase(), if k == 0 { 10.5 } else { 9.0 }, c(tone, 0.9)), words));
                         l.spawn((MapText::BandState(k), label(fonts, "", 7.0, c(Tone::Dim, 1.0)), words));
                     });
@@ -477,23 +518,6 @@ fn spawn(
                                 t.spawn((MapText::SignalLine(j), prose(fonts, "", 11.5, c(Tone::Number, 0.85)), words));
                                 t.spawn((MapText::SignalState(j), label(fonts, "", 7.5, c(Tone::Gold, 0.85)), words));
                             });
-                    });
-                }
-                // The band names along the top: home's band between its edges, the next one past the gate (they slide
-                // along the line with the arcs, `view::MapView::top_band_x`).
-                let top = MapView::new(b.centre, b.outer).top_band_x(b);
-                let centred = |x: f32| Node { position_type: PositionType::Absolute, left: px(x), top: px(TOP_Y - 5.0), width: px(0), justify_content: JustifyContent::Center, ..default() };
-                // The next one's name says whether it is open (`sync_map`).
-                if let Some(x) = top[0] {
-                    m.spawn((Anchored::TopBand(0, x), UiTransform::default(), centred(x))).with_child((label(fonts, &b.key.replace('_', " ").to_uppercase(), 8.5, c(Tone::Label, 0.8)), words));
-                }
-                if let (Some(x), Some(next)) = (top[1], b.next_key.as_deref()) {
-                    let node = Node { align_items: AlignItems::Center, ..column(2.0) };
-                    m.spawn((Anchored::TopBand(1, x), UiTransform::default(), centred(x))).with_children(|l| {
-                        l.spawn(node).with_children(|l| {
-                            l.spawn((MapText::TopNext, label(fonts, &next.replace('_', " ").to_uppercase(), 8.5, c(Tone::Coral, 0.8)), words));
-                            l.spawn((MapText::TopNextState, label(fonts, "", 6.5, c(Tone::Coral, 0.7)), words));
-                        });
                     });
                 }
                 // The shipyard's label, left of it.
@@ -547,28 +571,32 @@ fn spawn(
                         });
                     });
                 }
-                // The legend.
+            }); });
+            // The legend (left out on a phone), under the map area.
+            let legend = Node { position_type: PositionType::Absolute, left: px(0), top: px(LEGEND_TOP), width: px(PANEL_X), height: px(STAGE.y - LEGEND_TOP), ..default() };
+            stage.spawn((ScreenPart::new(Edge::Fade, 0), Chrome::Legend, legend)).with_children(|m| {
                 for (r, names) in LEGEND.iter().enumerate() {
                     for (k, name) in names.iter().enumerate() {
-                        let mut l = m.spawn((label(fonts, name, 8.0, c(Tone::Label, 1.0)), words, abs(LEGEND_COLUMNS[k] + LEGEND_GAP, LEGEND_ROWS[r] - 5.5)));
+                        let mut l = m.spawn((label(fonts, name, 8.0, c(Tone::Label, 1.0)), words, abs(LEGEND_COLUMNS[k] + LEGEND_GAP, LEGEND_ROWS[r] - 5.5 - LEGEND_TOP)));
                         if (r, k) == (1, names.len() - 1) {
                             l.insert(MapText::Reach);
                         }
                     }
                 }
-                // The view's buttons, bottom right (as the drydock's zoom).
-                let at = Node { position_type: PositionType::Absolute, right: px(24), top: px((LEGEND_ROWS[0] + LEGEND_ROWS[1]) / 2.0 - 14.0), ..row(10.0) };
-                m.spawn((UiBlock, at)).with_children(|z| {
-                    z.spawn((ring_node(28.0), MapButton::View(ViewButton::ZoomOut), Tip::new("ZOOM OUT"), ActionTip(Action::ZoomOut))).with_child(ring_glyph(Glyph::Minus, 13.0));
-                    z.spawn((ZoomText, number(fonts, "100 %", 13.0, c(Tone::Number, 1.0)), Node { min_width: px(46), justify_content: JustifyContent::Center, ..default() }));
-                    z.spawn((ring_node(28.0), MapButton::View(ViewButton::ZoomIn), Tip::new("ZOOM IN"), ActionTip(Action::ZoomIn))).with_child(ring_glyph(Glyph::Plus, 13.0));
-                    z.spawn((ring_node(28.0), MapButton::View(ViewButton::Reset), Tip::new("RESET VIEW"), ActionTip(Action::ResetView))).with_child(ring_glyph(Glyph::Fit, 13.0));
-                });
-            }); });
+            });
+            // The view's buttons: bottom right of the map, in the legend's rows (as the drydock's zoom); on a phone top
+            // right of the map, beside the header (`fit`).
+            let at = Node { position_type: PositionType::Absolute, right: px(STAGE.x - PANEL_X + 24.0), top: px((LEGEND_ROWS[0] + LEGEND_ROWS[1]) / 2.0 - 14.0), ..row(10.0) };
+            stage.spawn((ScreenPart::new(Edge::Fade, 0), UiBlock, Chrome::Zoom, at)).with_children(|z| {
+                z.spawn((ring_node(28.0), MapButton::View(ViewButton::ZoomOut), Tip::new("ZOOM OUT"), ActionTip(Action::ZoomOut))).with_child(ring_glyph(Glyph::Minus, 13.0));
+                z.spawn((ZoomText, number(fonts, "100 %", 13.0, c(Tone::Number, 1.0)), Node { min_width: px(46), justify_content: JustifyContent::Center, ..default() }));
+                z.spawn((ring_node(28.0), MapButton::View(ViewButton::ZoomIn), Tip::new("ZOOM IN"), ActionTip(Action::ZoomIn))).with_child(ring_glyph(Glyph::Plus, 13.0));
+                z.spawn((ring_node(28.0), MapButton::View(ViewButton::Reset), Tip::new("RESET VIEW"), ActionTip(Action::ResetView))).with_child(ring_glyph(Glyph::Fit, 13.0));
+            });
 
             // ---- The panel: the selected voyage, the fleet, SET COURSE ----
             stage
-                .spawn((ScreenPart::new(Edge::Right, 1), Node {
+                .spawn((ScreenPart::new(Edge::Right, 1), Chrome::Panel, Node {
                     position_type: PositionType::Absolute,
                     left: px(PANEL_X),
                     top: px(0),
@@ -577,7 +605,11 @@ fn spawn(
                     padding: UiRect::new(px(PAD), px(PAD), px(24), px(22)),
                     ..column(8.0)
                 }))
-                .with_children(|p| {
+                .with_children(|panel| {
+                    // Its rows (they scroll on a phone, with no glow room past their edges: they'd show under the
+                    // status), then the status and SET COURSE at the bottom.
+                    let body = Node { flex_grow: 1.0, flex_shrink: 1.0, min_height: px(0), overflow: Overflow::scroll_y(), ..column(8.0) };
+                    panel.spawn((ScrollPosition::default(), Scrollbar::vertical().room(0), body)).with_children(|p| {
                     p.spawn((MapText::Head, label(fonts, "", 9.0, c(Tone::Label, 1.0))));
                     p.spawn((MapText::Title, prose(fonts, "", 24.0, c(Tone::Number, 1.0))));
                     p.spawn(Node { flex_wrap: FlexWrap::Wrap, row_gap: px(6), ..row(8.0) }).with_children(|r| {
@@ -640,15 +672,15 @@ fn spawn(
                             }
                         });
                     }
-                    p.spawn(Node { flex_grow: 1.0, ..default() });
-                    p.spawn((MapText::Status, label(fonts, "", 9.0, c(Tone::Teal, 1.0)), Node { margin: UiRect::bottom(px(4)), ..default() }));
+                    });
+                    panel.spawn((MapText::Status, label(fonts, "", 9.0, c(Tone::Teal, 1.0)), Node { margin: UiRect::bottom(px(4)), ..default() }));
                     let play = UiIcon::Glyph { glyph: Glyph::Play, color: ui.teal };
-                    spawn_pill(p, fonts, "SET COURSE", 12.0, 46.0, Some(play), Pill { primary: true, ..Pill::new(Tone::Teal) }, (MapButton::SetCourse, Tip::key("SET COURSE", "ENTER")));
+                    spawn_pill(panel, fonts, "SET COURSE", 12.0, 46.0, Some(play), Pill { primary: true, ..Pill::new(Tone::Teal) }, (MapButton::SetCourse, Tip::key("SET COURSE", "ENTER")));
                 });
         });
         // Top left, at the window's corner (the frame's): the way back and where we are.
         let f = frame();
-        root.spawn(f.top_left()).with_children(|tl| {
+        root.spawn((Chrome::Header, f.top_left())).with_children(|tl| {
             spawn_back(tl, &ui, (MapButton::Back, Tip::key("SHIPYARD", "ESC")));
             tl.spawn(f.heading()).with_children(|col| {
                 col.spawn((MapText::Header, crumb(fonts, "", &ui)));
@@ -658,36 +690,113 @@ fn spawn(
     });
 }
 
-/// The stage fits the window; the map's clip runs out to the window's edges left of the panel, its labels' frame
-/// staying on the stage; the camera rig knows the window (the mesh and the icons are placed through it).
-#[allow(clippy::type_complexity)]
+/// The stage fits the window (on a phone it is laid out at the phone's scale from the window's top left, the panel
+/// at the window's right edge, the legend left out and the zoom buttons beside the header); the map area is what the
+/// laid-out chrome leaves free: from the window's left edge to the panel, from the header (and on a phone the zoom
+/// buttons) down to the legend (on a phone the window's bottom). The labels are cut there (their frames staying on
+/// the stage), the view keeps it covered and the detail fades out at its edges (Niklas, 19 Oct 2026: on a phone the
+/// clusters' labels and the shipyard ran over the back ring and the legend). The camera rig knows the window (the
+/// meshes and the icons are placed through it).
+#[allow(clippy::type_complexity, clippy::too_many_arguments)]
 fn fit(
     window: Single<&Window, With<PrimaryWindow>>,
     size: Res<kit::ui_kit::UiSize>,
+    class: Res<LayoutClass>,
+    geo: Res<MapGeometry>,
     mut ui_scale: ResMut<UiScale>,
     mut rig: ResMut<CameraRig>,
-    mut clip: Single<&mut Node, (With<MapClip>, Without<MapFrame>)>,
-    mut frame: Single<&mut Node, (With<MapFrame>, Without<MapClip>)>,
+    mut view: ResMut<MapView>,
+    mut root: Single<&mut Node, (With<MapRoot>, Without<Chrome>, Without<MapClip>, Without<MapFrame>)>,
+    stage: Single<(&ComputedNode, &UiGlobalTransform), With<Stage>>,
+    mut chrome: Query<(&Chrome, &mut Node, &ComputedNode, &UiGlobalTransform), (Without<MapRoot>, Without<MapClip>, Without<MapFrame>)>,
+    mut clips: Query<(&MapClip, &mut Node, &Children), (Without<MapRoot>, Without<Chrome>, Without<MapFrame>)>,
+    mut frames: Query<&mut Node, (With<MapFrame>, Without<MapRoot>, Without<Chrome>, Without<MapClip>)>,
 ) {
-    let s = stage_scale(window.size()) * size.0;
+    let compact = class.is_compact();
+    let s = if compact { compact_scale(window.size()) } else { stage_scale(window.size()) } * size.0;
     if (ui_scale.0 - s).abs() > 1e-3 {
         ui_scale.0 = s;
-    }
-    // The window's margins round the stage, in stage px.
-    let margin = ((window.size() / s - STAGE) / 2.0).max(Vec2::ZERO).round();
-    let (left, top) = (px(-margin.x), px(-margin.y));
-    if clip.left != left || clip.top != top {
-        clip.left = left;
-        clip.top = top;
-        clip.width = px(PANEL_X + margin.x);
-        clip.height = px(STAGE.y + 2.0 * margin.y);
-        frame.left = px(margin.x);
-        frame.top = px(margin.y);
     }
     if rig.viewport != window.size() || rig.view_offset != Vec2::ZERO {
         rig.viewport = window.size();
         rig.view_offset = Vec2::ZERO;
     }
+    let align = if compact { AlignItems::FlexStart } else { AlignItems::Center };
+    let justify = if compact { JustifyContent::FlexStart } else { JustifyContent::Center };
+    if root.align_items != align || root.justify_content != justify {
+        root.align_items = align;
+        root.justify_content = justify;
+    }
+    // Physical px → stage px, from the stage's layout.
+    let (node, tf) = *stage;
+    let k = node.size.x / STAGE.x;
+    if k <= 0.0 {
+        return;
+    }
+    let corner = tf.translation - node.size / 2.0;
+    let to_stage = |q: Vec2| (q - corner) / k;
+    let laid = |n: &ComputedNode, t: &UiGlobalTransform| Rect::from_center_size(to_stage(t.translation), n.size / k);
+    let win = Rect::from_corners(to_stage(Vec2::ZERO), to_stage(window.physical_size().as_vec2()));
+
+    // The chrome's places.
+    let f = frame();
+    let mut measured = [None; 4];
+    for (c, mut n, cn, t) in &mut chrome {
+        let mut want = n.clone();
+        match (c, compact) {
+            (Chrome::Panel, false) => {
+                (want.left, want.top, want.width, want.height) = (px(PANEL_X), px(0), px(PANEL_W), px(STAGE.y));
+                want.padding = UiRect::new(px(PAD), px(PAD), px(24), px(22));
+            }
+            (Chrome::Panel, true) => {
+                let x = (win.max.x - COMPACT_PANEL_W).round();
+                (want.left, want.top, want.width, want.height) = (px(x), px(win.min.y.round()), px(COMPACT_PANEL_W), px(win.height().round()));
+                want.padding = UiRect::axes(px(COMPACT_PAD.0), px(COMPACT_PAD.1));
+            }
+            (Chrome::Legend, _) => want.display = if compact { Display::None } else { Display::Flex },
+            (Chrome::Zoom, false) => {
+                want.right = px(STAGE.x - PANEL_X + 24.0);
+                want.top = px((LEGEND_ROWS[0] + LEGEND_ROWS[1]) / 2.0 - 14.0);
+            }
+            (Chrome::Zoom, true) => {
+                want.right = px((STAGE.x - (win.max.x - COMPACT_PANEL_W - COMPACT_ZOOM_GAP)).round());
+                want.top = px((win.min.y + f.top + (f.ring - 28.0) / 2.0).round());
+            }
+            (Chrome::Header, _) => {}
+        }
+        if *n != want {
+            *n = want;
+        }
+        let shown = n.display != Display::None && cn.size.cmpgt(Vec2::ZERO).all();
+        measured[*c as usize] = shown.then(|| laid(cn, t));
+    }
+    let [Some(header), Some(panel), legend, zoom] = measured else { return };
+
+    // The map area the chrome leaves free, and the top band names' strip right of the header.
+    let top = if compact { zoom.map_or(header.max.y, |z| header.max.y.max(z.max.y)) } else { header.max.y };
+    let bottom = legend.map_or(win.max.y, |l| l.min.y);
+    let area = Rect::new(win.min.x, top, panel.min.x, bottom.max(top + 1.0));
+    let strip_right = zoom.filter(|_| compact).map_or(area.max.x, |z| z.min.x);
+    let strip = Rect::new(header.max.x, win.min.y, strip_right.max(header.max.x + 1.0), top);
+    for (clip, mut n, children) in &mut clips {
+        let r = if clip.0 { strip } else { area };
+        let (l, t, w, h) = (px(r.min.x), px(r.min.y), px(r.width()), px(r.height()));
+        if n.left != l || n.top != t || n.width != w || n.height != h {
+            (n.left, n.top, n.width, n.height) = (l, t, w, h);
+        }
+        for c in children {
+            if let Ok(mut fr) = frames.get_mut(*c)
+                && (fr.left != px(-r.min.x) || fr.top != px(-r.min.y))
+            {
+                fr.left = px(-r.min.x);
+                fr.top = px(-r.min.y);
+            }
+        }
+    }
+    // On a phone the default view brings home a third into the smaller area, halfway down.
+    let home = if compact { (area.min + area.size() * Vec2::new(0.3, 0.5) - geo.0.home).round() } else { Vec2::ZERO };
+    let top = if compact { (strip.min.x + 30.0, strip.max.x) } else { (view::HEADER_END, area.max.x) };
+    view.set_frame(area, home, top);
 }
 
 /// What a launch of the selection reads.
@@ -799,7 +908,7 @@ fn input(
         }
     }
     // A click on empty space: a blind jump's spot, or the known cluster a jump there would go to.
-    if let Some(q) = tap.filter(|q| q.x < PANEL_X) {
+    if let Some(q) = tap.filter(|q| view.area().contains(*q)) {
         let p = geo.to_point(view.to_galaxy(q));
         let pick = match known::in_reach(career, content, p).then(|| career.blind_target(content, p)).flatten() {
             Some(k) if known.cluster(k).is_some() => Pick::Cluster(k),
@@ -1296,13 +1405,13 @@ fn band_state(geo: &Geometry, known: &Known, k: usize) -> (String, Tone, f32) {
 #[allow(clippy::too_many_arguments)]
 fn place_mesh(
     stage: Single<(&ComputedNode, &UiGlobalTransform), With<Stage>>,
+    chrome: Query<(&Chrome, &Node, &ComputedNode, &UiGlobalTransform)>,
     window: Single<&Window, With<PrimaryWindow>>,
     rig: Res<CameraRig>,
     view: Res<MapView>,
     mut sheets: Query<(&mut MapMesh, &mut Transform)>,
-    geo: Res<MapGeometry>,
+    (geo, known): (Res<MapGeometry>, Res<MapKnown>),
     map: Res<VoyageMap>,
-    known: Res<MapKnown>,
     career: Res<PlayerCareer>,
     content: Res<GameContent>,
     hots: Query<(&MapButton, &Hot)>,
@@ -1371,6 +1480,13 @@ fn place_mesh(
     if k <= 0.0 {
         return;
     }
+    // The panel's place (stage px) and whether the legend shows: the chrome's look.
+    let corner = at.translation - node.size / 2.0;
+    let panel = chrome.iter().find(|c| *c.0 == Chrome::Panel).filter(|c| c.2.size.x > 0.0).map(|(_, _, n, t)| {
+        let r = Rect::from_center_size((t.translation - corner) / (k * scale), n.size / (k * scale));
+        // Whole px, so a sub-px wobble of the layout doesn't rebuild it.
+        (Rect::from_corners(r.min.round(), r.max.round()), chrome.iter().any(|c| *c.0 == Chrome::Legend && c.1.display != Display::None))
+    });
     // World units per stage px, and where the stage's centre is.
     let unit = k / rig.zoom;
     let centre = rig.screen_to_world(at.translation / scale);
@@ -1379,10 +1495,10 @@ fn place_mesh(
     for (mut m, mut tf) in &mut sheets {
         let want = match m.sheet {
             Sheet::Far => Some(Built::Far(far.clone())),
-            Sheet::Detail => Some(Built::Placed(look.clone(), view.zoom, view.offset)),
-            Sheet::Areas => Some(Built::Placed(areas.clone(), view.zoom, view.offset)),
+            Sheet::Detail => Some(Built::Placed(look.clone(), view.zoom, view.offset, view.area())),
+            Sheet::Areas => Some(Built::Placed(areas.clone(), view.zoom, view.offset, view.area())),
             Sheet::Galaxy => Some(Built::Bands(open.clone())),
-            Sheet::Chrome => None,
+            Sheet::Chrome => panel.map(|(rect, legend)| Built::Chrome(rect, legend)),
         };
         if let Some(want) = want.filter(|w| m.built.as_ref() != Some(w)) {
             let mesh = match m.sheet {
@@ -1392,8 +1508,12 @@ fn place_mesh(
                     mesh
                 }
                 Sheet::Far => galaxy::build_far(geo, &far, &style, &white, &soft),
-                Sheet::Areas => draw::build_areas(geo, &areas, |g| view.to_screen(g), view.zoom, &style, &white, &soft),
-                _ => draw::build_detail(geo, &look, |g| view.to_screen(g), &style, &white, &soft),
+                Sheet::Areas => draw::build_areas(geo, &areas, |g| view.to_screen(g), view.zoom, view.area(), &style, &white, &soft),
+                Sheet::Chrome => match panel {
+                    Some((rect, legend)) => draw::build_chrome(&style, &white, &soft, rect, legend),
+                    None => continue,
+                },
+                _ => draw::build_detail(geo, &look, |g| view.to_screen(g), view.area(), &style, &white, &soft),
             };
             let _ = meshes.insert(&m.mesh, mesh);
             m.built = Some(want);

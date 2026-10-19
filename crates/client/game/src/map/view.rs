@@ -33,7 +33,8 @@ use super::{MapButton, MapRoot, Stage};
 
 /// The closest zoom (the default is 1).
 pub const ZOOM_MAX: f32 = 2.0;
-/// The map area the view fits and keeps covered (stage px): left of the panel, between the header and the legend.
+/// The map area the view fits and keeps covered (stage px): left of the panel, between the header and the legend; the
+/// one of a 1280 × 720 window until the screen has measured its own ([`MapView::set_frame`]).
 pub const VIEW_AREA: Rect = Rect { min: Vec2::new(0.0, 56.0), max: Vec2::new(PANEL_X, 664.0) };
 /// Room kept around the galaxy's disc (galaxy px): what the pan may show past its edge, and the margin of the
 /// whole-galaxy fit.
@@ -94,22 +95,69 @@ pub struct MapView {
     pinch: Option<(f32, Vec2)>,
     /// The last click (or tap) on empty map space (stage px), until the map takes it (a blind jump's spot).
     pub tap: Option<Vec2>,
+    /// The map area the UI leaves free (stage px, measured from the laid-out nodes), the default view's offset (zero
+    /// in a wide window; on a phone it brings home into the smaller area) and where the top band names may go
+    /// (from, to: stage x).
+    area: Rect,
+    home: Vec2,
+    top: (f32, f32),
 }
 
 impl MapView {
     /// The default view of a galaxy whose disc is (`centre`, `radius`).
     pub fn new(centre: Vec2, radius: f32) -> Self {
-        Self { zoom: 1.0, target: 1.0, offset: Vec2::ZERO, disc: (centre, radius), anchor: None, glide: None, drag: None, last_click: None, pinch: None, tap: None }
+        Self {
+            zoom: 1.0,
+            target: 1.0,
+            offset: Vec2::ZERO,
+            disc: (centre, radius),
+            anchor: None,
+            glide: None,
+            drag: None,
+            last_click: None,
+            pinch: None,
+            tap: None,
+            area: VIEW_AREA,
+            home: Vec2::ZERO,
+            top: (HEADER_END, PANEL_X),
+        }
     }
 
-    /// Back to the default view at once (entering the map).
+    /// Back to the default view at once (entering the map), in the same frame.
     pub fn snap_default(&mut self) {
-        *self = Self::new(self.disc.0, self.disc.1);
+        *self = Self { offset: self.home, ..Self { area: self.area, home: self.home, top: self.top, ..Self::new(self.disc.0, self.disc.1) } };
+    }
+
+    /// The map area the view keeps covered (stage px).
+    pub fn area(&self) -> Rect {
+        self.area
+    }
+
+    /// The window's frame: the map `area` the UI leaves free, the default view's offset `home` and the stretch of the
+    /// top line the top band names may use, `top` (from, to; stage px). A view resting at the default moves with
+    /// it; any other is clamped.
+    pub fn set_frame(&mut self, area: Rect, home: Vec2, top: (f32, f32)) {
+        if self.area == area && self.home == home && self.top == top {
+            return;
+        }
+        let resting = self.at_default();
+        (self.area, self.home, self.top) = (area, home, top);
+        // The default view itself is never clamped (it never was: home's band edge may lie inside the room).
+        if resting {
+            self.offset = home;
+        } else {
+            self.clamp();
+        }
+    }
+
+    /// Whether the view rests at the default.
+    fn at_default(&self) -> bool {
+        self.zoom == 1.0 && self.target == 1.0 && self.anchor.is_none() && self.glide.is_none() && self.offset == self.home
     }
 
     /// The view all the way out: the whole galaxy centred on the view area.
     pub fn whole(&self) -> Self {
-        let mut v = Self::new(self.disc.0, self.disc.1);
+        let mut v = Self { area: self.area, home: self.home, top: self.top, ..Self::new(self.disc.0, self.disc.1) };
         v.zoom = v.min_zoom();
         v.target = v.zoom;
         v.clamp();
@@ -128,14 +176,14 @@ impl MapView {
 
     /// The farthest zoom: the galaxy and its [`ROOM`] fit the view area.
     pub fn min_zoom(&self) -> f32 {
-        (VIEW_AREA.size() / (2.0 * (self.disc.1 + ROOM))).min_element().min(1.0)
+        (self.area.size() / (2.0 * (self.disc.1 + ROOM))).min_element().min(1.0)
     }
 
     /// Zooms the target by `factor` around a screen point (the view area's centre without one): that point's
     /// galaxy point stays under it while the zoom eases.
     pub fn zoom_around(&mut self, factor: f32, around: Option<Vec2>) {
         self.target = (self.target * factor).clamp(self.min_zoom(), ZOOM_MAX);
-        let q = around.unwrap_or(VIEW_AREA.center());
+        let q = around.unwrap_or(self.area.center());
         self.anchor = Some((q, self.to_galaxy(q)));
         self.glide = None;
     }
@@ -145,12 +193,13 @@ impl MapView {
     pub fn reset(&mut self) {
         self.target = 1.0;
         if (self.zoom - 1.0).abs() > 1e-3 {
-            let q = self.offset / (1.0 - self.zoom);
-            self.anchor = Some((q, q));
+            // g × zoom + offset = g + home.
+            let g = (self.offset - self.home) / (1.0 - self.zoom);
+            self.anchor = Some((g + self.home, g));
             self.glide = None;
         } else {
             self.anchor = None;
-            self.glide = Some(Vec2::ZERO);
+            self.glide = Some(self.home);
         }
     }
 
@@ -160,7 +209,7 @@ impl MapView {
         self.offset += d;
         self.glide = None;
         if self.anchor.is_some() {
-            let q = VIEW_AREA.center();
+            let q = self.area.center();
             self.anchor = Some((q, self.to_galaxy(q)));
         }
         self.clamp();
@@ -180,7 +229,8 @@ impl MapView {
     /// A voyage stepped to with the keys: when it lies outside the view area (less [`SHOW_INSET`]), the view pans
     /// until it doesn't.
     pub fn show(&mut self, g: Vec2) {
-        let inner = Rect { min: VIEW_AREA.min + SHOW_INSET, max: VIEW_AREA.max - SHOW_INSET };
+        let inset = Vec2::splat(SHOW_INSET).min(self.area.size() / 4.0);
+        let inner = Rect { min: self.area.min + inset, max: self.area.max - inset };
         let q = self.to_screen(g);
         let d = q.clamp(inner.min, inner.max) - q;
         if d.length() > 0.5 {
@@ -230,8 +280,8 @@ impl MapView {
             }
         }
         // The default view is exact once a reset arrives.
-        if self.zoom == 1.0 && self.target == 1.0 && self.anchor.is_none() && self.glide.is_none() && self.offset.length() < 1e-3 {
-            self.offset = Vec2::ZERO;
+        if self.zoom == 1.0 && self.target == 1.0 && self.anchor.is_none() && self.glide.is_none() && self.offset.distance(self.home) < 1e-3 {
+            self.offset = self.home;
         }
         self.clamp();
     }
@@ -241,7 +291,7 @@ impl MapView {
     fn clamp(&mut self) {
         let (c, r) = (self.disc.0, self.disc.1 + ROOM);
         let (lo, hi) = ((c - r) * self.zoom, (c + r) * self.zoom);
-        let (a, b) = (VIEW_AREA.min, VIEW_AREA.max);
+        let (a, b) = (self.area.min, self.area.max);
         for i in 0..2 {
             let o = if hi[i] - lo[i] <= b[i] - a[i] { (a[i] + b[i] - lo[i] - hi[i]) / 2.0 } else { self.offset[i].clamp(b[i] - hi[i], a[i] - lo[i]) };
             self.offset[i] = o;
@@ -252,24 +302,25 @@ impl MapView {
     /// edges cross the line (right of the header; none where that leaves no room before the gate), the next band's
     /// just past the gate, if those are on the map.
     pub fn top_band_x(&self, band: &Band) -> [Option<f32>; 2] {
+        let (header_end, right) = self.top;
         let b = Band { centre: self.to_screen(band.centre), outer: band.outer * self.zoom, inner: band.inner * self.zoom, ..band.clone() };
         let inner = b.x_at(b.inner, TOP_Y);
         let this = match (b.x_at(b.outer, TOP_Y), inner) {
-            (Some(o), Some(i)) => Some(((o.max(0.0) + i) / 2.0).max(HEADER_END)).filter(|x| *x <= i - 16.0),
-            (Some(o), None) => Some(((o.max(0.0) + PANEL_X) / 2.0).max(HEADER_END)),
+            (Some(o), Some(i)) => Some(((o.max(0.0) + i) / 2.0).max(header_end)).filter(|x| *x <= i - 16.0),
+            (Some(o), None) => Some(((o.max(0.0) + right) / 2.0).max(header_end)),
             (None, _) => None,
         };
         // The next band's name only where it clears the header.
-        let next = inner.filter(|_| band.next_key.is_some()).map(|i| i + 34.0).filter(|x| *x >= HEADER_END);
-        [this.filter(|x| *x < PANEL_X - 30.0), next.filter(|x| *x + 26.0 < PANEL_X)]
+        let next = inner.filter(|_| band.next_key.is_some()).map(|i| i + 34.0).filter(|x| *x >= header_end);
+        [this.filter(|x| *x < right - 30.0), next.filter(|x| *x + 26.0 < right)]
     }
 }
 
 /// The line the top band names sit on (stage y).
 pub const TOP_Y: f32 = 30.0;
-/// The top band names stay right of this (stage x): the header's words end before it (`RIM · 4 CHARTED · 4 CLEARED · 2
-/// SIGNALS`).
-const HEADER_END: f32 = 420.0;
+/// The top band names stay right of this (stage x) in a wide window: the header's words end before it (`RIM · 4
+/// CHARTED · 4 CLEARED · 2 SIGNALS`); a phone's header is measured.
+pub const HEADER_END: f32 = 420.0;
 
 /// The view's buttons (bottom right of the map).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -284,9 +335,9 @@ pub enum ViewButton {
 pub enum Anchored {
     /// A galaxy point (where it was laid out, at the default view).
     At(Vec2, Layer),
-    /// A galaxy band's name at a galaxy point, laid out where the whole-galaxy view ([`MapView::whole`]) puts it
-    /// (inside the map, as nodes laid out past its clipping edges don't draw); fades with [`Layer::Far`].
-    Far(Vec2),
+    /// A galaxy band's name at a galaxy point, laid out (second) where the whole-galaxy view ([`MapView::whole`])
+    /// of a wide window puts it; fades with [`Layer::Far`].
+    Far(Vec2, Vec2),
     /// A top band name: 0 this band, 1 the next (laid out at `x`).
     TopBand(usize, f32),
 }
@@ -359,7 +410,8 @@ pub(super) fn input(
     }
     let centre = tf.translation / scale;
     let to_stage = |c: Vec2| (c - centre) / k + STAGE / 2.0;
-    let on_map = |q: Vec2| q.x < PANEL_X;
+    let area = view.area();
+    let on_map = |q: Vec2| area.contains(q);
     let cursor = window.cursor_position().map(to_stage);
 
     // The wheel (a trackpad pinch arrives as one) over the map, labels included.
@@ -455,11 +507,10 @@ pub(super) fn place_labels(
 ) {
     let settled = root.is_open() && root.alpha() >= 1.0;
     let top = view.top_band_x(&geo.0.band);
-    let whole = view.whole();
     for (e, a, mut tf, mut vis) in &mut anchored {
         let (d, layer) = match *a {
             Anchored::At(g, layer) => (view.to_screen(g) - g, layer),
-            Anchored::Far(g) => (view.to_screen(g) - whole.to_screen(g), Layer::Far),
+            Anchored::Far(g, laid) => (view.to_screen(g) - laid, Layer::Far),
             Anchored::TopBand(k, x) => match top[k] {
                 Some(at) => (Vec2::new(at - x, 0.0), Layer::Detail),
                 None => (Vec2::ZERO, Layer::Detail),
@@ -672,6 +723,36 @@ mod tests {
         let at = v.offset;
         v.show(far);
         assert!(v.glide.is_none() && v.offset == at);
+    }
+
+    /// A phone's frame: the view resting at the default moves to the new default (home brought into the smaller
+    /// area) without being clamped, a reset glides back to it, and the zoom fits the whole galaxy into the area.
+    #[test]
+    fn the_view_follows_the_window_s_frame() {
+        let mut v = view();
+        let area = Rect::new(0.0, 60.0, 544.0, 390.0);
+        let home = Vec2::new(-150.0, -190.0);
+        v.set_frame(area, home, (230.0, 400.0));
+        assert_eq!((v.zoom, v.offset, v.area()), (1.0, home, area));
+        v.pan(Vec2::new(-80.0, 40.0));
+        v.reset();
+        for _ in 0..120 {
+            v.ease(1.0 / 60.0);
+        }
+        assert_eq!((v.zoom, v.offset), (1.0, home));
+        v.zoom_around(1e-3, None);
+        for _ in 0..120 {
+            v.ease(1.0 / 60.0);
+        }
+        assert!((1414.0 + ROOM) * 2.0 * v.zoom <= area.height() + 1e-3);
+        assert!(v.to_screen(Vec2::new(1500.0, 400.0)).distance(area.center()) < 1e-3);
+        // A zoomed view keeps its zoom when the frame changes back; reset brings the wide default.
+        v.set_frame(VIEW_AREA, Vec2::ZERO, (HEADER_END, PANEL_X));
+        v.reset();
+        for _ in 0..120 {
+            v.ease(1.0 / 60.0);
+        }
+        assert_eq!((v.zoom, v.offset), (1.0, Vec2::ZERO));
     }
 
     /// The top band names sit halfway between the band's arcs on the top line (the next one past the gate) and

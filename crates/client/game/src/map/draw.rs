@@ -28,7 +28,7 @@ use kit::meshbuf::MeshBuf;
 use kit::style::{Style, mix, vcol};
 
 use super::known::{Known, Pick};
-use super::layout::{Geometry, PANEL_X, PX_PER_S, STAGE, VoyageState};
+use super::layout::{Geometry, PX_PER_S, STAGE, VoyageState};
 
 /// The legend's rows (stage y) and its columns (stage x of the symbols; the words start [`LEGEND_GAP`] after).
 pub const LEGEND_ROWS: [f32; 2] = [676.0, 698.0];
@@ -52,6 +52,9 @@ pub const FADE: f32 = 1.6;
 const PANEL_RUN: f32 = 6000.0;
 /// The detail fades out over this many stage px before the panel's edge.
 const EDGE_FADE: (f32, f32) = (8.0, 32.0);
+/// And over this many before the map area's other edges (the header, the legend, the window's edge: a marker at the
+/// edge is gone, so nothing draws over the back ring or the legend).
+const CHROME_FADE: f32 = 10.0;
 
 /// What the hover is over (the rebuild key's part).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -228,9 +231,13 @@ fn faded(mut col: [f32; 4], k: f32) -> [f32; 4] {
     col
 }
 
-/// How much of the detail shows at stage x `x`: all of it left of the panel, fading out over [`EDGE_FADE`].
-fn edge(x: f32) -> f32 {
-    ((PANEL_X - EDGE_FADE.0 - x) / (EDGE_FADE.1 - EDGE_FADE.0)).clamp(0.0, 1.0)
+/// How much of the detail shows at stage point `q` of the map `area` (the part of the stage the UI leaves free, from
+/// the laid-out nodes): all of it inside, fading out over [`EDGE_FADE`] before the panel (the area's right edge) and
+/// over [`CHROME_FADE`] before its other edges.
+fn edge(area: Rect, q: Vec2) -> f32 {
+    let right = ((area.max.x - EDGE_FADE.0 - q.x) / (EDGE_FADE.1 - EDGE_FADE.0)).clamp(0.0, 1.0);
+    let inside = (q.x - area.min.x).min(q.y - area.min.y).min(area.max.y - q.y);
+    right.min((inside / CHROME_FADE).clamp(0.0, 1.0))
 }
 
 /// A new signal's pulses around `at`: two rings running out from an open voyage's ring, fading as they go (`t`
@@ -246,7 +253,7 @@ fn pulses(pen: &mut Pen, at: Vec2, t: f32, glow: bool, tone: Color, f: impl Fn([
 }
 
 /// The areas' mesh (see the module doc), each galaxy point placed on the stage by `to`, `zoom` the view's.
-pub fn build_areas(geo: &Geometry, look: &Look, to: impl Fn(Vec2) -> Vec2, zoom: f32, style: &Style, white: &Region, soft: &Region) -> Mesh {
+pub fn build_areas(geo: &Geometry, look: &Look, to: impl Fn(Vec2) -> Vec2, zoom: f32, area: Rect, style: &Style, white: &Region, soft: &Region) -> Mesh {
     let ui = &style.ui;
     let mut pen = Pen::new(white, soft);
     let known = &look.known;
@@ -260,7 +267,7 @@ pub fn build_areas(geo: &Geometry, look: &Look, to: impl Fn(Vec2) -> Vec2, zoom:
         // the line, so nothing overhangs where two circles cross.
         for (inset, half, a) in [(0.0, 0.7, 0.2), (2.5, 2.0, 0.07), (7.0, 4.5, 0.035)] {
             for (outline, closed) in union_outline(&circles, r - inset, 6.0) {
-                for (run, closed) in left_of(&outline, closed, PANEL_X - EDGE_FADE.0) {
+                for (run, closed) in left_of(&outline, closed, area.max.x - EDGE_FADE.0) {
                     pen.path(&run, closed, half, vcol(ui.teal, a));
                 }
             }
@@ -268,9 +275,9 @@ pub fn build_areas(geo: &Geometry, look: &Look, to: impl Fn(Vec2) -> Vec2, zoom:
     }
 
     // Old edges of narrowed signals, fading.
-    for (area, faded) in &look.fading {
+    for (old, faded) in &look.fading {
         let k = 1.0 - faded.clamp(0.0, 1.0);
-        dotted_edge(&mut pen, to(geo.to_galaxy(area.centre)), geo.px(area.radius) * zoom, 0.9, vcol(ui.gold, 0.6 * k));
+        dotted_edge(&mut pen, area, to(geo.to_galaxy(old.centre)), geo.px(old.radius) * zoom, 0.9, vcol(ui.gold, 0.6 * k));
     }
     // The signal areas: a faint fill, a dotted edge, a pulse running out to it.
     let wave = look.wave;
@@ -283,7 +290,7 @@ pub fn build_areas(geo: &Geometry, look: &Look, to: impl Fn(Vec2) -> Vec2, zoom:
         if r * ease > 2.0 {
             pen.ring(c, r * ease, 0.9, vcol(ui.gold, 0.32 * (1.0 - wave)));
         }
-        dotted_edge(&mut pen, c, r, if lit { 1.25 } else { 1.0 }, vcol(ui.gold, if lit { 0.95 } else { 0.7 }));
+        dotted_edge(&mut pen, area, c, r, if lit { 1.25 } else { 1.0 }, vcol(ui.gold, if lit { 0.95 } else { 0.7 }));
     }
     pen.into_mesh()
 }
@@ -394,12 +401,12 @@ fn left_of(pts: &[Vec2], closed: bool, x: f32) -> Vec<(Vec<Vec2>, bool)> {
     runs
 }
 
-/// A dotted circle like the band edges, its dots faded towards the panel.
-fn dotted_edge(pen: &mut Pen, c: Vec2, r: f32, dot: f32, col: [f32; 4]) {
+/// A dotted circle like the band edges, its dots faded towards the edges of the map `area`.
+fn dotted_edge(pen: &mut Pen, area: Rect, c: Vec2, r: f32, dot: f32, col: [f32; 4]) {
     let n = ((std::f32::consts::TAU * r / 7.0).ceil() as usize).max(8);
     for k in 0..n {
         let q = c + Vec2::from_angle(k as f32 / n as f32 * std::f32::consts::TAU) * r;
-        let e = edge(q.x);
+        let e = edge(area, q);
         if e > 0.0 {
             pen.disc_n(q, dot, 6, faded(col, e));
         }
@@ -407,8 +414,9 @@ fn dotted_edge(pen: &mut Pen, c: Vec2, r: f32, dot: f32, col: [f32; 4]) {
 }
 
 /// The detail's mesh: the known voyages' and clusters' markers, the shipyard, the pick and the warp, each galaxy
-/// point placed on the stage by `to`.
-pub fn build_detail(geo: &Geometry, look: &Look, to: impl Fn(Vec2) -> Vec2, style: &Style, white: &Region, soft: &Region) -> Mesh {
+/// point placed on the stage by `to`, faded out at the edges of the map `area` ([`edge`]).
+pub fn build_detail(geo: &Geometry, look: &Look, to: impl Fn(Vec2) -> Vec2, area: Rect, style: &Style, white: &Region, soft: &Region) -> Mesh {
+    let edge = |q: Vec2| edge(area, q);
     let ui = &style.ui;
     let mut pen = Pen::new(white, soft);
     let glow = look.glow;
@@ -419,7 +427,7 @@ pub fn build_detail(geo: &Geometry, look: &Look, to: impl Fn(Vec2) -> Vec2, styl
         let n = (a.distance(b) / 9.0).floor() as usize;
         for k in 1..n {
             let q = a.lerp(b, k as f32 / n as f32);
-            let e = edge(q.x);
+            let e = edge(q);
             if e > 0.0 {
                 pen.disc_n(q, 1.1, 6, faded(vcol(ui.number, 0.45), e));
             }
@@ -442,7 +450,7 @@ pub fn build_detail(geo: &Geometry, look: &Look, to: impl Fn(Vec2) -> Vec2, styl
 
     // The shipyard: a diamond with a ship in it.
     let h = to(geo.home);
-    let k = edge(h.x);
+    let k = edge(h);
     if k > 0.0 {
         if glow {
             pen.glow(h, 40.0, faded(vcol(ui.teal, 0.18), k));
@@ -455,7 +463,7 @@ pub fn build_detail(geo: &Geometry, look: &Look, to: impl Fn(Vec2) -> Vec2, styl
     for m in &look.known.clusters {
         let Some(&g) = geo.clusters.get(m.cluster as usize) else { continue };
         let at = to(g);
-        let k = edge(at.x);
+        let k = edge(at);
         if k <= 0.0 {
             continue;
         }
@@ -481,7 +489,7 @@ pub fn build_detail(geo: &Geometry, look: &Look, to: impl Fn(Vec2) -> Vec2, styl
     // A blind jump's spot: a crosshair in a dotted ring.
     if let Some(Pick::Spot(p)) = &look.selected {
         let at = to(geo.to_galaxy(*p));
-        let k = edge(at.x);
+        let k = edge(at);
         if k > 0.0 {
             let col = faded(vcol(ui.number, 0.9), k);
             pen.dotted_ring(at, 11.0, 20, 0.9, col);
@@ -494,7 +502,7 @@ pub fn build_detail(geo: &Geometry, look: &Look, to: impl Fn(Vec2) -> Vec2, styl
     // The voyages.
     for (n, node) in geo.nodes.iter().copied().enumerate() {
         let at = to(node);
-        let k = edge(at.x);
+        let k = edge(at);
         if k <= 0.0 {
             continue;
         }
@@ -549,10 +557,18 @@ pub fn build_detail(geo: &Geometry, look: &Look, to: impl Fn(Vec2) -> Vec2, styl
     pen.into_mesh()
 }
 
-/// The chrome's mesh: the legend's symbols and the panel's backing.
-pub fn build_chrome(style: &Style, white: &Region, soft: &Region) -> Mesh {
+/// The chrome's mesh: the legend's symbols (when it shows) and the backing of the `panel` (stage px).
+pub fn build_chrome(style: &Style, white: &Region, soft: &Region, panel: Rect, legend: bool) -> Mesh {
     let ui = &style.ui;
     let mut pen = Pen::new(white, soft);
+    let back = mix(style.background.outer(), ui.number, 0.02);
+    // The panel's backing (over the galaxy, which shows through faintly) and its edge; it runs on past the stage
+    // for wider windows.
+    pen.rect(Vec2::new(panel.min.x, -PANEL_RUN), Vec2::new(panel.max.x.max(STAGE.x) + PANEL_RUN, STAGE.y + PANEL_RUN), vcol(back, 0.8));
+    pen.line(Vec2::new(panel.min.x, panel.min.y + 24.0), Vec2::new(panel.min.x, panel.max.y - 24.0), 0.5, vcol(ui.label, 0.22));
+    if !legend {
+        return pen.into_mesh();
+    }
     // The legend's symbols ([`LEGEND`]'s words).
     let (r0, r1) = (LEGEND_ROWS[0], LEGEND_ROWS[1]);
     let at = |k: usize, r: f32| Vec2::new(LEGEND_COLUMNS[k], r);
@@ -575,24 +591,26 @@ pub fn build_chrome(style: &Style, white: &Region, soft: &Region) -> Mesh {
     pen.disc(at(4, r1), 1.4, vcol(ui.gold, 1.0));
     let arc: Vec<Vec2> = (0..=10).map(|k| at(5, r1) + Vec2::from_angle(std::f32::consts::PI * (1.15 + 0.7 * k as f32 / 10.0)) * 9.0 + Vec2::new(0.0, 6.0)).collect();
     pen.polyline(&arc, 0.8, vcol(ui.teal, 0.6));
-
-    // The panel's backing (over the galaxy, which shows through faintly) and its edge; it runs on past the stage
-    // for wider windows.
-    let back = mix(style.background.outer(), ui.number, 0.02);
-    pen.rect(Vec2::new(PANEL_X, -PANEL_RUN), Vec2::new(STAGE.x + PANEL_RUN, STAGE.y + PANEL_RUN), vcol(back, 0.8));
-    pen.line(Vec2::new(PANEL_X, 24.0), Vec2::new(PANEL_X, STAGE.y - 24.0), 0.5, vcol(ui.label, 0.22));
     pen.into_mesh()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use super::super::layout::PANEL_X;
 
-    /// The detail fades out over the last px before the panel.
+    /// The detail fades out over the last px before the panel, and before the header, the legend and the window's
+    /// edge: nothing of it draws over the chrome.
     #[test]
-    fn the_detail_stops_at_the_panel() {
-        assert_eq!((edge(PANEL_X - 100.0), edge(PANEL_X - EDGE_FADE.0)), (1.0, 0.0));
-        assert!((edge(PANEL_X - (EDGE_FADE.0 + EDGE_FADE.1) / 2.0) - 0.5).abs() < 1e-5);
+    fn the_detail_stops_at_the_panel_and_the_chrome() {
+        let area = Rect::new(0.0, 56.0, PANEL_X, 664.0);
+        let y = 300.0;
+        assert_eq!((edge(area, Vec2::new(PANEL_X - 100.0, y)), edge(area, Vec2::new(PANEL_X - EDGE_FADE.0, y))), (1.0, 0.0));
+        assert!((edge(area, Vec2::new(PANEL_X - (EDGE_FADE.0 + EDGE_FADE.1) / 2.0, y)) - 0.5).abs() < 1e-5);
+        for q in [Vec2::new(300.0, 56.0), Vec2::new(300.0, 30.0), Vec2::new(300.0, 664.0), Vec2::new(0.0, y), Vec2::new(-20.0, y)] {
+            assert_eq!(edge(area, q), 0.0, "{q}");
+        }
+        assert_eq!(edge(area, Vec2::new(300.0, 56.0 + CHROME_FADE)), 1.0);
     }
 
     /// The jump range's outline: two crossing circles make one loop that turns exactly at both crossings, a third
