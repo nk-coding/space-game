@@ -2334,6 +2334,31 @@ but the type is too small to read). Numbers are placeholders.
   its box grown to 48 dp square (`TOUCH_TARGET`; the nearest one when no box holds the finger); a finger on a panel
   (`UiBlock`) or a control blocks the world; a finger dragged 10 dp along any `Scrollbar` area (on its rows too)
   scrolls it under the finger and the row's press ends without a click. No fling yet; tooltips stay mouse-only.
+- **Type on a phone**: `kit::ui_kit::CompactText(min)` on a screen's root draws every text under it at least `min` px
+  in the compact class (its letter spacing grown with it; the size it was made with in a wide window), so a phone
+  layout can keep a widget's 7 to 8 px labels without listing them.
+- **Phone layouts so far** (D2, 19 Oct 2026; screenshots `docs/results/phone-map-2026-10-19.png`,
+  `phone-research-2026-10-19.png`, `phone-evolution-setup-2026-10-19.png`, 844 × 390 at DPR 3), each at
+  `compact_scale` with `CompactText(9)`:
+  - *Voyage map* (`map/mod.rs` `fit`): the stage keeps its 1280 × 720 px but is laid out from the window's top left;
+    the panel is 300 px at the window's right edge, its rows scroll (SET COURSE and the status stay at its bottom);
+    the legend is left out; the zoom buttons sit beside the header. The default view brings home a third into the map
+    area, halfway down (`MapView::set_frame`). At every size the **map area** is measured from the laid-out chrome
+    (window's left edge to the panel, header (and on a phone the zoom buttons) down to the legend or the window's
+    bottom): the labels are cut there (the top band names in the strip right of the header), the view keeps it
+    covered, and the markers fade out at its edges (`draw::edge`), so nothing draws over the back ring or the legend
+    (Niklas, 19 Oct 2026). The jump range's outline is still cut at the panel only.
+  - *Research* (`research/screen.rs` `Lay::COMPACT`, built again by `relayout` when the window changes class):
+    844 × 390; each lane's dot, name and data over its cards (`Metrics::lane_head`), so three columns of cards
+    (163 px) fit beside a 254 px detail whose rows scroll over UNLOCK (no preview picture); the materials wrap right
+    of the header (at every size now: `fit_materials` starts them at the header's laid-out right edge; at 1280 × 720
+    the eleven of the base pack ran into the title too), ALSO IN STORE left out.
+  - *Evolution* (`evolution/mod.rs`, built again by `relayout`; home's UI scale follows while the layer is open):
+    844 × 390; each page scrolls up and down between the header and the status line, its wide columns stacked
+    (`Page::reflow`: SETUP's two columns one under the other, THE RUN's progress line, then the chart and the archive
+    side by side, then the picked design; THE LADDER's list a page high, the rungs under it); the RUNS rows leave
+    out STARTS and MADE and wrap their buttons under them. Lists inside a page scroll on their own when a finger
+    starts on them.
 
 What still breaks at 844 × 390 (audit of 19 Oct 2026, DPR 3), grouped into work packages with disjoint files:
 
@@ -2342,7 +2367,8 @@ What still breaks at 844 × 390 (audit of 19 Oct 2026, DPR 3), grouped into work
 | A. Flight and viewer | flight HUD, pause menu, fleet bar, fight viewer: `world/src/flight_hud/`, `hud.rs`, `controls.rs`, `fleet_bar.rs`, `replay.rs`, `camera.rs` | the HUD stays at the UI size (1.0, readable and fitting) but its title wraps ("TEST RANGE · WAVE" / "1"; the fight viewer's long title in four lines over the top centre: `hud.title_side` keeps 300 px a side of 844); touch widgets wait for a first touch (plan 4.2: on from the start on touch); the help line ("CLICK OR L TO LOCK") shows on touch; the viewer's scrubber and the free camera's drag are mouse-only; set the HUD's scale to `compact_scale` in flight from a world system | L |
 | B. Drydock | `game/src/drydock/**`, `world/src/part_card.rs` | fitted at 0.54: type 4–7 dp, pills about 15 dp high; painting, erasing, selecting on the grid (`tools.rs`) and panning (`view.rs`: middle button, Space + drag, wheel) are mouse-only, no pinch; phone layout per plan 4.3 | L |
 | C. BEHAVIOR | `game/src/behavior_ui/**` | fitted at 0.54, unreadable; a row's reorder drag (8 px) fights the finger's scroll; phone layout per plan 4.4 (inspector right, ADD NODE, ring menu) | L |
-| D. Shipyard screens | home `home.rs`, `shipyard/`, FLEET `fleet.rs`, workshop `workshop.rs`, LOG `voyage_log.rs`, evolution `evolution/`, research `research/`, voyage map `map/`, debrief `debrief.rs`, settings `settings.rs` | all fitted at 0.54 (map: its stage scale), so their labels, lists and pills are unreadable though stations, rows and pills take taps; research's top strip of counts runs into its title; FLEET's crumb sits at the window's top edge; each needs `compact_scale` and a phone layout (splittable: D1 home, FLEET, workshop, LOG, debrief, settings; D2 research, map, evolution) | L (M each) |
+| D1. Shipyard screens | home `home.rs`, `shipyard/`, FLEET `fleet.rs`, workshop `workshop.rs`, LOG `voyage_log.rs`, debrief `debrief.rs`, settings `settings.rs` | all fitted at 0.54, so their labels, lists and pills are unreadable though stations, rows and pills take taps; FLEET's crumb sits at the window's top edge; each needs `compact_scale` and a phone layout (home's `ui_scale` already gives the EVOLUTION layer the phone's scale while it is open) | L (M each) |
+| D2. Research, voyage map, evolution | `research/`, `map/`, `evolution/` | **done 19 Oct 2026** (above: phone layouts at `compact_scale`, the map area measured from the chrome). Left: the map's jump-range outline is cut at the panel only; text cut by the map area's edge is cut through its letters; the evolution pages are the wide columns stacked (not a phone design of their own), THE RUN page not checked with a run on a phone; no pinch check (headless has one finger) | M |
 
 ## Adding visuals
 
