@@ -17,6 +17,7 @@
     (id: "fire_group_3", name: "Fire group 3", summary: "Fires the guns of weapon group 3 while held.", section: flight, contexts: [flight], inputs: ["Digit3"]),
     (id: "lock_next", name: "Lock target", summary: "Locks the nearest enemy; pressed again while one is locked, the next one by distance, round to the nearest again.", section: flight, contexts: [flight], inputs: ["KeyL"]),
     (id: "scan", name: "Scan", summary: "Starts a scan with the flown ship's scanner: sites within its range show, signals beyond it give a bearing. Wakes sleeping enemies close by.", section: flight, contexts: [flight], inputs: ["KeyG"]),
+    (id: "flare", name: "Flares", summary: "Releases flares from the flown ship's flare launcher: hot decoys that pull enemy homing missiles off it. A launcher has a few releases per fight and cools down after each.", section: flight, contexts: [flight], inputs: ["KeyN"]),
     (id: "drift", name: "Drift", summary: "Turns drift on and off: pure momentum while keys are held, no sideways correction.", section: flight, contexts: [flight], inputs: ["KeyX"]),
     (id: "focus_next", name: "Next vessel", summary: "Flies the next of your vessels.", section: flight, contexts: [flight], inputs: ["KeyV"]),
     (id: "focus_previous", name: "Previous vessel", summary: "Flies the previous of your vessels.", section: flight, contexts: [flight], inputs: ["Shift+KeyV"]),

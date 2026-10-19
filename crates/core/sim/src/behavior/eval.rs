@@ -57,6 +57,8 @@ pub enum RuleStatus {
     /// A `scan` rule held and stepped aside for the next rule: `started` a scan, or the scanner was not ready (none
     /// working, or a scan charging or cooling down).
     Scan { started: bool },
+    /// A `flare` rule held and stepped aside for the next rule: `released` flares, or no launcher was ready.
+    Flare { released: bool },
     /// Beyond the ship's working rule slots: inactive.
     NoSlot,
 }
@@ -185,6 +187,8 @@ impl BehaviorState {
             RuleStatus::NoTarget => format!("no target for `{}`", rule.action.name),
             RuleStatus::Scan { started: true } => "started a scan".into(),
             RuleStatus::Scan { started: false } => "the scanner is not ready".into(),
+            RuleStatus::Flare { released: true } => "released flares".into(),
+            RuleStatus::Flare { released: false } => "no flare launcher is ready".into(),
             RuleStatus::Failed { cond, why } => {
                 let c = &rule.when[cond as usize];
                 let measure = self
@@ -266,6 +270,8 @@ pub(crate) struct Out {
     script_error: Option<String>,
     /// A `scan` rule started a scan.
     scan: bool,
+    /// A `flare` rule released flares.
+    flare: bool,
     /// The rock a deciding `mine` rule cuts (GDR-0114).
     mine: Option<(u32, Vec2)>,
 }
@@ -283,6 +289,7 @@ impl Default for Out {
             status: Vec::new(),
             script_error: None,
             scan: false,
+            flare: false,
             mine: None,
         }
     }
@@ -411,6 +418,9 @@ pub(crate) fn think_all(
         }
         if std::mem::take(&mut out.scan) {
             ships[k].start_scan();
+        }
+        if std::mem::take(&mut out.flare) {
+            ships[k].ask_flare();
         }
     }
 }
@@ -798,6 +808,11 @@ impl Ctx<'_> {
                     out.scan |= started;
                     RuleStatus::Scan { started }
                 }
+                None if rule.action == Action::Flare => {
+                    let released = !out.flare && me.can_flare();
+                    out.flare |= released;
+                    RuleStatus::Flare { released }
+                }
                 None if rule.action == Action::Mine => match self.rock_to_mine(rocks) {
                     Some(m) => {
                         out.mine = Some(m);
@@ -915,7 +930,7 @@ impl Ctx<'_> {
             },
             Action::Flee => Maneuver::Flee { from: target },
             Action::Ram => Maneuver::Ram { target },
-            Action::Hold | Action::Escort(_) | Action::Scan | Action::Mine => Maneuver::Brake,
+            Action::Hold | Action::Escort(_) | Action::Scan | Action::Flare | Action::Mine => Maneuver::Brake,
         }
     }
 

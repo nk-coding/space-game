@@ -46,7 +46,7 @@ pub mod tuning {
     /// Live missiles in the whole world at most; launchers wait while it is full.
     pub const MAX_MISSILES: usize = 96;
     /// A seeker sees hostile vessels within this angle of the missile's course (radians, to either side; 60°).
-    pub const SEEK_CONE: f32 = 1.047_197_6;
+    pub const SEEK_CONE: f32 = core::f32::consts::FRAC_PI_3;
     /// A missile leaves the launcher at this share of its top speed, on top of the shooter's velocity.
     pub const LAUNCH_SPEED: f32 = 0.35;
     /// A salvo fans out over this angle (radians, to either side of the launcher's facing).
@@ -79,6 +79,8 @@ pub struct Seeker {
     pub hp: f32,
     /// Warhead blast radius (m); its damage is the projectile's.
     pub radius: f32,
+    /// The flare decoy that lured it (`flare.rs`): it flies at the decoy instead of `target` (then none).
+    pub decoy: Option<ProjectileId>,
 }
 
 impl StateHash for Seeker {
@@ -89,6 +91,10 @@ impl StateHash for Seeker {
         h.f32(self.turn);
         h.f32(self.hp);
         h.f32(self.radius);
+        // Nothing for a missile no decoy lured, so fights without flares keep their hashes.
+        if let Some(d) = self.decoy {
+            h.u32(d.0);
+        }
     }
 }
 
@@ -220,6 +226,7 @@ impl Sim {
                     turn: l.turn * (core::f32::consts::PI / 180.0),
                     hp: l.hp,
                     radius: l.radius,
+                    decoy: None,
                 }),
             });
             self.events.push(SimEvent::ShotFired {
@@ -236,16 +243,31 @@ impl Sim {
         true
     }
 
-    /// A missile's course for this tick: its target kept while it is a hostile vessel, else the seeker looks
-    /// again; the course turns towards the target's lead point by at most the turn rate, and the speed grows by
-    /// the acceleration up to the top speed (a missile launched faster keeps its speed).
-    pub(crate) fn steer_missile(&self, p: &mut Projectile) {
+    /// A missile's course for this tick: a lured missile flies at its decoy while it burns (returns true, spent,
+    /// once it comes within `flare::tuning::FUSE` of it plus this tick's flight); else its target is kept while it
+    /// is a hostile vessel, else the seeker looks again; the course turns towards the target's lead point by at
+    /// most the turn rate, and the speed grows by the acceleration up to the top speed (a missile launched faster
+    /// keeps its speed).
+    pub(crate) fn steer_missile(&self, p: &mut Projectile) -> bool {
         let Some(mut s) = p.missile else {
-            return;
+            return false;
         };
         let mut speed = p.vel.length();
         let mut dir = if speed > 1e-6 { p.vel * (1.0 / speed) } else { Vec2::Y };
-        let mut aim = s.target.and_then(|t| self.hostile_vessel(t, p.owner, p.team));
+        let lure = s.decoy.and_then(|d| self.decoy_state(d));
+        if let Some((at, _)) = lure
+            && (at - p.pos).length() <= super::flare::tuning::FUSE + speed * DT
+        {
+            p.pos = at;
+            return true;
+        }
+        if lure.is_none() {
+            s.decoy = None;
+        }
+        let mut aim = lure.map(|(pos, vel)| TargetState { pos, vel });
+        if aim.is_none() {
+            aim = s.target.and_then(|t| self.hostile_vessel(t, p.owner, p.team));
+        }
         if aim.is_none() {
             let reach = s.speed.max(speed) * p.life;
             s.target = self.seek(p.pos, dir, p.owner, p.team, reach);
@@ -262,6 +284,7 @@ impl Sim {
         }
         p.vel = dir * speed;
         p.missile = Some(s);
+        false
     }
 
     /// Missile `id` of ship `by` (of `team`) strikes at `at` (module docs: the warhead): `damage` within `radius`.

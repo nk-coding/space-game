@@ -34,4 +34,15 @@
         requires: ["rocket_pod"],
         unlocks: [Part("torpedo_launcher")],
     ),
+    (
+        id: "flares",
+        name: "Flares",
+        summary: "Hot decoys that pull homing missiles off your ships.",
+        description: "Unlocks the [[part:flare_launcher]]: a few releases per fight of decoys that enemy missiles turn onto and are spent on.",
+        family: "missiles",
+        kind: NewPart,
+        cost: (data: {"missiles": 3, "energy": 1}),
+        requires: ["point_defence"],
+        unlocks: [Part("flare_launcher")],
+    ),
 ]

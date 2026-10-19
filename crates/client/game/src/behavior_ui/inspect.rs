@@ -713,7 +713,7 @@ mod tests {
         // (they act on the pilot's lock).
         let assists = palette(&content.behavior_nodes, ListKind::Assists, "");
         let actions: Vec<&str> = assists.iter().filter(|e| e.role == NodeRole::Action).map(|e| e.id.as_str()).collect();
-        assert_eq!(actions, ["auto_lock", "brake", "hold_station", "avoid_collisions", "auto_fire"]);
+        assert_eq!(actions, ["auto_lock", "brake", "hold_station", "avoid_collisions", "auto_flare", "auto_fire"]);
         assert!(!assists.iter().any(|e| e.role == NodeRole::Target));
         assert!(assists.iter().any(|e| e.id == "idle") && assists.iter().any(|e| e.id == "hull"));
         assert!(!all.iter().any(|e| e.id == "idle"));

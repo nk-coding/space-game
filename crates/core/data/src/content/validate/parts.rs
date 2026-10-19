@@ -300,6 +300,18 @@ impl<'a> Validator<'a> {
                 self.err(p, "scanner", "a scanner draws power while it charges (`power.draw`)");
             }
         }
+        if let Some(x) = &p.countermeasure {
+            for (field, n) in [("countermeasure.charges", x.charges), ("countermeasure.decoys", x.decoys)] {
+                if n == 0 {
+                    self.err(p, field, "must be at least 1");
+                }
+                self.count(p, field, n, MAX_COUNT);
+            }
+            self.number(p, "countermeasure.cooldown", x.cooldown, 0.0, false);
+            self.number(p, "countermeasure.speed", x.speed, 0.0, false);
+            self.number(p, "countermeasure.life", x.life, 0.0, true);
+            self.number(p, "countermeasure.lure", x.lure, 0.0, true);
+        }
         if let Some(c) = p.control_cost {
             if c > MAX_CONTROL_COST {
                 self.err(

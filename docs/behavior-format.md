@@ -52,7 +52,8 @@ There is no `end`, no `or` and no nesting. For "this **or** that", write two rul
 
 ### Actions
 
-`approach(range)`, `orbit(radius, dir)`, `kite(range)`, `face`, `flee`, `ram`, `hold`, `escort(distance)`, `scan`. See
+`approach(range)`, `orbit(radius, dir)`, `kite(range)`, `face`, `flee`, `ram`, `hold`, `escort(distance)`, `scan`,
+`flare`, `mine`. See
 the vocabulary in the wiki (or `content/base/behavior_nodes/actions.ron`) for what each does.
 
 `ram` (added 18 Oct 2026, GDR-0103, the Grown's charge) flies straight at the target at top speed, nose first, and
@@ -64,6 +65,12 @@ approach(80%)`, as the Grown's rammers fly it.
 scanner is ready, then **steps aside**: the next rule that holds flies the ship (the debug view says `started a scan`
 or `the scanner is not ready`). It needs no target and never ends the list, so `always -> scan` above the fighting
 rules scans whenever it can; `when enemies_near(300m) < 1 -> scan` only where a sweep wakes nothing.
+
+`flare` (added 19 Oct 2026, GDR-0115) releases flares from the ship's flare launcher when its conditions hold and a
+launcher is ready (charged and cooled down), then steps aside like `scan` (the debug view says `released flares` or
+`no flare launcher is ready`). A launcher has a few releases per fight, so give it a condition:
+`when missiles_incoming >= 1 -> flare` at the top of the list. The flown ship's pilot assists have `auto_flare` for the
+same (below).
 
 `escort(distance)` (added 13 Oct 2026, GDR-0065; default `30m`) keeps the ship within that distance of its
 **leader**, the ship it escorts (for wingmen: the player's flagship): it closes in when farther and keeps pace
@@ -141,8 +148,10 @@ always -> hold_station(ally, toggle2)                  # else keep my place besi
   default: where the assist took thrust over, e.g. where you let go of W; `ally`: your place then beside the nearest
   of your other vessels, moving with it; thrusting moves the station), `avoid_collisions` (thrust: sidestep a ship,
   wreck or piece of debris on a collision course within a few seconds; it decides only while something is, so the rule
-  below it keeps thrust the rest of the time) and `auto_fire(group)` (that weapon group's trigger: each of its guns
-  fires when it bears on the lock, the test of fire at will). The behaviors' maneuvers are refused in an assist
+  below it keeps thrust the rest of the time), `auto_fire(group)` (that weapon group's trigger: each of its guns
+  fires when it bears on the lock, the test of fire at will) and `auto_flare` (the flare launchers, 19 Oct 2026,
+  GDR-0115: it releases flares at a think whenever its conditions hold and a launcher is ready, so
+  `when missiles_incoming >= 1 -> auto_flare`; it decides only then). The behaviors' maneuvers are refused in an assist
   list, and the assists in a behavior. `face_target` (15 Oct 2026, step 3) is gone: on the lock alone it would never
   act, as a held lock already aims the strongest guns (GDR-0088, dated line of 15 Oct 2026).
 - **Thrust assists turn while turning is free** (Niklas, 15 Oct 2026; no base ship has RCS): while you neither

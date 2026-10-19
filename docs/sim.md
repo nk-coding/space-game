@@ -1782,6 +1782,21 @@ deals `damage / rate / salvo` (`GunMount::shot_damage`).
 - **Fire at will** launches when the target is within `missile::tuning::FIRE_CONE` (0.25 rad) of the launcher's
   facing (aimed at the target, not a lead point): the seeker does the rest.
 
+- **Flares** (`combat/flare.rs`, 19 Oct 2026): a part's `countermeasure: (charges, cooldown, decoys, speed, life,
+  lure)` (`ShipDesign::flares`, `FlareMount`; per ship `Ship::flares`, a `FlareSlot` of charges left and cooldown
+  per launcher, hashed only on ships that have one). A release is asked by `ShipCommand::Flare` (the FLARE key), the
+  behavior action `flare` (`RuleStatus::Flare`, it steps aside like `scan`) or the assist `auto_flare`
+  (`Channel::Flare`, which adds a channel to every assist list's hashed state); `Ship::ask_flare` keeps the ask only
+  while `Ship::can_flare` (a launcher on the active controlling piece, alive, charged and cool). In the weapons step,
+  before the projectiles fly (`Sim::flares_step`): launchers cool down, the first ready launcher (by part) of each
+  asking ship releases `decoys` decoys (`Decoy`, projectile ids, `Sim::decoys`, hashed only while any burn) from its
+  centre along its facing, fanned over ±`FAN` (0.6 rad), at `speed` m/s on top of the launcher's velocity, slowing
+  towards it by `DRAG` (0.8/s), burning `life` s (`SimEvent::FlaresReleased`); then every homing missile hostile to
+  a decoy's owner and not yet lured turns onto the nearest such decoy within its `lure` m (`Seeker::decoy`, its
+  target cleared, so `missiles_incoming` drops). A lured missile flies at its decoy (no lead) and is spent within
+  `FUSE` (1 m) of it plus a tick's flight (`GoneReason::Decoyed`, no blast); when the decoy burns out its seeker looks
+  for a ship again.
+
 Numbers (`content/base/parts/missiles.ron`, placeholders): see GDR-0115 and `docs/results/missiles-2026-10-19.md`.
 
 ### Aiming and leading

@@ -420,6 +420,21 @@ pub struct SensorSpec {
     pub range: f32,
 }
 
+/// A flare launcher (GDR-0115; GDR-0018's other counter to missiles): asked (the FLARE key, the `flare` behavior
+/// action, the `auto_flare` assist), it releases `decoys` hot decoys that leave at `speed` m/s along its facing and
+/// burn for `life` seconds; enemy homing missiles within `lure` metres of one turn onto it and are spent on it. Then
+/// it cools down for `cooldown` seconds; it has `charges` releases per fight.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CountermeasureSpec {
+    pub charges: u32,
+    pub cooldown: f32,
+    pub decoys: u32,
+    pub speed: f32,
+    pub life: f32,
+    pub lure: f32,
+}
+
 /// A scanner (GDR-0080, GDR-0093): a scan (SCAN in flight, the `scan` behavior action) charges for `charge` seconds,
 /// drawing the part's power only then, and sweeps: on a voyage every site within `range` shows, every trail place
 /// beyond it gets a bearing, and sleeping sites within `wake` wake up. Then it cools down for `cooldown` seconds.
@@ -572,6 +587,9 @@ pub struct Part {
     pub sensor: Option<SensorSpec>,
     #[serde(default)]
     pub scanner: Option<ScannerSpec>,
+    /// Releases decoys that lure missiles (flares, GDR-0115).
+    #[serde(default)]
+    pub countermeasure: Option<CountermeasureSpec>,
     #[serde(default)]
     pub gyro: Option<GyroSpec>,
     #[serde(default)]

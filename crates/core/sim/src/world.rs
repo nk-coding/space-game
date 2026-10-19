@@ -115,6 +115,9 @@ pub enum ShipCommand {
     /// Start a scan with the ship's scanner (`Ship::start_scan`; in flight the SCAN key). Ignored while one charges
     /// or cools down, and for a ship without a working scanner.
     Scan,
+    /// Release flares (`combat/flare.rs`; in flight the FLARE key): the first ready launcher on the controlling
+    /// piece throws out its decoys. Ignored while none is charged and cool.
+    Flare,
 }
 
 /// Everything from outside that affects one tick. Applied in list order.
@@ -159,6 +162,8 @@ pub struct Sim {
     plans: Vec<flight::Plan>,
     /// Live projectiles, ascending id.
     pub(crate) projectiles: Vec<Projectile>,
+    /// Burning flare decoys, ascending id (`combat/flare.rs`).
+    pub(crate) decoys: Vec<crate::combat::flare::Decoy>,
     /// Beams that fired this tick.
     pub(crate) beams: Vec<BeamTrace>,
     /// Shield bubbles this tick.
@@ -212,6 +217,7 @@ impl Sim {
             stepped: false,
             plans: Vec::new(),
             projectiles: Vec::new(),
+            decoys: Vec::new(),
             beams: Vec::new(),
             bubbles: Vec::new(),
             shield_scratch: Vec::new(),
@@ -477,6 +483,7 @@ impl Sim {
             ShipCommand::Scan => {
                 s.start_scan();
             }
+            ShipCommand::Flare => s.ask_flare(),
             ShipCommand::Focus | ShipCommand::Wake => {}
         }
     }
@@ -1061,6 +1068,13 @@ impl StateHash for Sim {
         h.u32(self.projectiles.len() as u32);
         for p in &self.projectiles {
             p.hash_state(h);
+        }
+        // Nothing while no decoy burns, so worlds without flares keep their hashes.
+        if !self.decoys.is_empty() {
+            h.u32(self.decoys.len() as u32);
+            for d in &self.decoys {
+                d.hash_state(h);
+            }
         }
         self.salvage.hash_state(h);
         if let Some(v) = &self.voyage {

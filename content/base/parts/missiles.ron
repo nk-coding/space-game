@@ -69,4 +69,23 @@
         salvage: (family: "missiles", data: 2),
         recipe: (materials: {"copper": 2, "crystal": 2, "steel": 1}),
     ),
+    // Flares (GDR-0115; GDR-0018's other counter to missiles): a launcher of hot decoys that pull enemy missiles off.
+    (
+        id: "flare_launcher",
+        name: "Flare launcher",
+        summary: "Throws out a fan of hot decoys that pull enemy missiles off the ship.",
+        description: "On FLARE in flight (or a behavior's [[behavior_node:flare|flare]] action, or the [[behavior_node:auto_flare|auto-flare]] assist) it releases its decoys along its facing; every enemy homing missile that comes near a burning decoy turns onto it and is spent on it. Then it cools down, and it has only a few releases per fight. It works on the vessel's controlling piece and needs no power.",
+        tags: ["defence"],
+        locked: true, // the missiles research's `flares` unlocks it
+        category: "defense",
+        icon: "flare-launcher",
+        size: (1, 1),
+        build_points: 2,
+        mass: 1,
+        hp: 1,
+        countermeasure: (charges: 3, cooldown: 6, decoys: 3, speed: 14, life: 2.5, lure: 12),
+        explosion: (damage: 0.3, radius: 0.6),
+        salvage: (family: "missiles", data: 2),
+        recipe: (materials: {"copper": 1, "steel": 2, "crystal": 1}),
+    ),
 ]

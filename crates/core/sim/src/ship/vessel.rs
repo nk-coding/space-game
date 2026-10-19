@@ -216,6 +216,9 @@ impl Ship {
             // A hangar that leaves with a split-off vessel starts empty: its drones stay tied to the parent's.
             bays: self.design.hangars.iter().map(|_| crate::ship::drones::Bay::empty()).collect(),
             drone: self.drone,
+            // The launchers keep their charges and cooldowns: the parts are the same.
+            flares: self.flares.clone(),
+            flare_asked: false,
         };
         for i in 0..self.parts.len() {
             if !self.parts[i].alive {

@@ -188,6 +188,7 @@ pub const BUILTIN_NODES: &[NodeSig] = {
         node("escort", Action, None, DIST),
         node("scan", Action, None, &[]),
         node("mine", Action, None, &[]),
+        node("flare", Action, None, &[]),
         pilot(
             "auto_lock",
             Action,
@@ -202,6 +203,7 @@ pub const BUILTIN_NODES: &[NodeSig] = {
             &[ParamSig::Choice(&["point", "ally"]), TOGGLE, START],
         ),
         pilot("avoid_collisions", Action, None, &[TOGGLE, START]),
+        pilot("auto_flare", Action, None, &[TOGGLE, START]),
         pilot(
             "auto_fire",
             Action,

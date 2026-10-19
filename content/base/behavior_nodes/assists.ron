@@ -1,11 +1,12 @@
 // Pilot assists (GDR-0088): the actions of a design's PILOT ASSISTS list (the BEHAVIOR screen's PILOT ASSISTS tab;
 // `pilot: true`, so behaviors can't use them and an assist list has no others). They run only on the ship the player
-// flies, each on one control channel: the lock (`auto_lock`), thrust (`brake`, `hold_station`, `avoid_collisions`)
-// or one weapon group's trigger (`auto_fire`). The pilot always wins: a channel the player uses is the player's, and
-// letting go hands it back. For each channel the first rule that matches decides, so assists on different channels
-// run together. An assist list has no target line: what needs a target acts on the pilot's lock. `toggle` names the
-// ASSIST TOGGLE key that switches the rule in flight, `start` whether it is on when a mission starts. `auto_lock`'s
-// picks are the behaviors' target selectors (`targets.ron`) that suit a pilot. Built into the sim (`sim::behavior`).
+// flies, each on one control channel: the lock (`auto_lock`), thrust (`brake`, `hold_station`, `avoid_collisions`), one
+// weapon group's trigger (`auto_fire`) or the flare launchers (`auto_flare`). The pilot always wins: a channel the
+// player uses is the player's, and letting go hands it back. For each channel the first rule that matches decides, so
+// assists on different channels run together. An assist list has no target line: what needs a target acts on the
+// pilot's lock. `toggle` names the ASSIST TOGGLE key that switches the rule in flight, `start` whether it is on when a
+// mission starts. `auto_lock`'s picks are the behaviors' target selectors (`targets.ron`) that suit a pilot. Built into
+// the sim (`sim::behavior`).
 // PLACEHOLDER defaults.
 [
     (
@@ -90,6 +91,28 @@
         summary: "Sidestep a ship, wreck or piece of debris on a collision course; while you don't steer, it turns the ship to sidestep with its engines.",
         description: "It looks a few seconds ahead and takes thrust only while something is on a collision course, so put it above Brake or Hold station: the rule below keeps thrust the rest of the time. While you steer or hold a lock, it sidesteps only with the thrusters that push that way.",
         tags: ["assist", "thrust"],
+        role: Action,
+        pilot: true,
+        params: [
+            (id: "toggle", name: "Toggle", summary: "The ASSIST TOGGLE key that switches it in flight (F1 to F4 unless rebound in SETTINGS).", type: Choice([
+                (id: "none", name: "None", summary: "No toggle of its own; ALL ASSISTS still switches it."),
+                (id: "toggle1", name: "1"),
+                (id: "toggle2", name: "2"),
+                (id: "toggle3", name: "3"),
+                (id: "toggle4", name: "4"),
+            ]), default: "none"),
+            (id: "start", name: "At start", summary: "On or off when a mission starts.", type: Choice([
+                (id: "on", name: "On"),
+                (id: "off", name: "Off"),
+            ]), default: "on"),
+        ],
+    ),
+    (
+        id: "auto_flare",
+        name: "Auto-flare",
+        summary: "Release flares by itself whenever its conditions hold and a flare launcher is ready.",
+        description: "Give it a condition, or it spends a launcher's few releases at once: `when missiles_incoming >= 1 -> auto_flare` throws flares as soon as enemy missiles home on you. The FLARE key releases them as usual.",
+        tags: ["assist", "defence"],
         role: Action,
         pilot: true,
         params: [

@@ -379,7 +379,7 @@ fn apply_events(
             SimEvent::Hit { point, normal, family, damage, .. } => Act::Hit(v2(*point), v2(*normal), *family, *damage),
             SimEvent::Ricochet { point, vel, .. } => Act::Ricochet(v2(*point), v2(*vel)),
             SimEvent::Warhead { by, at, radius, damage, .. } => Act::Warhead(*by, v2(*at), *radius, *damage),
-            SimEvent::ProjectileGone { pos, reason: sim::GoneReason::ShotDown, .. } => Act::ShotDown(v2(*pos)),
+            SimEvent::ProjectileGone { pos, reason: sim::GoneReason::ShotDown | sim::GoneReason::Decoyed, .. } => Act::ShotDown(v2(*pos)),
             SimEvent::PlumeHit { by, engine, point, .. } => Act::Burn(*by, *engine, v2(*point)),
             SimEvent::ShieldHit { ship, piece, part, point, absorbed, depleted, .. } => {
                 Act::Shield(*ship, *piece, *part, v2(*point), *absorbed, *depleted)
@@ -475,7 +475,7 @@ fn apply_events(
                 let color = weapon_color(world, by, &style);
                 fx.blast(at, Vec2::ZERO, radius, damage, color, style.ui.coral);
             }
-            // Point defence shot a missile down: a small pop where it was.
+            // Point defence shot a missile down, or a flare's decoy took it: a small pop where it was.
             Act::ShotDown(at) => fx.burst(at, Color::srgb(1.0, 0.85, 0.6), 0.3),
             Act::Shot(ship, kind, from, to) => {
                 let color = weapon_color(world, ship, &style);
@@ -539,7 +539,7 @@ enum Act {
     Blast(ShipId, PieceId, sim::PartIdx, Vec2, f32, f32),
     /// A missile's warhead went off (the shooter, the point, radius, damage).
     Warhead(ShipId, Vec2, f32, f32),
-    /// Point defence shot a missile down here.
+    /// Point defence shot a missile down here, or a flare decoy took it.
     ShotDown(Vec2),
     Shot(ShipId, sim::ShotKind, Vec2, Vec2),
     Hit(Vec2, Vec2, data::WeaponFamily, f32),

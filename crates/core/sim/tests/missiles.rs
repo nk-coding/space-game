@@ -1,5 +1,6 @@
 //! Missiles and point defence (GDR-0115): homing, the warhead's blast, shields absorbing missiles whole, point
-//! defence shooting them down, determinism.
+//! defence shooting them down (only what it sees), flares luring them off (charges, cooldown, the `flare` action and
+//! the `auto_flare` assist), determinism.
 
 mod common;
 
@@ -142,4 +143,125 @@ fn point_defence_does_not_shoot_through_a_hull() {
     let n = run(&mut w, s, t, 150);
     assert!(!n.warheads.is_empty(), "{n:?}");
     assert_eq!(n.shot_down, 0, "{n:?}");
+}
+
+/// The duel with a flare launcher in the target's near row (facing the launcher): the launcher fires if `shoot`;
+/// the target asks for flares on every tick while a missile homing on it is within `near` m of it.
+fn flare_duel(shoot: bool, near: f32, ticks: usize) -> (Tally, usize, Vec<u64>) {
+    let (mut w, s, t) = duel(Some(("flare_launcher", 2)), Vec2::new(0.0, 45.0));
+    let (mut n, mut released, mut at) = (Tally::default(), 0, Vec::new());
+    for _ in 0..ticks {
+        let mut inputs = TickInputs {
+            controls: vec![(s, controls(0, 0.0, shoot, true)), (t, controls(0, 0.0, false, true))],
+            ..Default::default()
+        };
+        let homing = w.projectiles().iter().any(|p| {
+            p.missile.is_some_and(|m| m.target == Some(t)) && (p.pos - Vec2::new(0.0, 45.0)).length() < near
+        });
+        if homing || !shoot {
+            inputs.commands.push((t, sim::ShipCommand::Flare));
+        }
+        w.step(&inputs);
+        for e in w.events() {
+            match e {
+                SimEvent::FlaresReleased { ship, decoys, .. } if *ship == t => {
+                    released += *decoys as usize;
+                    at.push(w.tick());
+                }
+                SimEvent::Warhead { by, at, .. } if *by == s => n.warheads.push(*at),
+                SimEvent::ProjectileGone { reason: GoneReason::Decoyed, .. } => n.absorbed += 1,
+                _ => {}
+            }
+        }
+    }
+    (n, released, at)
+}
+
+#[test]
+fn flares_pull_rockets_off_their_target() {
+    let (with, released, _) = flare_duel(true, 25.0, 300);
+    let (mut w, s, t) = duel(None, Vec2::new(0.0, 45.0));
+    let without = run(&mut w, s, t, 300);
+    assert!(released > 0, "{with:?}");
+    assert!(with.absorbed > 0, "rockets spent on decoys: {with:?}");
+    assert!(with.warheads.len() < without.warheads.len(), "{with:?} vs {without:?}");
+}
+
+#[test]
+fn a_flare_launcher_has_its_charges_and_cooldown() {
+    let c = content();
+    let spec = c.parts.get("flare_launcher").unwrap().countermeasure.unwrap();
+    // Asked on every tick for 40 s, nothing shooting: one release per cooldown, until the charges are spent.
+    let (_, released, at) = flare_duel(false, 0.0, 1200);
+    assert_eq!(at.len(), spec.charges as usize, "{at:?}");
+    assert_eq!(released, (spec.charges * spec.decoys) as usize);
+    let gap = (spec.cooldown * sim::TICK_HZ as f32) as u64;
+    assert!(at.windows(2).all(|p| p[1] - p[0] >= gap), "{at:?}");
+}
+
+#[test]
+fn missile_and_flare_fights_are_deterministic() {
+    let hashes = || {
+        let (mut w, s, t) = duel(Some(("flare_launcher", 2)), Vec2::new(6.0, 40.0));
+        (0..150)
+            .map(|i| {
+                let mut inputs = fire(s, t);
+                if i % 20 == 0 {
+                    inputs.commands.push((t, sim::ShipCommand::Flare));
+                }
+                w.step(&inputs);
+                w.state_hash()
+            })
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(hashes(), hashes());
+}
+
+/// Flares released (ticks) by `t` while the rocket pod `s` fires at it, from a world set up by the caller.
+fn flare_ticks(w: &mut sim::Sim, s: ShipId, t: ShipId, piloted: bool, ticks: usize) -> (Vec<u64>, Option<u64>) {
+    let (mut at, mut first_homing) = (Vec::new(), None);
+    for _ in 0..ticks {
+        let mut inputs = TickInputs { controls: vec![(s, controls(0, 0.0, true, true))], ..Default::default() };
+        if piloted {
+            inputs.commands.push((t, sim::ShipCommand::Pilot(sim::PilotInput::default())));
+        }
+        w.step(&inputs);
+        if first_homing.is_none() && w.projectiles().iter().any(|p| p.missile.is_some_and(|m| m.target == Some(t))) {
+            first_homing = Some(w.tick());
+        }
+        for e in w.events() {
+            if let SimEvent::FlaresReleased { ship, .. } = e
+                && *ship == t
+            {
+                at.push(w.tick());
+            }
+        }
+    }
+    (at, first_homing)
+}
+
+#[test]
+fn a_behavior_and_the_auto_flare_assist_release_flares_when_missiles_come() {
+    let c = content();
+    // A behavior: the target runs `flare` under `missiles_incoming`.
+    let (mut w, s, t) = duel(Some(("flare_launcher", 2)), Vec2::new(0.0, 45.0));
+    w.set_behaviors(sim::BehaviorLibrary::new(&c).unwrap());
+    let id = w
+        .behaviors_mut()
+        .add_text("test", "target nearest\nwhen missiles_incoming >= 1 -> flare\nalways -> hold")
+        .unwrap();
+    w.command(t, sim::ShipCommand::Behavior(Some(id)));
+    let (at, homing) = flare_ticks(&mut w, s, t, false, 150);
+    assert!(!at.is_empty() && homing.is_some_and(|h| at[0] >= h), "{at:?} {homing:?}");
+    // An assist: the player's flown ship, under fire from an enemy pod.
+    let mut w = sim::Sim::new(7);
+    w.set_behaviors(sim::BehaviorLibrary::new(&c).unwrap());
+    let s = w.spawn_ship(custom(&c, &launcher()), Owner(1), Body::default());
+    let t = w.spawn_ship(custom(&c, &target(Some(("flare_launcher", 2)))), Owner::PLAYER, Body::at(Vec2::new(0.0, 45.0), 0.0));
+    w.command(t, sim::ShipCommand::Focus);
+    let list = data::AssistList { rules: vec!["when missiles_incoming >= 1 -> auto_flare".into()] };
+    let id = w.behaviors_mut().add_assists(&list).unwrap();
+    w.command(t, sim::ShipCommand::Assists(Some(id)));
+    let (at, homing) = flare_ticks(&mut w, s, t, true, 150);
+    assert!(!at.is_empty() && homing.is_some_and(|h| at[0] >= h), "{at:?} {homing:?}");
 }

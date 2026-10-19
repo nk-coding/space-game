@@ -474,6 +474,7 @@ mod tests {
                 link("living_weapons", "grown_heart"),
                 link("living_weapons", "spore_lining"),
                 link("rocket_pod", "torpedo"),
+                link("point_defence", "flares"),
                 link("jump_calibration_1", "jump_calibration_2"),
                 link("tamed_core", "mind_expansion_1"),
                 link("mind_expansion_1", "mind_expansion_2"),

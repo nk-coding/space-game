@@ -101,4 +101,13 @@
         tags: ["move", "mining"],
         role: Action,
     ),
+    // Flares (GDR-0115); like `scan` it needs no target and never decides the maneuver.
+    (
+        id: "flare",
+        name: "Flare",
+        summary: "Release flares from the ship's flare launcher, then let the next rule fly the ship.",
+        description: "Needs no target and never decides the maneuver: while its conditions hold it releases flares whenever a [[part:flare_launcher]] on the ship is ready (charged and cooled down), and the next rule that holds flies the ship meanwhile. A launcher has only a few releases per fight, so keep it for missiles: `when missiles_incoming >= 1 -> flare` at the top of the list. A ship without a working launcher skips it.",
+        tags: ["defence"],
+        role: Action,
+    ),
 ]

@@ -102,7 +102,7 @@
         id: "missiles_incoming",
         name: "Missiles incoming",
         summary: "How many enemy missiles are homing on your ship.",
-        description: "Counts every live missile whose seeker has picked your ship (GDR-0115), however far off.",
+        description: "Counts every live missile whose seeker has picked your ship (GDR-0115), however far off. A missile a flare lured away no longer counts.",
         tags: ["surroundings"],
         role: Condition,
         value: Count,

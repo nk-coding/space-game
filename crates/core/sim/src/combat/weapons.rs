@@ -94,6 +94,8 @@ pub enum GoneReason {
     Expired,
     /// A missile that point defence shot down (`missile.rs`).
     ShotDown,
+    /// A missile spent on the flare decoy that lured it (`flare.rs`).
+    Decoyed,
 }
 
 /// A flying shot.
@@ -382,6 +384,7 @@ impl Sim {
     pub(crate) fn weapons_step(&mut self) {
         self.beams.clear();
         self.collect_bubbles();
+        self.flares_step();
         self.advance_projectiles();
         self.fire_guns();
         self.plumes();
@@ -893,7 +896,7 @@ impl Sim {
         for p in list.iter_mut() {
             p.prev_pos = p.pos;
             p.life -= DT;
-            self.steer_missile(p);
+            let decoyed = self.steer_missile(p);
             let mut speed = p.vel.length();
             if speed <= 0.0 {
                 p.life = 0.0;
@@ -903,8 +906,8 @@ impl Sim {
             } else {
                 Vec2::Y
             };
-            let mut remaining = speed * DT;
-            let mut gone: Option<GoneReason> = None;
+            let mut remaining = if decoyed { 0.0 } else { speed * DT };
+            let mut gone = decoyed.then_some(GoneReason::Decoyed);
             for _ in 0..tuning::MAX_SEGMENTS {
                 if remaining <= 0.0 {
                     break;

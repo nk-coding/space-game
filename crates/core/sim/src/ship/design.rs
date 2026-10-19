@@ -318,6 +318,17 @@ pub struct HangarMount {
     pub drone: std::sync::Arc<ShipDesign>,
 }
 
+/// A flare launcher's static mount (GDR-0115, `combat/flare.rs`): where its decoys leave and which way.
+#[derive(Clone, Copy, Debug)]
+pub struct FlareMount {
+    pub part: PartIdx,
+    /// Centre of the part, blueprint frame.
+    pub centre: [f32; 2],
+    pub facing: Dir,
+    /// Its numbers (content `countermeasure`).
+    pub spec: data::CountermeasureSpec,
+}
+
 /// An engine's static mount.
 #[derive(Clone, Debug)]
 pub struct EngineSpec {
@@ -368,6 +379,8 @@ pub struct ShipDesign {
     pub hearts: Vec<PartIdx>,
     /// Hangars, ascending part (`ship/drones.rs`, GDR-0117).
     pub hangars: Vec<HangarMount>,
+    /// Flare launchers, ascending part (`combat/flare.rs`, GDR-0115).
+    pub flares: Vec<FlareMount>,
     /// Parts that heal (`PartSpec::heal` above 0), ascending.
     pub healing: Vec<PartIdx>,
     /// Parts that block each gun's line of fire (cells straight ahead, to the grid edge), per gun slot.
@@ -657,6 +670,7 @@ impl ShipDesign {
         let mut guns = Vec::new();
         let mut gun_blockers = Vec::new();
         let mut hangars = Vec::new();
+        let mut flares = Vec::new();
         let mut plume_lanes = Vec::new();
         let mut plume_path = Vec::new();
         for (i, spec) in parts.iter().enumerate() {
@@ -690,6 +704,9 @@ impl ShipDesign {
                     group: ship.parts[i].group.unwrap_or(1).clamp(1, data::MAX_WEAPON_GROUP),
                 });
                 gun_blockers.push(line_of_fire_blockers(&grid, i, facing, bounds));
+            }
+            if let Some(c) = defs[i].countermeasure {
+                flares.push(FlareMount { part: i as u32, centre: shape.center(), facing, spec: c });
             }
             if let Some(hs) = &defs[i].hangar {
                 let bp = content
@@ -750,6 +767,7 @@ impl ShipDesign {
             scanners,
             hearts,
             hangars,
+            flares,
             healing,
             gun_blockers: Csr::from_lists(gun_blockers),
             plume_lanes,

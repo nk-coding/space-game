@@ -148,20 +148,22 @@ pub enum Action {
     Scan,
     /// Cut the nearest asteroid rock with ore left with the mining guns (GDR-0114).
     Mine,
+    /// Release flares, then step aside for the next rule (`RuleStatus::Flare`, GDR-0115).
+    Flare,
 }
 
 /// Whether the behavior action `id` needs a target to fly: all but `hold`, `escort` (it flies relative to the
-/// leader), `scan` and `mine` (it flies to a rock, GDR-0114). Without a target such a rule steps aside and the next rule gets its turn
+/// leader), `scan`, `flare` and `mine` (it flies to a rock, GDR-0114). Without a target such a rule steps aside and the next rule gets its turn
 /// (`RuleStatus::NoTarget`), so only an `always` rule whose action needs none and decides ([`action_decides`]) ends
 /// the list; the BEHAVIOR screen marks the rules below that one.
 pub fn action_needs_target(id: &str) -> bool {
-    !matches!(id, "hold" | "escort" | "scan" | "mine")
+    !matches!(id, "hold" | "escort" | "scan" | "flare" | "mine")
 }
 
-/// Whether the behavior action `id` decides the maneuver when its rule holds: all but `scan`, which starts a scan and
-/// lets the next rule fly the ship (`RuleStatus::Scan`).
+/// Whether the behavior action `id` decides the maneuver when its rule holds: all but `scan` and `flare`, which start
+/// a scan or release flares and let the next rule fly the ship (`RuleStatus::Scan`, `RuleStatus::Flare`).
 pub fn action_decides(id: &str) -> bool {
-    id != "scan"
+    !matches!(id, "scan" | "flare")
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -196,6 +198,8 @@ pub enum AssistAction {
     /// Thrust: sidestep whatever is on a collision course (turning too while turning is free); decides only while
     /// something is.
     AvoidCollisions,
+    /// Flares: release them whenever a launcher is ready (GDR-0115); decides only then.
+    AutoFlare,
 }
 
 /// What `hold_station` keeps the ship at.
@@ -423,6 +427,7 @@ pub(crate) fn compile(program: &Program, vocab: &Vocab) -> Result<Code, Vec<Line
             "hold" => Action::Hold,
             "escort" => Action::Escort(dist(args[0])),
             "scan" => Action::Scan,
+            "flare" => Action::Flare,
             "mine" => Action::Mine,
             _ => return Err(fail(line, &r.action, "no implementation in the sim")),
         };
@@ -462,6 +467,7 @@ pub(crate) fn compile_assists(program: &Program, vocab: &Vocab) -> Result<Assist
                 _ => Station::Point,
             }),
             "avoid_collisions" => AssistAction::AvoidCollisions,
+            "auto_flare" => AssistAction::AutoFlare,
             "auto_fire" => match args[0] {
                 Amount::Count(g) => AssistAction::AutoFire(g.clamp(1, data::MAX_WEAPON_GROUP as u32) as u8),
                 _ => return Err(fail(line, &r.action, "bad arguments")),

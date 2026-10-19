@@ -55,6 +55,12 @@ pub const BUILTIN_STATS: &[&str] = &[
     "scan_charge",
     "scan_cooldown",
     "scan_wake",
+    "flare_charges",
+    "flare_cooldown",
+    "flare_decoys",
+    "decoy_speed",
+    "decoy_life",
+    "decoy_lure",
     "drone_capacity",
     "drone_rebuild",
     "drone_leash",
@@ -347,6 +353,14 @@ impl Content {
             v.push(("scan_charge", x.charge));
             v.push(("scan_cooldown", x.cooldown));
             v.push(("scan_wake", x.wake));
+        }
+        if let Some(x) = &part.countermeasure {
+            v.push(("flare_charges", x.charges as f32));
+            v.push(("flare_cooldown", x.cooldown));
+            v.push(("flare_decoys", x.decoys as f32));
+            v.push(("decoy_speed", x.speed));
+            v.push(("decoy_life", x.life));
+            v.push(("decoy_lure", x.lure));
         }
         if let Some(x) = &part.hangar {
             v.push(("drone_capacity", x.capacity as f32));

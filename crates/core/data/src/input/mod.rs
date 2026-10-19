@@ -104,6 +104,7 @@ actions! {
     FireGroup3 = "fire_group_3",
     LockNext = "lock_next",
     Scan = "scan",
+    Flare = "flare",
     Drift = "drift",
     FocusNext = "focus_next",
     FocusPrevious = "focus_previous",

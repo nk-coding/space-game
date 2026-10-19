@@ -499,6 +499,21 @@ fn draw_ships_fx(
         queue.dot(&regions.soft, at, 0.55, c.with_alpha(0.85), Z_WEAPONS + 0.2);
     }
 
+    // Flare decoys (GDR-0115): a flickering white-hot core in an orange glow, dimming as it burns out, shedding
+    // sparks behind it.
+    for d in world.sim.decoys() {
+        let at = v2(d.prev_pos) + (v2(d.pos) - v2(d.prev_pos)) * alpha;
+        let fade = (d.life / 0.6).clamp(0.0, 1.0);
+        let flicker = 0.75 + 0.25 * (t * 53.0 + d.id.0 as f32 * 2.3).sin();
+        let hot = Color::srgb(1.0, 0.72, 0.38);
+        queue.dot(&regions.soft, at, 2.2 * flicker * fade.max(0.3), hot.with_alpha(0.55 * fade), Z_WEAPONS);
+        queue.dot(&regions.hard, at, 0.22 * flicker, Color::srgb(1.0, 0.97, 0.9).with_alpha(fade), Z_WEAPONS + 0.2);
+        if fx.trail.len() < 2048 {
+            let drift = Vec2::new(fx.rng.range(-0.8, 0.8), fx.rng.range(-0.8, 0.8));
+            fx.trail.push(Spark { pos: at, vel: drift, age: 0.0, life: 0.45, size: 0.09, color: hot });
+        }
+    }
+
     // Loose fragments (salvage, GDR-0063): a small diamond in the logic colour, turning slowly in a soft
     // breathing glow, interpolated like the projectiles.
     let frag = style.system_color("logic");

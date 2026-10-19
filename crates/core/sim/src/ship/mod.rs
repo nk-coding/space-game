@@ -317,6 +317,10 @@ pub struct Ship {
     pub(crate) bays: Vec<drones::Bay>,
     /// A drone: the carrier and hangar it belongs to.
     pub(crate) drone: Option<drones::Tie>,
+    /// Each flare launcher's charges and cooldown (`ShipDesign::flares`, `combat/flare.rs`, GDR-0115).
+    pub(crate) flares: Vec<crate::combat::flare::FlareSlot>,
+    /// A release was asked this tick (handled and cleared in the weapons step).
+    pub(crate) flare_asked: bool,
 }
 
 impl Ship {
@@ -385,10 +389,13 @@ impl Ship {
             regrowth: Vec::new(),
             bays: Vec::new(),
             drone: None,
+            flares: Vec::new(),
+            flare_asked: false,
         };
         ship.hull_base = ship.design.hp_total;
         ship.regrowth = vec![0.0; ship.design.hearts.len()];
         ship.bays = ship.design.hangars.iter().map(|h| drones::Bay::full(h.capacity)).collect();
+        ship.flares = ship.design.flares.iter().map(|f| crate::combat::flare::FlareSlot { charges: f.spec.charges, cooldown: 0.0 }).collect();
         let all: Vec<PartIdx> = (0..n as u32).collect();
         for &p in &all {
             ship.refresh_exposure(p);
@@ -766,6 +773,10 @@ impl StateHash for Ship {
         if let Some(t) = &self.drone {
             h.u32(t.carrier.0);
             h.u32(t.hangar);
+        }
+        // Nothing for a ship without flare launchers, likewise.
+        for f in &self.flares {
+            f.hash_state(h);
         }
         self.cargo.hash_state(h);
         h.u32(self.parts.len() as u32);

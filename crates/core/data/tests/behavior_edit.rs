@@ -994,7 +994,7 @@ fn assist_lists_take_the_pilot_nodes_and_may_be_empty() {
     let orbit = Program::parse("always -> orbit").unwrap();
     let errors = check_assists(&orbit, nodes);
     assert_eq!(errors.len(), 1);
-    assert_eq!(errors[0].message, "`orbit` is a behavior's maneuver; pilot assists use auto_lock, brake, hold_station, avoid_collisions, auto_fire");
+    assert_eq!(errors[0].message, "`orbit` is a behavior's maneuver; pilot assists use auto_lock, brake, hold_station, avoid_collisions, auto_flare, auto_fire");
     // No target line: the assists act on the pilot's lock. The text refuses one, the model has no target node.
     let targeted = Program::parse("target weakest\nalways -> brake").unwrap();
     let errors = check_assists(&targeted, nodes);

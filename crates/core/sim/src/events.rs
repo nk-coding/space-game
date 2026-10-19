@@ -174,6 +174,13 @@ pub enum SimEvent {
         radius: f32,
         damage: f32,
     },
+    /// A flare launcher (`part`) of `ship` released `decoys` decoys at `at` (GDR-0115, `combat/flare.rs`).
+    FlaresReleased {
+        ship: ShipId,
+        part: crate::ship::design::PartIdx,
+        at: Vec2,
+        decoys: u32,
+    },
     /// A shot struck an asteroid rock (GDR-0104; `Voyage::rocks`) and stopped there: the rock takes nothing (a
     /// mining beam's cut follows as `Mined`, GDR-0114). `by`: the shooter.
     RockHit {

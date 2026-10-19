@@ -3,9 +3,10 @@
 //! given a list (`ShipCommand::Assists`); every other ship, and a piloted one without a list, flies as before.
 //!
 //! * **Channels**: each assist acts on one control channel: the lock (`auto_lock`), thrust (`brake`, `hold_station`,
-//!   `avoid_collisions`) or the trigger of one weapon group (`auto_fire(g)`). The pilot always wins: a channel the
-//!   player uses this tick (a held lock; W/S/Q/E or the stick; a group's trigger) is the player's, and letting go
-//!   hands it back on the next tick.
+//!   `avoid_collisions`), the trigger of one weapon group (`auto_fire(g)`) or the flare launchers (`auto_flare`:
+//!   it releases flares at a think whenever its conditions hold and a launcher is ready, GDR-0115). The pilot
+//!   always wins: a channel the player uses this tick (a held lock; W/S/Q/E or the stick; a group's trigger) is the
+//!   player's, and letting go hands it back on the next tick.
 //! * **Rules**: at every think (with the behaviors, every [`tuning::THINK_PERIOD`] ticks, on the tick after the
 //!   list is set or switched and on the tick auto-lock pauses or resumes) the rules are read from the top; a rule that is switched on, whose conditions all hold
 //!   (and that has a target, if it needs one; for `avoid_collisions`, something on a collision course; for
@@ -70,6 +71,8 @@ pub enum Channel {
     Thrust,
     /// The trigger of a weapon group (1 to `data::MAX_WEAPON_GROUP`).
     Fire(u8),
+    /// The flare launchers (`auto_flare`, GDR-0115).
+    Flare,
 }
 
 impl Channel {
@@ -78,6 +81,7 @@ impl Channel {
             AssistAction::AutoLock(_) => Channel::Lock,
             AssistAction::Brake | AssistAction::HoldStation(_) | AssistAction::AvoidCollisions => Channel::Thrust,
             AssistAction::AutoFire(g) => Channel::Fire(g),
+            AssistAction::AutoFlare => Channel::Flare,
         }
     }
 
@@ -86,12 +90,13 @@ impl Channel {
             Channel::Lock => 0,
             Channel::Thrust => 1,
             Channel::Fire(g) => 1 + g as usize,
+            Channel::Flare => 2 + MAX_WEAPON_GROUP as usize,
         }
     }
 }
 
-/// The lock, thrust and one channel per weapon group.
-const CHANNELS: usize = 2 + MAX_WEAPON_GROUP as usize;
+/// The lock, thrust, one channel per weapon group and the flares.
+const CHANNELS: usize = 3 + MAX_WEAPON_GROUP as usize;
 
 /// What `ShipCommand::SwitchAssists` flips.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -340,6 +345,8 @@ pub(crate) struct AssistOut {
     decides: [Option<u16>; CHANNELS],
     avoid: Option<(ShipId, PieceId)>,
     pick: Option<ShipId>,
+    /// An `auto_flare` rule decided: release flares.
+    flare: bool,
 }
 
 /// A lock's ship (or piece) is still there: a ship still active, a piece not gone; a point always is. The client
@@ -463,6 +470,9 @@ fn think_all(ships: &mut [Ship], rocks: &[Rock], lib: &BehaviorLibrary, scratch:
             st.avoid = out.avoid;
             st.pick = out.pick;
             st.thought = Some(tick);
+        }
+        if std::mem::take(&mut out.flare) {
+            s.ask_flare();
         }
     }
 }
@@ -599,6 +609,7 @@ fn think(cx: &mut Ctx, rocks: &[Rock], st: &AssistState, input: &PilotInput, out
     out.decides = [None; CHANNELS];
     out.avoid = None;
     out.pick = None;
+    out.flare = false;
     // What `avoid_collisions` would steer clear of, looked for once.
     let mut threat_of: Option<Option<(ShipId, PieceId)>> = None;
     if st.all {
@@ -632,6 +643,13 @@ fn think(cx: &mut Ctx, rocks: &[Rock], st: &AssistState, input: &PilotInput, out
                     if input.lock.is_none() {
                         out.pick = Some(cx.world[k].id());
                     }
+                }
+                AssistAction::AutoFlare => {
+                    // No launcher ready: nothing to decide.
+                    if !cx.me.can_flare() {
+                        continue;
+                    }
+                    out.flare = true;
                 }
                 _ => {}
             }
