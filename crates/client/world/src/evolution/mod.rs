@@ -1287,7 +1287,7 @@ fn start_ids(run: &Run, camp: Camp) -> Vec<String> {
 /// id and name). A template or a random start has none.
 pub fn replace_target(storage: &Storage, loaded: &Loaded, genome: u32) -> Option<(String, String)> {
     let root = loaded.run.table().get(genome as usize)?.root as usize;
-    let Start::Design { design: DesignRef::Blueprint(_), .. } = loaded.run.config().starts.iter().nth(root)? else { return None };
+    let Start::Design { design: DesignRef::Blueprint(_), .. } = loaded.run.config().starts.get(root)? else { return None };
     let id = start_ids(&loaded.run, Camp::Yours).into_iter().nth(root).filter(|id| !id.is_empty())?;
     let doc = storage.read::<DesignDoc>(&id).ok()??;
     Some((id, doc.doc.0.name))

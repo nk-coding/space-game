@@ -6,7 +6,8 @@
 //!   charted cluster (their union's edge, a crisp teal line over a glow fading inwards; no dots, no fill), and each
 //!   signal heard as an area: a dotted gold edge like the band edges, a faint fill and a slow pulse running out to
 //!   the edge; when a signal narrows the old edge fades out over [`FADE`] while the new one draws. Placed through
-//!   the view but drawn in stage px (lines keep their width at any zoom); rebuilt when what it shows or the view
+//!   the view but drawn in stage px (lines keep their width at any zoom); the jump range's line is cut at the map area's edges ([`clip_to`]), the
+//!   areas' dots fade out there; rebuilt when what it shows or the view
 //!   changes, and every frame while a pulse runs or an edge fades (their phases are continuous: in steps of 15–20 a
 //!   second they stuttered at 120 fps; Niklas, 18 Oct 2026).
 //! * **The detail** ([`build_detail`]): the markers of the voyages found so far, no route between them
@@ -253,9 +254,8 @@ fn pulses(pen: &mut Pen, at: Vec2, t: f32, glow: bool, tone: Color, f: impl Fn([
 }
 
 /// The areas' mesh (see the module doc), each galaxy point placed on the stage by `to`, `zoom` the view's.
-pub fn build_areas(geo: &Geometry, look: &Look, to: impl Fn(Vec2) -> Vec2, zoom: f32, area: Rect, style: &Style, white: &Region, soft: &Region) -> Mesh {
+pub fn build_areas(geo: &Geometry, look: &Look, to: impl Fn(Vec2) -> Vec2, zoom: f32, area: Rect, style: &Style, mut pen: Pen) -> Mesh {
     let ui = &style.ui;
-    let mut pen = Pen::new(white, soft);
     let known = &look.known;
 
     // The jump range: the union of the circles round home and every charted cluster, its edge only (a run of the
@@ -263,11 +263,14 @@ pub fn build_areas(geo: &Geometry, look: &Look, to: impl Fn(Vec2) -> Vec2, zoom:
     let r = known.reach * PX_PER_S * zoom;
     let circles: Vec<Vec2> = known.starts.iter().filter_map(|k| geo.clusters.get(*k as usize)).map(|g| to(*g)).collect();
     if r > 0.0 {
+        // Cut at the map area like the labels (before the panel where the markers fade out), so it never runs under
+        // the header or the legend.
+        let inner = Rect { max: Vec2::new(area.max.x - EDGE_FADE.0, area.max.y), ..area };
         // The glows run along the edges of the unions of smaller circles: they meet in the same kind of corners as
         // the line, so nothing overhangs where two circles cross.
         for (inset, half, a) in [(0.0, 0.7, 0.2), (2.5, 2.0, 0.07), (7.0, 4.5, 0.035)] {
             for (outline, closed) in union_outline(&circles, r - inset, 6.0) {
-                for (run, closed) in left_of(&outline, closed, area.max.x - EDGE_FADE.0) {
+                for (run, closed) in clip_to(&outline, closed, inner) {
                     pen.path(&run, closed, half, vcol(ui.teal, a));
                 }
             }
@@ -371,25 +374,32 @@ pub fn union_outline(centres: &[Vec2], r: f32, step: f32) -> Vec<(Vec<Vec2>, boo
     out
 }
 
-/// The runs of the line through `pts` (back to the first when `closed`) left of `x`, cut exactly at `x`: the line
-/// itself when it lies wholly left of it.
-fn left_of(pts: &[Vec2], closed: bool, x: f32) -> Vec<(Vec<Vec2>, bool)> {
-    let Some(right) = pts.iter().position(|q| q.x >= x) else {
+/// The runs of the line through `pts` (back to the first when `closed`) inside `rect`, cut exactly at its edges: the
+/// line itself when it lies wholly inside.
+fn clip_to(pts: &[Vec2], closed: bool, rect: Rect) -> Vec<(Vec<Vec2>, bool)> {
+    let sides: [&dyn Fn(Vec2) -> f32; 4] = [&|q| q.x - rect.max.x, &|q| rect.min.x - q.x, &|q| q.y - rect.max.y, &|q| rect.min.y - q.y];
+    sides.iter().fold(vec![(pts.to_vec(), closed)], |runs, side| runs.iter().flat_map(|(run, closed)| inside_of(run, *closed, side)).collect())
+}
+
+/// The runs of the line through `pts` (back to the first when `closed`) where `side` is below 0, cut exactly where it
+/// is 0: the line itself when it lies wholly there.
+fn inside_of(pts: &[Vec2], closed: bool, side: impl Fn(Vec2) -> f32) -> Vec<(Vec<Vec2>, bool)> {
+    let Some(out) = pts.iter().position(|q| side(*q) >= 0.0) else {
         return vec![(pts.to_vec(), closed)];
     };
-    // A closed line starts at a point right of `x`, so every run left of it has both its ends on `x`.
-    let walk: Vec<Vec2> = if closed { pts[right..].iter().chain(&pts[..=right]).copied().collect() } else { pts.to_vec() };
-    let cut = |a: Vec2, b: Vec2| a.lerp(b, (x - a.x) / (b.x - a.x));
+    // A closed line starts at a point outside, so every run inside has both its ends on the edge.
+    let walk: Vec<Vec2> = if closed { pts[out..].iter().chain(&pts[..=out]).copied().collect() } else { pts.to_vec() };
+    let cut = |a: Vec2, b: Vec2| a.lerp(b, side(a) / (side(a) - side(b)));
     let mut runs = Vec::new();
     let mut run: Vec<Vec2> = Vec::new();
     for (k, &q) in walk.iter().enumerate() {
         let prev = k.checked_sub(1).map(|j| walk[j]);
-        if q.x < x {
-            if let Some(a) = prev.filter(|a| a.x >= x) {
+        if side(q) < 0.0 {
+            if let Some(a) = prev.filter(|a| side(*a) >= 0.0) {
                 run.push(cut(a, q));
             }
             run.push(q);
-        } else if let Some(a) = prev.filter(|a| a.x < x) {
+        } else if let Some(a) = prev.filter(|a| side(*a) < 0.0) {
             run.push(cut(a, q));
             runs.push((std::mem::take(&mut run), false));
         }
@@ -614,7 +624,7 @@ mod tests {
     }
 
     /// The jump range's outline: two crossing circles make one loop that turns exactly at both crossings, a third
-    /// apart its own; a circle inside the others' union adds nothing; the panel's edge cuts a loop into runs.
+    /// apart its own; a circle inside the others' union adds nothing; the map area's edges cut a loop into runs.
     #[test]
     fn the_range_outline_is_the_union_s_edge() {
         let r = 100.0;
@@ -642,11 +652,22 @@ mod tests {
         assert_eq!(inner.len(), 1);
         assert!(inner[0].1 && inner[0].0.iter().all(|q| q.length() > r - 1e-3));
         // Cut at x = 50: one open run of the pair's loop, ending on the cut both ways.
-        let runs = left_of(&pair.0, true, 50.0);
+        let runs = clip_to(&pair.0, true, Rect::new(-500.0, -500.0, 50.0, 500.0));
         assert_eq!(runs.len(), 1);
         let run = &runs[0].0;
         assert!(!runs[0].1 && (run[0].x - 50.0).abs() < 1e-3 && (run[run.len() - 1].x - 50.0).abs() < 1e-3);
         assert!(run.iter().all(|q| q.x <= 50.0 + 1e-3));
+        // Cut at the top too (the header): every run inside, both of its ends on an edge.
+        let rect = Rect::new(-500.0, -20.0, 50.0, 500.0);
+        let runs = clip_to(&pair.0, true, rect);
+        assert_eq!(runs.len(), 1);
+        for (run, closed) in &runs {
+            assert!(!closed && run.iter().all(|q| rect.inflate(1e-3).contains(*q)));
+            let on_edge = |q: Vec2| (q.x - 50.0).abs() < 1e-3 || (q.y + 20.0).abs() < 1e-3;
+            assert!(on_edge(run[0]) && on_edge(run[run.len() - 1]));
+        }
+        // Wholly inside: the loop itself.
+        assert_eq!(clip_to(&pair.0, true, Rect::new(-1e4, -1e4, 1e4, 1e4)), vec![(pair.0.clone(), true)]);
     }
 
     /// The pulse runs smoothly (a new phase every frame, not in steps) while a signal shows and stands still at 0

@@ -1508,7 +1508,7 @@ fn place_mesh(
                     mesh
                 }
                 Sheet::Far => galaxy::build_far(geo, &far, &style, &white, &soft),
-                Sheet::Areas => draw::build_areas(geo, &areas, |g| view.to_screen(g), view.zoom, view.area(), &style, &white, &soft),
+                Sheet::Areas => draw::build_areas(geo, &areas, |g| view.to_screen(g), view.zoom, view.area(), &style, draw::Pen::new(&white, &soft)),
                 Sheet::Chrome => match panel {
                     Some((rect, legend)) => draw::build_chrome(&style, &white, &soft, rect, legend),
                     None => continue,
