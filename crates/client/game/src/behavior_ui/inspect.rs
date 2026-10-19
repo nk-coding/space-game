@@ -576,7 +576,7 @@ mod tests {
         assert_eq!(label, "RULE 2 OF 4");
         assert!(buttons.iter().all(|b| b.action.is_some()));
         assert_eq!(buttons[0].action, Some(edit(Edit::MoveRule { rule, to: 0 })));
-        assert_eq!(i.controls[4], Control::Note { target: NoteTarget::Rule(rule), text: "dodge while the shields recharge".into() });
+        assert_eq!(i.controls[4], Control::Note { target: NoteTarget::Rule(rule), text: "dodge while the shields recharge (no use against homing missiles)".into() });
         // A value left out shows its default and has nothing to reset.
         let kite = BehaviorEditor::from_text(&data::base_content().behavior_nodes, "always -> kite").unwrap();
         let k = inspect(&kite, &Selection::Node(NodeRef::Action(kite.rule_at(0).unwrap().id)), &cx()).unwrap();

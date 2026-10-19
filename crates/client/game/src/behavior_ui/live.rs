@@ -331,7 +331,7 @@ mod tests {
         let mut w = watch(&content, "skirmisher");
         let labels = rule_labels(&w.program, nodes);
         assert_eq!(labels[0], "Hull < 25%  ›  Flee");
-        assert_eq!(labels[1], "Shield down and Target on me  ›  Orbit 80% · ccw");
+        assert_eq!(labels[1], "Shield down and Target on me and Missiles incoming < 1  ›  Orbit 80% · ccw");
         assert_eq!(labels[3], "always  ›  Approach 67%");
         // Rule 2 decides: the one above says why not, the one below waits; the last has no slot.
         let failed = RuleStatus::Failed { cond: 0, why: Why::False { value: Some(0.96) } };

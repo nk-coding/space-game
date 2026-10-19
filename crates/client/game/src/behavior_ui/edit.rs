@@ -347,7 +347,7 @@ mod tests {
         let rule = ed.rule_at(1).unwrap().id;
         // Adding a condition selects it; the text has it.
         let After::Select(Selection::Node(NodeRef::Cond(c))) = apply_edit(&mut ed, &Edit::AddCondition { rule, node: "heat".into() }).unwrap() else { panic!() };
-        assert!(ed.text().contains("when shield_down and target_on_me and heat < 30% -> orbit(80%, ccw)"), "{}", ed.text());
+        assert!(ed.text().contains("when shield_down and target_on_me and missiles_incoming < 1 and heat < 30% -> orbit(80%, ccw)"), "{}", ed.text());
         // Threshold, comparator and `not`.
         apply_edit(&mut ed, &Edit::SetCompare { cond: c, op: CmpOp::Ge, rhs: Value::Number(85.0, Some(Unit::Percent)) }).unwrap();
         apply_edit(&mut ed, &Edit::ToggleNot(c)).unwrap();

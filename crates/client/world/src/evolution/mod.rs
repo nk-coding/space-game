@@ -1966,14 +1966,14 @@ mod tests {
         let race = s.trials.iter().position(|t| t.preset == "arms_race").unwrap();
         let fresh = Setup::new(&content, vec![StartPick::Template("rim_skiff".into())], 7).trials.swap_remove(race);
         assert!(!fresh.on, "off by default");
-        assert_eq!(fresh.picked(), ["automaton_gunner", "automaton_hunter", "automaton_raider"], "the warden is a boss");
+        assert_eq!(fresh.picked(), ["automaton_gunner", "automaton_hunter", "automaton_lancer", "automaton_raider"], "the warden is a boss");
         s.trials[race] = fresh;
         assert!(config(&content, &s, &storage).enemy.is_none());
         s.trials[race].on = true;
-        assert_eq!(s.enemy_cost(&content).map(|(n, jobs, _)| (n, jobs)), Some((3, 12)), "3 children (one per picked ship), (3 best + 2 champions + 1 start) × 2 seeds");
+        assert_eq!(s.enemy_cost(&content).map(|(n, jobs, _)| (n, jobs)), Some((4, 12)), "4 children (one per picked ship), (3 best + 2 champions + 1 start) × 2 seeds");
         let cfg = config(&content, &s, &storage);
         let enemy = cfg.enemy.clone().unwrap();
-        assert_eq!((enemy.starts.len(), enemy.population, enemy.palette.as_slice()), (3, 3, ["shield_emitter".to_string()].as_slice()));
+        assert_eq!((enemy.starts.len(), enemy.population, enemy.palette.as_slice()), (4, 4, ["shield_emitter".to_string()].as_slice()));
         let mut lab = Lab::load(&storage, &content);
         let id = lab.create(&mut storage, &content, cfg, "Race", 10).unwrap();
         while lab.running().is_some() {
@@ -1990,7 +1990,7 @@ mod tests {
         assert!(bp.tags.contains(&"enemy".to_string()) && bp.tags.contains(&"evolved".to_string()));
         let origin = bp.origin.unwrap();
         assert_eq!((origin.run.as_str(), origin.genome), (id.as_str(), theirs.id));
-        assert!(origin.from[0].starts_with("automaton_") && origin.from.len() == 3, "its own start first: {:?}", origin.from);
+        assert!(origin.from[0].starts_with("automaton_") && origin.from.len() == 4, "its own start first: {:?}", origin.from);
         assert_eq!(replace_target(&storage, loaded, theirs.id), None, "an enemy replaces no design of yours");
     }
 

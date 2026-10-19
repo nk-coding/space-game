@@ -210,11 +210,13 @@ mod tests {
         assert_eq!(r0.action.node, NodeRef::Action(v0.id));
         assert_eq!(r0.note.as_deref(), Some("too hurt to fight on"));
 
-        // `when shield_down and target_on_me -> orbit(80%, ccw)`: two flags, the action's values dim.
+        // `when shield_down and target_on_me and missiles_incoming < 1 -> orbit(80%, ccw)`: two flags and a count,
+        // the action's values dim.
         let r1 = &g.rules[1];
         let names: Vec<&str> = r1.conds.iter().map(|c| c.name.as_str()).collect();
-        assert_eq!(names, ["Shield down", "Target on me"]);
-        assert!(r1.conds.iter().all(|c| c.compare.is_empty() && c.args.is_empty()));
+        assert_eq!(names, ["Shield down", "Target on me", "Missiles incoming"]);
+        assert!(r1.conds[..2].iter().all(|c| c.compare.is_empty() && c.args.is_empty()));
+        assert_eq!(r1.conds[2].compare, "< 1");
         assert_eq!((r1.action.name.as_str(), r1.action.args.as_str()), ("Orbit", "80% · ccw"));
 
         // `when closing_in(2s) and not target_in_range(100%) -> face`: the Rhai condition and a `not`.

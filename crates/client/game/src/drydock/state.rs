@@ -195,16 +195,19 @@ mod tests {
         let new_game = career(&[]).unlocks(&content);
         let weapons = section(&content, &new_game, "weapons").unwrap();
         // The Grown's prow and thorn gun show too, locked: their research can unlock them (GDR-0103).
-        let locked = ["beam_laser", "reverse_engineered_cannon", "ram_prow", "thorn_gun", "burst_laser", "long_cannon", "ammo_feeder"];
-        assert_eq!(weapons.parts, [vec!["pulse_laser".to_string()], in_order(&locked)].concat());
-        assert_eq!(weapons.locked, 7);
+        // The mining laser is open from the start (GDR-0114); the missiles research unlocks the launchers and point
+        // defence (GDR-0115).
+        let locked = ["beam_laser", "reverse_engineered_cannon", "ram_prow", "thorn_gun", "rocket_pod", "torpedo_launcher", "point_defence", "burst_laser", "long_cannon", "ammo_feeder"];
+        assert_eq!(weapons.parts, [in_order(&["mining_laser", "pulse_laser"]), in_order(&locked)].concat());
+        assert_eq!(weapons.locked, 10);
         let all_sections: Vec<String> = palette_sections(&content, &new_game).into_iter().map(|s| s.category).collect();
         assert_eq!(all_sections, content.categories.iter().map(|c| c.id.clone()).collect::<Vec<_>>());
         // Research moves a part up among the unlocked ones.
         let cannon = career(&["automaton_cannon"]);
         let weapons = section(&content, &cannon.unlocks(&content), "weapons").unwrap();
-        assert_eq!(weapons.parts, [in_order(&["pulse_laser", "reverse_engineered_cannon"]), in_order(&["beam_laser", "ram_prow", "thorn_gun", "burst_laser", "long_cannon", "ammo_feeder"])].concat());
-        assert_eq!(weapons.locked, 6);
+        let locked = ["beam_laser", "ram_prow", "thorn_gun", "rocket_pod", "torpedo_launcher", "point_defence", "burst_laser", "long_cannon", "ammo_feeder"];
+        assert_eq!(weapons.parts, [in_order(&["mining_laser", "pulse_laser", "reverse_engineered_cannon"]), in_order(&locked)].concat());
+        assert_eq!(weapons.locked, 9);
         assert!(cannon.fresh_parts(&content).contains("reverse_engineered_cannon"));
         // Free mode locks nothing.
         let all = Unlocks::all(&content);
