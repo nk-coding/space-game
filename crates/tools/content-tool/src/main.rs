@@ -1074,13 +1074,13 @@ mod tests {
         // The raider is almost everywhere in the rim: fighting in every encounter but the hunters' den, the gate
         // sentinel, the memory wreck, the gunners' pair and den and the outpost, lying as a wreck in some; in the
         // outer reach only among the stragglers (the six and the outer reach's nine without it: Grown sites, the
-        // scorched wrecks, the outpost garrison and the bastion's; and the Keeper's).
+        // scorched wrecks, the outpost garrison and the bastion's; the Keeper's and the Spire's).
         assert_eq!(
             find("ships", "automaton_raider")["in_encounters"]
                 .as_array()
                 .unwrap()
                 .len(),
-            c.encounters.len() - 16
+            c.encounters.len() - 17
         );
         assert_eq!(
             find("ships", "automaton_gunner")["in_encounters"],

@@ -224,6 +224,21 @@
         wake_radius: 300,
     ),
     (
+        // GDR-0116: the inner band's gates. PLACEHOLDER counts (docs/results/spire-balance-2026-10-19.md).
+        id: "spire_gate",
+        name: "The Spire",
+        summary: "A gate close to the core, the long crystal-warded guardian that keeps it, and two lancers and two hunters at its side.",
+        description: "The [[ship:automaton_spire]]'s [[part:prism_ward|prism wards]] turn laser fire, so cannons and missiles do the work here. Its torpedoes reach far; break its bridges and the head and body are left without a drive while the tail flies on. Beaten, its gate opens.",
+        lore: "The gate beyond it opens on light. The spire has never once turned its back to it.",
+        tags: ["boss"],
+        ships: [
+            (ship: "automaton_spire", count: (1, 1)),
+            (ship: "automaton_lancer", count: (2, 2)),
+            (ship: "automaton_hunter", count: (2, 2)),
+        ],
+        wake_radius: 300,
+    ),
+    (
         id: "the_warden",
         name: "The Warden",
         summary: "The gate's old guardian, with raiders at its side.",

@@ -44,6 +44,10 @@ fn the_base_galaxy_is_the_rim_the_outer_reach_and_three_stub_bands() {
     let deep = c.trails.get(&c.bands.get("middle").unwrap().gates.as_ref().unwrap().trail).unwrap();
     assert_eq!((deep.reward, deep.target.as_str()), (Reward::Gate, "keeper_gate"));
     assert_eq!(deep.gives.materials.get("gate_shard"), Some(&1));
+    // The inner band's gates (GDR-0116): the Spire, the last guardian before the core, with two gate shards.
+    let inner = c.trails.get(&c.bands.get("inner").unwrap().gates.as_ref().unwrap().trail).unwrap();
+    assert_eq!((inner.reward, inner.target.as_str()), (Reward::Gate, "spire_gate"));
+    assert_eq!(inner.gives.materials.get("gate_shard"), Some(&2));
     let elder = c.trails.get("elder_grove").unwrap();
     assert_eq!((elder.reward, elder.target.as_str()), (Reward::Salvage, "elder_grove"));
     assert!(outer.trails.iter().any(|t| t.trail == "elder_grove"));

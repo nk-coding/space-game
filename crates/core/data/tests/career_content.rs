@@ -655,6 +655,7 @@ fn base_locks_follow_the_early_game_kit() {
         [
             "automaton_core",
             "automaton_cannon",
+            "prism_ward", // the Spire's (GDR-0116): enemy only, no research unlocks it
             "wide_shield_emitter",
             "grown_heart",
             "ram_prow",

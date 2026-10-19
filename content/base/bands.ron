@@ -69,7 +69,7 @@
         tags: ["stub"],
         edge: 2.2,
         clusters: [(id: "uncharted_deep", weight: 1)],
-        gates: (count: 3, trail: "deep_gate"),
+        gates: (count: 3, trail: "inner_gate"), // the Spire (GDR-0116)
     ),
     (
         id: "core",

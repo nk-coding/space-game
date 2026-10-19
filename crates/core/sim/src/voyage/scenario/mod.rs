@@ -66,10 +66,10 @@ use crate::ship::vessel::Owner;
 use crate::world::{DamageCommand, ShipCommand, Sim, TickInputs};
 
 /// Content ships with one of these tags (past the rim: the outer reach's Grown and bastion, the middle band's
-/// keeper) are left out of the scenarios that spawn every blueprint: the `grown` scenario flies the Grown's
-/// mechanics, and two of each would outnumber the player's ships two to one (GDR-0103), so those scenarios run as
-/// before them.
-pub const DEEP_TAGS: [&str; 2] = ["outer", "middle"];
+/// keeper, the inner band's spire) are left out of the scenarios that spawn every blueprint: the `grown` scenario
+/// flies the Grown's mechanics, and two of each would outnumber the player's ships two to one (GDR-0103), so those
+/// scenarios run as before them.
+pub const DEEP_TAGS: [&str; 3] = ["outer", "middle", "inner"];
 
 /// The blueprints the scenarios spawn "every blueprint" of: the content's in load order, but [`DEEP_TAGS`]'.
 pub(super) fn scenario_blueprints(content: &Content) -> impl Iterator<Item = &data::Blueprint> {
