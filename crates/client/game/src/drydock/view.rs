@@ -25,7 +25,7 @@ use bevy::state::state::StateTransitionEvent;
 use kit::atlas::{Atlas, AtlasMaterial, set_alpha};
 use kit::params::RenderToggles;
 use kit::style::Style;
-use kit::ui_kit::{ScreenFx, show_screen, snap_screen, UiPointer, UiSize, ui_scale_for};
+use kit::ui_kit::{LayoutClass, ScreenFx, compact_scale, show_screen, snap_screen, UiPointer, UiSize, ui_scale_for};
 use world::camera::{CamMode, CameraRig, MAX_PX_PER_M};
 use world::fx::{FxQueue, FxRegions, FxSprite};
 use world::mode::AppMode;
@@ -50,6 +50,9 @@ const FIT_MARGIN: f32 = 0.6;
 const ZOOM_RANGE: (f32, f32) = (0.5, 8.0);
 /// The frame's dots are at least this many screen pixels apart.
 const MIN_DOT_GAP: f32 = 6.0;
+/// On a phone (the compact class) the drydock opens zoomed in to about this many dp per cell, at least the fit: at
+/// the fit a cell is about 10 dp, too small for a finger (*placeholder*, `docs/plans/android.md` 4.3).
+const OPEN_CELL: f32 = 28.0;
 
 /// The design's mesh.
 #[derive(Component)]
@@ -191,10 +194,28 @@ impl DockCamera {
         let offset = tf.translation / scale - window.size() / 2.0;
         let f = Vec2::new(frame.0 as f32, frame.1 as f32);
         // As `camera` opens it: the last view of this frame, else the whole frame.
-        let (pos, share) = self.view.filter(|_| self.frame == frame).unwrap_or((Vec2::new(f.x / 2.0, -f.y / 2.0), 1.0));
-        let zoom = fit_zoom(size, f) * share;
+        let fit = fit_zoom(size, f);
+        let (pos, share) = self.view.filter(|_| self.frame == frame).unwrap_or((Vec2::new(f.x / 2.0, -f.y / 2.0), open_share(fit, window.size())));
+        let zoom = fit * share;
         Some((pos + Vec2::new(-offset.x, offset.y) / zoom, zoom))
     }
+}
+
+/// The zoom the drydock opens with, as a share of the `fit`, in a window `size` logical px big: the whole frame,
+/// on a phone about [`OPEN_CELL`] dp per cell.
+fn open_share(fit: f32, window: Vec2) -> f32 {
+    if LayoutClass::of(window).is_compact() && fit > 0.0 { (OPEN_CELL / fit).clamp(1.0, ZOOM_RANGE.1) } else { 1.0 }
+}
+
+impl DockCamera {
+    /// The zoom's limits now (px per metre), from the fit.
+    pub(super) fn zoom_limits(&self) -> (f32, f32) {
+        zoom_limits(self.fit)
+    }
+}
+
+fn zoom_limits(fit: f32) -> (f32, f32) {
+    (fit * ZOOM_RANGE.0, (fit * ZOOM_RANGE.1).min(MAX_PX_PER_M).max(fit))
 }
 
 /// px per metre at 100 %: the frame and [`FIT_MARGIN`] cells around it fill a grid viewport of `size` logical px.
@@ -256,9 +277,11 @@ pub(super) fn unpark(mut transitions: MessageReader<StateTransitionEvent<AppMode
     rig.zoom_target = cam.flight_zoom;
 }
 
-/// The UI scale: the layout is made for 1280 × 720 logical pixels and grows with larger windows.
-pub(super) fn ui_scale(window: Single<&Window, With<PrimaryWindow>>, size: Res<UiSize>, mut ui_scale: ResMut<UiScale>) {
-    let s = ui_scale_for(&window, *size);
+/// The UI scale: the wide layout is made for 1280 × 720 logical pixels and grows with larger windows; the phone
+/// layout (the compact class) for 844 × 390 at `compact_scale`, as home's, so home's flight onto the drydock's
+/// opening view ends where the drydock opens.
+pub(super) fn ui_scale(window: Single<&Window, With<PrimaryWindow>>, size: Res<UiSize>, class: Res<LayoutClass>, mut ui_scale: ResMut<UiScale>) {
+    let s = if class.is_compact() { compact_scale(window.size()) * size.0 } else { ui_scale_for(&window, *size) };
     if (ui_scale.0 - s).abs() > 1e-3 {
         ui_scale.0 = s;
     }
@@ -298,7 +321,7 @@ pub(super) fn camera(
     let frame_centre = Vec2::new(frame.x / 2.0, -frame.y / 2.0);
     if cam.fit <= 0.0 {
         // First frame of a visit: the last view, else the whole frame.
-        let (pos, share) = cam.view.unwrap_or((frame_centre, 1.0));
+        let (pos, share) = cam.view.unwrap_or((frame_centre, open_share(fit, window.size())));
         rig.end_zoom_anchor();
         rig.pos = pos;
         rig.zoom = fit * share;
@@ -310,7 +333,7 @@ pub(super) fn camera(
         rig.zoom_target *= k;
     }
     cam.fit = fit;
-    let (min, max) = (fit * ZOOM_RANGE.0, (fit * ZOOM_RANGE.1).min(MAX_PX_PER_M).max(fit));
+    let (min, max) = zoom_limits(fit);
     let cursor = window.cursor_position();
 
     for a in actions.read() {
@@ -354,8 +377,13 @@ pub(super) fn camera(
         rig.pos = clamped;
     }
 
+    // While a finger is down the cell is `touch`'s (it may hang above the finger); else the mouse's (the kit's
+    // pointer: none between touches).
+    if pointer.finger().is_some() {
+        return;
+    }
     let in_view = |c: &Vec2| !pointer.blocked && cam.viewport.contains(*c);
-    let cell = cursor.filter(in_view).map(|c| rig.screen_to_world(c)).map(|w| (w.x.floor() as i32, (-w.y).floor() as i32));
+    let cell = pointer.position().map(|p| p / scale).filter(in_view).map(|c| rig.screen_to_world(c)).map(|w| (w.x.floor() as i32, (-w.y).floor() as i32));
     let cell = cell.filter(|c| c.0 >= 0 && c.1 >= 0 && c.0 < design.frame().0 as i32 && c.1 < design.frame().1 as i32);
     // Written only when it changes: the ghost works its view out again then.
     if cursor_cell.cell != cell {

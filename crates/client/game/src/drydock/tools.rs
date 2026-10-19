@@ -5,8 +5,8 @@
 //!
 //! * [`Gesture`] is the pure part: a press, drags and a release on frame cells become [`Op`]s (a paint or erase
 //!   drag is one stroke and one undo step, fill drags a rectangle, select grabs a part and moves it on
-//!   release). It knows nothing of the input device: [`pointer`] feeds it the mouse now (left button: the tool,
-//!   right button: erase), touch will feed it with the phone layout.
+//!   release). It knows nothing of the input device: [`pointer`] feeds it the mouse (left button: the tool,
+//!   right button: erase), `touch` a finger.
 //! * [`Selection`]: the selected part, kept as a cell (part indices change with every edit). It exists only in
 //!   the select tool.
 //! * Refusals (and skipped mirror edits) go to [`EditNote`], shown after the grid's info line.
@@ -201,12 +201,23 @@ pub fn line(a: Cell, b: Cell) -> Vec<Cell> {
     out
 }
 
-/// The gesture in progress and the mouse button that drives it (the ghost draws the fill rectangle and the
-/// moved part from it).
+/// The gesture in progress and what drives it (the ghost draws the fill rectangle and the moved part from it).
 #[derive(Resource, Default, Debug)]
 pub struct DrydockGesture {
     pub gesture: Gesture,
-    button: Option<MouseButton>,
+    pub by: Option<Driver>,
+}
+
+/// What drives the gesture in progress.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Driver {
+    /// A mouse button ([`pointer`]).
+    Mouse(MouseButton),
+    /// A finger on the grid (`touch::grid`).
+    Finger,
+    /// A finger holds a part above it, to drop it where it lifts (`touch`: a machine or slope on the grid, a part
+    /// dragged from the palette); the gesture stays idle, the ghost shows at the cursor cell.
+    Lift,
 }
 
 /// The mouse on the grid: the left button runs the current tool, the right button erases. Space + left and the
@@ -227,28 +238,37 @@ pub(super) fn pointer(
 ) {
     let content = &content.0;
     let mut ops = Vec::new();
-    if let Some(button) = g.button {
-        if let Some(cell) = cursor.cell {
-            ops.extend(g.gesture.drag(cell));
+    if let Some(by) = g.by {
+        // A finger's gesture is `touch`'s.
+        if let Driver::Mouse(button) = by {
+            if let Some(cell) = cursor.cell {
+                ops.extend(g.gesture.drag(cell));
+            }
+            if !buttons.pressed(button) {
+                ops.extend(g.gesture.release());
+                g.by = None;
+            }
         }
-        if !buttons.pressed(button) {
-            ops.extend(g.gesture.release());
-            g.button = None;
-        }
-    } else if !keys.pressed(KeyCode::Space)
+    } else if pointer.finger().is_none()
+        && !keys.pressed(KeyCode::Space)
         && !pointer.blocked
         && let Some(cell) = cursor.cell
         && let Some((button, tool)) = [(MouseButton::Left, ui.tool), (MouseButton::Right, Tool::Erase)].into_iter().find(|(b, _)| buttons.just_pressed(*b))
     {
         let brush = ui.picked.as_deref().and_then(|p| content.parts.get(p)).map(Brush::of);
         let (gesture, first) = Gesture::press(tool, brush, cell, design.dock().part_at(cell).is_some());
-        *g = DrydockGesture { gesture, button: Some(button) };
+        *g = DrydockGesture { gesture, by: Some(Driver::Mouse(button)) };
         ops = first;
     }
+    run_ops(ops, content, &ui, &mut design, &mut sel, &mut note, time.elapsed_secs());
+}
+
+/// Carries out a gesture's ops; a refusal goes to the note (`now`: real seconds).
+pub(super) fn run_ops(ops: Vec<Op>, content: &Content, ui: &DrydockUi, design: &mut PlayerDesign, sel: &mut Selection, note: &mut EditNote, now: f32) {
     for op in ops {
-        if let Some(why) = run(op, content, &ui, &mut design, &mut sel) {
+        if let Some(why) = run(op, content, ui, design, sel) {
             note.text = Some(why);
-            note.at = time.elapsed_secs();
+            note.at = now;
         }
     }
 }
@@ -256,7 +276,7 @@ pub(super) fn pointer(
 /// Leaving the drydock (T during a drag): a gesture in progress ends here, its stroke closed and nothing more done
 /// (no fill, no move), so the first frame of the next visit doesn't continue it from wherever the pointer is.
 pub(super) fn leave(mut design: ResMut<PlayerDesign>, mut g: ResMut<DrydockGesture>) {
-    if g.button.is_some() {
+    if g.by.is_some() {
         design.edit(|d| d.end_stroke());
         *g = DrydockGesture::default();
     }
@@ -737,10 +757,10 @@ mod tests {
         });
         let mut world = World::new();
         world.insert_resource(design);
-        world.insert_resource(DrydockGesture { gesture: Gesture::Stroke { erase: false, last: (0, 0) }, button: Some(MouseButton::Left) });
+        world.insert_resource(DrydockGesture { gesture: Gesture::Stroke { erase: false, last: (0, 0) }, by: Some(Driver::Mouse(MouseButton::Left)) });
         world.run_system_once(leave).unwrap();
         let g = world.resource::<DrydockGesture>();
-        assert_eq!((g.gesture, g.button), (Gesture::Idle, None));
+        assert_eq!((g.gesture, g.by), (Gesture::Idle, None));
         // The stroke is one closed undo step: undoing it takes the painted blocks away.
         let mut design = world.resource_mut::<PlayerDesign>();
         let n = design.blueprint().parts.len();

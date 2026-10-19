@@ -21,6 +21,7 @@
 //! status line names what the fleet lacks.
 //! * [`overlays`]: the HEAT, MASS, BONUS, SHIELDS and ARCS overlays and the issue marks over the design.
 //! * [`tools`]: editing on the grid (paint, fill, erase, select), the selection, undo / redo, mirror, bevel.
+//! * [`touch`]: fingers on the grid (the tools, pan, pinch zoom) and parts dragged from the palette.
 //! * [`ghost`]: the ghost of the edit under the cursor, the fill rectangle, the selection brackets.
 //! * [`inspector`]: the SELECTED PART block (a placed part with the report's numbers, or the palette part).
 //! * `player::library`, [`share`], [`blueprints`]: saving and the autosave, the BLUEPRINTS and EXPORT screens,
@@ -44,6 +45,7 @@ pub mod share;
 pub mod state;
 pub mod stats;
 pub mod tools;
+pub mod touch;
 pub mod view;
 
 use bevy::prelude::*;
@@ -143,13 +145,15 @@ fn editing(app: &mut App) {
     app.init_resource::<tools::Selection>()
         .init_resource::<tools::DrydockGesture>()
         .init_resource::<tools::EditNote>()
+        .init_resource::<touch::Pad>()
+        .init_resource::<touch::PaletteDrag>()
         .init_resource::<ghost::GhostView>()
         .init_resource::<inspector::Inspector>()
         .add_systems(Startup, ghost::setup.after(view::setup))
         .add_systems(
             Update,
             (
-                (tools::apply, tools::pointer).chain().after(actions::apply).before(report::update).in_set(DockSet::Apply),
+                (tools::apply, (touch::palette, touch::grid).chain(), tools::pointer).chain().after(actions::apply).before(report::update).in_set(DockSet::Apply),
                 inspector::update.after(report::update).in_set(DockSet::Apply),
                 (ghost::update, ghost::rebuild, ghost::rebuild_marks, ghost::sync_hint).chain().before(panels::sync_live).in_set(DockSet::Show),
                 (inspector::sync_controls, tools::sync_rings).in_set(DockSet::Show),

@@ -143,7 +143,7 @@ pub(super) struct PaletteList;
 /// A palette row (its part), its icon, its NEW tag (a fresh part: research unlocked it and the drydock hasn't shown it
 /// yet) and its texts.
 #[derive(Component)]
-pub(super) struct PaletteRow(String);
+pub(super) struct PaletteRow(pub(super) String);
 
 #[derive(Component)]
 pub(super) struct RowIcon(String);
