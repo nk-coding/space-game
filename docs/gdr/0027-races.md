@@ -5,6 +5,9 @@
   provoked, their own research family).
   2026-10-18: the Grown in play: rammers, thornbacks, grove guardians and the giant elders, their research family
   ([GDR-0103](0103-the-grown-in-play-defaults.md)).
+  2026-10-19: the Swarm in play (lead, [GDR-0117](0117-drones-and-the-swarm.md)): hive carriers that flood drones,
+  spitters, the hives as the middle band's boss sites, raids on the Grown near the band's border; chitin, hive resin and
+  nerve cores; their research family (chitin plating, stingers, the drone bay).
 - Date: 2026-10-10
 - Decided by: Niklas (interactive Q&A)
 - Related: [GDR-0024](0024-tech-trees-no-mk-levels.md), [GDR-0026](0026-procedural-galaxy-and-bands.md), [GDR-0031](0031-materials-and-fabrication.md), [GDR-0032](0032-balancing-arena-evolution.md)

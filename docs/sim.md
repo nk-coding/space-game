@@ -154,9 +154,11 @@ the origin, spawn hitches: [Bigger clusters](#bigger-clusters)).
    step), bodies are read back (the previous pose is kept for interpolation), impacts above the ramming
    threshold crush inward from the touching part on both sides (after shields; none within one owner), and
    breakage is resolved once more.
-10. **Voyage director** (if a voyage is underway, [Voyages](#voyages)): sites near the player's vessels spawn,
+10. **Drones** ([Drones](#drones-gdr-0117)): drones whose hangar is gone or that lost their core are removed; hangars
+    rebuild and launch.
+11. **Voyage director** (if a voyage is underway, [Voyages](#voyages)): sites near the player's vessels spawn,
     sleeping sites wake, awake sites clear.
-11. `tick += 1`; debug builds store `state_hash()` (`last_tick_hash()`).
+12. `tick += 1`; debug builds store `state_hash()` (`last_tick_hash()`).
 
 `Sim::step_profiled(&inputs, |phase| ...)` is the same step with a callback at the start of every `StepPhase`
 (`Inputs`, `Flight`, `Systems`, `Weapons`, `Physics`, `Impacts`, `Hash`, `Done`), so tools can time the phases
@@ -1820,6 +1822,42 @@ Queries each frame: `Sim::projectiles()` (`pos`, `prev_pos`, `vel`; draw at `pre
 alpha`), `Sim::beams()` (this tick's beams), `Sim::bubbles()` (`centre`, `radius`, `left`, `capacity` of every
 bubble that is up), and per emitter `ship.part(i).shield` and `.shield_down`. `Sim::spawn_projectile` creates a
 projectile directly (tools, tests).
+
+## Drones (GDR-0117)
+
+`ship/drones.rs`, 19 Oct 2026. A part's `hangar: (drone, capacity, rebuild, leash)` (`ShipDesign::hangars`, each with
+its mouth, facing, the cells in front of it and the drone's design, compiled with the carrier's upgrades; a drone
+carries no hangar). Per hangar a `Bay` on the ship (`ready`, `progress`, `cooldown`; hashed, nothing for ships without
+hangars), per drone a `Tie` (carrier, hangar; hashed).
+
+- **The pass** (`Sim::drones_step`, once per tick after the impacts, before the voyage director): first every drone
+  whose hangar no longer holds it (the hangar destroyed or off the carrier's controlling piece, the carrier lost or no
+  vessel) or that is no vessel itself (its nerve node shot out) is removed (`SimEvent::DroneLost { ship, carrier, at }`,
+  `ShipRemoved`; no wreck); then per ship with hangars, in ship index and hangar order: the cooldown ticks down; a
+  working hangar (alive, not overheated, not idle, on the controlling piece of a vessel) with fewer than `capacity`
+  drones out and ready adds `work × DT` to its progress and readies a drone at `rebuild` s; a working hangar whose
+  vessel is running and aims at something (`behavior::aims_at`: its behavior's focus or the pilot's lock), whose
+  mouth is open (no part in the cells in front of its forward side), with a drone ready and the cooldown done,
+  launches one while fewer than `tuning::MAX_DRONES` (48) live in the world. Launches are spawned after the pass.
+- **Launch**: the drone's body just beyond the mouth (its half-diagonal plus `LAUNCH_GAP`, 0.3 m), nose out, at the
+  carrier's velocity at the mouth plus `LAUNCH_SPEED` (8 m/s); the next launch of that hangar after `LAUNCH_TICKS`
+  (9, 0.3 s). Built with `new_ship` (a `ShipSpawned`, no `VesselFormed`, no vessels formed from its other pieces), a
+  fresh claim, then `Leader(carrier)` and its design's default behavior (`SimEvent::DroneLaunched`).
+- **Not the fleet**: the mind pass counts a drone's cores as 0 (it never goes dormant); it is never the focus (a
+  `Focus` command is ignored, a lost focus never moves to one); `Sim::vessels` and `mind_load` leave drones out,
+  `Sim::drones` lists them; no `VesselLost` for a drone; `own_vessels` (recall, emergency recall) and the director's
+  player positions leave them out; a site takes in its carrier's drones (`DroneLaunched` like a split's
+  `VesselFormed`).
+- **Leash**: the condition `off_leash` (`Flag::OffLeash`): the drone's controlling piece's centre of mass more than its
+  hangar's `leash` from its carrier's; false for any other ship. The `drone` behavior (`locked`, the carrier's target)
+  escorts the carrier back then.
+- **The runner's pilot** fights drones only while no other armed enemy is within its fight range (400 m).
+- **Report**: `DesignReport::hangars` (mouth, facing, open, blockers, capacity, leash, drone) for the drydock's ARCS.
+
+Cost: one pass over the ships a tick, a sort of the live ties (at most 48); the bodies are what costs: about 1.2 µs a
+drone a tick, a capped flood 0.06 ms (`docs/results/swarm-balance-2026-10-19.md`). Tests: `tests/drones.rs` (the
+flood, death with the hangar, the rebuild time, the leash, focus and fleet, the cap, determinism);
+`scripts/determinism-check.sh --fight hive_flood`.
 
 ## Engine plumes
 

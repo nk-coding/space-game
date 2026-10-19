@@ -48,9 +48,9 @@ flank: every drone of that hangar goes with it.
 
 The Swarm fill the middle band. They are hostile by nature: a Swarm site wakes when a ship comes near.
 
-- [[ship:swarm_spitter|Spitters]] patrol in twos and threes and circle what they find, stinging with
-  [[part:stinger|stingers]].
-- A [[ship:swarm_carrier]] keeps its distance and floods the space round it from the brood hangars in its flanks.
+- [[ship:swarm_spitter|Spitters]] patrol in threes and fours and circle what they find, stinging with
+  [[part:stinger|stingers]], whose kinetic spines get half through a shield bubble.
+- A [[ship:swarm_carrier]] holds 150 m off and floods the space round it from the brood hangars in its flanks.
 - A [[ship:swarm_hive]], the band's boss, is anchored deep in the band at the end of a trail of its own: four pods
   round a hub, each with its own nerve node and brood hangar. Shot off, a pod floods on alone.
 - Near the outer reach's border the Swarm raid the [[faction:grown]]: their raids leave Grown salvage behind.
