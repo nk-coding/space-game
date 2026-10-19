@@ -383,6 +383,35 @@ FIRES WITH` and the group's bound keys, e.g. `2 / RMB`; hidden for parts that ar
 delete. Mirror mode changes the twin too. The rows scroll with the stat lines when the column is short (at 1280 × 720
 with a gun selected, rotate / flip / delete sit below the fold). The groups are not drawn on the ship view. With nothing selected it shows the part picked in the palette (content numbers, as before).
 
+### Phones and touch
+
+19 Oct 2026, [GDR-0118](gdr/0118-drydock-on-a-phone.md) (Proposed), `docs/plans/android.md` 4.3, `docs/client.md`
+"Phones". In the compact layout class (a window under 500 dp high) the drydock is laid out for 844 × 390 at
+`compact_scale` (`panels/spawn.rs`, every node in both forms through `home::ByClass`; `C_*` in `panels/mod.rs`):
+the palette 190 dp, a **tool strip** (PAINT, FILL, ERASE, SELECT, ROTATE) between it and the grid, the right column
+214 dp with the stats' labels over their values, the bottom bar without the tool pills (`fit_bar` keeps it folded,
+the dropdown hidden: mirror and bevel as rings). The right column shows the stats, or while a placed part is selected
+the selected part with a ring back (`sync_column`; it deselects). The info line is the cell and the mirror. BLUEPRINTS
+scrolls (lists four rows high, no preview). The view opens at about 28 dp per cell (`view::OPEN_CELL`, at least the
+fit; wide windows: the fit), and opens again for a viewport that changes before it is zoomed or moved (the layout
+settles over the first frames); home's flight in uses the same opening view at the same UI scale, so it ends where the
+drydock opens. Screenshots (844 × 390 at DPR 3): `docs/results/phone-drydock-2026-10-19.png`,
+`phone-drydock-selected-2026-10-19.png`.
+
+Touch (`touch.rs`; the mouse is unchanged, every gesture goes through `tools::Gesture` and `run_ops` like the mouse's):
+
+| Finger | |
+|---|---|
+| One finger on the frame | the current tool once it has been down alone for 120 ms (`touch::HOLD_SECS`; a quick tap is the whole gesture at once): paint and erase strokes, the fill rectangle, SELECT grabs the part and moves it on release |
+| One finger with a machine or slope picked (PAINT) | its ghost hangs 48 dp above the finger (`touch::LIFT`) and lands where the finger lifts; a tap (under 0.3 s and 10 dp) puts it under the finger |
+| One finger off the frame, or on an empty cell with SELECT | pans; a tap there deselects |
+| Two fingers | pan and pinch zoom together (the point under their midpoint stays under it); a second finger within the 120 ms means nothing is edited, after it the gesture ends as on leaving the drydock (a stroke closes, a fill or move is dropped) |
+| A palette row dragged sideways onto the grid | picks the part (and PAINT) and drops it where the finger lifts, its ghost 48 dp above the finger; up and down scrolls the list, a tap picks |
+
+`touch::Pad` turns the fingers down each frame into presses, drags, releases, cancels, taps and view changes, without
+the ECS (tested: the hold, taps, the cancel, the pinch's anchor); headless Chromium has one finger, so the pinch is
+checked by those tests only. Not yet: double tap to fit, a fling, the plan's palette with headers and a lens.
+
 ### Locked parts, NEW and voyage-ready
 
 Track 7F, 13 Oct 2026 ([GDR-0063](gdr/0063-salvage-and-research-v1.md), [GDR-0065](gdr/0065-phase-7-screens-and-escort-action.md),

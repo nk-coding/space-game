@@ -2380,14 +2380,24 @@ but the type is too small to read). Numbers are placeholders.
     scroll of the controls list checked headless.
   - *Debrief*: the panel 400 px wide with less padding; it scrolls as before.
 
+- **Drydock** (B, 19 Oct 2026, [GDR-0118](gdr/0118-drydock-on-a-phone.md) Proposed; `docs/drydock.md` "Phones and
+  touch"; screenshots `docs/results/phone-drydock-2026-10-19.png`, `phone-drydock-selected-2026-10-19.png`): at
+  `compact_scale` with `CompactText(9)`, every node in its wide and phone form (`home::ByClass`): palette 190 px, a
+  tool strip beside it, the right column 214 px with the stats or the selected part, the bottom bar without the tool
+  pills; BLUEPRINTS scrolls. It opens at about 28 dp per cell, the view home flies onto. Touch (`drydock/touch.rs`):
+  one finger runs the tool after a 120 ms hold, machines and slopes hang 48 dp above the finger and drop where it
+  lifts, one finger pans off the frame (or on an empty cell with SELECT), two fingers pan and pinch, a palette row
+  dragged sideways drops its part on the grid. Checked headless at 844 × 390 (taps on the strip, select, a paint
+  stroke, a palette drag) and 1280 × 720.
+
 What still breaks at 844 × 390 (audit of 19 Oct 2026, DPR 3), grouped into work packages with disjoint files:
 
 | Package | Screens and files | What breaks | Size |
 |---|---|---|---|
 | A. Flight and viewer | flight HUD, pause menu, fleet bar, fight viewer: `world/src/flight_hud/`, `hud.rs`, `controls.rs`, `fleet_bar.rs`, `replay.rs`, `camera.rs` | the HUD stays at the UI size (1.0, readable and fitting) but its title wraps ("TEST RANGE · WAVE" / "1"; the fight viewer's long title in four lines over the top centre: `hud.title_side` keeps 300 px a side of 844); touch widgets wait for a first touch (plan 4.2: on from the start on touch); the help line ("CLICK OR L TO LOCK") shows on touch; the viewer's scrubber and the free camera's drag are mouse-only; set the HUD's scale to `compact_scale` in flight from a world system | L |
-| B. Drydock | `game/src/drydock/**`, `world/src/part_card.rs` | fitted at 0.54: type 4–7 dp, pills about 15 dp high; painting, erasing, selecting on the grid (`tools.rs`) and panning (`view.rs`: middle button, Space + drag, wheel) are mouse-only, no pinch; phone layout per plan 4.3 | L |
+| B. Drydock | `game/src/drydock/**`, `world/src/part_card.rs` | **done 19 Oct 2026** (above). Left: double tap to fit, a fling, the plan's palette with headers and a lens; the pinch checked by unit tests only (headless has one finger); the hover card on a held palette row and the soft keyboard (name, paste box) not checked on a phone | L |
 | C. BEHAVIOR | `game/src/behavior_ui/**` | fitted at 0.54, unreadable; a row's reorder drag (8 px) fights the finger's scroll; phone layout per plan 4.4 (inspector right, ADD NODE, ring menu) | L |
-| D1. Shipyard screens | home `home.rs`, `shipyard/`, FLEET `fleet.rs`, workshop `workshop.rs`, LOG `voyage_log.rs`, debrief `debrief.rs`, settings `settings.rs` | **done 19 Oct 2026** (above). Left: FLEET's card row and the LOG's rows not seen on a phone with saved designs or voyages (laid out for them: a card 262 px, a row's haul gets about 320 px and may take two lines); home's camera flies into the drydock's opening view measured at home's scale, which on a phone is no longer the drydock's (0.54) until B gives the drydock its own, so the flight's end may jump; the flight menu (pause) is package A's | L (M each) |
+| D1. Shipyard screens | home `home.rs`, `shipyard/`, FLEET `fleet.rs`, workshop `workshop.rs`, LOG `voyage_log.rs`, debrief `debrief.rs`, settings `settings.rs` | **done 19 Oct 2026** (above). Left: FLEET's card row and the LOG's rows not seen on a phone with saved designs or voyages (laid out for them: a card 262 px, a row's haul gets about 320 px and may take two lines); home's camera flies into the drydock's opening view, measured at home's scale, which on a phone is the drydock's too since B (19 Oct 2026), so the flight ends where the drydock opens; the flight menu (pause) is package A's | L (M each) |
 | D2. Research, voyage map, evolution | `research/`, `map/`, `evolution/` | **done 19 Oct 2026** (above: phone layouts at `compact_scale`, the map area measured from the chrome). Left: the map's jump-range outline is cut at the panel only; text cut by the map area's edge is cut through its letters; the evolution pages are the wide columns stacked (not a phone design of their own), THE RUN page not checked with a run on a phone; no pinch check (headless has one finger) | M |
 
 ## Adding visuals
