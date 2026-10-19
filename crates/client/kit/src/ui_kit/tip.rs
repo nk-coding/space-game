@@ -13,7 +13,7 @@ use super::*;
 /// it until the pointer leaves the node.
 ///
 /// **By touch** (no hover): a finger held on the node for [`TIP_HOLD`] without moving [`TIP_SLOP`] shows the tip
-/// above the finger ([`touch_tip_position`]) until it lifts or moves on; the press then ends without a click (a long
+/// (its name only) above the finger ([`touch_tip_position`]) until it lifts or moves on; the press then ends without a click (a long
 /// press asks what a control is, as on Android, and never presses it). A press something else took first (a list
 /// that scrolled under the finger) shows none. The holds the screens use (BEHAVIOR's rule rows, the drydock's grid
 /// and palette rows, the flight's stick and FIRE) are on nodes without a tip, so the two never meet.
@@ -206,7 +206,8 @@ pub(super) fn show_tip(
         state.shown = Some(e);
         set_text(&mut name.0, &tip.name);
         set_text(&mut key.0, tip.key.as_deref().unwrap_or(""));
-        let d = if tip.key.is_some() { Display::Flex } else { Display::None };
+        // A finger's tip names no key: a touch screen has none.
+        let d = if tip.key.is_some() && touch.is_none() { Display::Flex } else { Display::None };
         if key.1.display != d {
             key.1.display = d;
         }
