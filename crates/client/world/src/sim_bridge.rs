@@ -380,6 +380,8 @@ fn apply_events(
             SimEvent::Ricochet { point, vel, .. } => Act::Ricochet(v2(*point), v2(*vel)),
             SimEvent::Warhead { by, at, radius, damage, .. } => Act::Warhead(*by, v2(*at), *radius, *damage),
             SimEvent::ProjectileGone { pos, reason: sim::GoneReason::ShotDown | sim::GoneReason::Decoyed, .. } => Act::ShotDown(v2(*pos)),
+            SimEvent::DroneLaunched { ship, .. } => Act::Launched(*ship),
+            SimEvent::DroneLost { at, .. } => Act::DroneGone(v2(*at)),
             SimEvent::PlumeHit { by, engine, point, .. } => Act::Burn(*by, *engine, v2(*point)),
             SimEvent::ShieldHit { ship, piece, part, point, absorbed, depleted, .. } => {
                 Act::Shield(*ship, *piece, *part, v2(*point), *absorbed, *depleted)
@@ -477,6 +479,14 @@ fn apply_events(
             }
             // Point defence shot a missile down, or a flare's decoy took it: a small pop where it was.
             Act::ShotDown(at) => fx.burst(at, Color::srgb(1.0, 0.85, 0.6), 0.3),
+            // GDR-0117: a drone leaves its hangar with a flash in the Swarm's colour, and dies with a pop of it (it
+            // leaves no wreck).
+            Act::Launched(ship) => {
+                if let Some(at) = world.sim.ship(ship).and_then(|s| s.piece(s.control_piece()?)).map(|p| v2(p.com_world())) {
+                    fx.flash(at, style.system_color("swarm"), 1.2, 0.35);
+                }
+            }
+            Act::DroneGone(at) => fx.burst(at, style.system_color("swarm"), 0.6),
             Act::Shot(ship, kind, from, to) => {
                 let color = weapon_color(world, ship, &style);
                 fx.muzzle(from, color);
@@ -541,6 +551,10 @@ enum Act {
     Warhead(ShipId, Vec2, f32, f32),
     /// Point defence shot a missile down here, or a flare decoy took it.
     ShotDown(Vec2),
+    /// A hangar launched this drone (GDR-0117).
+    Launched(ShipId),
+    /// A drone died here (with its hangar, or its core).
+    DroneGone(Vec2),
     Shot(ShipId, sim::ShotKind, Vec2, Vec2),
     Hit(Vec2, Vec2, data::WeaponFamily, f32),
     Ricochet(Vec2, Vec2),

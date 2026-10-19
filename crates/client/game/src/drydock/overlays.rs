@@ -19,8 +19,10 @@
 //!   (the ghost draws the same for a shield part being placed or selected: [`ghost_marks_mesh`]).
 //! * **Arcs**: each gun's line of fire to its range (clear: dashed, weapons cyan, with the arc a point-defence
 //!   turret aims within and the cone a missile launcher launches within, GDR-0115; blocked: coral up to the first
-//!   blocker, a cross there, blockers outlined); each engine's plume lanes to their reach (propulsion teal; a lane
-//!   that burns an own part: coral, the part outlined). The lines end at the grid viewport's edge.
+//!   blocker, a cross there, blockers outlined); each hangar's launch lane (GDR-0117: a chevron per drone it holds,
+//!   in the Swarm's colour; a part right in front of its mouth: coral, a cross, the part outlined); each engine's
+//!   plume lanes to their reach (propulsion teal; a lane that burns an own part: coral, the part outlined). The lines
+//!   end at the grid viewport's edge.
 //! * **Blast**: each part that explodes when destroyed (GDR-0084, GDR-0085): its reach (a faint coral disc with a
 //!   soft rim, the rim dashed, a burst at its centre), the logic cores and guns the blast destroys washed coral,
 //!   the other parts it destroys outlined coral, the ones that survive it outlined gold, the armour on the line
@@ -127,6 +129,7 @@ struct Pen {
     ui: UiPalette,
     weapons: Color,
     propulsion: Color,
+    swarm: Color,
     shield: Color,
     shield_core: Color,
     ink: Color,
@@ -142,6 +145,7 @@ impl Pen {
             ui: style.ui,
             weapons: style.system_color("weapons"),
             propulsion: style.system_color("propulsion"),
+            swarm: style.system_color("swarm"),
             shield: style.shield.color,
             shield_core: style.shield.core,
             ink: style.seam,
@@ -534,6 +538,27 @@ fn draw(m: &mut MeshBuf, pen: &Pen, r: &DesignReport, shapes: &[PlacedShape], ma
                 pen.seg(m, o, o + d * t.max(0.15), 0.035, ui.coral.with_alpha(0.95));
                 pen.cross(m, o + d * t, 0.16, 0.035, ui.coral);
                 for &b in &g.blockers {
+                    pen.outline(m, &outline_of(&shapes[b as usize], 0.07), 0.035, ui.coral.with_alpha(0.85));
+                }
+            }
+        }
+        // GDR-0117: a hangar's drones leave by its mouth, one chevron per drone it holds.
+        for h in &r.hangars {
+            let (o, d) = (world(h.mouth), dir_world(h.facing));
+            if h.open {
+                let len = 0.9 + 0.7 * h.capacity as f32;
+                pen.soft(m, o, o + d * len, view, 0.35, pen.swarm.with_alpha(0.25));
+                for k in 0..h.capacity {
+                    let tip = o + d * (0.8 + 0.7 * k as f32);
+                    for side in [1.0, -1.0] {
+                        pen.seg_in(m, tip - d * 0.24 + d.perp() * (0.22 * side), tip, view, 0.035, pen.swarm.with_alpha(0.9));
+                    }
+                }
+            } else {
+                let t = first_block(shapes, o, d, &h.blockers).unwrap_or(0.0);
+                pen.seg(m, o, o + d * t.max(0.15), 0.035, ui.coral.with_alpha(0.95));
+                pen.cross(m, o + d * t, 0.16, 0.035, ui.coral);
+                for &b in &h.blockers {
                     pen.outline(m, &outline_of(&shapes[b as usize], 0.07), 0.035, ui.coral.with_alpha(0.85));
                 }
             }

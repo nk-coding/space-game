@@ -593,7 +593,8 @@ pub fn enemies(content: &Content) -> Vec<String> {
 
 /// The templates START FROM offers: the content ships of the player's faction (`faction`), in content order.
 pub fn templates(content: &Content, faction: &str) -> Vec<String> {
-    content.ships.iter().filter(|s| s.faction == faction).map(|s| s.id.clone()).collect()
+    // A drone (GDR-0117) is no start of its own: it flies only out of its hangar.
+    content.ships.iter().filter(|s| s.faction == faction && !s.tags.iter().any(|t| t == "drone")).map(|s| s.id.clone()).collect()
 }
 
 /// The lab (a resource): the runs, the one loaded for the page and the one that computes, the measured rate.

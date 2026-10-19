@@ -413,6 +413,8 @@ pub fn sim_values() -> Vec<(&'static str, String)> {
         ("missile_seek_cone", num(mt::SEEK_CONE.to_degrees(), 0, "°")),
         ("missile_fire_cone", num(mt::FIRE_CONE.to_degrees(), 0, "°")),
         ("max_missiles", mt::MAX_MISSILES.to_string()),
+        ("max_drones", sim::ship::drones::tuning::MAX_DRONES.to_string()),
+        ("drone_launch_interval", num(sim::ship::drones::tuning::LAUNCH_TICKS as f32 / sim::TICK_HZ as f32, 1, "s")),
         ("target_sticky", pct(bt::STICKY)),
         ("assist_turn_dv", num(bt::ASSIST_TURN_DV, 1, "m/s")),
         ("station_slack", num(bt::STATION_SLACK, 1, "m")),

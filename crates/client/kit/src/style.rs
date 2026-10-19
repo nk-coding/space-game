@@ -113,10 +113,10 @@ impl Style {
                 core_width: atlas.token_f32("ship.plume.cruise.core_width"),
                 core_length: atlas.token_f32("ship.plume.cruise.core_length"),
             },
-            armor: group("ship.armor", &["steel", "composite", "reactive", "enemy", "tissue"]),
+            armor: group("ship.armor", &["steel", "composite", "reactive", "enemy", "tissue", "chitin"]),
             system: group(
                 "ship.system_colors",
-                &["power", "weapons", "shields", "heat", "propulsion", "logic", "cargo", "enemy"],
+                &["power", "weapons", "shields", "heat", "propulsion", "logic", "cargo", "enemy", "swarm"],
             ),
             glow_player: atlas.token_color("ship.hull_glow.color"),
             glow_enemy: atlas.token_color("ship.hull_glow.enemy_color"),

@@ -439,7 +439,7 @@ mod tests {
         (tree.lanes[c.lane].family.clone(), c.row, c.column)
     }
 
-    /// The base pack's nodes: a lane per family with nodes (all eleven, content order), three columns (the mind
+    /// The base pack's nodes: a lane per family with nodes (all twelve, content order), three columns (the mind
     /// expansions' chain, the Grown's, the drydock's), connectors along the chains; the simulation vault under the
     /// tamed core and the first jump calibration under the torch drive (both need nothing), the sidegrades under the
     /// parts they vary, the refinement chains under them.
@@ -448,7 +448,7 @@ mod tests {
         let content = data::base_content();
         let tree = Tree::new(&content);
         let lanes: Vec<&str> = tree.lanes.iter().map(|l| l.family.as_str()).collect();
-        assert_eq!(lanes, ["hull", "power", "energy", "kinetic", "missiles", "shields", "thermal", "propulsion", "logic", "utility", "grown"]);
+        assert_eq!(lanes, ["hull", "power", "energy", "kinetic", "missiles", "shields", "thermal", "propulsion", "logic", "utility", "grown", "swarm"]);
         assert_eq!(tree.columns, 3);
         assert_eq!(tree.cards.len(), content.research.len());
         assert_eq!(at(&tree, "composite_plating"), ("hull".into(), 0, 0));
@@ -461,6 +461,7 @@ mod tests {
         assert_eq!(at(&tree, "jump_calibration_2"), ("propulsion".into(), 0, 1));
         assert_eq!(at(&tree, "grown_heart"), ("grown".into(), 0, 2));
         assert_eq!(at(&tree, "spore_lining"), ("grown".into(), 1, 2));
+        assert_eq!(at(&tree, "drone_bay"), ("swarm".into(), 0, 2));
         assert_eq!(at(&tree, "reactive_plating"), ("hull".into(), 1, 1));
         assert_eq!(at(&tree, "capital_drydock"), ("hull".into(), 0, 2));
         assert_eq!(at(&tree, "automaton_forge"), ("logic".into(), 1, 1));
@@ -483,6 +484,8 @@ mod tests {
                 link("tamed_core", "automaton_forge"),
                 link("cruiser_drydock", "capital_drydock"),
                 link("automaton_cannon", "long_cannon"),
+                link("chitin_plating", "stingers"),
+                link("stingers", "drone_bay"),
                 link("shield_regen_1", "shield_regen_2"),
                 link("shield_regen_2", "shield_regen_3"),
                 link("radiator_vent_1", "radiator_vent_2"),
@@ -497,7 +500,7 @@ mod tests {
         assert_eq!(at(&tree, "pulse_rate_1"), ("energy".into(), 2, 0));
         assert_eq!(at(&tree, "thruster_speed_3"), ("propulsion".into(), 0, 2));
         let rows = |f: &str| match f {
-            "kinetic" => 1,
+            "kinetic" | "swarm" => 1,
             "energy" | "propulsion" => 3,
             _ => 2,
         };

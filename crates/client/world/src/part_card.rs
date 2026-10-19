@@ -102,6 +102,10 @@ pub fn part_info(content: &Content, granted: &Granted, part: &Part, material: Op
     let lines = content.part_stats_upgraded(part, material, &granted.upgrades);
     let tone = |l: &data::StatLine| if l.upgraded_from.is_some() { Tone::Teal } else { Tone::Number };
     let mut stats: Vec<StatLine> = lines.iter().filter(|l| l.bonus.is_none()).map(|l| StatLine::new(l.label.to_uppercase(), l.text.clone(), tone(l))).collect();
+    // A hangar's drones (GDR-0117): how many, which ship, and what it is built of.
+    if let Some(h) = &part.hangar {
+        stats.push(StatLine { wide: true, ..StatLine::new("LAUNCHES", drone_line(content, h), Tone::Number) });
+    }
     if !part.hull {
         let recipe = part.recipe.as_ref().map_or_else(
             || "Salvage only".to_string(),
@@ -136,6 +140,21 @@ pub fn part_info(content: &Content, granted: &Granted, part: &Part, material: Op
         stats,
         bonuses,
     }
+}
+
+/// A hangar's drones in one line: `3 × BAY DRONE  ·  STINGER, NERVE NODE, SWARM JET` (its non-hull parts, in blueprint
+/// order, each once).
+pub fn drone_line(content: &Content, h: &data::HangarSpec) -> String {
+    let Some(ship) = content.ships.get(&h.drone) else {
+        return format!("{} × {}", h.capacity, h.drone);
+    };
+    let mut parts: Vec<&str> = Vec::new();
+    for p in ship.parts.iter().filter_map(|p| content.parts.get(&p.part)).filter(|p| !p.hull) {
+        if !parts.contains(&p.name.as_str()) {
+            parts.push(&p.name);
+        }
+    }
+    format!("{} × {}  ·  {}", h.capacity, ship.name, parts.join(", ")).to_uppercase()
 }
 
 /// What a locked part says under its name: `LOCKED  ·  <the research node that unlocks it>`.
@@ -559,6 +578,18 @@ mod tests {
         }
         let longest = labels.iter().max_by(|a, b| width(a).total_cmp(&width(b))).unwrap();
         assert!(width(longest) <= column, "{longest}: {} px in a {column} px column", width(longest));
+    }
+
+    /// A hangar's card says what it launches (GDR-0117): the count, the drone and its parts.
+    #[test]
+    fn a_hangar_says_what_it_launches() {
+        let content = data::base_content();
+        let bay = content.parts.get("drone_bay").unwrap();
+        let info = part_info(&content, &Granted::default(), bay, None, (0, Held::Design));
+        let line = info.stats.iter().find(|l| l.label == "LAUNCHES").expect("a LAUNCHES line");
+        assert!(line.wide);
+        assert_eq!(line.value, "3 × BAY DRONE  ·  STINGER, NERVE NODE, SWARM JET");
+        assert!(info.stats.len() <= CARD_CELLS);
     }
 
     /// A stat the career's steps raised reads in teal, with the raised number; the others stay white.
