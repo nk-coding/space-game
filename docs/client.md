@@ -2360,7 +2360,16 @@ but the type is too small to read). Numbers are placeholders.
   `finger`): `Hot` nodes show their hover while it is down and click on release; under a finger a node is hit within
   its box grown to 48 dp square (`TOUCH_TARGET`; the nearest one when no box holds the finger); a finger on a panel
   (`UiBlock`) or a control blocks the world; a finger dragged 10 dp along any `Scrollbar` area (on its rows too)
-  scrolls it under the finger and the row's press ends without a click. No fling yet; tooltips stay mouse-only.
+  scrolls it under the finger and the row's press ends without a click; lifted while it moves, the list **flings**
+  on (`Glide::fling`: as fast as the finger went over its last 0.1 s, slowing to a stop over 0.9 s on the wheel's
+  ease-out; none under 120 dp/s), and a finger that lands on a moving list stops it (that press is no click; 20 Oct
+  2026, *placeholders*, [GDR-0121](gdr/0121-tooltips-and-flings-by-touch.md) Proposed). **Tooltips by touch** (20 Oct 2026): a finger held 0.35 s on a control with a `Tip`
+  without moving 10 dp (the thresholds of BEHAVIOR's rule hold) shows its name (no key) above the finger until it
+  lifts or moves on, and the press then ends without a click: a long press asks what a control is, as on Android,
+  and never presses it. A press a scroll took first shows none. The holds the screens use (BEHAVIOR's rule rows,
+  the drydock's grid and palette rows, the flight's stick and FIRE) are on nodes without a tip, so the two never
+  meet. The fling is checked by unit tests only: headless frames (about 8 a second) are too slow to sample a
+  flick; the long press checked headless (`touchdown`/`touchup` in `web-drive.mjs`).
 - **Type on a phone**: `kit::ui_kit::CompactText(min)` on a screen's root draws every text under it at least `min` px
   in the compact class (its letter spacing grown with it; the size it was made with in a wide window), so a phone
   layout can keep a widget's 7 to 8 px labels without listing them.
@@ -2374,7 +2383,7 @@ but the type is too small to read). Numbers are placeholders.
     (window's left edge to the panel, header (and on a phone the zoom buttons) down to the legend or the window's
     bottom): the labels are cut there (the top band names in the strip right of the header), the view keeps it
     covered, and the markers fade out at its edges (`draw::edge`), so nothing draws over the back ring or the legend
-    (Niklas, 19 Oct 2026). The jump range's outline is still cut at the panel only.
+    (Niklas, 19 Oct 2026). The jump range's outline is cut at all its edges (`draw::clip_to`, 20 Oct 2026).
   - *Research* (`research/screen.rs` `Lay::COMPACT`, built again by `relayout` when the window changes class):
     844 × 390; each lane's dot, name and data over its cards (`Metrics::lane_head`), so three columns of cards
     (163 px) fit beside a 254 px detail whose rows scroll over UNLOCK (no preview picture); the materials wrap right
@@ -2393,7 +2402,10 @@ but the type is too small to read). Numbers are placeholders.
   debrief; SETTINGS over flight too), each root with `CompactText(9)` (home's on each place label, not on the name
   plate, whose letters follow the zoom). The layers keep their entities and swap their nodes: `kit::ui_kit::ByClass` (home's
   until 20 Oct 2026) holds a node's wide and compact form and puts the window's one in place when the class changes (its `display` stays as
-  the screen sets it, unless a form hides it), so the wide layouts are exactly as before.
+  the screen sets it, unless a form hides it), so the wide layouts are exactly as before. On a `Scrollbar` area each
+  form gets the bar's gutter and glow room as the kit gives them (`Scrollbar::fit`; a form's own clip margin wins),
+  20 Oct 2026: before, a swapped node lost them whenever the swap ran after the bar was attached (BLUEPRINTS' page
+  clipped its YOUR DESIGNS label at its top; BEHAVIOR's own `ScrollFit` did this and is gone).
   - *Home*: the station is fitted with the phone-sized labels as before (`overview`); the building area's label
     hangs inside the area's top (`Layout::label(place, compact)`: at the bottom it ran into the gate's line), one
     note (the most serious) 230 px wide under the gate's label.
@@ -2446,15 +2458,38 @@ but the type is too small to read). Numbers are placeholders.
   bottom bar, the status line over it; the BEHAVIORS list narrow. Touch: a sideways drag pans the graph, a row held
   350 ms drags its rule, a slider moves on a sideways drag or a tap, TEXT read-only.
 
+- **Sweep of 20 Oct 2026** (every screen once at 844 × 390 DPR 3, with a saved design and a past voyage: `?newgame=1&
+  debrief=sample&save=<slot>` gives a voyage in the LOG, the drydock's save icon a design for FLEET; `bands=inner` opens
+  EVOLUTION; home, layers and flight checked at 915 × 412 too; each changed screen at 1280 × 720 with `touch=0`).
+  Fixed: home's building-area label sat against EVOLUTION's second line (now 10 px further into the area), the LOG's
+  rows overflowed with a long haul (they grow now; at 1280 × 720 too), the workshop cut its material names at
+  100 px (the NEEDS column takes room only while a part is shown), EVOLUTION's status line ran past both window
+  edges (it wraps inside the margins). Seen fine: the debrief, FLEET with a design, BLUEPRINTS, BEHAVIOR, research,
+  the map, the test range, the pause menu, a voyage's flight, the fight viewer, SETTINGS. Note: a `shot` at DPR 3
+  is the page scaled down to CSS px, which drops thin strokes of small letters (a label looks cut at its top); look
+  at a `crop` before calling text cut.
+- **Still not built for phones** (open, 20 Oct 2026):
+  - Home: a tap on a place's words does nothing (only the building is a target); the career notes (dev notes such
+    as `SAVE SLOT`) reach the window's bottom edge beside TEST RANGE's label.
+  - Words that name the mouse on a touch screen: the workshop's `POINT AT A PART`, BEHAVIOR's `CLICK A NODE`,
+    SETTINGS' `CLICK AN INPUT, THEN PRESS A KEY` (rebinding keys means little on a phone).
+  - The soft keyboard (every text field: names, search, paste boxes, notes), the pinch everywhere (checked by unit
+    tests and reading only: headless has one finger), `SafeArea` from Android's insets.
+  - Package leftovers below (A: FIRE's heat ring, more ability slots, single assist toggles, the fleet bar with
+    many vessels; B: double tap to fit, the plan's palette with headers and a lens; C: the ring menu, zoom of the
+    graph; D2: the evolution pages as a phone design of their own, THE RUN with a run).
+  - Seen once and not explained: in two headless runs a tap or key right after closing the LOG (after the debrief
+    was dismissed with Esc) did nothing; in a clean repeat it worked.
+
 What still breaks at 844 × 390 (audit of 19 Oct 2026, DPR 3), grouped into work packages with disjoint files:
 
 | Package | Screens and files | What breaks | Size |
 |---|---|---|---|
 | A. Flight and viewer | flight HUD, pause menu, fleet bar, fight viewer: `world/src/flight_hud/`, `hud.rs`, `controls.rs`, `fleet_bar.rs`, `replay.rs`, `camera.rs` | **done 20 Oct 2026** (above, GDR-0120). Left: FIRE's ring showing the guns' heat, more ability slots round FIRE as features come, single assist toggles on touch (ALL ASSISTS is in the menu), the fleet bar unchanged (its 68 × 50 chips fit; not seen with many vessels on a phone), the debug overlay's phone numbers (thermal headroom, atlas tier: Android), the pinch and the two-finger pan checked by reading only (headless has one finger), `SafeArea` from Android's insets | L |
-| B. Drydock | `game/src/drydock/**`, `world/src/part_card.rs` | **done 19 Oct 2026** (above). Left: double tap to fit, a fling, the plan's palette with headers and a lens; the pinch checked by unit tests only (headless has one finger); the hover card on a held palette row and the soft keyboard (name, paste box) not checked on a phone | L |
-| C. BEHAVIOR | `game/src/behavior_ui/**` | **done 19 Oct 2026** (above; "Behavior screen", GDR-0119). Left: the ring menu (DRYDOCK, BEHAVIORS and SAVE stay in a bottom bar), zoom of the graph, a fling, the soft keyboard (name, notes, palette search, the list's rename, an editable TEXT view); the hold's 350 ms only checked headless (one finger, slow frames: a frame that comes 350 ms after the press arms the hold) | L |
+| B. Drydock | `game/src/drydock/**`, `world/src/part_card.rs` | **done 19 Oct 2026** (above). Left: double tap to fit, a fling of the grid's pan (lists fling since 20 Oct 2026), the plan's palette with headers and a lens; the pinch checked by unit tests only (headless has one finger); the hover card on a held palette row and the soft keyboard (name, paste box) not checked on a phone | L |
+| C. BEHAVIOR | `game/src/behavior_ui/**` | **done 19 Oct 2026** (above; "Behavior screen", GDR-0119). Left: the ring menu (DRYDOCK, BEHAVIORS and SAVE stay in a bottom bar), zoom of the graph, a fling of its sideways pan (its scroll up and down flings since 20 Oct 2026), the soft keyboard (name, notes, palette search, the list's rename, an editable TEXT view); the hold's 350 ms only checked headless (one finger, slow frames: a frame that comes 350 ms after the press arms the hold) | L |
 | D1. Shipyard screens | home `home.rs`, `shipyard/`, FLEET `fleet.rs`, workshop `workshop.rs`, LOG `voyage_log.rs`, debrief `debrief.rs`, settings `settings.rs` | **done 19 Oct 2026** (above). Left: FLEET's card row and the LOG's rows not seen on a phone with saved designs or voyages (laid out for them: a card 262 px, a row's haul gets about 320 px and may take two lines); home's camera flies into the drydock's opening view, measured at home's scale, which on a phone is the drydock's too since B (19 Oct 2026), so the flight ends where the drydock opens; the flight menu (pause) is package A's | L (M each) |
-| D2. Research, voyage map, evolution | `research/`, `map/`, `evolution/` | **done 19 Oct 2026** (above: phone layouts at `compact_scale`, the map area measured from the chrome). Left: the map's jump-range outline is cut at the panel only; text cut by the map area's edge is cut through its letters; the evolution pages are the wide columns stacked (not a phone design of their own), THE RUN page not checked with a run on a phone; no pinch check (headless has one finger) | M |
+| D2. Research, voyage map, evolution | `research/`, `map/`, `evolution/` | **done 19 Oct 2026** (above: phone layouts at `compact_scale`, the map area measured from the chrome). Left: text cut by the map area's edge is cut through its letters; the evolution pages are the wide columns stacked (not a phone design of their own), THE RUN page not checked with a run on a phone; no pinch check (headless has one finger) | M |
 
 ## Adding visuals
 

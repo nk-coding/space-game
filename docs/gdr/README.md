@@ -129,6 +129,7 @@ overview and links to both series. Format and status rules: `CLAUDE.md`, section
 | [0118](0118-drydock-on-a-phone.md) | The drydock on a phone: a tool strip, the stats or the selected part in the right column, one finger runs the tool after 120 ms, machines held 48 dp above the finger and dropped, two fingers pan and pinch | Proposed | 2026-10-19 |
 | [0119](0119-behavior-editor-on-a-phone.md) | The behavior editor on a phone: the graph pans sideways, a row held 350 ms drags its rule, the test modes in a popover, a bottom bar with the tabs; TEXT read-only | Proposed | 2026-10-19 |
 | [0120](0120-flight-and-the-fight-viewer-on-a-phone.md) | Flight and the fight viewer on a phone: the corner ring pauses, a floating stick, FIRE and FLARE, a tap on the target panel locks the next, the voyage's salvage at the bottom, the viewer's buttons beside its scrubbing timeline | Proposed | 2026-10-20 |
+| [0121](0121-tooltips-and-flings-by-touch.md) | Tooltips and flings by touch: a long press (0.35 s, 10 dp) shows a control's name and never clicks, a list lifted while it moves flings on (the wheel's glide over 0.9 s) | Proposed | 2026-10-20 |
 <!-- index:end -->
 
 ## How to add, supersede and deprecate

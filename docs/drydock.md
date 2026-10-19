@@ -410,7 +410,7 @@ Touch (`touch.rs`; the mouse is unchanged, every gesture goes through `tools::Ge
 
 `touch::Pad` turns the fingers down each frame into presses, drags, releases, cancels, taps and view changes, without
 the ECS (tested: the hold, taps, the cancel, the pinch's anchor); headless Chromium has one finger, so the pinch is
-checked by those tests only. Not yet: double tap to fit, a fling, the plan's palette with headers and a lens.
+checked by those tests only. Not yet: double tap to fit, a fling of the grid's pan (its lists fling, the kit's, since 20 Oct 2026), the plan's palette with headers and a lens.
 
 ### Locked parts, NEW and voyage-ready
 
