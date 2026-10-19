@@ -17,7 +17,8 @@
 //! * **Bonus**: a gold link across the shared side of every source and target pair, a diamond on the side.
 //! * **Shields**: each bubble (centre, radius after bonuses) as a faint disc with a soft rim in the shield colour
 //!   (the ghost draws the same for a shield part being placed or selected: [`ghost_marks_mesh`]).
-//! * **Arcs**: each gun's line of fire to its range (clear: dashed, weapons cyan; blocked: coral up to the first
+//! * **Arcs**: each gun's line of fire to its range (clear: dashed, weapons cyan, with the arc a point-defence
+//!   turret aims within and the cone a missile launcher launches within, GDR-0115; blocked: coral up to the first
 //!   blocker, a cross there, blockers outlined); each engine's plume lanes to their reach (propulsion teal; a lane
 //!   that burns an own part: coral, the part outlined). The lines end at the grid viewport's edge.
 //! * **Blast**: each part that explodes when destroyed (GDR-0084, GDR-0085): its reach (a faint coral disc with a
@@ -510,6 +511,24 @@ fn draw(m: &mut MeshBuf, pen: &Pen, r: &DesignReport, shapes: &[PlacedShape], ma
                 pen.dashed(m, (o, end), (0.45, 0.3), frame, view, 0.03, pen.weapons.with_alpha(0.85));
                 let tick = if frame.contains(end) { 0.85 } else { 0.85 * FADED };
                 pen.seg_in(m, end - d.perp() * 0.3, end + d.perp() * 0.3, view, 0.03, pen.weapons.with_alpha(tick));
+                // GDR-0115: point defence aims itself within its arc (its edges and the arc at its reach); a
+                // missile launcher launches within a wide cone and its seeker turns after the target (the edges).
+                let spread = match (g.defence, g.delivery) {
+                    (Some(df), _) => Some(df.arc_cos.clamp(-1.0, 1.0).acos()),
+                    (None, data::Delivery::Missile { .. }) => Some(sim::combat::missile::tuning::FIRE_CONE),
+                    _ => None,
+                };
+                if let Some(a) = spread {
+                    for side in [-a, a] {
+                        pen.soft(m, o, o + Vec2::from_angle(side).rotate(d) * g.range, view, 0.25, pen.weapons.with_alpha(0.3));
+                    }
+                    if g.defence.is_some() {
+                        let at = |k: usize| o + Vec2::from_angle(-a + 2.0 * a * k as f32 / 24.0).rotate(d) * g.range;
+                        for k in 0..24 {
+                            pen.seg_in(m, at(k), at(k + 1), view, 0.025, pen.weapons.with_alpha(0.6));
+                        }
+                    }
+                }
             } else {
                 let t = first_block(shapes, o, d, &g.blockers).unwrap_or(0.0);
                 pen.seg(m, o, o + d * t.max(0.15), 0.035, ui.coral.with_alpha(0.95));

@@ -378,6 +378,8 @@ fn apply_events(
             SimEvent::ShotFired { ship, kind, from, to, .. } => Act::Shot(*ship, *kind, v2(*from), v2(*to)),
             SimEvent::Hit { point, normal, family, damage, .. } => Act::Hit(v2(*point), v2(*normal), *family, *damage),
             SimEvent::Ricochet { point, vel, .. } => Act::Ricochet(v2(*point), v2(*vel)),
+            SimEvent::Warhead { by, at, radius, damage, .. } => Act::Warhead(*by, v2(*at), *radius, *damage),
+            SimEvent::ProjectileGone { pos, reason: sim::GoneReason::ShotDown, .. } => Act::ShotDown(v2(*pos)),
             SimEvent::PlumeHit { by, engine, point, .. } => Act::Burn(*by, *engine, v2(*point)),
             SimEvent::ShieldHit { ship, piece, part, point, absorbed, depleted, .. } => {
                 Act::Shield(*ship, *piece, *part, v2(*point), *absorbed, *depleted)
@@ -468,6 +470,13 @@ fn apply_events(
                 let vel = world.sim.ship(ship).and_then(|s| s.piece(piece)).map_or(Vec2::ZERO, |p| v2(p.body.linvel));
                 fx.blast(at, vel, radius, damage, style.system_color("power"), style.ui.coral);
             }
+            // A missile's warhead (GDR-0115): the chain blast's flash and ring, in the shooter's weapon colour.
+            Act::Warhead(by, at, radius, damage) => {
+                let color = weapon_color(world, by, &style);
+                fx.blast(at, Vec2::ZERO, radius, damage, color, style.ui.coral);
+            }
+            // Point defence shot a missile down: a small pop where it was.
+            Act::ShotDown(at) => fx.burst(at, Color::srgb(1.0, 0.85, 0.6), 0.3),
             Act::Shot(ship, kind, from, to) => {
                 let color = weapon_color(world, ship, &style);
                 fx.muzzle(from, color);
@@ -528,6 +537,10 @@ enum Act {
     Regrown(ShipId, PieceId, sim::PartIdx),
     /// A destroyed part exploded at a world point: radius, damage.
     Blast(ShipId, PieceId, sim::PartIdx, Vec2, f32, f32),
+    /// A missile's warhead went off (the shooter, the point, radius, damage).
+    Warhead(ShipId, Vec2, f32, f32),
+    /// Point defence shot a missile down here.
+    ShotDown(Vec2),
     Shot(ShipId, sim::ShotKind, Vec2, Vec2),
     Hit(Vec2, Vec2, data::WeaponFamily, f32),
     Ricochet(Vec2, Vec2),

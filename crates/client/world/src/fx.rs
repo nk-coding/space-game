@@ -467,12 +467,29 @@ fn draw_ships_fx(
         }
     }
 
-    // Projectiles: interpolated, a streak behind each.
+    // Projectiles: interpolated, a streak behind each. Missiles (GDR-0115): a body along their course, a hot
+    // nozzle at its back and a smoke trail left behind (trail particles, like an engine's).
     for p in world.sim.projectiles() {
         let at = v2(p.prev_pos) + (v2(p.pos) - v2(p.prev_pos)) * alpha;
         let v = v2(p.vel);
         let speed = v.length();
         if speed < 1e-3 {
+            continue;
+        }
+        if let Some(m) = &p.missile {
+            let c = weapon_color(p.owner);
+            let dir = v / speed;
+            let (len, width) = (0.45 + 0.35 * m.radius, 0.16 + 0.12 * m.radius);
+            let (nose, tail) = (at + dir * (0.5 * len), at - dir * (0.5 * len));
+            queue.line(&regions.halo, tail, nose, 3.0 * width, c.with_alpha(0.45), Z_WEAPONS);
+            queue.line(&regions.white, tail, nose, width, core_tint(c).with_alpha(0.95), Z_WEAPONS + 0.1);
+            let flicker = 0.85 + 0.15 * (t * 37.0 + p.id.0 as f32).sin();
+            queue.dot(&regions.soft, tail, (0.5 + 0.4 * m.radius) * flicker, Color::srgb(1.0, 0.78, 0.5).with_alpha(0.9), Z_WEAPONS + 0.2);
+            if fx.trail.len() < 2048 {
+                let drift = -dir * 1.5 + Vec2::new(fx.rng.range(-0.6, 0.6), fx.rng.range(-0.6, 0.6));
+                let smoke = Color::srgb(0.75, 0.8, 0.82);
+                fx.trail.push(Spark { pos: tail, vel: drift, age: 0.0, life: 0.55 + 0.25 * m.radius, size: 0.07 + 0.05 * m.radius, color: smoke });
+            }
             continue;
         }
         let back = at - v / speed * (speed * 0.05).clamp(0.6, 3.0);
