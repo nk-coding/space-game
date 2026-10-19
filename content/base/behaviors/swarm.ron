@@ -1,7 +1,7 @@
 // The Swarm's tactics (GDR-0027, GDR-0117). Drones fly what their carrier aims at (`locked`: the carrier is their
 // leader) and come back when the chase takes them past their hangar's leash; between fights they keep near the
 // carrier. Spitters close in and circle like a raider pack; a carrier holds back at the edge of its drones' reach
-// and lets them work; a hive turns and holds. Stingers reach 40 m, so the shares of the weapon reach are short.
+// and lets them work; a hive turns and holds. Stingers reach 55 m, so the shares of the weapon reach are short.
 // Each fits a nerve node's four rule slots. PLACEHOLDER (lead defaults, 19 Oct 2026; docs/results/swarm-balance-2026-10-19.md).
 [
     (
@@ -34,12 +34,11 @@
         id: "swarm_carrier",
         name: "Hive carrier",
         summary: "Hold back at a distance and let the drones fight.",
-        description: "Picks the nearest enemy and keeps 200 m from it, its nose on the target, while its drones close in. Badly hurt, it backs off further.",
+        description: "Picks the nearest enemy and closes in to 150 m, its nose on the target, while its drones fight. It never runs: come in close and it stays.",
         tags: ["swarm", "carrier"],
         target: "nearest",
         rules: [
-            "when hull < 40% -> kite(350m)",
-            "always -> kite(200m)",
+            "always -> approach(150m)",
         ],
     ),
     (

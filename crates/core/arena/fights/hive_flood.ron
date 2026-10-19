@@ -1,0 +1,12 @@
+// A Swarm hive (GDR-0117) against the Halvex Runner and two cannon-less rim skiffs, 250 m apart: the full hive flood
+// (four brood hangars, 24 drones) for the drone pass's cost and the determinism check
+// (`scripts/determinism-check.sh --fight hive_flood`).
+(
+    seed: 1,
+    sides: [
+        (entries: [(design: Ship("halvex_runner")), (design: Ship("rim_skiff"), count: 2)]),
+        (entries: [(design: Ship("swarm_hive"))]),
+    ],
+    start_distance: 250.0,
+    time_limit: 120.0,
+)

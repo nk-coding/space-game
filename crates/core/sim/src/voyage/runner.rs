@@ -10,7 +10,8 @@
 //!   nearest), as the balance study's *closing* stand-in (`docs/results/balance-2026-10-13.md`): locked on it,
 //!   firing, the stick towards it while it is farther than 75 % of its shortest clear gun's reach, eased off over
 //!   the last 40 m and never more than 60 % of the top speed (a ship without forward thrust cannot brake with its
-//!   nose on the target). With a fight behavior ([`Flagship::behavior`]) the ship flies that behavior while there
+//!   nose on the target). Drones are fought only while no other armed enemy is within 400 m (GDR-0117: they die
+//!   with their carrier). With a fight behavior ([`Flagship::behavior`]) the ship flies that behavior while there
 //!   is a fight.
 //! - **Finish off** a disarmed awake enemy within 200 m (it rams, and its wreck is salvage) while the hold has room,
 //!   giving up on one after 20 s.
@@ -442,7 +443,13 @@ impl VoyageRunner {
             .min_by(|a, b| (a.1 - here).length().total_cmp(&(b.1 - here).length()))
             .copied();
         let goal = v.goal_cleared();
-        let enemies = armed_enemies(sim, here);
+        let mut enemies = armed_enemies(sim, here);
+        // Drones die with their carrier (GDR-0117): while another armed enemy is within a fight it goes for that one,
+        // as a player dives for the hangar.
+        let drone = |id: ShipId| sim.ship(id).is_some_and(|s| s.drone().is_some());
+        if enemies.iter().any(|e| e.0 <= FIGHT_RANGE && !drone(e.1)) {
+            enemies.retain(|e| !drone(e.1));
+        }
         // It keeps its lock on one enemy while that one is armed and near (a player does not switch the lock to
         // whichever raider is nearest this second: every switch costs a turn), else the nearest.
         let foe = enemies

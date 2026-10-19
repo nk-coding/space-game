@@ -54,8 +54,8 @@
     (
         id: "stinger",
         name: "Stinger",
-        summary: "A small energy gun that stabs quick pulses at close range.",
-        description: "Short reach, little power, quick pulses. It is the Swarm's weapon of choice: every drone carries one, so a flood stings from every side at once. Energy: shield bubbles take all of it.",
+        summary: "A small gun that stabs quick kinetic pulses at close range.",
+        description: "Short reach, little power, quick pulses. It is the Swarm's weapon of choice: every drone carries one, so a flood stings from every side at once. Its pulses are hard spines: shield bubbles take only half of them.",
         tags: ["swarm"],
         locked: true, // the Swarm research family unlocks it (`stingers`)
         category: "weapons",
@@ -67,7 +67,7 @@
         hp: 0.6,
         power: (draw: 1.5, tier: Low),
         heat: (output: 0.6, limit: 3),
-        weapon: (family: Energy, damage: 0.6, range: 40, delivery: Pulse(rate: 3)),
+        weapon: (family: Kinetic, damage: 0.6, range: 55, delivery: Pulse(rate: 3)),
         salvage: (family: "swarm", data: 2),
         recipe: (materials: {"copper": 1, "crystal": 1, "resin": 2}),
     ),
@@ -87,7 +87,7 @@
         build_points: 8,
         control_cost: 2,
         mass: 6,
-        hp: 5,
+        hp: 3.5,
         power: (draw: 2.5),
         heat: (output: 1, limit: 5),
         hangar: (drone: "swarm_drone", capacity: 6, rebuild: 7, leash: 450),

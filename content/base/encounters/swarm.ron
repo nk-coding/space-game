@@ -7,9 +7,9 @@
     (
         id: "swarm_patrol",
         name: "Spitter patrol",
-        summary: "Two or three Swarm spitters on patrol, quick to close in.",
+        summary: "Three or four Swarm spitters on patrol, quick to close in.",
         tags: ["swarm"],
-        ships: [(ship: "swarm_spitter", count: (2, 3))],
+        ships: [(ship: "swarm_spitter", count: (3, 4))],
         wake_radius: 300,
     ),
     (
@@ -58,13 +58,12 @@
     (
         id: "hive_site",
         name: "Swarm hive",
-        summary: "One of the Swarm's hives, anchored deep in the middle band, two spitters on guard.",
+        summary: "One of the Swarm's hives, anchored deep in the middle band: it needs no guard but its own flood.",
         description: "The [[ship:swarm_hive]] cannot chase you, but its four hangars send twenty-four drones at whatever it sees. Take the hangars one by one: every drone dies with its own. Beaten, it is the richest Swarm salvage there is.",
         lore: "You hear it before you see it.",
         tags: ["boss", "swarm", "station"],
         ships: [
             (ship: "swarm_hive", count: (1, 1)),
-            (ship: "swarm_spitter", count: (2, 2)),
         ],
         wake_radius: 400,
     ),
