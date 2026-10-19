@@ -62,6 +62,12 @@ the SCAN pill under the target panel, which also says what the scanner is doing 
 A vessel without a working scanner can't scan; [scanning](/mechanics/galaxy#inside-a-cluster-sensors-and-scans)
 explains what a sweep finds.
 
+### Flares
+
+[[control:flare]] ([[control:flare.keys]]) releases flares from the [[part:flare_launcher]] of the vessel you fly:
+decoys that pull enemy homing missiles off it. A launcher has a few releases per fight and cools down after each;
+[flares](/mechanics/weapons#flares) explains them.
+
 ### The minimap and the cluster map
 
 On a voyage the **minimap** sits in the bottom right corner: north is up and your ship is in the middle. It shows

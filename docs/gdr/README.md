@@ -143,7 +143,7 @@ Not decided yet, so no record. Write one when Niklas decides.
 - **Engine plume** numbers and the v1 defaults ([GDR-0049](0049-engine-plume-v1.md): damage and heat scale with output, blocked plumes keep thrust, enemy bubbles absorb plumes) (`docs/sim.md` design question 16). No push and the faint reach are decided ([GDR-0055](0055-slower-crisper-turning.md)).
 - **Other research sources** besides salvage and scans ([GDR-0025](0025-research-from-salvage.md)).
 - **Tree size per family** that stays fun instead of tedious ([GDR-0024](0024-tech-trees-no-mk-levels.md)).
-- **Overdrive** details ([GDR-0004](0004-grid-ship-building-no-wiring.md)); **disruption and drones** are not built yet ([GDR-0018](0018-weapon-families.md); missiles since 19 Oct 2026, [GDR-0115](0115-missiles-and-point-defence.md), its flares still open).
+- **Overdrive** details ([GDR-0004](0004-grid-ship-building-no-wiring.md)); **disruption and drones** are not built yet ([GDR-0018](0018-weapon-families.md); missiles and flares since 19 Oct 2026, [GDR-0115](0115-missiles-and-point-defence.md)).
 - **New game+** (what carries over) and the **working title**.
 
 Parked (maybe later): location-based play (light version: your real location seeds your home region), co-op

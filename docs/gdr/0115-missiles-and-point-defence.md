@@ -1,6 +1,19 @@
 # GDR-0115: Missiles home, blast by the chain-reaction rule and can be shot down; point defence aims itself
 
 - Status: Accepted (provisional, lead)
+  2026-10-19: point defence needs a line of sight (lead default, an open question of the first version): one ray
+  cast from the target back to the turret's muzzle that meets no hull (its own ship's but the turret itself, an
+  ally's, an enemy's, a wreck's) and no rock; it looks at the nearest three missiles, then three small vessels, and
+  holds when it sees none (the laser starter with point defence against a lancer pack 47 of 60 before, 46 after).
+  2026-10-19: flares (lead defaults, GDR-0018's other counter): the flare launcher (1 × 1, 2 BP; 3 releases a fight,
+  6 s apart, of 3 decoys at 14 m/s that burn 2.5 s; enemy homing missiles within 12 m of one turn onto it and are
+  spent on it, no blast), fired by the FLARE key (N), the behavior action `flare` (it steps aside like `scan`) or the
+  assist `auto_flare`, both meant for `when missiles_incoming >= 1`; the missiles research's `flares` node after
+  point defence. The laser starter with flares for its nose slopes wins 28 of 60 against a lancer pack (17 without,
+  47 with point defence), 51 against a lone lancer.
+  2026-10-19: the lancer carries one rocket pod (two before): the laser starter won 4 of 60 against a lancer pack,
+  12 against the old lancer alone, 17 now; point defence 47, rockets 48, cannons 50; the rocket pod is unchanged.
+  The Spire's encounter (GDR-0116) has two lancers and is a little easier for it.
 - Date: 2026-10-19
 - Decided by: lead session (default for Niklas to review)
 - Related: [GDR-0018](0018-weapon-families.md), [GDR-0021](0021-shields.md), [GDR-0048](0048-no-friendly-fire.md),
@@ -73,5 +86,5 @@ down, a rocket pod, a torpedo and a point-defence turret, reusing projectiles, t
   starter 98 % and the rocket starter beat every fit: homing fire at will lands where fixed guns rarely bear.
 - Every fight with a missile changes the state hash (`Projectile::missile`); fights without missiles keep theirs.
   Galaxy interiors of hunting reaches roll differently (a new site entry).
-- Open: flares (GDR-0018's other counter), whether a warhead should spare friendly vessels, whether point defence
-  needs a line of sight to a missile, and missile and point-defence numbers.
+- Open: whether a warhead should spare friendly vessels, and missile, point-defence and flare numbers (flares and
+  point defence's line of sight: status lines of 19 Oct 2026).

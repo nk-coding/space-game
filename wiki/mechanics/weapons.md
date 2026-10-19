@@ -1,6 +1,6 @@
 ---
 title: "Weapons"
-description: "How guns fire - beams, pulses, projectiles and missiles, point defence, range and the line of fire, ricochets, aiming and leading, weapon groups, fire at will, firepower, and what power, heat and capacitors do to guns."
+description: "How guns fire - beams, pulses, projectiles and missiles, point defence and flares, range and the line of fire, ricochets, aiming and leading, weapon groups, fire at will, firepower, and what power, heat and capacitors do to guns."
 ---
 
 # Weapons
@@ -78,6 +78,7 @@ Missiles have their counters:
 
 - **Shields** absorb a missile whole, up to what the bubble has left.
 - **Point defence** shoots them down: each missile takes its [[stat:missile_hp]] in damage, then pops.
+- **Flares** pull them off: see [flares](#flares) below.
 - **Speed**: a small ship that turns hard can out-turn a slow torpedo.
 
 At most [[sim:max_missiles]] missiles fly at once in a fight; a launcher waits while the sky is full.
@@ -87,9 +88,25 @@ At most [[sim:max_missiles]] missiles fly at once in a fight; a launcher waits w
 The [[part:point_defence]] is a quick, short-range pulse turret that **picks its own targets**: it aims anywhere
 within [[part:point_defence.defence_arc]] of the side it faces and fires on its own whenever its vessel runs,
 whatever the trigger. Each shot goes at the nearest enemy missile in its reach; with none it shoots at the nearest
-enemy vessel of at most [[part:point_defence.defence_mass]], so it also stings small raiders that come close. It draws
-its power all the time, and like any gun it needs a clear line of fire through the side it faces. It is never part
-of your firepower, your reach or the lock's aim.
+enemy vessel of at most [[part:point_defence.defence_mass]], so it also stings small raiders that come close. It
+shoots only what it **sees**: a hull between the turret and its target (your own ship's too, a friend's, a wreck's)
+or an asteroid rock hides the target, and the turret looks for another. It draws its power all the time, and like any
+gun it needs a clear line of fire through the side it faces. It is never part of your firepower, your reach or the
+lock's aim.
+
+### Flares
+
+The [[part:flare_launcher]] throws out [[part:flare_launcher.flare_decoys]] hot decoys at a time, fanned around the
+side it faces, at [[part:flare_launcher.decoy_speed]] on top of your own speed; they slow down and burn for
+[[part:flare_launcher.decoy_life]]. Every enemy homing missile that comes within [[part:flare_launcher.decoy_lure]]
+of a burning decoy turns onto it and is spent on it without a blast; it no longer counts as
+[[behavior_node:missiles_incoming|incoming]]. If the decoy burns out first, the missile looks for a ship again.
+
+A launcher has [[part:flare_launcher.flare_charges]] releases per fight and needs
+[[part:flare_launcher.flare_cooldown]] between them, so time them: release when the missiles are close.
+[[control:flare]] ([[control:flare.keys]]) releases them from the vessel you fly; a behavior's
+[[behavior_node:flare|flare]] action and the [[behavior_node:auto_flare|auto-flare]] assist do it on their own, best
+under `when missiles_incoming >= 1`. A launcher works only on the vessel's controlling piece and needs no power.
 
 ## The line of fire
 
