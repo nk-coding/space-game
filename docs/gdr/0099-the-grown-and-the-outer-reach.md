@@ -1,6 +1,6 @@
 # GDR-0099: The Grown and the outer reach: heart-fed regrowth, rammers with thorn guns, calm until provoked, regrowing armour and a ram prow first, hot clusters, a precursor guardian at each gate inward
 
-- Status: Accepted (Niklas, 17 Oct 2026); not built yet
+- Status: Accepted (Niklas, 17 Oct 2026); built (phase 1 on 17 Oct, phase 2 on 18 Oct 2026)
   2026-10-17: phase 1 built, the mechanics and parts (regrowth, healing tissue, the ram prow, the thorn gun, wary
   sites, hot stars; their rules and numbers lead defaults in [GDR-0102](0102-grown-mechanics-and-parts-defaults.md));
   phase 2 (the Grown's ships, behaviors, groves, cluster types, research family, guardians and bosses) not yet.

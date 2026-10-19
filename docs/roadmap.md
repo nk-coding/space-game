@@ -504,7 +504,7 @@ Next session:
 
 - **The Grown and the outer reach** ([GDR-0099](gdr/0099-the-grown-and-the-outer-reach.md)): heart-fed regrowth,
   rammers with thorn guns, calm until provoked, regrowing tissue armour and a ram prow first, hot clusters, a
-  precursor guardian at each gate to the middle reach. Not built yet; a candidate for the bands past the rim.
+  precursor guardian at each gate to the middle reach. Built in two phases on 17 and 18 Oct 2026 (below).
 - **Fight balance targets** ([GDR-0100](gdr/0100-fight-balance-targets.md)): GDR-0073's curve (the Warden about 40 %
   for a Runner and an escort), shields that collapse, encounter counts first, turn rates and test-range waves kept;
   the re-measurement is in `results/slice-balance-2026-10-17.md`: the Warden's raiders 2–3 and Corran Reach's
@@ -599,6 +599,56 @@ Next session:
   behavior action, the `miner` escort behavior; the voyage runner mines. Closes the mining open on 17 and 18 Oct.
 - Open: drifting or breakable rock, the other harvests (comets, gas, star skimming), a tractor, mining in the lab's
   trials, a mining sample ship.
+
+### 19 Oct 2026: missiles and flares
+
+- ([GDR-0115](gdr/0115-missiles-and-point-defence.md), lead defaults; `results/missiles-2026-10-19.md`) The rocket
+  pod and the torpedo launcher fire homing missiles that blast by the chain-reaction rule, are absorbed whole by
+  shields and can be shot down; the point-defence turret aims itself (missiles first, then small vessels) and needs a
+  line of sight; the missiles research family; the automaton lancer (one rocket pod) in the lancer pack; the
+  condition `missiles_incoming`. Flares the same day (GDR-0018's other counter): the flare launcher (three releases a
+  fight), the FLARE key, the `flare` action and the `auto_flare` assist. Against a lancer pack the laser starter wins
+  17 of 60, 28 with flares, 47 with point defence. The drydock's ARCS shows launch cones and the turret's arc.
+- Open: whether a warhead spares friendly vessels; missile, point-defence and flare numbers.
+
+### 19 Oct 2026: drones and the Swarm
+
+- ([GDR-0117](gdr/0117-drones-and-the-swarm.md), lead defaults; `results/swarm-balance-2026-10-19.md`) A hangar
+  part launches drones (small vessels with a nerve node for a core) while its ship has a target, one every 0.3 s
+  through an open mouth, at most 48 alive; they fight on a leash, take no mind capacity, are no part of the fleet and
+  die with their hangar. The Swarm fill the middle band (no longer a stub): spitters, hive carriers and the anchored
+  hive (the band's boss site), Swarm reaches, brood deeps and raided borders, a research family ending in the
+  player's drone bay; the drydock draws each hangar's launch lane. A Keeper-capable fleet clears a carrier voyage
+  43–49 %, a hive voyage 44–45 %; a capped flood of 48 drones costs 0.06 ms a tick. Play-test link for the deep
+  bands: `?newgame=1&save=<slot>&bands=<band>` (a test career with the kits of `content/base/playtest.ron`).
+- Open: repair drones, drones that dock again, a recall action, a drone's look beyond its parts.
+
+### 19 Oct 2026: the Spire
+
+- ([GDR-0116](gdr/0116-the-spire-guards-the-inner-bands-gates.md), lead defaults;
+  `results/spire-balance-2026-10-19.md`) The inner band's gates get their own guardian (trail `inner_gate`, two gate
+  shards; the Keeper keeps the middle band's): `automaton_spire`, a three-section spine on cores of its own with
+  torpedoes and rocket pods under four prism wards that take energy fire whole, escorted by three lancers and two
+  hunters. Alone, a strong late fleet clears it 42–45 %, an all-laser one 12 % (the Keeper 81 / 82 / 66 %).
+- Open: the inner band's clusters are still the uncharted stub (re-measure when the Lattice exist).
+
+### 19–20 Oct 2026: phones and small screens (`plans/android.md` 4.1–4.4)
+
+- ([ADR-0045](adr/0045-compact-layout-class-and-touch-in-the-kit.md), Proposed) The kit's layout class follows the
+  window (`Compact` under 500 dp high; phone layouts made for 844 × 390 and scaled by `compact_scale`), touch in the
+  kit (finger hover, 48 dp hit slop, a finger's drag scrolls every list, a finger on the UI never reaches the world),
+  `TouchScreen`, `SafeArea`, `CompactText`; tested in Chrome DevTools' device mode or `web-drive.mjs --dpr=3`.
+- The audit's four work packages, all done: D (home and its layers, FLEET, WORKSHOP, LOG, SETTINGS, the debrief;
+  research, the voyage map, evolution), B the drydock ([GDR-0118](gdr/0118-drydock-on-a-phone.md), Proposed: a
+  tool strip, the stats or the selected part, a 120 ms hold before a tool runs, machines held 48 dp above the
+  finger, two fingers pan and pinch), C BEHAVIOR ([GDR-0119](gdr/0119-behavior-editor-on-a-phone.md), Proposed:
+  the graph pans sideways, a row held 350 ms drags its rule, TEXT read-only), A flight and the fight viewer
+  ([GDR-0120](gdr/0120-flight-and-the-fight-viewer-on-a-phone.md), Proposed: a floating stick, FIRE and FLARE, the
+  corner ring pauses, the viewer's timeline scrubs). The kit's tooltips by a long press and flings of lifted lists
+  ([GDR-0121](gdr/0121-tooltips-and-flings-by-touch.md), Proposed); a sweep of every screen at 844 × 390 DPR 3.
+  Screenshots `results/phone-*.png`.
+- Open: the list in `client.md` "Phones" ("Still not built for phones": the soft keyboard, the pinch checked on a
+  device, `SafeArea` from Android's insets, the packages' leftovers); the Android build itself.
 
 ## Phase 4: measurement
 

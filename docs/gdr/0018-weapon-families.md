@@ -4,6 +4,7 @@
   2026-10-18: the kinetic weapons' own support part (lead, content batch): the ammo feeder gives +20 % fire rate to adjacent parts tagged `cannon` (the reverse-engineered and long-barrel cannons; not the automatons' own), at most two per cannon, unlocked by the utility node `ammo_feeder`. The capacitor stays lasers only.
   2026-10-18: the ammo feeder +20 % → +15 % fire rate, the capacitor's step (lead, docs/results/sidegrades-2026-10-18.md): at +20 % it lifted the cannon starter's Warden clear from 28 to 41 %
   2026-10-19: missiles are built (lead, [GDR-0115](0115-missiles-and-point-defence.md)): the rocket pod and the torpedo, homing, shot down by the point-defence turret; flares are not built yet
+  2026-10-19: flares are built (lead, [GDR-0115](0115-missiles-and-point-defence.md) status line): the flare launcher, three releases of decoys a fight that pull enemy missiles off
   2026-10-19: drones are built (lead, [GDR-0117](0117-drones-and-the-swarm.md)): a hangar part launches drones (small vessels with a nerve node for a core) while its ship has a target; they fight what the carrier aims at on a leash, take no mind capacity and die with their hangar; the Swarm's brood hangar and the player's drone bay. Repair drones are not built yet
 - Date: concept phase (families; exact day not recorded, settled by 2026-10-11); 2026-10-11 (capacitor, facing)
 - Decided by: Niklas
@@ -37,4 +38,4 @@ question of where they shoot.
 ## Consequences
 
 - Content gives the capacitor bonus to parts tagged `laser`.
-- Missiles, disruption and drones are not built yet (shield bubbles already stop missiles, GDR-0021).
+- Missiles, disruption and drones are not built yet (shield bubbles already stop missiles, GDR-0021). Note of 19 Oct 2026: missiles, flares and drones are built since ([GDR-0115](0115-missiles-and-point-defence.md), [GDR-0117](0117-drones-and-the-swarm.md)); disruption and repair drones are not.

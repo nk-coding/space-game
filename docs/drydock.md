@@ -34,7 +34,8 @@ mirror, bevel, undo/redo, ghost and selection, the inspector with power override
 line and overlays from `sim::report`, saves designs in the player storage layer (autosave of the working design,
 the BLUEPRINTS list with the content ships as templates, frames, renaming), and shares designs as `.ron` files and
 share codes. Since track 7F (13 Oct 2026) it offers what the career has unlocked and shows the rest locked
-([Locked parts, NEW and voyage-ready](#locked-parts-new-and-voyage-ready)). Not built yet: the phone layout and touch input, upgrade materials
+([Locked parts, NEW and voyage-ready](#locked-parts-new-and-voyage-ready)). Since 19 Oct 2026 it has a phone layout and touch input
+([Phones and touch](#phones-and-touch), [GDR-0118](gdr/0118-drydock-on-a-phone.md)). Not built yet: upgrade materials
 and variants, thumbnails, a native file dialog, Android storage.
 
 ## Editing model

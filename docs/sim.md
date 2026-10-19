@@ -3236,6 +3236,8 @@ Open:
    in four ([Sandbox fights](#sandbox-fights-at-the-new-speeds)). The outcome flips around the Runner's beam
    range (45 m); tune in the browser with the weapon range and damage sliders.
 5. **Missiles, disruption, drones** are not built yet (`absorb` already lists missiles: bubbles stop them).
+   Missiles and flares built 19 Oct 2026 ([Missiles and point defence](#missiles-and-point-defence-gdr-0115), GDR-0115),
+   drones the same day ([Drones](#drones-gdr-0117), GDR-0117); disruption and repair drones are not built yet.
 
 Rated speed (GDR-0041, 12 Oct 2026):
 
