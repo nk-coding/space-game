@@ -72,3 +72,40 @@ target/release/space-game-balance --content /tmp/pack --voyages t_grove,t_keep,t
   --fleets halvex_runner+fits/skiff_cannon.ron,halvex_runner+rim_skiff+rim_skiff,halvex_runner+fits/skiff_cannon.ron+fits/skiff_cannon.ron \
   --seeds 1-120 --threads 3
 ```
+
+## Follow-up: spitters that matter (19 Oct 2026, later)
+
+Patrols and raids cleared every time, and not because the runner's fleet outranged the spitters: a spitter has no
+side thrust, so while it orbited (`orbit(75%)` for five seconds of every eight) its nose stingers never pointed at
+the target. An arena fight of four spitters against the Runner and two rim skiffs (`arena fight`, 20 seeds, 250 m
+apart): the spitters died in about 30 s having dealt 3–17 damage (their eight stingers could deal over a hundred in that time).
+More spitters (patrols of ten) or four stingers a spitter barely moved it.
+
+The spitter now turns its stingers onto the target for five seconds of every eight
+(`when target_in_range(100%) and cycle(8s) >= 3s -> face`) and closes in for the other three; a Swarm raid has
+three or four spitters (two before). Seeds 1–240, the test voyages above plus t_carr1 (`hive_carrier` alone), clear %:
+
+| Voyage | R + C | R + 2S | R + 2C | before (120 seeds) |
+|---|---|---|---|---|
+| t_patrol | **73 %** | **76 %** | **80 %** | 100 / 100 / 100 |
+| t_raid | **70 %** | **77 %** | **79 %** | 100 / 100 / 100 |
+| t_carrier (a patrol, Swarm dead, the carrier) | 21 % | 32 % | 37 % | 30 / 51 / 67 |
+| t_carr1 (the carrier site alone) | 45 % | 62 % | 62 % | 42 / 57 / 70 |
+| t_nest | 50 % | 55 % | 63 % | 51 / 55 / 62 |
+| t_hive (a patrol, the hive) | 14 % | 37 % | 35 % | 28 / 41 / 57 |
+
+Tried on the way (seeds 1–120; patrol / raid clear % for R + C, R + 2S, R + 2C):
+
+| Change | t_patrol | t_raid |
+|---|---|---|
+| patrols 5–6, raids 3–4 (spitters orbiting) | 99 / 99 / 99 | 98 / 99 / 99 |
+| patrols 10, raids 8 (orbiting) | 80 / 72 / 81 | 91 / 98 / 96 |
+| four stingers a spitter (orbiting) | 98 / 99 / 99 | 98 / 100 / 100 |
+| orbit at 45 % | 100 / 99 / 100 | 98 / 100 / 99 |
+| `face` whenever in reach, raids 3–4 | 68 / 78 / 68 | 61 / 74 / 72 |
+| `face` five seconds of every eight, raids 3–4 (chosen) | 80 / 80 / 81 | 69 / 79 / 75 |
+
+Patrols and raids are now a modest threat (70–80 %). The carrier and nest sites are unchanged; a voyage that meets a
+patrol first is harder (the fleet is not repaired between sites): the carrier voyage 21–37 %, the hive voyage
+14–37 %, below the Keeper's gate for a Keeper-capable fleet. The drones' own behavior orbits too (four seconds of
+every six, diving in for two); it was tuned with that and is unchanged.

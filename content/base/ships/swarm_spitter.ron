@@ -4,7 +4,7 @@
     id: "swarm_spitter",
     name: "Swarm spitter",
     summary: "A 4×4 Swarm gunship with two stingers in its nose and a thick chitin shell.",
-    description: "Spitters patrol the middle band in small packs and close in to circle what they find, stinging. Their two [[part:swarm_node|nerve nodes]] are their salvage: each leaves a [[material:nerve_core]].",
+    description: "Spitters patrol the middle band in small packs and close in on what they find, turning their stingers onto it. Their two [[part:swarm_node|nerve nodes]] are their salvage: each leaves a [[material:nerve_core]].",
     tags: ["swarm", "middle"],
     faction: "swarm",
     behavior: "swarm_spitter",

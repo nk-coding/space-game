@@ -1,6 +1,7 @@
 // The Swarm's tactics (GDR-0027, GDR-0117). Drones fly what their carrier aims at (`locked`: the carrier is their
 // leader) and come back when the chase takes them past their hangar's leash; between fights they keep near the
-// carrier. Spitters close in and circle like a raider pack; a carrier holds back at the edge of its drones' reach
+// carrier. Spitters close in and turn their nose stingers on the target (they have no side thrust, so circling they never
+// aim; they orbited until 19 Oct 2026 and dealt next to nothing); a carrier holds back at the edge of its drones' reach
 // and lets them work; a hive turns and holds. Stingers reach 55 m, so the shares of the weapon reach are short.
 // Each fits a nerve node's four rule slots. PLACEHOLDER (lead defaults, 19 Oct 2026; docs/results/swarm-balance-2026-10-19.md).
 [
@@ -21,12 +22,12 @@
     (
         id: "swarm_spitter",
         name: "Spitter",
-        summary: "Close in with the stingers and circle the target, shooting.",
-        description: "Picks the nearest enemy. Within reach it circles at close range for five seconds of every eight and closes in for the other three.",
+        summary: "Close in and turn the stingers onto the target, shooting.",
+        description: "Picks the nearest enemy. Within reach it turns its nose stingers onto it for five seconds of every eight and closes in for the other three.",
         tags: ["swarm", "attack"],
         target: "nearest",
         rules: [
-            "when target_in_range(130%) and cycle(8s) >= 3s -> orbit(75%)",
+            "when target_in_range(100%) and cycle(8s) >= 3s -> face",
             "always -> approach(70%)",
         ],
     ),

@@ -1,6 +1,12 @@
 # GDR-0117: Drones launch from hangars while their carrier has a target and die with their hangar; the Swarm fill the middle band
 
 - Status: Accepted (provisional, lead)
+  2026-10-19: spitters that matter (lead default): a spitter has no side thrust, so orbiting it never pointed its nose
+  stingers at the target (four spitters dealt about 5 damage before they died); its behavior now turns them onto the target for
+  five seconds of every eight (`face`) and closes in for the other three, and a Swarm raid has three or four spitters
+  (two before). Patrol voyages clear 73–80 %, raid voyages 70–79 % (they cleared every time); the carrier site alone is
+  unchanged (45–62 %), but a voyage with a patrol before it is harder: the carrier voyage 21–37 %, the hive 14–37 %
+  (`docs/results/swarm-balance-2026-10-19.md`, follow-up).
 - Date: 2026-10-19
 - Decided by: lead session (default for Niklas to review)
 - Related: [GDR-0018](0018-weapon-families.md) (the drones family, hangar blocks), [GDR-0027](0027-races.md) (the Swarm),

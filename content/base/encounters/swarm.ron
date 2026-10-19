@@ -51,7 +51,7 @@
         description: "The Swarm are the one race that raids its neighbours (GDR-0027). What they left of the grove is still rich in Grown salvage.",
         lore: "The groves nearest the middle band are all scarred on the same side.",
         tags: ["swarm", "wrecks"],
-        ships: [(ship: "swarm_spitter", count: (2, 2))],
+        ships: [(ship: "swarm_spitter", count: (3, 4))], // 2 until 19 Oct 2026
         wrecks: [(ship: "grown_rammer", count: (1, 2), damage: 0.5)],
         wake_radius: 300,
     ),
