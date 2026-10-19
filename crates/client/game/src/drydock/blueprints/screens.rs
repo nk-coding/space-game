@@ -1,6 +1,7 @@
 //! The BLUEPRINTS and EXPORT screens' nodes: spawned once at start (hidden), their rows, buttons and texts.
 
 use super::*;
+use crate::home::by_class;
 
 // ---------------------------------------------------------------------------------------------------------
 // The screens
@@ -130,17 +131,31 @@ pub(in crate::drydock) fn spawn_shelf(mut commands: Commands, fonts: Res<HudFont
             // room pushed its pill's label right of centre. The drydock's parts it covers hide meanwhile
             // (`UnderShelf`): they would draw over it.
             UiIcon::Scrim { color: clear.0.with_alpha(0.985), hole: [f32::INFINITY; 4], out: 0.0, into: 0.0 },
-            Node {
-                position_type: PositionType::Absolute,
-                left: px(0),
-                right: px(0),
-                top: px(0),
-                bottom: px(66),
-                flex_direction: FlexDirection::Column,
-                padding: UiRect::new(px(100), px(100), px(18), px(10)),
-                row_gap: px(18),
-                ..default()
-            },
+            // On a phone (`home::ByClass`, docs/drydock.md "Phones") narrower margins, the BLUEPRINTS page scrolls.
+            by_class(
+                Node {
+                    position_type: PositionType::Absolute,
+                    left: px(0),
+                    right: px(0),
+                    top: px(0),
+                    bottom: px(66),
+                    flex_direction: FlexDirection::Column,
+                    padding: UiRect::new(px(100), px(100), px(18), px(10)),
+                    row_gap: px(18),
+                    ..default()
+                },
+                Node {
+                    position_type: PositionType::Absolute,
+                    left: px(0),
+                    right: px(0),
+                    top: px(0),
+                    bottom: px(52),
+                    flex_direction: FlexDirection::Column,
+                    padding: UiRect::new(px(16), px(16), px(10), px(6)),
+                    row_gap: px(10),
+                    ..default()
+                },
+            ),
         ))
         .with_children(|root| {
             // The header: breadcrumb and title, CLOSE.
@@ -153,14 +168,20 @@ pub(in crate::drydock) fn spawn_shelf(mut commands: Commands, fonts: Res<HudFont
             });
 
             // BLUEPRINTS: the two lists, the action bar, NEW and FRAME, IMPORT.
-            root.spawn((PageNode(Page::Blueprints), Node { flex_direction: FlexDirection::Column, row_gap: px(16), flex_grow: 1.0, min_height: px(0), ..default() }))
+            let page_node = Node { flex_direction: FlexDirection::Column, row_gap: px(16), flex_grow: 1.0, min_height: px(0), ..default() };
+            let c_page = Node { row_gap: px(12), flex_basis: px(0), overflow: Overflow::scroll_y(), ..page_node.clone() };
+            root.spawn((PageNode(Page::Blueprints), ScrollPosition::default(), Scrollbar::vertical(), by_class(page_node, c_page)))
                 .with_children(|page| {
-                    page.spawn(Node { flex_direction: FlexDirection::Row, column_gap: px(LISTS_GAP), flex_grow: 1.0, min_height: px(0), ..default() }).with_children(|lists| {
-                        for (list, width) in [(0, DESIGNS_W), (1, TEMPLATES_W)] {
+                    let lists_node = Node { flex_direction: FlexDirection::Row, column_gap: px(LISTS_GAP), flex_grow: 1.0, min_height: px(0), ..default() };
+                    // On a phone the lists are four rows high and the preview is left out (it follows the pointer's hover).
+                    let c_lists = Node { flex_grow: 0.0, flex_shrink: 0.0, height: px(C_LISTS_H), ..lists_node.clone() };
+                    page.spawn(by_class(lists_node, c_lists)).with_children(|lists| {
+                        for (list, width, c_width) in [(0, DESIGNS_W, C_LIST_W), (1, TEMPLATES_W, C_LIST_W)] {
                             if list == 1 {
                                 spawn_preview(lists, fonts, &c, content);
                             }
-                            lists.spawn(Node { width: px(width), flex_direction: FlexDirection::Column, row_gap: px(10), min_height: px(0), ..default() }).with_children(|col| {
+                            let col_node = |w: f32| Node { width: px(w), flex_direction: FlexDirection::Column, row_gap: px(10), min_height: px(0), ..default() };
+                            lists.spawn(by_class(col_node(width), col_node(c_width))).with_children(|col| {
                                 col.spawn((ShelfText::Section(list), label(fonts, "", 9.0, c(Tone::Dim, 1.0)), Node { margin: UiRect::left(px(12)), ..default() }));
                                 col.spawn((
                                     ListNode(list),
@@ -243,22 +264,23 @@ pub(in crate::drydock) fn spawn_shelf(mut commands: Commands, fonts: Res<HudFont
                     // IMPORT: a file, or paste a code.
                     page.spawn(row(8.0)).with_children(|r| {
                         r.spawn(head("IMPORT", HEAD_W));
+                        let paste = |w: f32| Node {
+                            width: px(w),
+                            height: px(30),
+                            align_items: AlignItems::Center,
+                            padding: UiRect::horizontal(px(16)),
+                            border: UiRect::all(px(1.2)),
+                            border_radius: BorderRadius::MAX,
+                            overflow: Overflow::clip(),
+                            ..default()
+                        };
                         spawn_pill(r, fonts, ".RON FILE", 9.5, 30.0, None, pill, ShelfButton::ImportFile);
                         r.spawn((
                             PasteBox,
                             ShelfButton::PasteBox,
                             Hot::default(),
                             // As tall as the pill beside it, the text inset like a pill's label.
-                            Node {
-                                width: px(520),
-                                height: px(30),
-                                align_items: AlignItems::Center,
-                                padding: UiRect::horizontal(px(16)),
-                                border: UiRect::all(px(1.2)),
-                                border_radius: BorderRadius::MAX,
-                                overflow: Overflow::clip(),
-                                ..default()
-                            },
+                            by_class(paste(520.0), paste(C_PASTE_W)),
                             BorderColor::all(c(Tone::Label, 0.3)),
                             BackgroundColor(Color::NONE),
                         ))
@@ -305,7 +327,7 @@ pub(in crate::drydock) fn spawn_shelf(mut commands: Commands, fonts: Res<HudFont
 /// The preview's column and its card (hidden until a row is hovered).
 fn spawn_preview(lists: &mut ChildSpawnerCommands, fonts: &HudFonts, c: &impl Fn(Tone, f32) -> Color, content: &Content) {
     let names = ["CLASS".to_string(), stats::stat_label(content, "mass"), stats::stat_label(content, "top_speed"), "WEAPONS".to_string(), "LADDER".to_string()];
-    lists.spawn((PreviewColumn, Node { width: px(PREVIEW_W), flex_shrink: 0.0, ..default() })).with_children(|col| {
+    lists.spawn((PreviewColumn, by_class(Node { width: px(PREVIEW_W), flex_shrink: 0.0, ..default() }, Node { display: Display::None, ..default() }))).with_children(|col| {
         col.spawn((
             PreviewCard::default(),
             Node {

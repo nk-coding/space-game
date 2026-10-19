@@ -216,12 +216,22 @@ pub(in crate::drydock) fn sync_swatches(granted: Res<Granted>, style: Res<Style>
 /// they are folded).
 #[allow(clippy::type_complexity)]
 pub(in crate::drydock) fn fit_bar(
+    class: Res<LayoutClass>,
     area: Single<&ComputedNode, With<StatusArea>>,
     mut wide: Single<(&ComputedNode, &mut Node), (With<WideTools>, Without<FoldedTools>)>,
     mut folded: Single<(&ComputedNode, &mut Node), (With<FoldedTools>, Without<WideTools>)>,
     mut ui: ResMut<DrydockUi>,
     mut wide_w: Local<f32>,
 ) {
+    // On a phone the tools are in their strip: the bar keeps only the folded mirror and bevel (its dropdown hidden).
+    if class.is_compact() {
+        set_display(&mut wide.1, false);
+        set_display(&mut folded.1, true);
+        if ui.menu == Some(BarMenu::Tools) {
+            ui.menu = None;
+        }
+        return;
+    }
     let k = area.inverse_scale_factor;
     let room = area.size.x * k;
     let is_folded = wide.1.display == Display::None;
@@ -397,6 +407,15 @@ pub(in crate::drydock) fn sync_blocks(
     }
 }
 
+/// The right column on a phone: the stats, or (a placed part selected) the selected part; both in a wide window.
+pub(in crate::drydock) fn sync_column(class: Res<LayoutClass>, sel: Res<Selection>, mut parts: Query<(&ColumnPart, &mut Node)>) {
+    let selected = sel.cell.is_some();
+    for (part, mut n) in &mut parts {
+        let show = !class.is_compact() || (*part == ColumnPart::Selected) == selected;
+        set_display(&mut n, show);
+    }
+}
+
 pub(super) fn set_display(n: &mut Node, show: bool) {
     let d = if show { Display::Flex } else { Display::None };
     if n.display != d {
@@ -510,14 +529,15 @@ pub(in crate::drydock) fn sync_texts(
     }
 }
 
-/// The info line (hover cell, mirror, axis, and the pan help unless the coral hint after it needs the room) and
-/// the zoom, every frame.
+/// The info line (hover cell, mirror, axis, and the pan help unless the coral hint after it needs the room; on a
+/// phone the cell and the mirror) and the zoom, every frame.
 pub(in crate::drydock) fn sync_live(
     design: Res<PlayerDesign>,
     cursor: Res<DrydockCursor>,
     rig: Res<CameraRig>,
     cam: Res<DockCamera>,
     hint: Single<&TextSpan, With<crate::drydock::ghost::HintText>>,
+    class: Res<LayoutClass>,
     mut texts: Query<(&PanelText, &mut Text)>,
     mut s: Local<String>,
 ) {
@@ -530,9 +550,14 @@ pub(in crate::drydock) fn sync_live(
                     None => write!(s, "CELL —"),
                 };
                 let mirror = if design.dock().mirror { "ON" } else { "OFF" };
-                let _ = write!(s, "  ·  MIRROR {mirror}  ·  AXIS {}", design.frame().0 as f32 / 2.0);
-                if hint.0.is_empty() {
-                    s.push_str("  ·  SPACE + DRAG TO PAN");
+                // A phone's grid is narrower and has no Space key: the cell and the mirror only.
+                if class.is_compact() {
+                    let _ = write!(s, "  ·  MIRROR {mirror}");
+                } else {
+                    let _ = write!(s, "  ·  MIRROR {mirror}  ·  AXIS {}", design.frame().0 as f32 / 2.0);
+                    if hint.0.is_empty() {
+                        s.push_str("  ·  SPACE + DRAG TO PAN");
+                    }
                 }
             }
             PanelText::Zoom => {

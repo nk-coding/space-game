@@ -61,7 +61,7 @@ use data::{Content, Part, Shape};
 use kit::style::{Style, ui_color};
 use kit::ui_icons::{Glyph, UiIcon};
 use kit::ui_kit::{
-    HudFonts, Edge, Hot, ListRow, ListSpec, Pill, PillText, Ring, ScreenFx, ScreenPart, Scrollbar, Tip, Tone, UiBlock, ValueBar,
+    HudFonts, Edge, Hot, LayoutClass, ListRow, ListSpec, Pill, PillText, Ring, ScreenFx, ScreenPart, Scrollbar, Tip, Tone, UiBlock, ValueBar,
     label, number, fill_list, spawn_grouped_list,
     crumb, frame, prose, ring_glyph, spawn_back, ring_node, set_color, set_text, spawn_bar, spawn_brackets, spawn_pill, sub_tone, tracked,
 };
@@ -73,12 +73,13 @@ use world::sim_bridge::GameContent;
 
 use super::actions::{ActionButton, DrydockAction, Rare, SearchField};
 use super::inspector::Inspector;
+use super::tools::Selection;
 use super::state::{BarMenu, DrydockStats, DrydockStatus, DrydockUi, Overlay, Tool, armor_materials, palette_sections};
 use super::stats::{DETAIL_CELLS, MAIN_CELLS};
 use super::view::{DockCamera, DrydockCursor, GridViewport};
 
 pub(in crate::drydock) use spawn::spawn;
-pub(in crate::drydock) use sync::{fill_palette, fit_bar, fit_status, scroll_selected, see_fresh, sync_blocks, sync_live, sync_menus, sync_pills, sync_rows, sync_scrim, sync_swatches, sync_texts};
+pub(in crate::drydock) use sync::{fill_palette, fit_bar, sync_column, fit_status, scroll_selected, see_fresh, sync_blocks, sync_live, sync_menus, sync_pills, sync_rows, sync_scrim, sync_swatches, sync_texts};
 
 /// The left column's width.
 const LEFT_W: f32 = 248.0;
@@ -95,6 +96,18 @@ const GRID_BOTTOM: f32 = 58.0;
 const INFO_H: f32 = 28.0;
 /// The grid area's distance from the window's top (just under the overlay pills).
 const GRID_TOP: f32 = 66.0;
+/// The phone layout (the compact class, 844 × 390 at `compact_scale`, `docs/plans/android.md` 4.3): the columns'
+/// distance from the window's edges and their top and bottom, the palette's and the stats' widths, the tool strip
+/// between the palette and the grid, and the grid area's edges (*placeholders*).
+const C_SIDE: f32 = 12.0;
+const C_TOP: f32 = 50.0;
+const C_BOTTOM: f32 = 54.0;
+const C_LEFT_W: f32 = 190.0;
+const C_RIGHT_W: f32 = 214.0;
+const C_TOOLS_W: f32 = 74.0;
+const C_GAP: f32 = 8.0;
+const C_GRID_TOP: f32 = 44.0;
+const C_GRID_BOTTOM: f32 = 50.0;
 /// The scrim around the grid; its hole follows the grid viewport's laid-out rectangle ([`sync_scrim`]).
 #[derive(Component)]
 pub(in crate::drydock) struct GridScrim;
@@ -173,6 +186,14 @@ pub(super) struct WideTools;
 
 #[derive(Component)]
 pub(super) struct FoldedTools;
+
+/// What the right column shows on a phone ([`sync_column`]): the stats, or the selected part (a placed one) with a way
+/// back to the stats; the wide layout shows both.
+#[derive(Component, Clone, Copy, PartialEq, Eq)]
+pub(super) enum ColumnPart {
+    Stats,
+    Selected,
+}
 
 /// The status line's room in the bottom bar.
 #[derive(Component)]

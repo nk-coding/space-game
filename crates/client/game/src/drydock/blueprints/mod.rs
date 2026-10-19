@@ -82,6 +82,11 @@ const DESIGNS_W: f32 = 480.0;
 const TEMPLATES_W: f32 = 344.0;
 const PREVIEW_W: f32 = 208.0;
 const LISTS_GAP: f32 = 24.0;
+/// On a phone (844 × 390): the lists' height (four rows) and width (no preview between them), the paste box's width
+/// (*placeholders*).
+const C_LISTS_H: f32 = 4.0 * (ROW_H + ROW_GAP) + 20.0;
+const C_LIST_W: f32 = 394.0;
+const C_PASTE_W: f32 = 480.0;
 /// The preview's ship drawing's height (it is fitted into the card's width and this) and the card's height (fixed,
 /// so the card is placed before its first layout: the ship, its five numbers and the padding).
 const PREVIEW_SHIP_H: f32 = 96.0;

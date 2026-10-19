@@ -123,6 +123,7 @@ impl Plugin for DrydockPlugin {
                         panels::sync_pills,
                         panels::sync_texts,
                         panels::fit_bar,
+                        panels::sync_column,
                         panels::fit_status,
                         panels::sync_menus,
                         panels::sync_live,

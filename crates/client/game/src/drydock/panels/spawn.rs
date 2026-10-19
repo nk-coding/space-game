@@ -2,7 +2,9 @@
 //! come from `fill_palette`), the armour swatches, the stats and the selected part, the bottom bar with its menus.
 
 use super::*;
+use crate::home::{COMPACT_TEXT, by_class};
 use data::input::Action;
+use kit::ui_kit::CompactText;
 use world::settings::{ActionLabel, ActionTip};
 
 pub(in crate::drydock) fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>, content: Res<GameContent>, lab: Res<world::evolution::Lab>) {
@@ -24,10 +26,14 @@ pub(in crate::drydock) fn spawn(mut commands: Commands, fonts: Res<HudFonts>, st
     let sep = || (Node { width: px(1), height: px(24), margin: UiRect::horizontal(px(4)), flex_shrink: 0.0, ..default() }, BackgroundColor(c(Tone::Label, 0.22)));
     let fonts = &*fonts;
     let back = style.background.outer();
+    // Every part placed for both layout classes (`home::ByClass`): the wide layout as it was, the phone layout
+    // (`C_*`, docs/plans/android.md 4.3); a part only one of them has is hidden in the other.
+    let none = || Node { display: Display::None, ..default() };
 
     commands
         .spawn((
             DrydockRoot,
+            CompactText(COMPACT_TEXT),
             // Opens and closes with a transition (`view::open_close`): the panels slide in from their edges.
             ScreenFx::closed(),
             Node { position_type: PositionType::Absolute, width: percent(100), height: percent(100), ..default() },
@@ -58,7 +64,7 @@ pub(in crate::drydock) fn spawn(mut commands: Commands, fonts: Res<HudFonts>, st
             // Top right: the overlays.
             root.spawn((UiBlock, UnderShelf, ScreenPart::new(Edge::Top, 0), Node { column_gap: px(5), ..f.top_right() }))
                 .with_children(|tr| {
-                    tr.spawn((label(fonts, "OVERLAY", 9.0, c(Tone::Dim, 1.0)), Node { margin: UiRect::right(px(5)), ..default() }));
+                    tr.spawn((label(fonts, "OVERLAY", 9.0, c(Tone::Dim, 1.0)), by_class(Node { margin: UiRect::right(px(5)), ..default() }, none())));
                     for o in Overlay::ALL {
                         let accent = match o {
                             Overlay::Bonus => Tone::Gold,
@@ -71,7 +77,9 @@ pub(in crate::drydock) fn spawn(mut commands: Commands, fonts: Res<HudFonts>, st
 
             // Left: the kit's grouped list (search, armour between it and the category chips, every part in
             // sections; the rows are filled by `fill_palette`).
-            root.spawn((UiBlock, UnderShelf, ScreenPart::new(Edge::Left, 1), Node { width: px(LEFT_W), flex_direction: FlexDirection::Column, row_gap: px(10), ..abs(Some(SIDE), None, Some(74.0), Some(GRID_BOTTOM + INFO_H)) }))
+            let left = Node { width: px(LEFT_W), flex_direction: FlexDirection::Column, row_gap: px(10), ..abs(Some(SIDE), None, Some(74.0), Some(GRID_BOTTOM + INFO_H)) };
+            let c_left = Node { width: px(C_LEFT_W), row_gap: px(8), ..abs(Some(C_SIDE), None, Some(C_TOP), Some(C_BOTTOM)) };
+            root.spawn((UiBlock, UnderShelf, ScreenPart::new(Edge::Left, 1), by_class(left, Node { flex_direction: FlexDirection::Column, ..c_left })))
                 .with_children(|lp| {
                     let spec = ListSpec {
                         placeholder: "Search parts".into(),
@@ -95,19 +103,29 @@ pub(in crate::drydock) fn spawn(mut commands: Commands, fonts: Res<HudFonts>, st
                 });
 
             // Right: the stats grid and the selected part.
-            root.spawn((UiBlock, UnderShelf, ScreenPart::new(Edge::Right, 1), Node { width: px(RIGHT_W), flex_direction: FlexDirection::Column, ..abs(None, Some(SIDE), Some(78.0), Some(70.0)) }))
+            // On a phone the stats and the selected part take turns (`sync_column`), and a cell's label sits over its
+            // value.
+            let right = Node { width: px(RIGHT_W), flex_direction: FlexDirection::Column, ..abs(None, Some(SIDE), Some(78.0), Some(70.0)) };
+            let c_right = Node { width: px(C_RIGHT_W), flex_direction: FlexDirection::Column, ..abs(None, Some(C_SIDE), Some(C_TOP), Some(C_BOTTOM)) };
+            let grid = |gap: (f32, f32), top: f32| Node {
+                display: Display::Grid,
+                grid_template_columns: RepeatedGridTrack::flex(2, 1.0),
+                column_gap: px(gap.0),
+                row_gap: px(gap.1),
+                margin: UiRect::top(px(top)),
+                ..default()
+            };
+            let pair = Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, justify_content: JustifyContent::SpaceBetween, column_gap: px(8), ..default() };
+            let c_pair = Node { flex_direction: FlexDirection::Column, align_items: AlignItems::FlexStart, row_gap: px(2), ..default() };
+            root.spawn((UiBlock, UnderShelf, ScreenPart::new(Edge::Right, 1), by_class(right, c_right)))
                 .with_children(|rp| {
-                    rp.spawn(Node {
-                        display: Display::Grid,
-                        grid_template_columns: RepeatedGridTrack::flex(2, 1.0),
-                        column_gap: px(20),
-                        row_gap: px(16),
-                        ..default()
-                    })
+                    // The stats in a column of their own, so a phone can hide them (`sync_column`).
+                    rp.spawn((ColumnPart::Stats, Node { flex_direction: FlexDirection::Column, flex_shrink: 0.0, ..default() })).with_children(|rp| {
+                    rp.spawn(by_class(grid((20.0, 16.0), 0.0), grid((14.0, 8.0), 0.0)))
                     .with_children(|g| {
                         for k in 0..MAIN_CELLS {
-                            g.spawn((StatCellNode(k), Node { flex_direction: FlexDirection::Column, row_gap: px(7), ..default() })).with_children(|cell| {
-                                cell.spawn(Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, justify_content: JustifyContent::SpaceBetween, column_gap: px(8), ..default() })
+                            g.spawn((StatCellNode(k), by_class(Node { flex_direction: FlexDirection::Column, row_gap: px(7), ..default() }, Node { flex_direction: FlexDirection::Column, row_gap: px(4), ..default() }))).with_children(|cell| {
+                                cell.spawn(by_class(pair.clone(), c_pair.clone()))
                                     .with_children(|r| {
                                         r.spawn((PanelText::StatLabel(k), label(fonts, "", 9.0, c(Tone::Label, 1.0))));
                                         r.spawn((PanelText::StatValue(k), number(fonts, "", 16.0, c(Tone::Number, 1.0))));
@@ -118,26 +136,26 @@ pub(in crate::drydock) fn spawn(mut commands: Commands, fonts: Res<HudFonts>, st
                         }
                     });
                     // The compact block under it: smaller, no bars (top speed, turn, mass, build points).
-                    rp.spawn(Node {
-                        display: Display::Grid,
-                        grid_template_columns: RepeatedGridTrack::flex(2, 1.0),
-                        column_gap: px(20),
-                        row_gap: px(9),
-                        margin: UiRect::top(px(18)),
-                        ..default()
-                    })
+                    rp.spawn(by_class(grid((20.0, 9.0), 18.0), grid((14.0, 6.0), 10.0)))
                     .with_children(|g| {
                         for k in MAIN_CELLS..MAIN_CELLS + DETAIL_CELLS {
-                            g.spawn((StatCellNode(k), Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, justify_content: JustifyContent::SpaceBetween, column_gap: px(8), ..default() }))
+                            g.spawn((StatCellNode(k), by_class(pair.clone(), c_pair.clone())))
                                 .with_children(|r| {
                                     r.spawn((PanelText::StatLabel(k), label(fonts, "", 8.0, c(Tone::Label, 1.0))));
                                     r.spawn((PanelText::StatValue(k), number(fonts, "", 12.5, c(Tone::Number, 1.0))));
                                 });
                         }
                     });
-                    rp.spawn((Node { height: px(1), margin: UiRect::vertical(px(14)), flex_shrink: 0.0, ..default() }, BackgroundColor(c(Tone::Label, 0.14))));
-                    rp.spawn((label(fonts, "SELECTED PART", 9.0, c(Tone::Label, 1.0)), Node { margin: UiRect::bottom(px(10)), flex_shrink: 0.0, ..default() }));
-                    rp.spawn(Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(16), flex_shrink: 0.0, ..default() }).with_children(|h| {
+                    });
+                    rp.spawn((by_class(Node { height: px(1), margin: UiRect::vertical(px(14)), flex_shrink: 0.0, ..default() }, none()), BackgroundColor(c(Tone::Label, 0.14))));
+                    // SELECTED PART; on a phone after a ring back to the stats (it deselects).
+                    rp.spawn((ColumnPart::Selected, Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(10), margin: UiRect::bottom(px(10)), flex_shrink: 0.0, ..default() })).with_children(|h| {
+                        h.spawn(by_class(none(), Node::default())).with_children(|b| {
+                            b.spawn((ring_node(30.0), ActionButton(DrydockAction::Deselect), Tip::new("BACK TO THE STATS"))).with_child(ring_glyph(Glyph::Prev, 12.0));
+                        });
+                        h.spawn(label(fonts, "SELECTED PART", 9.0, c(Tone::Label, 1.0)));
+                    });
+                    rp.spawn((ColumnPart::Selected, Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(16), flex_shrink: 0.0, ..default() })).with_children(|h| {
                         // The icon in a bracketed box (like the fleet bar's chips).
                         h.spawn(Node { width: px(54), height: px(54), flex_shrink: 0.0, justify_content: JustifyContent::Center, align_items: AlignItems::Center, ..default() })
                             .with_children(|b| {
@@ -153,6 +171,7 @@ pub(in crate::drydock) fn spawn(mut commands: Commands, fonts: Res<HudFonts>, st
                     rp
                         .spawn((
                             SelScroll,
+                            ColumnPart::Selected,
                             ScrollPosition::default(),
                             Scrollbar::vertical().room(0),
                             Node { flex_direction: FlexDirection::Column, flex_grow: 1.0, flex_basis: px(0), min_height: px(0), overflow: Overflow::scroll_y(), ..default() },
@@ -177,12 +196,17 @@ pub(in crate::drydock) fn spawn(mut commands: Commands, fonts: Res<HudFonts>, st
                 });
 
             // Centre: the grid viewport; the info line and the zoom.
-            root.spawn((UnderShelf, Node { flex_direction: FlexDirection::Column, ..abs(Some(GRID_LEFT), Some(GRID_RIGHT), Some(GRID_TOP), Some(GRID_BOTTOM)) })).with_children(|ga| {
+            let area = |l: f32, r: f32, t: f32, b: f32| Node { flex_direction: FlexDirection::Column, ..abs(Some(l), Some(r), Some(t), Some(b)) };
+            let c_grid_left = C_SIDE + C_LEFT_W + C_GAP + C_TOOLS_W + C_GAP;
+            let c_grid = area(c_grid_left, C_SIDE + C_RIGHT_W + C_GAP, C_GRID_TOP, C_GRID_BOTTOM);
+            root.spawn((UnderShelf, by_class(area(GRID_LEFT, GRID_RIGHT, GRID_TOP, GRID_BOTTOM), c_grid))).with_children(|ga| {
                 // The info line moves, the grid viewport never (the camera centres on it).
                 ga.spawn((GridViewport, Node { flex_grow: 1.0, ..default() }));
                 ga.spawn((ScreenPart::new(Edge::Bottom, 2), Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, justify_content: JustifyContent::SpaceBetween, height: px(INFO_H), flex_shrink: 0.0, ..default() }))
                     .with_children(|b| {
-                        b.spawn((PanelText::Info, label(fonts, "", 9.0, c(Tone::Dim, 1.0)))).with_child(crate::drydock::ghost::hint_span(fonts, &style));
+                        // On a phone it gives way to the zoom (a long hint wraps, cut at the grid's edge).
+                        let c_info = Node { flex_grow: 1.0, flex_shrink: 1.0, flex_basis: px(0), min_width: px(0), overflow: Overflow::clip(), ..default() };
+                        b.spawn((PanelText::Info, label(fonts, "", 9.0, c(Tone::Dim, 1.0)), by_class(Node::default(), c_info))).with_child(crate::drydock::ghost::hint_span(fonts, &style));
                         b.spawn((UiBlock, Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(10), ..default() })).with_children(|z| {
                             z.spawn((ring_node(28.0), ActionButton(DrydockAction::ZoomOut), Tip::new("ZOOM OUT"), ActionTip(Action::ZoomOut))).with_child(ring_glyph(Glyph::Minus, 13.0));
                             // A fixed width with the value centred in it, so the rings stay put and "58 %" sits as centred as "100 %".
@@ -190,6 +214,26 @@ pub(in crate::drydock) fn spawn(mut commands: Commands, fonts: Res<HudFonts>, st
                             z.spawn((ring_node(28.0), ActionButton(DrydockAction::ZoomIn), Tip::new("ZOOM IN"), ActionTip(Action::ZoomIn))).with_child(ring_glyph(Glyph::Plus, 13.0));
                         });
                     });
+            });
+
+            // A phone's tools: a strip between the palette and the grid (the bottom bar has no room for them).
+            let strip = Node {
+                width: px(C_TOOLS_W),
+                flex_direction: FlexDirection::Column,
+                align_items: AlignItems::Stretch,
+                row_gap: px(8),
+                ..abs(Some(C_SIDE + C_LEFT_W + C_GAP), None, Some(C_TOP + 6.0), None)
+            };
+            root.spawn((UiBlock, UnderShelf, ScreenPart::new(Edge::Left, 2), by_class(none(), strip))).with_children(|st| {
+                for (text, key, action) in [
+                    ("PAINT", Action::ToolPaint, DrydockAction::Tool(Tool::Paint)),
+                    ("FILL", Action::ToolFill, DrydockAction::Tool(Tool::Fill)),
+                    ("ERASE", Action::ToolErase, DrydockAction::Tool(Tool::Erase)),
+                    ("SELECT", Action::ToolSelect, DrydockAction::Tool(Tool::Select)),
+                    ("ROTATE", Action::RotateRight, DrydockAction::RotateCw),
+                ] {
+                    spawn_pill(st, fonts, text, 9.0, 30.0, None, pill(Tone::Teal), (ActionButton(action), Tip::new(text), ActionTip(key)));
+                }
             });
 
             // The veil under an open menu: a click on it (outside the menu) closes the menu and reaches nothing else.
@@ -203,7 +247,8 @@ pub(in crate::drydock) fn spawn(mut commands: Commands, fonts: Res<HudFonts>, st
 
             // Bottom: undo / redo, the tools, mirror and bevel, the status line, save / blueprints / export / ⋯,
             // the BEHAVIOR screen and the test flight.
-            root.spawn((UiBlock, ScreenPart::new(Edge::Bottom, 3), Node { height: px(42), flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(6), ..abs(Some(22.0), Some(20.0), None, Some(14.0)) }))
+            let bar = |l: f32, r: f32, b: f32| Node { height: px(42), flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(6), ..abs(Some(l), Some(r), None, Some(b)) };
+            root.spawn((UiBlock, ScreenPart::new(Edge::Bottom, 3), by_class(bar(22.0, 20.0, 14.0), bar(C_SIDE, C_SIDE, 6.0))))
                 .with_children(|bb| {
                     for (g, action, tip) in [(Glyph::Undo, DrydockAction::Undo, (Tip::new("UNDO"), ActionTip(Action::Undo))), (Glyph::Redo, DrydockAction::Redo, (Tip::new("REDO"), ActionTip(Action::Redo)))] {
                         bb.spawn((ring_node(36.0), ActionButton(action), tip)).with_children(|r| {
@@ -230,7 +275,8 @@ pub(in crate::drydock) fn spawn(mut commands: Commands, fonts: Res<HudFonts>, st
                     // Folded: the current tool as a dropdown (its menu opens upward), mirror and bevel as icons.
                     bb.spawn((FoldedTools, Node { display: Display::None, flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(6), flex_shrink: 0.0, ..default() }))
                         .with_children(|f| {
-                            f.spawn(Node::default()).with_children(|anchor| {
+                            // On a phone the tool strip has the tools: only mirror and bevel stay here.
+                            f.spawn(by_class(Node::default(), none())).with_children(|anchor| {
                                 anchor
                                     .spawn((
                                         Pill { active: true, ..pill(Tone::Teal) },

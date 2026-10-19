@@ -80,6 +80,9 @@ pub struct DockCamera {
     drag_last: Option<Vec2>,
     /// The frame the view was made for: another one (FRAME, its undo) fits the view again.
     frame: (u32, u32),
+    /// The view was zoomed or moved by hand since the drydock opened: until then a change of the viewport (the
+    /// layout settling in the first frames, the window turned or resized) opens the view again for it.
+    pub(super) touched: bool,
     /// The drydock went to the BEHAVIOR screen and left the camera on its view (so its world fades out in place);
     /// the flight zoom is given back when the BEHAVIOR screen goes anywhere but here ([`unpark`]).
     parked: bool,
@@ -171,7 +174,7 @@ pub(super) fn fade_world(
 
 impl DockCamera {
     pub(crate) fn new(flight_zoom: f32) -> Self {
-        Self { fit: 0.0, viewport: Rect::default(), view: None, flight_zoom, drag_last: None, frame: (0, 0), parked: false }
+        Self { fit: 0.0, viewport: Rect::default(), view: None, flight_zoom, drag_last: None, frame: (0, 0), touched: false, parked: false }
     }
 
     /// Fits the frame again (another design or frame was opened).
@@ -319,9 +322,11 @@ pub(super) fn camera(
     let frame = Vec2::new(design.frame().0 as f32, design.frame().1 as f32);
     let fit = fit_zoom(size, frame);
     let frame_centre = Vec2::new(frame.x / 2.0, -frame.y / 2.0);
-    if cam.fit <= 0.0 {
-        // First frame of a visit: the last view, else the whole frame.
+    if cam.fit <= 0.0 || (!cam.touched && (fit - cam.fit).abs() > 1e-3) {
+        // First frame of a visit, or the viewport changed before anyone moved the view (at start the layout and the
+        // UI scale settle over the first frames): the last view, else the opening one.
         let (pos, share) = cam.view.unwrap_or((frame_centre, open_share(fit, window.size())));
+        cam.touched = cam.touched && cam.fit > 0.0;
         rig.end_zoom_anchor();
         rig.pos = pos;
         rig.zoom = fit * share;
@@ -340,8 +345,9 @@ pub(super) fn camera(
         match a {
             DrydockAction::ZoomIn => rig.zoom_around(1.25, None, min, max),
             DrydockAction::ZoomOut => rig.zoom_around(0.8, None, min, max),
-            _ => {}
+            _ => continue,
         }
+        cam.touched = true;
     }
     // Shift+wheel turns the part (`actions::shortcuts`), so only the plain wheel zooms.
     if scroll.delta.y != 0.0 && !pointer.blocked && !keys.any_pressed([KeyCode::ShiftLeft, KeyCode::ShiftRight]) {
@@ -350,6 +356,7 @@ pub(super) fn camera(
             MouseScrollUnit::Pixel => scroll.delta.y / 100.0,
         };
         rig.zoom_around(1.15f32.powf(steps.clamp(-5.0, 5.0)), cursor, min, max);
+        cam.touched = true;
     }
     // Pan: the middle button, or Space + the left button; a drag starts only on the grid.
     let space = keys.pressed(KeyCode::Space);
@@ -365,6 +372,7 @@ pub(super) fn camera(
             rig.end_zoom_anchor();
             rig.pos -= Vec2::new(d.x, -d.y) / z;
             cam.drag_last = Some(c);
+            cam.touched = true;
         }
         (true, Some(_), None) => {}
         _ => cam.drag_last = None,

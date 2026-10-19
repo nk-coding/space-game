@@ -250,7 +250,7 @@ pub(super) fn grid(
     time: Res<Time<Real>>,
     content: Res<GameContent>,
     ui: Res<DrydockUi>,
-    cam: Res<DockCamera>,
+    mut cam: ResMut<DockCamera>,
     mut rig: ResMut<CameraRig>,
     mut pad: ResMut<Pad>,
     mut edit: EditParams,
@@ -268,7 +268,13 @@ pub(super) fn grid(
             Some(_) => Start::Tool,
         }
     };
-    let outs = pad.update(&fingers, now, start);
+    // A finger down and up within one frame (a fast tap, a test's) is seen down, then up.
+    let quick: Vec<(u64, Vec2)> = touches.iter_just_released().filter(|t| touches.just_pressed(t.id())).map(|t| (t.id(), t.position())).collect();
+    let mut outs = Vec::new();
+    if !quick.is_empty() {
+        outs = pad.update(&[fingers.as_slice(), quick.as_slice()].concat(), now, &start);
+    }
+    outs.extend(pad.update(&fingers, now, &start));
     let content = &content.0;
     let brush = ui.picked.as_deref().and_then(|p| content.parts.get(p)).map(Brush::of);
     let lift = Vec2::new(0.0, LIFT);
@@ -330,6 +336,7 @@ pub(super) fn grid(
                 rig.pos = pos;
                 rig.zoom = zoom;
                 rig.zoom_target = zoom;
+                cam.touched = true;
             }
         }
         run_ops(ops, content, &ui, &mut edit.design, &mut edit.sel, &mut edit.note, now);
