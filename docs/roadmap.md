@@ -590,6 +590,16 @@ Next session:
   `target` and `face_target`, the evolution runs' old `fitness`, `start` and plain-number forms, and the flight
   parameters that started the sandbox without `scene` are gone. An older save starts a new game (a log line, a note).
 
+### 19 Oct 2026: mining and ore refining
+
+- ([GDR-0114](gdr/0114-mining-and-ore-refining.md), lead defaults; `results/mining-2026-10-19.md`) The mining
+  laser (`weapon.cut`, a beam's ore a second on rock) cuts a rock's ore (its kind's `ore` per m²) into the hold as
+  `Item::Ore`, a spent rock drawn darker; the smelter within the workshop (`refine` conversions in data) pays steel
+  from nickel-iron and coolant from ice for recipes and research; ore home in GAINED and the store; the `mine`
+  behavior action, the `miner` escort behavior; the voyage runner mines. Closes the mining open on 17 and 18 Oct.
+- Open: drifting or breakable rock, the other harvests (comets, gas, star skimming), a tractor, mining in the lab's
+  trials, a mining sample ship.
+
 ## Phase 4: measurement
 
 Status 12 Oct 2026 (new VM): `results/spike-summary.md` written. Determinism native vs wasm IDENTICAL on the new VM

@@ -221,14 +221,15 @@ returns the node. Refusals (`career::Refusal`), checked in this order: `UnknownN
 cost, then every material cost, that the stores can't meet, with what is held and what it costs). A refused call
 changes nothing.
 
-Paying takes each cost from its store at once and unlocks immediately (GDR-0063). Research data within
+Paying takes each cost from its store at once and unlocks immediately (GDR-0063); material costs are paid as the
+workshop pays a recipe, refining included ([The workshop](#the-workshop)). Research data within
 `DATA_EPSILON` (0.001) of a cost counts as enough, so a sum of tenths that lands a hair below its cost still pays; a
 store paid down to that little is removed. Stores hold only amounts above 0.
 
 ## Unloading a haul
 
 A `Haul` is the items a voyage brought home with counts (`BTreeMap<HaulItem, u32>`). `HaulItem` mirrors the sim's
-cargo item (`Part { part, material }`, `Broken { part, material }`, `Fragment { part }`, `DataCore`); `data` does not
+cargo item (`Part { part, material }`, `Broken { part, material }`, `Fragment { part }`, `DataCore`, `Ore { material }`); `data` does not
 depend on `sim`, so the game converts. `career::unload(&content, &haul) -> HaulReport` is pure and gives (GDR-0108;
 `share` is the workshop's `broken` rule, 0.25):
 
@@ -238,6 +239,7 @@ depend on `sim`, so the game converts. `career::unload(&content, &haul) -> HaulR
 | a broken non-hull part | its `salvage` block's `data` for its family, and `share` × its recipe's materials, per item |
 | a hull part, whole or broken | its armour material's `salvage.data` × the part's area (slopes count half a cell) for that family, and `share` × area units of the armour material, per item |
 | a fragment | the `fragment` materials of the part that left it; no data |
+| ore (`Ore { material }`, GDR-0114) | one unit of its material, per item |
 | a data core (`DataCore { trail, signal }`) | one log in `logs`; which signal it decodes into the career keeps ([The galaxy](#the-galaxy)) |
 | an unknown part, a hull part without (or with an unknown or non-armour) material, a part without a block | nothing (parts are still listed) |
 
@@ -264,8 +266,15 @@ GDR-0108 (18 Oct 2026), `career/workshop.rs`. The content's workshop is the firs
 - **Fabricating**: `can_fabricate(&content, part, n)` / `fabricate`: refused in this order with `UnknownPart`,
   `LockedPart` (not unlocked), `NoRecipe` (salvage only), `NeedsFacility(upgrade)` (the recipe's `needs` not open),
   `CannotPay(shortfalls)` (every material short, in id order); else the recipe × `n` leaves the store and `n` go into
-  stock. `fabricable(&content, part)`: the most it can make now (0 when one is refused, else what the scarcest
-  material pays for).
+  stock. `fabricable(&content, part)`: the most it can make now (0 when one is refused, else what the store pays
+  for, refining included).
+- **Refining** (GDR-0114, 19 Oct 2026): an open facility's `refine` conversions (the smelter: nickel-iron 2 → steel 1,
+  water ice 2 → coolant 1) pay what the store is short of. `payment(&content, &cost, n)` is what paying `n` times a
+  cost takes, by material: each material from the store first, then the shortfall refined in whole batches from what
+  the cost leaves of the conversion's input (`Err`: the shortfalls, `have` counting what refining adds).
+  Fabricating and research pay through it; `available(&content, material)` (the store and what refining makes of the
+  rest, for the research screen's chips and the workshop's materials column). Validation keeps refining one step
+  with one way into each material.
 - **Dismantling stock** (18 Oct 2026, later): `dismantle_stock(&content, part, n, &need)` gives `dismantle` × the
   recipe like an intact hauled part but **no research data** (the stock is the workshop's own: nothing new to study,
   and fabricating then dismantling would otherwise turn materials into data) and returns it. Refused with `NoRecipe`

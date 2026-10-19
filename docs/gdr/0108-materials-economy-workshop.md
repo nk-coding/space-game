@@ -31,6 +31,7 @@
   parts the fleet lacks first; the rows keep their stock, MAKE, DISMANTLE and the needs in the materials column. The
   pointer resting on a row shows the part's hover card (the drydock's) between the two columns. `docs/client.md`
   "Workshop".
+  2026-10-19: the smelter, a workshop upgrade with `refine` conversions in data (nickel-iron 2 → steel 1, water ice 2 → coolant 1), opened by its research (3 utility data, 6 nickel-iron); the workshop pays what the store is short of by refining, for recipes and research; coolant in the fusion reactor's and torch drive's recipes ([GDR-0114](0114-mining-and-ore-refining.md)).
 - Date: 2026-10-18
 - Decided by: Niklas (the five decisions); lead session (names, numbers, the rules marked *lead*)
 - Related: [GDR-0029](0029-mild-death-bonded-matter.md), [GDR-0031](0031-materials-and-fabrication.md), [GDR-0063](0063-salvage-and-research-v1.md), [GDR-0071](0071-shipyard-home-long-u.md), [GDR-0082](0082-drydock-layout-v2-and-part-availability.md), [GDR-0089](0089-play-test-15-oct-speed-salvage-waves-station.md), [GDR-0098](0098-slice-in-the-galaxy-and-rim-rewards.md), [GDR-0104](0104-scenery-rocks-filler-landmarks.md), `docs/career.md` "The workshop", `docs/results/materials-inflow-2026-10-18.md`

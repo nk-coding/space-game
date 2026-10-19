@@ -122,6 +122,7 @@ overview and links to both series. Format and status rules: `CLAUDE.md`, section
 | [0111](0111-an-enemy-scan-calls-its-factions-sites.md) | An enemy's scan calls its own faction's sleeping sites within the scanner's range; the first caller is the automaton picket, a rim site | Accepted (provisional, lead) | 2026-10-18 |
 | [0112](0112-the-keeper-guards-the-middle-bands-gates.md) | The Keeper guards the middle band's gates: a ring of four shielded cannon pods round a beam-laser heart, each on a core of its own | Accepted (provisional, lead) | 2026-10-18 |
 | [0113](0113-a-call-brings-reinforcements.md) | A call brings reinforcements: a picket post's first call warps a group in from the cluster's edge | Accepted | 2026-10-19 |
+| [0114](0114-mining-and-ore-refining.md) | Mining and ore refining: a mining laser cuts a rock's ore into the hold, the workshop's smelter refines it | Accepted (provisional, lead) | 2026-10-19 |
 <!-- index:end -->
 
 ## How to add, supersede and deprecate
