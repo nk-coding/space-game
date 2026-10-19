@@ -1927,13 +1927,13 @@ content or saved behavior instead of the design's). Screenshots: `docs/results/b
 | Rename the behavior | click the name top left; Enter (or a click elsewhere) renames, Esc keeps the old name |
 | BEHAVIORS list | the button; Esc or CLOSE closes it (Esc first leaves a rename or a delete question) |
 | Search the palette | / (Esc or Enter leaves the field) |
-| Scroll the graph, the palette or a list | wheel |
+| Scroll the graph, the palette or a list | wheel, or a finger's drag (on a phone a sideways drag pans the graph) |
 | Select a node / a rule / nothing | click it / click its `always` chip or its row's empty space / click the graph's empty space |
 | Add a rule | `+ RULE` |
 | Add a condition to the selected rule; replace its action; set the target | click a condition / an action / a target selector in ADD NODE |
 | Replace the selected condition | REPLACE in the inspector, then a condition in ADD NODE |
 | Remove the selected condition / delete the selected rule / back to the default target | Delete or Backspace (or REMOVE / DELETE / USE THE DEFAULT TARGET) |
-| Move a rule | drag its row (a chip or the row) up or down; or UP / DOWN in the inspector |
+| Move a rule | drag its row (a chip or the row) up or down (a finger holds the row 350 ms first); or UP / DOWN in the inspector |
 | Undo / redo | Ctrl+Z / Ctrl+Shift+Z or Ctrl+Y, or the two ring buttons after DRYDOCK (dim when there is nothing) |
 | A note | click the NOTE field, type, Enter (or click elsewhere) |
 | TEXT view | type; Ctrl+C / Ctrl+V copy and paste (through `clipboard.rs` on the web); Ctrl+Z is egui's undo while the text has the keyboard |
@@ -1963,7 +1963,28 @@ gold with `· SCRIPT` and the tag's tooltip, target selectors white; nothing is 
 13 Oct 2026, GDR-0065, show up in the palette and the BEHAVIORS list without client changes). Bottom the DRYDOCK pill, undo / redo, the status line (a message from saving, opening or testing until the draft
 changes; else text errors, rules without a slot, rules never reached, or how rules run; a refusal in coral after it for 3 s, like the
 drydock's info line), BEHAVIORS and SAVE (as in the drydock). Larger windows
-scale the screen like the drydock. The phone layout and touch come later.
+scale the screen like the drydock.
+
+**On a phone** (the compact class, 19 Oct 2026, [GDR-0119](gdr/0119-behavior-editor-on-a-phone.md) Proposed,
+`docs/plans/android.md` 4.4; screenshots `docs/results/phone-behavior-2026-10-19.png` (a rule selected),
+`phone-behavior-panned-2026-10-19.png`, `phone-behavior-modes-2026-10-19.png`): laid out for 844 × 390 at
+`compact_scale` with `CompactText(9)`, every node in its wide and phone form (`home::ByClass`; the three scrolling
+areas `screen::ScrollFit`, which keeps the gutter and glow room the kit's `Scrollbar` writes into the node). The
+graph is 592 px wide with smaller chips (`screen::GraphDims`: 30 px high, 12.5 px type, rows 46 px, the root column
+104 px) and its notes on one line; it scrolls both ways (glow room 6 px, so its rules don't show over the column).
+The right column is 214 px (inspector, ADD NODE, palette; no search field). Top right GRAPH / TEXT, a caret ring
+with WATCH / FLY ALONGSIDE in a popover (`ModesPopover`, `BehaviorUi::modes_open`; a pick or any other button
+closes it) and TEST IN RANGE; the tabs move into the bottom bar, the status line into a strip between the graph
+and the bar. The name is cut at 240 px and its note shows only the state (`saving::sync_title`). The BEHAVIORS list
+keeps both lists side by side with 12 px margins, NEW BEHAVIOR beside CLOSE. The TEXT view is read-only (no soft
+keyboard yet): it scrolls, the graph edits. Touch (`touch.rs`, `reorder.rs`, `controls.rs`; 10 dp as the drydock's
+`touch::TAP_SLOP`): taps select and press as with the mouse; a sideways drag on the graph pans it
+(`touch::pan_graph`); a row held 350 ms (`reorder::HOLD`) shows the drop line and drags its rule, the graph keeping
+its place (and scrolling within 36 px of its edges) until the finger lifts; a slider moves once the finger goes
+sideways or on a tap (up and down scrolls the inspector); the release after a pan or a drag clicks nothing
+(`touch::SwallowClick`). Checked headless at 844 × 390, DPR 3 (taps on chips, rows, a palette pill and the caret, a
+held rule moved to the top, a slider drag, a pan to the notes, the inspector scrolled, TEXT, the BEHAVIORS list) and
+1280 × 720.
 
 The inspector shows the selection with its kicker (`ACTION · MANEUVER`), its name in its role's colour and its
 summary, then its controls (a tall inspector scrolls; the palette under it keeps about three rows; while either
@@ -2390,13 +2411,20 @@ but the type is too small to read). Numbers are placeholders.
   dragged sideways drops its part on the grid. Checked headless at 844 × 390 (taps on the strip, select, a paint
   stroke, a palette drag) and 1280 × 720.
 
+- **BEHAVIOR** (C, 19 Oct 2026, [GDR-0119](gdr/0119-behavior-editor-on-a-phone.md) Proposed; "Behavior screen" "On a
+  phone"; screenshots `docs/results/phone-behavior-2026-10-19.png`, `phone-behavior-panned-2026-10-19.png`,
+  `phone-behavior-modes-2026-10-19.png`): at `compact_scale` with `CompactText(9)`: the graph 592 px with smaller
+  chips, the right column 214 px without the search, the test modes in a popover under a caret ring, the tabs in the
+  bottom bar, the status line over it; the BEHAVIORS list narrow. Touch: a sideways drag pans the graph, a row held
+  350 ms drags its rule, a slider moves on a sideways drag or a tap, TEXT read-only.
+
 What still breaks at 844 × 390 (audit of 19 Oct 2026, DPR 3), grouped into work packages with disjoint files:
 
 | Package | Screens and files | What breaks | Size |
 |---|---|---|---|
 | A. Flight and viewer | flight HUD, pause menu, fleet bar, fight viewer: `world/src/flight_hud/`, `hud.rs`, `controls.rs`, `fleet_bar.rs`, `replay.rs`, `camera.rs` | the HUD stays at the UI size (1.0, readable and fitting) but its title wraps ("TEST RANGE · WAVE" / "1"; the fight viewer's long title in four lines over the top centre: `hud.title_side` keeps 300 px a side of 844); touch widgets wait for a first touch (plan 4.2: on from the start on touch); the help line ("CLICK OR L TO LOCK") shows on touch; the viewer's scrubber and the free camera's drag are mouse-only; set the HUD's scale to `compact_scale` in flight from a world system | L |
 | B. Drydock | `game/src/drydock/**`, `world/src/part_card.rs` | **done 19 Oct 2026** (above). Left: double tap to fit, a fling, the plan's palette with headers and a lens; the pinch checked by unit tests only (headless has one finger); the hover card on a held palette row and the soft keyboard (name, paste box) not checked on a phone | L |
-| C. BEHAVIOR | `game/src/behavior_ui/**` | fitted at 0.54, unreadable; a row's reorder drag (8 px) fights the finger's scroll; phone layout per plan 4.4 (inspector right, ADD NODE, ring menu) | L |
+| C. BEHAVIOR | `game/src/behavior_ui/**` | **done 19 Oct 2026** (above; "Behavior screen", GDR-0119). Left: the ring menu (DRYDOCK, BEHAVIORS and SAVE stay in a bottom bar), zoom of the graph, a fling, the soft keyboard (name, notes, palette search, the list's rename, an editable TEXT view); the hold's 350 ms only checked headless (one finger, slow frames: a frame that comes 350 ms after the press arms the hold) | L |
 | D1. Shipyard screens | home `home.rs`, `shipyard/`, FLEET `fleet.rs`, workshop `workshop.rs`, LOG `voyage_log.rs`, debrief `debrief.rs`, settings `settings.rs` | **done 19 Oct 2026** (above). Left: FLEET's card row and the LOG's rows not seen on a phone with saved designs or voyages (laid out for them: a card 262 px, a row's haul gets about 320 px and may take two lines); home's camera flies into the drydock's opening view, measured at home's scale, which on a phone is the drydock's too since B (19 Oct 2026), so the flight ends where the drydock opens; the flight menu (pause) is package A's | L (M each) |
 | D2. Research, voyage map, evolution | `research/`, `map/`, `evolution/` | **done 19 Oct 2026** (above: phone layouts at `compact_scale`, the map area measured from the chrome). Left: the map's jump-range outline is cut at the panel only; text cut by the map area's edge is cut through its letters; the evolution pages are the wide columns stacked (not a phone design of their own), THE RUN page not checked with a run on a phone; no pinch check (headless has one finger) | M |
 
