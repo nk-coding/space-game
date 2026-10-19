@@ -2313,6 +2313,37 @@ Icons, glows, plumes and the FX dots come from one texture atlas that `atlas.rs`
   (`devicePixelContentBoxSize` reports CSS pixels), which looks blurry for the wrong reason; add Chromium's
   `--force-device-scale-factor` with the same value to test a real HiDPI screen.
 
+## Phones
+
+Small screens are tested in the web build before the Android port (19 Oct 2026, [ADR-0045](adr/0045-compact-layout-class-and-touch-in-the-kit.md),
+`docs/plans/android.md` 4.1). The **layout class** follows the window, not the platform: `kit::ui_kit::LayoutClass`
+is `Compact` in a window under 500 logical px (dp) high, else `Wide` (today's 1280 × 720 layouts, unchanged). A
+screen's phone layout is made for 844 × 390 and scaled by `compact_scale` (min(w / 844, h / 390), 0.9–1.3); a
+screen without one yet keeps its desktop layout fitted by `ui_scale_for` (about 0.54 at 844 × 390: everything fits,
+but the type is too small to read). Numbers are placeholders.
+
+- **Chrome DevTools**: device mode (Ctrl+Shift+M), a phone such as Pixel 7 (915 × 412) or Pixel 5 (851 × 393), or
+  Responsive at 844 × 390 with DPR 3, **rotated to landscape** (portrait is not supported); reload after switching
+  so the canvas picks up the device pixel ratio. Device mode sends touch events, not the mouse, so this also tests
+  touch.
+- **Headless**: `node scripts/web-drive.mjs <url> <dir> "<steps>" 844 390 --dpr=3` emulates the same (forced device
+  scale factor, mobile viewport, touch; `shot`s saved at 844 × 390 CSS px, `crop`s at device pixels); `tap x y` and
+  `touchdrag x0 y0 x1 y1 holdMs` are one finger.
+- **Touch in the kit** (works on every screen): the first finger down is the pointer (`UiPointer::position`,
+  `finger`): `Hot` nodes show their hover while it is down and click on release; under a finger a node is hit within
+  its box grown to 48 dp square (`TOUCH_TARGET`; the nearest one when no box holds the finger); a finger on a panel
+  (`UiBlock`) or a control blocks the world; a finger dragged 10 dp along any `Scrollbar` area (on its rows too)
+  scrolls it under the finger and the row's press ends without a click. No fling yet; tooltips stay mouse-only.
+
+What still breaks at 844 × 390 (audit of 19 Oct 2026, DPR 3), grouped into work packages with disjoint files:
+
+| Package | Screens and files | What breaks | Size |
+|---|---|---|---|
+| A. Flight and viewer | flight HUD, pause menu, fleet bar, fight viewer: `world/src/flight_hud/`, `hud.rs`, `controls.rs`, `fleet_bar.rs`, `replay.rs`, `camera.rs` | the HUD stays at the UI size (1.0, readable and fitting) but its title wraps ("TEST RANGE · WAVE" / "1"; the fight viewer's long title in four lines over the top centre: `hud.title_side` keeps 300 px a side of 844); touch widgets wait for a first touch (plan 4.2: on from the start on touch); the help line ("CLICK OR L TO LOCK") shows on touch; the viewer's scrubber and the free camera's drag are mouse-only; set the HUD's scale to `compact_scale` in flight from a world system | L |
+| B. Drydock | `game/src/drydock/**`, `world/src/part_card.rs` | fitted at 0.54: type 4–7 dp, pills about 15 dp high; painting, erasing, selecting on the grid (`tools.rs`) and panning (`view.rs`: middle button, Space + drag, wheel) are mouse-only, no pinch; phone layout per plan 4.3 | L |
+| C. BEHAVIOR | `game/src/behavior_ui/**` | fitted at 0.54, unreadable; a row's reorder drag (8 px) fights the finger's scroll; phone layout per plan 4.4 (inspector right, ADD NODE, ring menu) | L |
+| D. Shipyard screens | home `home.rs`, `shipyard/`, FLEET `fleet.rs`, workshop `workshop.rs`, LOG `voyage_log.rs`, evolution `evolution/`, research `research/`, voyage map `map/`, debrief `debrief.rs`, settings `settings.rs` | all fitted at 0.54 (map: its stage scale), so their labels, lists and pills are unreadable though stations, rows and pills take taps; research's top strip of counts runs into its title; FLEET's crumb sits at the window's top edge; each needs `compact_scale` and a phone layout (splittable: D1 home, FLEET, workshop, LOG, debrief, settings; D2 research, map, evolution) | L (M each) |
+
 ## Adding visuals
 
 - **A new part icon**: add `content/base/icons/<key>.svg` (one file; its glow is the

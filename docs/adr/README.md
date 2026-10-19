@@ -53,6 +53,7 @@ is the overview and links to both series. Format and status rules: `CLAUDE.md`, 
 | [0042](0042-galaxy-generator-crate.md) | The galaxy generator is an engine-free `galaxy` crate in `core/`: integer positions in S/100, PCG32 streams per step, a generation hash checked native vs wasm | Accepted (provisional, lead) | 2026-10-16 |
 | [0043](0043-lab-web-workers.md) | The web build runs the evolution lab's jobs in web workers: a second wasm binary `lab-worker`, jobs and results as RON messages, only the main thread breeds and writes | Accepted (provisional, lead) | 2026-10-17 |
 | [0044](0044-no-save-compatibility-before-release.md) | No save compatibility before release: the game reads only the current formats and starts a new career in place of an older save | Accepted | 2026-10-18 |
+| [0045](0045-compact-layout-class-and-touch-in-the-kit.md) | The layout class follows the window (compact under 500 dp high, phone layouts scaled 0.9–1.3); touch hover, 48 dp hit slop and list drags live in the UI kit | Proposed | 2026-10-19 |
 <!-- index:end -->
 
 ## How to add, supersede and deprecate
