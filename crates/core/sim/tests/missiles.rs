@@ -128,3 +128,18 @@ fn missile_fights_are_deterministic() {
     };
     assert_eq!(hashes(), hashes());
 }
+
+#[test]
+fn point_defence_does_not_shoot_through_a_hull() {
+    // A wreck's wall of steel three blocks thick (no core: salvage) between the launcher and the turret: the
+    // rockets strike the wall, and the turret behind it never sees them.
+    let wall: Vec<P<'static>> =
+        (0..39).map(|i| ("armor_block", i % 13, i / 13, 0, false, Some("steel"))).collect();
+    let (mut w, s, t) = duel(Some(("point_defence", 2)), Vec2::new(0.0, 45.0));
+    let wreck = w.spawn_ship(custom(&content(), &wall), Owner(1), Body::at(Vec2::new(0.0, 40.0), 0.0));
+    let c = w.ship(wreck).unwrap().pieces()[0].com_world();
+    assert!((c.x).abs() < 1.0 && (c.y - 40.0).abs() < 1.0, "the wall lies across the line: {c:?}");
+    let n = run(&mut w, s, t, 150);
+    assert!(!n.warheads.is_empty(), "{n:?}");
+    assert_eq!(n.shot_down, 0, "{n:?}");
+}

@@ -17,7 +17,9 @@
 //! * **Point defence** (`WeaponSpec::defence`): a pulse gun that aims itself within its arc and fires whenever
 //!   its piece is active, each shot at the nearest hostile live missile within its reach (its hit points go down
 //!   by the shot's damage; at 0 it is shot down), else at the nearest hostile vessel of at most `ship_mass`
-//!   (a hit-scan pulse at its centre of mass, as any pulse). No target: it holds, ready.
+//!   (a hit-scan pulse at its centre of mass, as any pulse). It shoots only what it sees: the line back from the
+//!   target to its muzzle crosses no hull (its own ship's included, but for the turret itself) and no rock. No
+//!   target: it holds, ready.
 //! * **Cap**: at most [`tuning::MAX_MISSILES`] missiles live in the world; a launcher waits, ready, while it is
 //!   full.
 //!
@@ -37,7 +39,7 @@ use crate::ship::design::PartIdx;
 use crate::ship::vessel::{Owner, friendly};
 use crate::world::Sim;
 
-use super::weapons::{GoneReason, Projectile, ProjectileId};
+use super::weapons::{Cast, GoneReason, Projectile, ProjectileId};
 
 /// Missile tuning. **PLACEHOLDERS** (lead defaults, GDR-0115).
 pub mod tuning {
@@ -56,6 +58,11 @@ pub mod tuning {
     pub const FIRE_CONE: f32 = 0.25;
     /// The warhead goes off this far inside the hull it struck (m), so the struck cell is the blast's.
     pub const FUSE_DEPTH: f32 = 0.05;
+    /// Point defence checks the line of sight of at most this many of the nearest missiles, and then of as many
+    /// small vessels, per shot (one ray cast each); none seen, it holds.
+    pub const DEFENCE_LOOKS: usize = 3;
+    /// The line-of-sight ray stops this short of the muzzle (m), which lies on the gun's own face.
+    pub const DEFENCE_SLACK: f32 = 0.05;
 }
 
 /// What makes a projectile a missile (GDR-0115).
@@ -293,52 +300,87 @@ impl Sim {
         self.events.push(SimEvent::Warhead { by, id, at, radius, damage });
     }
 
-    /// The target of a point-defence gun `g` of ship `owner` (of `team`) firing from `from` along its facing
-    /// `dir` (unit, world): the nearest hostile live missile within its reach and arc (ties: the lower id), else
+    /// The target of point-defence gun `g` (of ship index `k`) firing from `from` along its facing `dir` (unit,
+    /// world): the nearest hostile live missile within its reach and arc that it sees (ties: the lower id), else
     /// the nearest hostile vessel of at most its `ship_mass` whose centre of mass is (ties: the lower ship index).
-    pub(crate) fn defence_target(
-        &self,
-        owner: ShipId,
-        team: Option<Owner>,
-        g: &GunMount,
-        from: Vec2,
-        dir: Vec2,
-    ) -> Option<DefenceShot> {
+    /// Only the nearest [`tuning::DEFENCE_LOOKS`] candidates of each kind are checked for a line of sight
+    /// ([`Sim::defence_sees`]).
+    pub(crate) fn defence_target(&self, k: usize, g: &GunMount, from: Vec2, dir: Vec2) -> Option<DefenceShot> {
         let d = g.defence?;
+        let (owner, team) = (self.ships[k].id(), self.ships[k].team());
         let within = |to: Vec2, d2: f32| d2 <= g.range * g.range && dir.dot(to) >= d.arc_cos * sqrt(d2);
-        let mut best: Option<(f32, usize)> = None;
-        for (i, p) in self.projectiles.iter().enumerate() {
-            if p.missile.is_none() || p.life <= 0.0 || p.owner == owner || friendly(team, p.team) {
-                continue;
+        // The next candidate after `last` in (distance², index) order.
+        let next_missile = |last: Option<(f32, usize)>| {
+            let mut best: Option<(f32, usize)> = None;
+            for (i, p) in self.projectiles.iter().enumerate() {
+                if p.missile.is_none() || p.life <= 0.0 || p.owner == owner || friendly(team, p.team) {
+                    continue;
+                }
+                let to = p.pos - from;
+                let d2 = to.length_squared();
+                if within(to, d2) && last.is_none_or(|l| (d2, i) > l) && best.is_none_or(|b| (d2, i) < b) {
+                    best = Some((d2, i));
+                }
             }
-            let to = p.pos - from;
-            let d2 = to.length_squared();
-            if within(to, d2) && best.is_none_or(|(b, _)| d2 < b) {
-                best = Some((d2, i));
+            best
+        };
+        let mut last = None;
+        for _ in 0..tuning::DEFENCE_LOOKS {
+            let Some((d2, i)) = next_missile(last) else {
+                break;
+            };
+            if self.defence_sees(k, g.part, from, self.projectiles[i].pos, None) {
+                return Some(DefenceShot::Missile(i));
             }
-        }
-        if let Some((_, i)) = best {
-            return Some(DefenceShot::Missile(i));
+            last = Some((d2, i));
         }
         if d.ship_mass <= 0.0 {
             return None;
         }
-        let mut near: Option<(f32, Vec2)> = None;
-        for s in &self.ships {
-            let Some(c) = s.control_piece().and_then(|c| s.piece(c)) else {
-                continue;
-            };
-            if c.mass.mass > d.ship_mass || self.hostile_vessel(s.id(), owner, team).is_none() {
-                continue;
+        let next_vessel = |last: Option<(f32, usize)>| {
+            let mut best: Option<(f32, usize, Vec2)> = None;
+            for (j, s) in self.ships.iter().enumerate() {
+                let Some(c) = s.control_piece().and_then(|c| s.piece(c)) else {
+                    continue;
+                };
+                if c.mass.mass > d.ship_mass || self.hostile_vessel(s.id(), owner, team).is_none() {
+                    continue;
+                }
+                let at = c.com_world();
+                let to = at - from;
+                let d2 = to.length_squared();
+                if within(to, d2) && last.is_none_or(|l| (d2, j) > l) && best.is_none_or(|b| (d2, j) < (b.0, b.1)) {
+                    best = Some((d2, j, at));
+                }
             }
-            let at = c.com_world();
-            let to = at - from;
-            let d2 = to.length_squared();
-            if within(to, d2) && near.is_none_or(|(b, _)| d2 < b) {
-                near = Some((d2, at));
+            best
+        };
+        let mut last = None;
+        for _ in 0..tuning::DEFENCE_LOOKS {
+            let (d2, j, at) = next_vessel(last)?;
+            if self.defence_sees(k, g.part, from, at, Some(self.ships[j].id())) {
+                return Some(DefenceShot::Vessel(at));
             }
+            last = Some((d2, j));
         }
-        near.map(|(_, at)| DefenceShot::Vessel(at))
+        None
+    }
+
+    /// Point defence's line of sight (lead default): the line from the target at `at` back to the muzzle `from` of
+    /// gun part `gun` of ship index `k` meets no hull (its own ship's, an ally's or an enemy's) and no rock before
+    /// it reaches the gun's own part. A vessel target's own bodies (`target`) do not block it. One ray cast.
+    fn defence_sees(&self, k: usize, gun: PartIdx, from: Vec2, at: Vec2, target: Option<ShipId>) -> bool {
+        let off = from - at;
+        let len = off.length();
+        if len <= tuning::DEFENCE_SLACK {
+            return true;
+        }
+        let dir = off * (1.0 / len);
+        match self.cast_part(at, dir, len - tuning::DEFENCE_SLACK, |key| Some(key.ship) == target) {
+            None => true,
+            Some(Cast::Part(h)) => h.k == k && h.part == gun,
+            Some(Cast::Rock(_)) => false,
+        }
     }
 
     /// A point-defence shot of `damage` from `from` takes hit points off missile `i` (the index in the live

@@ -1088,7 +1088,7 @@ impl Sim {
                         // Point defence (`missile.rs`): at a missile, else a small vessel; no target, it holds.
                         Delivery::Pulse { .. } if g.defence.is_some() => {
                             use super::missile::DefenceShot;
-                            let to = match self.defence_target(owner, team, &g, from, dir) {
+                            let to = match self.defence_target(k, &g, from, dir) {
                                 Some(DefenceShot::Missile(i)) => self.shoot_missile(i, g.shot_damage),
                                 Some(DefenceShot::Vessel(at)) => {
                                     let off = at - from;

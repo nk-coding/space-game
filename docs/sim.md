@@ -1774,7 +1774,11 @@ deals `damage / rate / salvo` (`GunMount::shot_damage`).
   the guns). With no missile in reach it shoots at the nearest hostile vessel of at most `ship_mass` t (its
   controlling piece) within reach and arc, a hit-scan pulse at its centre of mass; with neither it holds, ready.
   Point defence is left out of fire at will, the smart lock aim, firepower and reach (`gun_works`), and of the
-  runner's closing reach. The PD shot sees no line of sight to a missile (missiles have no colliders; lead default).
+  runner's closing reach. **Line of sight** (19 Oct 2026, lead default): a turret shoots only what it sees, one
+  ray cast (`cast_part`) from the target back to its muzzle that meets no hull (its own ship's, an ally's, an
+  enemy's, a wreck's; a vessel target's own bodies aside) and no rock before the turret's own part
+  (`Sim::defence_sees`); it looks at the nearest `DEFENCE_LOOKS` (3) missiles, then as many small vessels, and holds
+  when it sees none.
 - **Fire at will** launches when the target is within `missile::tuning::FIRE_CONE` (0.25 rad) of the launcher's
   facing (aimed at the target, not a lead point): the seeker does the rest.
 
