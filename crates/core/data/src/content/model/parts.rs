@@ -436,6 +436,26 @@ pub struct ScannerSpec {
     pub wake: f32,
 }
 
+/// A hangar (GDR-0018 "drones", GDR-0117): it holds `capacity` drones, small vessels of the ship `drone`, and launches
+/// them one by one while its vessel has a target; each drone it has lost is rebuilt in `rebuild` seconds at full
+/// power. Its drones fight what the carrier aims at and turn back when they are more than `leash` metres from it;
+/// when the hangar is destroyed or leaves its vessel's controlling piece, they die with it.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct HangarSpec {
+    /// The drone's ship (id); a drone carries no hangar of its own.
+    pub drone: String,
+    /// Drones it holds, out and in the bay together.
+    pub capacity: u32,
+    /// Seconds to rebuild one drone at full power.
+    pub rebuild: f32,
+    /// Metres from the carrier its drones may range.
+    pub leash: f32,
+}
+
+/// Most drones a hangar may hold (validation).
+pub const MAX_HANGAR: u32 = 16;
+
 /// Hosts a copy of the ship-mind (or an automaton mind) and runs behaviour rules.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -556,6 +576,9 @@ pub struct Part {
     pub gyro: Option<GyroSpec>,
     #[serde(default)]
     pub rcs: Option<RcsSpec>,
+    /// Launches drones (GDR-0117).
+    #[serde(default)]
+    pub hangar: Option<HangarSpec>,
     /// Destroyed, it explodes into its neighbours (GDR-0019, GDR-0084).
     #[serde(default)]
     pub explosion: Option<ExplosionSpec>,

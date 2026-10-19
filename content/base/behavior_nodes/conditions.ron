@@ -80,6 +80,14 @@
         role: Condition,
     ),
     (
+        id: "off_leash",
+        name: "Off the leash",
+        summary: "This drone is farther from its carrier than its hangar's leash.",
+        description: "Only drones are ever off the leash (GDR-0117): a drone flies what its carrier aims at, and this turns it back when the chase takes it too far. False for every other ship.",
+        tags: ["self"],
+        role: Condition,
+    ),
+    (
         id: "enemies_near",
         name: "Enemies near",
         summary: "How many active enemy ships are within the radius.",

@@ -11,10 +11,12 @@ pub const SYSTEM_COLORS: &[&str] = &[
     "logic",
     "cargo",
     "enemy",
+    // The Swarm's accent (GDR-0117): their parts' icons.
+    "swarm",
 ];
 
 /// `ship.armor` in `art/tokens.json`: armour tile tones.
-pub const ARMOR_TONES: &[&str] = &["steel", "composite", "reactive", "enemy", "tissue"];
+pub const ARMOR_TONES: &[&str] = &["steel", "composite", "reactive", "enemy", "tissue", "chitin"];
 
 /// `world.rock` in `art/tokens.json`: asteroid rock tones, each with `shadow`, `mid`, `lit` and `edge` (GDR-0104).
 pub const ROCK_TONES: &[&str] = &["iron", "ice", "slag"];

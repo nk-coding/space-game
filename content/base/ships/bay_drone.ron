@@ -1,0 +1,17 @@
+// Bay drone (GDR-0117): what the player's drone bay launches, grown round a nerve node as the Swarm grow theirs: a
+// stinger, the node and a jet in a line. PLACEHOLDER layout (lead default, 19 Oct 2026).
+(
+    id: "bay_drone",
+    name: "Bay drone",
+    summary: "A 1×3 drone of your drone bay: a stinger, a nerve node and a jet.",
+    description: "It flies the [[behavior:drone|drone]] behavior: it fights what its carrier aims at and comes back when it ranges past the bay's leash. It takes none of your mind's capacity, and it dies with its bay.",
+    tags: ["drone"],
+    faction: "ship_mind",
+    behavior: "drone",
+    size: (1, 3),
+    parts: [
+        (part: "stinger", x: 0, y: 0),
+        (part: "swarm_node", x: 0, y: 1),
+        (part: "swarm_jet", x: 0, y: 2),
+    ],
+)

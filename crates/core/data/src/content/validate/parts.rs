@@ -254,6 +254,26 @@ impl<'a> Validator<'a> {
                 self.err(p, "rcs", "hull parts cannot carry RCS nozzles");
             }
         }
+        if let Some(x) = &p.hangar {
+            match self.c.ships.get(&x.drone) {
+                None => self.err(p, "hangar.drone", format!("unknown ship `{}`", x.drone)),
+                Some(d) => {
+                    let carries = d.parts.iter().any(|q| self.c.parts.get(&q.part).is_some_and(|q| q.hangar.is_some()));
+                    if carries {
+                        self.err(p, "hangar.drone", format!("the drone `{}` carries a hangar itself", x.drone));
+                    }
+                }
+            }
+            if x.capacity == 0 {
+                self.err(p, "hangar.capacity", "must be at least 1");
+            }
+            self.count(p, "hangar.capacity", x.capacity, MAX_HANGAR);
+            self.number(p, "hangar.rebuild", x.rebuild, 0.0, true);
+            self.reach(p, "hangar.leash", x.leash);
+            if p.hull {
+                self.err(p, "hangar", "hull parts cannot be hangars");
+            }
+        }
         if let Some(x) = &p.shield {
             self.number(p, "shield.radius", x.radius, 0.0, true);
             self.number(p, "shield.capacity", x.capacity, 0.0, false);

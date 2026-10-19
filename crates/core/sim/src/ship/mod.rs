@@ -9,6 +9,7 @@
 //! `resolve_breakage`. The per-tick code walks compact cached rows and allocates nothing.
 
 mod caches;
+pub mod drones;
 mod living;
 mod piece;
 mod scan;
@@ -312,6 +313,10 @@ pub struct Ship {
     pub(crate) hull_base: f32,
     /// Seconds each heart (`ShipDesign::hearts`) has worked towards its next re-formed part (`living.rs`).
     pub(crate) regrowth: Vec<f32>,
+    /// Each hangar's bay (`ShipDesign::hangars`, `drones.rs`, GDR-0117).
+    pub(crate) bays: Vec<drones::Bay>,
+    /// A drone: the carrier and hangar it belongs to.
+    pub(crate) drone: Option<drones::Tie>,
 }
 
 impl Ship {
@@ -378,9 +383,12 @@ impl Ship {
             scan: Scan::Ready,
             hull_base: 0.0,
             regrowth: Vec::new(),
+            bays: Vec::new(),
+            drone: None,
         };
         ship.hull_base = ship.design.hp_total;
         ship.regrowth = vec![0.0; ship.design.hearts.len()];
+        ship.bays = ship.design.hangars.iter().map(|h| drones::Bay::full(h.capacity)).collect();
         let all: Vec<PartIdx> = (0..n as u32).collect();
         for &p in &all {
             ship.refresh_exposure(p);
@@ -750,6 +758,14 @@ impl StateHash for Ship {
         // Nothing for a ship without hearts, so worlds without them keep their hashes.
         for &t in &self.regrowth {
             h.f32(t);
+        }
+        // Nothing for a ship without hangars that is no drone either, likewise.
+        for b in &self.bays {
+            b.hash_state(h);
+        }
+        if let Some(t) = &self.drone {
+            h.u32(t.carrier.0);
+            h.u32(t.hangar);
         }
         self.cargo.hash_state(h);
         h.u32(self.parts.len() as u32);

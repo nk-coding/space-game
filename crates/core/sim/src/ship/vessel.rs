@@ -213,6 +213,9 @@ impl Ship {
             scan: crate::ship::Scan::Ready,
             hull_base: 0.0,
             regrowth: self.regrowth.clone(),
+            // A hangar that leaves with a split-off vessel starts empty: its drones stay tied to the parent's.
+            bays: self.design.hangars.iter().map(|_| crate::ship::drones::Bay::empty()).collect(),
+            drone: self.drone,
         };
         for i in 0..self.parts.len() {
             if !self.parts[i].alive {
@@ -249,12 +252,12 @@ impl Sim {
             .map(|&(_, s)| s)
     }
 
-    /// The owner's vessels, ascending ship id (no allocation).
+    /// The owner's vessels, ascending ship id, drones aside (`Sim::drones`, GDR-0117; no allocation).
     pub fn vessels(&self, owner: Owner) -> impl Iterator<Item = VesselInfo> + '_ {
         let focus = self.focus(owner);
         self.ships
             .iter()
-            .filter(move |s| s.owner == owner)
+            .filter(move |s| s.owner == owner && s.drone.is_none())
             .filter_map(move |s| self.info(s, focus))
     }
 
@@ -283,7 +286,7 @@ impl Sim {
         let running = self
             .ships
             .iter()
-            .filter(|s| s.owner == owner && s.is_vessel() && !s.dormant)
+            .filter(|s| s.owner == owner && s.is_vessel() && !s.dormant && s.drone.is_none())
             .map(|s| s.core_count())
             .sum();
         (running, self.config().mind_capacity(owner))
@@ -382,6 +385,10 @@ impl Sim {
         let Some(owner) = self.ships[k].team() else {
             return;
         };
+        // A drone is never its owner's focus (GDR-0117).
+        if self.ships[k].drone.is_some() {
+            return;
+        }
         let old = self.focus(owner);
         if old == Some(ship) {
             return;
@@ -465,7 +472,7 @@ impl Sim {
         };
         let mut best: Option<usize> = None;
         for (k, s) in self.ships.iter().enumerate() {
-            if s.team() != Some(owner) {
+            if s.team() != Some(owner) || s.drone.is_some() {
                 continue;
             }
             best = match best {
@@ -527,7 +534,8 @@ impl Sim {
                 later: self.focus(s.owner) != Some(s.id),
                 claim: s.claim,
                 k,
-                cores: s.core_count(),
+                // Drones take no mind capacity (GDR-0117): they always fit.
+                cores: if s.drone.is_some() { 0 } else { s.core_count() },
             });
         }
         rows.sort_unstable_by_key(|r| (r.owner, r.later, r.claim, r.k));

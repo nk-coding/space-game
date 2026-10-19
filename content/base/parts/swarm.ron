@@ -1,0 +1,119 @@
+// Parts of the Swarm, the middle band's race (GDR-0027: "drone floods from hive carriers"; GDR-0117), and the player's
+// drone bay learned from them. PLACEHOLDER NUMBERS (lead defaults, 19 Oct 2026, docs/results/swarm-balance-2026-10-19.md).
+// They use the Swarm's own system colour (`swarm`, art/tokens.json), so a Swarm ship reads apart from the automatons'
+// and the Grown's coral. Locked: a new game starts without them; the Swarm research family (`research/swarm.ron`)
+// unlocks the stinger and the drone bay, the nerve node, the jet and the brood hangar stay the Swarm's own.
+// `salvage`: data to the Swarm family; a destroyed nerve node leaves a nerve core, a brood hangar resin. A drone that
+// dies leaves nothing (GDR-0117): the hive's own parts are the salvage. `recipe`: what the workshop would fabricate
+// it from (GDR-0108; PLACEHOLDER amounts); only the stinger's and the drone bay's are ever used.
+[
+    // The Swarm's mind and power, in every drone and hive (GDR-0117: a drone's core-equivalent): a small hard knot
+    // that runs a drone's four rules and feeds its stinger and jet (2.5 MW of 4).
+    (
+        id: "swarm_node",
+        name: "Nerve node",
+        summary: "The Swarm's small, hard knot of nerves: it thinks for a drone or a hive and feeds it power.",
+        description: "A Swarm ship is a vessel while one of its nerve nodes lives. It runs a few rules and feeds the stingers, jets and hangars beside it. Destroyed, it leaves a [[material:nerve_core]] to scoop; salvaged, it gives Swarm research data, but no programmable matter.",
+        tags: ["swarm", "core"],
+        locked: true, // the Swarm's own: no research unlocks it
+        category: "logic",
+        icon: "swarm-node",
+        color: "swarm",
+        size: (1, 1),
+        build_points: 4,
+        mass: 1.2,
+        hp: 1.2,
+        power: (output: 4),
+        heat: (output: 0.6, limit: 4),
+        logic: (rule_slots: 4, control_capacity: 4),
+        sensor: (range: 700),
+        gyro: (torque: 120),
+        salvage: (family: "swarm", data: 3, fragment: {"nerve_core": 1}),
+        recipe: (materials: {"copper": 1, "nerve_core": 1, "resin": 2}),
+    ),
+    (
+        id: "swarm_jet",
+        name: "Swarm jet",
+        summary: "A light finned engine: little thrust, but the fastest rated speed in the galaxy.",
+        description: "It pushes a drone faster than any ship can fly, so a flood cannot be outrun, only fought. Its short plume burns what is right behind it.",
+        tags: ["swarm", "engine"],
+        locked: true,
+        category: "propulsion",
+        icon: "swarm-jet",
+        color: "swarm",
+        size: (1, 1),
+        build_points: 2,
+        mass: 0.8,
+        hp: 0.6,
+        power: (draw: 1),
+        heat: (output: 0.5, limit: 3),
+        engine: (thrust: 110, rated_speed: 28, gimbal: 8, plume: (length: 1.5, damage: 0.4, heat: 0.6)),
+        salvage: (family: "swarm", data: 1),
+        recipe: (materials: {"ceramic": 1, "copper": 1, "resin": 2}),
+    ),
+    (
+        id: "stinger",
+        name: "Stinger",
+        summary: "A small energy gun that stabs quick pulses at close range.",
+        description: "Short reach, little power, quick pulses. It is the Swarm's weapon of choice: every drone carries one, so a flood stings from every side at once. Energy: shield bubbles take all of it.",
+        tags: ["swarm"],
+        locked: true, // the Swarm research family unlocks it (`stingers`)
+        category: "weapons",
+        icon: "stinger",
+        color: "swarm",
+        size: (1, 1),
+        build_points: 2,
+        mass: 0.6,
+        hp: 0.6,
+        power: (draw: 1.5, tier: Low),
+        heat: (output: 0.6, limit: 3),
+        weapon: (family: Energy, damage: 0.6, range: 40, delivery: Pulse(rate: 3)),
+        salvage: (family: "swarm", data: 2),
+        recipe: (materials: {"copper": 1, "crystal": 1, "resin": 2}),
+    ),
+    // The Swarm's hangar (GDR-0117): six drones out of its mouth, one rebuilt every 7 s.
+    (
+        id: "brood_hangar",
+        name: "Brood hangar",
+        summary: "A Swarm hangar that holds six drones and launches them as soon as its ship has a target.",
+        description: "Its [[ship:swarm_drone|drones]] leave by its front side, one every few tenths of a second, and fight whatever their carrier aims at; each one lost is rebuilt in the bay. Destroy the hangar and every drone it launched dies with it. Destroyed, it leaves [[material:resin]].",
+        lore: "The brood never leaves the hive for long, and never alone.",
+        tags: ["swarm", "hangar"],
+        locked: true, // the Swarm's own: the player's is the drone bay
+        category: "weapons",
+        icon: "brood-hangar",
+        color: "swarm",
+        size: (2, 2),
+        build_points: 8,
+        control_cost: 2,
+        mass: 6,
+        hp: 5,
+        power: (draw: 2.5),
+        heat: (output: 1, limit: 5),
+        hangar: (drone: "swarm_drone", capacity: 6, rebuild: 7, leash: 450),
+        salvage: (family: "swarm", data: 6, fragment: {"resin": 2}),
+        recipe: (materials: {"copper": 2, "nerve_core": 2, "resin": 6, "steel": 2}),
+    ),
+    // The player's hangar (GDR-0117), learned from the brood hangar: three drones, slower to rebuild, a shorter leash.
+    (
+        id: "drone_bay",
+        name: "Drone bay",
+        summary: "A hangar for three small drones that fight whatever your ship has locked.",
+        description: "While its ship has a target (your lock, or its behavior's), it launches its [[ship:bay_drone|drones]] by its front side, one by one; they fly the [[behavior:drone|drone]] behavior and turn back when they range too far from the ship. Each one lost is rebuilt in the bay. Destroy the bay and its drones die with it. Drones take none of your mind's capacity. Keep its front side open: a part right in front of it closes the bay.",
+        tags: ["swarm", "hangar"],
+        locked: true, // the Swarm research family unlocks it (`drone_bay`)
+        category: "weapons",
+        icon: "drone-bay",
+        color: "swarm",
+        size: (2, 2),
+        build_points: 8,
+        control_cost: 2,
+        mass: 6,
+        hp: 4,
+        power: (draw: 4),
+        heat: (output: 1, limit: 4),
+        hangar: (drone: "bay_drone", capacity: 3, rebuild: 10, leash: 300),
+        salvage: (family: "swarm", data: 4),
+        recipe: (materials: {"copper": 2, "nerve_core": 2, "resin": 4, "steel": 4}),
+    ),
+]

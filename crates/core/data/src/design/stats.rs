@@ -55,6 +55,9 @@ pub const BUILTIN_STATS: &[&str] = &[
     "scan_charge",
     "scan_cooldown",
     "scan_wake",
+    "drone_capacity",
+    "drone_rebuild",
+    "drone_leash",
     "mass_per_cell",
     "hp_per_cell",
     "build_point_factor",
@@ -344,6 +347,11 @@ impl Content {
             v.push(("scan_charge", x.charge));
             v.push(("scan_cooldown", x.cooldown));
             v.push(("scan_wake", x.wake));
+        }
+        if let Some(x) = &part.hangar {
+            v.push(("drone_capacity", x.capacity as f32));
+            v.push(("drone_rebuild", x.rebuild));
+            v.push(("drone_leash", x.leash));
         }
         if let Some(x) = &part.explosion {
             v.push(("blast_damage", x.damage));

@@ -183,6 +183,8 @@ pub struct Sim {
     pub(crate) salvage: SalvageState,
     /// The voyage underway, if any (`voyage/mod.rs`).
     pub(crate) voyage: Option<Box<Voyage>>,
+    /// The drone pass's live drones (scratch, reused; `ship/drones.rs`).
+    pub(crate) drone_scratch: Vec<crate::ship::drones::Tie>,
 }
 
 impl Sim {
@@ -224,6 +226,7 @@ impl Sim {
             mind_scratch: Vec::new(),
             salvage: SalvageState::default(),
             voyage: None,
+            drone_scratch: Vec::new(),
         }
     }
 
@@ -847,6 +850,8 @@ impl Sim {
             }
         }
         self.ram();
+        // Drones: lost ones go, hangars rebuild and launch (GDR-0117).
+        self.drones_step();
         // The voyage director: sites spawn, wake and clear around the vessels as they are now.
         self.direct_voyage();
 

@@ -39,7 +39,7 @@ pub use assist::{AssistState, AssistSwitch, Channel, StationPoint};
 pub(crate) use assist::{assist_all, assist_plan};
 pub use compile::{AimAt, action_decides, action_needs_target};
 pub use eval::{BehaviorState, RuleStatus, Why};
-pub(crate) use eval::{Scratch, fly, guns_at_will, guns_mining, think_all};
+pub(crate) use eval::{Scratch, aims_at, fly, guns_at_will, guns_mining, think_all};
 pub use script::{SCRIPT_API, ScriptFault, ShipView};
 
 use crate::ship::design::ShipDesign;
@@ -151,6 +151,7 @@ pub const BUILTIN_NODES: &[NodeSig] = {
         node("target_hull", Condition, Some(Percent), &[]),
         node("target_on_me", Condition, None, &[]),
         node("under_attack", Condition, None, &[]),
+        node("off_leash", Condition, None, &[]),
         node("enemies_near", Condition, Some(Count), DIST),
         node("missiles_incoming", Condition, Some(Count), &[]),
         node(

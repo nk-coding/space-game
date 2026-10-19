@@ -1,0 +1,33 @@
+// The Swarm's materials (GDR-0027, GDR-0031; GDR-0117): chitin, their armour; resin, the glue of their hangars; nerve
+// cores, what is left of a nerve node. PLACEHOLDER NUMBERS (lead defaults, 19 Oct 2026). What gives them lives in the
+// salvage blocks, recipes and trails that name them: Swarm hulls give chitin's data, destroyed brood hangars resin,
+// destroyed nerve nodes nerve cores, and a hive beaten at the end of its trail both.
+[
+    (
+        id: "chitin",
+        name: "Chitin",
+        summary: "The Swarm's light, layered shell plating.",
+        description: "Lighter than steel and a little tougher, quick to build, and good against blasts: its layers spread a warhead's force. The Swarm research family's first node unlocks it for your hull parts.",
+        tags: ["swarm"],
+        locked: true, // the Swarm research family unlocks it (`chitin_plating`)
+        icon: "armor-chitin",
+        armor: (tone: "chitin", mass_per_cell: 1.3, hp_per_cell: 1.2, build_point_factor: 1.1, blast_factor: 0.4),
+        salvage: (family: "swarm", data: 1),
+    ),
+    (
+        id: "resin",
+        name: "Hive resin",
+        summary: "The amber glue the Swarm build their hangars and stingers from.",
+        description: "A destroyed [[part:brood_hangar]] leaves a fragment of it to scoop, and a beaten hive gives more. Researching [[material:chitin]] takes it, and so do the [[part:stinger]]'s and the [[part:drone_bay]]'s recipes.",
+        tags: ["swarm"],
+        icon: "resin",
+    ),
+    (
+        id: "nerve_core",
+        name: "Nerve core",
+        summary: "The hard heart of a Swarm nerve node, still faintly twitching.",
+        description: "A destroyed [[part:swarm_node]] leaves one to scoop; drones leave nothing, so it comes from carriers, spitters and the hives. The [[part:drone_bay]]'s research and recipe take it: a bay grows its drones round one.",
+        tags: ["swarm"],
+        icon: "nerve-core",
+    ),
+]

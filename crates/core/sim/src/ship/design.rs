@@ -301,6 +301,23 @@ pub struct GunSpec {
     pub group: u8,
 }
 
+/// A hangar's static mount (GDR-0117): where its drones leave, which way, and the drone they are.
+#[derive(Clone, Debug)]
+pub struct HangarMount {
+    pub part: PartIdx,
+    /// Centre of the side the drones leave by (the part's forward side), blueprint frame.
+    pub mouth: [f32; 2],
+    pub facing: Dir,
+    /// The cells straight in front of that side: a drone leaves only while none of them holds a part.
+    pub front: Vec<(i32, i32)>,
+    /// Drones it holds, seconds to rebuild one, metres they may range (content `hangar`).
+    pub capacity: u32,
+    pub rebuild: f32,
+    pub leash: f32,
+    /// The drone's design (compiled with the carrier's upgrades).
+    pub drone: std::sync::Arc<ShipDesign>,
+}
+
 /// An engine's static mount.
 #[derive(Clone, Debug)]
 pub struct EngineSpec {
@@ -349,6 +366,8 @@ pub struct ShipDesign {
     pub scanners: Vec<PartIdx>,
     /// Hearts, ascending (`ship/living.rs`).
     pub hearts: Vec<PartIdx>,
+    /// Hangars, ascending part (`ship/drones.rs`, GDR-0117).
+    pub hangars: Vec<HangarMount>,
     /// Parts that heal (`PartSpec::heal` above 0), ascending.
     pub healing: Vec<PartIdx>,
     /// Parts that block each gun's line of fire (cells straight ahead, to the grid edge), per gun slot.
@@ -637,6 +656,7 @@ impl ShipDesign {
         let mut engines = Vec::new();
         let mut guns = Vec::new();
         let mut gun_blockers = Vec::new();
+        let mut hangars = Vec::new();
         let mut plume_lanes = Vec::new();
         let mut plume_path = Vec::new();
         for (i, spec) in parts.iter().enumerate() {
@@ -671,6 +691,41 @@ impl ShipDesign {
                 });
                 gun_blockers.push(line_of_fire_blockers(&grid, i, facing, bounds));
             }
+            if let Some(hs) = &defs[i].hangar {
+                let bp = content
+                    .ships
+                    .get(&hs.drone)
+                    .ok_or_else(|| format!("ship `{}` part {i}: unknown drone `{}`", ship.id, hs.drone))?;
+                let drone = ShipDesign::compile_upgraded(content, bp, upgrades)?;
+                if !drone.hangars.is_empty() {
+                    return Err(format!("ship `{}` part {i}: the drone `{}` carries a hangar", ship.id, hs.drone));
+                }
+                hangars.push(HangarMount {
+                    part: i as u32,
+                    mouth: match facing {
+                        Dir::Up => [x + w / 2.0, y],
+                        Dir::Down => [x + w / 2.0, y + h],
+                        Dir::Left => [x, y + h / 2.0],
+                        Dir::Right => [x + w, y + h / 2.0],
+                    },
+                    facing,
+                    front: {
+                        let (sx, sy) = (shape.x, shape.y);
+                        let (sw, sh) = shape.dims();
+                        let (sw, sh) = (sw as i32, sh as i32);
+                        match facing {
+                            Dir::Up => (0..sw).map(|k| (sx + k, sy - 1)).collect(),
+                            Dir::Down => (0..sw).map(|k| (sx + k, sy + sh)).collect(),
+                            Dir::Left => (0..sh).map(|k| (sx - 1, sy + k)).collect(),
+                            Dir::Right => (0..sh).map(|k| (sx + sw, sy + k)).collect(),
+                        }
+                    },
+                    capacity: hs.capacity,
+                    rebuild: hs.rebuild,
+                    leash: hs.leash,
+                    drone: std::sync::Arc::new(drone),
+                });
+            }
         }
 
         let (blast, blast_cover) = blast_targets(&grid, &parts);
@@ -694,6 +749,7 @@ impl ShipDesign {
             sensors,
             scanners,
             hearts,
+            hangars,
             healing,
             gun_blockers: Csr::from_lists(gun_blockers),
             plume_lanes,

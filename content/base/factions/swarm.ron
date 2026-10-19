@@ -1,0 +1,10 @@
+(
+    id: "swarm",
+    name: "The Swarm",
+    summary: "A hostile race of the middle band that fights in floods of drones launched from hive carriers.",
+    description: "The Swarm never talk and never wait: a carrier launches its drones the moment it sees you, and the drones fight whatever it aims at. Kill the hangar and its drones die with it. Hives, the great anchored nests of the middle band, are their bosses, and their patrols raid the Grown's groves past the band's border.",
+    tags: ["enemy"],
+    glow: "enemy",
+    // Ships without one of their own (GDR-0117).
+    behavior: "swarm_spitter",
+)

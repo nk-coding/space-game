@@ -1,0 +1,21 @@
+// Swarm drone (GDR-0117): what a brood hangar launches. A stinger at the nose between two chitin shoulders, a nerve
+// node behind it and a jet at the tail: fast, fragile, and one of many. It dies with its hangar and leaves no wreck.
+// Not tagged `enemy`: it never comes in a wave of its own. PLACEHOLDER layout (lead default, 19 Oct 2026).
+(
+    id: "swarm_drone",
+    name: "Swarm drone",
+    summary: "A 3×3 dart of chitin with a stinger in its nose, launched by the dozen from a brood hangar.",
+    description: "Faster than any ship, so a flood cannot be outrun: it fights whatever its carrier aims at and comes back when it strays too far. Shoot its [[part:swarm_node|nerve node]] and it is gone; destroy its [[part:brood_hangar|hangar]] and every drone that hangar launched dies with it.",
+    lore: "No two of them are quite alike, and none of them lives long.",
+    tags: ["swarm", "drone", "middle"],
+    faction: "swarm",
+    behavior: "drone",
+    size: (3, 3),
+    parts: [
+        (part: "slope_1x1", x: 0, y: 0, flip: true, material: "chitin"),
+        (part: "stinger", x: 1, y: 0),
+        (part: "slope_1x1", x: 2, y: 0, material: "chitin"),
+        (part: "swarm_node", x: 1, y: 1),
+        (part: "swarm_jet", x: 1, y: 2),
+    ],
+)

@@ -981,6 +981,18 @@ impl Ctx<'_> {
         best.map(|(_, d, k, ts)| (k, ts, d))
     }
 
+    /// A drone more than its hangar's leash from its carrier (centres of mass of the controlling pieces; GDR-0117).
+    /// False for every other ship, and for a drone whose carrier is gone (it dies in the drone pass).
+    fn off_leash(&self) -> bool {
+        let me = self.me;
+        let Some(t) = me.drone() else { return false };
+        let Some(c) = find_ship(self.world, t.carrier) else { return false };
+        let (Some(leash), Some(ts)) = (c.design().hangars.get(t.hangar as usize).map(|h| h.leash), centre(c)) else {
+            return false;
+        };
+        (ts.pos - self.kin().pos).length_squared() > leash * leash
+    }
+
     fn under_attack(&mut self) -> bool {
         if let Some(v) = self.lazy.under_attack {
             return v;
@@ -1029,6 +1041,7 @@ impl Ctx<'_> {
                 Ok((v, None))
             }
             Test::Flag(Flag::UnderAttack) => Ok((self.under_attack(), None)),
+            Test::Flag(Flag::OffLeash) => Ok((self.off_leash(), None)),
             Test::Flag(Flag::CanStopStraight) => Ok((can_stop_straight(self.kin()), None)),
             Test::Flag(Flag::LockHeld) => Ok((self.pilot.ok_or(Why::NoValue)?.lock, None)),
             Test::Flag(Flag::TargetOnMe) => {

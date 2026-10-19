@@ -1,0 +1,40 @@
+// The Swarm research family (GDR-0027: each race teaches its own tech branch; GDR-0117): what the middle band's
+// Swarm teach, paid with the data their salvage gives (every Swarm part and chitin hull gives `swarm` data) and with
+// their materials. One chain of three, so the research screen keeps a single row for it: their chitin first, then
+// their stinger, the drone bay last and dearest (it takes nerve cores). The nerve node, the jet and the brood hangar
+// stay the Swarm's own. PLACEHOLDER NUMBERS (lead defaults, 19 Oct 2026): a carrier's wrecks give about 30-40
+// Swarm data, so the first node comes with the first brood nest and the drone bay after three or four Swarm sites.
+[
+    (
+        id: "chitin_plating",
+        name: "Chitin plating",
+        summary: "The Swarm's light, layered shell, for your own hulls.",
+        description: "Unlocks [[material:chitin]] for every hull part: lighter than steel, a little tougher, quick to build and good against blasts. Learning to lay it takes [[material:resin|hive resin]].",
+        family: "swarm",
+        kind: Variant,
+        cost: (data: {"swarm": 10}, materials: {"resin": 3}),
+        unlocks: [Material("chitin")],
+    ),
+    (
+        id: "stingers",
+        name: "Stingers",
+        summary: "The Swarm's small, quick energy gun.",
+        description: "Unlocks the [[part:stinger]]: a short reach, little power and quick pulses. Every drone carries one.",
+        family: "swarm",
+        kind: Alien,
+        cost: (data: {"swarm": 16, "energy": 4}),
+        requires: ["chitin_plating"],
+        unlocks: [Part("stinger")],
+    ),
+    (
+        id: "drone_bay",
+        name: "Drone bay",
+        summary: "A hangar of your own: three drones that fight whatever your ship has locked.",
+        description: "Unlocks the [[part:drone_bay]]. Its [[ship:bay_drone|drones]] launch while the ship has a target, fight it, come back when they range too far, and die with the bay; they take none of your mind's capacity. Growing a drone's mind takes [[material:nerve_core|nerve cores]].",
+        family: "swarm",
+        kind: Alien,
+        cost: (data: {"swarm": 28, "utility": 4}, materials: {"nerve_core": 3}),
+        requires: ["stingers"],
+        unlocks: [Part("drone_bay")],
+    ),
+]

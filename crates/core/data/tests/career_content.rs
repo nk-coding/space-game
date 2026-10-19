@@ -575,6 +575,7 @@ fn base_families() {
             ("logic", Some("logic")),
             ("utility", Some("cargo")),
             ("grown", Some("enemy")),
+            ("swarm", Some("swarm")),
         ]
     );
 }
@@ -613,15 +614,18 @@ fn base_salvage_blocks() {
     }
     // A destroyed core leaves a fragment of programmable matter (GDR-0063), and its recipe takes some (GDR-0031:
     // it hosts a copy of you); nothing else leaves one, and the Grown's ganglion neither (GDR-0103: the Grown are not
-    // precursor work). A Grown heart leaves heartwood instead (18 Oct 2026).
+    // precursor work). A Grown heart leaves heartwood instead (18 Oct 2026). The Swarm's nerve node is no precursor
+    // core either: it leaves a nerve core, and their brood hangar resin (GDR-0117).
     for p in c
         .parts
         .iter()
         .filter_map(|p| p.salvage.as_ref().map(|s| (p, s)))
     {
-        let core = p.0.logic.is_some() && !p.0.tags.iter().any(|t| t == "grown");
+        let race = p.0.tags.iter().any(|t| t == "grown" || t == "swarm");
+        let core = p.0.logic.is_some() && !race;
         let heart = p.0.heart.is_some();
-        assert_eq!(!p.1.fragment.is_empty(), core || heart, "{}", p.0.id);
+        let swarm = matches!(p.0.id.as_str(), "swarm_node" | "brood_hangar");
+        assert_eq!(!p.1.fragment.is_empty(), core || heart || swarm, "{}", p.0.id);
         let pm = p.0.recipe.as_ref().is_some_and(|r| r.materials.contains_key("programmable_matter"));
         assert!(!core || pm, "{}", p.0.id);
         // Every part but hull has a recipe (GDR-0108).
@@ -629,6 +633,8 @@ fn base_salvage_blocks() {
     }
     assert_eq!(part("automaton_core").fragment["programmable_matter"], 1);
     assert_eq!(part("grown_heart").fragment.get("heartwood"), Some(&1));
+    assert_eq!(part("swarm_node").fragment.get("nerve_core"), Some(&1));
+    assert_eq!(part("brood_hangar").fragment.get("resin"), Some(&2));
     let hull = |id: &str| c.materials.get(id).unwrap().salvage.clone().unwrap();
     assert_eq!(
         (hull("steel").family.as_str(), hull("steel").data),
@@ -669,6 +675,11 @@ fn base_locks_follow_the_early_game_kit() {
             "fusion_reactor",
             "compact_reactor",
             "torch_drive",
+            "swarm_node", // the Swarm's own (GDR-0117), like the ganglion, the jet and the brood hangar
+            "swarm_jet",
+            "stinger", // the Swarm family unlocks it and the drone bay (GDR-0117)
+            "brood_hangar",
+            "drone_bay",
             "beam_laser",
             "reverse_engineered_cannon",
             "burst_laser",
@@ -684,7 +695,7 @@ fn base_locks_follow_the_early_game_kit() {
         .collect();
     assert_eq!(
         locked_materials,
-        ["composite", "reactive", "automaton_plate", "grown_tissue"]
+        ["composite", "reactive", "automaton_plate", "grown_tissue", "chitin"]
     );
     let open_frames: Vec<&str> = c
         .frames
@@ -731,6 +742,9 @@ fn base_research_nodes() {
             "burst_laser",
             "long_cannon",
             "compact_reactor",
+            "chitin_plating",
+            "stingers",
+            "drone_bay",
             "shield_regen_1",
             "shield_regen_2",
             "shield_regen_3",

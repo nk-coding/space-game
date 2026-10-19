@@ -69,6 +69,8 @@ pub enum Flag {
     CanStopStraight,
     /// The pilot holds a lock (pilot assists only).
     LockHeld,
+    /// A drone beyond its hangar's leash (GDR-0117).
+    OffLeash,
 }
 
 /// What the pilot's `idle` condition times (pilot assists only).
@@ -368,6 +370,7 @@ fn conditions(rule: &data::behavior::Rule, line: LineRef, vocab: &Vocab, conds: 
                 "shield_down" => Test::Flag(Flag::ShieldDown),
                 "target_on_me" => Test::Flag(Flag::TargetOnMe),
                 "under_attack" => Test::Flag(Flag::UnderAttack),
+                "off_leash" => Test::Flag(Flag::OffLeash),
                 "can_stop_straight" => Test::Flag(Flag::CanStopStraight),
                 "lock_held" => Test::Flag(Flag::LockHeld),
                 "target_in_range" => Test::InRange(dist(args[0])),

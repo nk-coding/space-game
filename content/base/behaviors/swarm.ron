@@ -1,0 +1,57 @@
+// The Swarm's tactics (GDR-0027, GDR-0117). Drones fly what their carrier aims at (`locked`: the carrier is their
+// leader) and come back when the chase takes them past their hangar's leash; between fights they keep near the
+// carrier. Spitters close in and circle like a raider pack; a carrier holds back at the edge of its drones' reach
+// and lets them work; a hive turns and holds. Stingers reach 40 m, so the shares of the weapon reach are short.
+// Each fits a nerve node's four rule slots. PLACEHOLDER (lead defaults, 19 Oct 2026; docs/results/swarm-balance-2026-10-19.md).
+[
+    (
+        id: "drone",
+        name: "Drone",
+        summary: "Fight whatever the carrier aims at, circling in close; come back when off the leash.",
+        description: "Attacks only the [[behavior_node:locked|carrier's target]]. In reach it circles at close range for four seconds of every six and dives in for the other two. When it ranges [[behavior_node:off_leash|too far from its carrier]] it turns back; with no target it [[behavior_node:escort|keeps near the carrier]].",
+        tags: ["drone", "attack"],
+        target: "locked",
+        rules: [
+            "when off_leash -> escort(30m) # past the hangar's leash: back to the carrier",
+            "when target_in_range(100%) and cycle(6s) >= 2s -> orbit(70%)",
+            "always -> approach(50%)",
+            "always -> escort(30m) # nothing to fight: keep near the carrier",
+        ],
+    ),
+    (
+        id: "swarm_spitter",
+        name: "Spitter",
+        summary: "Close in with the stingers and circle the target, shooting.",
+        description: "Picks the nearest enemy. Within reach it circles at close range for five seconds of every eight and closes in for the other three.",
+        tags: ["swarm", "attack"],
+        target: "nearest",
+        rules: [
+            "when target_in_range(130%) and cycle(8s) >= 3s -> orbit(75%)",
+            "always -> approach(70%)",
+        ],
+    ),
+    (
+        id: "swarm_carrier",
+        name: "Hive carrier",
+        summary: "Hold back at a distance and let the drones fight.",
+        description: "Picks the nearest enemy and keeps 200 m from it, its nose on the target, while its drones close in. Badly hurt, it backs off further.",
+        tags: ["swarm", "carrier"],
+        target: "nearest",
+        rules: [
+            "when hull < 40% -> kite(350m)",
+            "always -> kite(200m)",
+        ],
+    ),
+    (
+        id: "swarm_hive",
+        name: "Hive",
+        summary: "Hold in place, turn the stingers onto the nearest enemy, and flood it with drones.",
+        description: "Picks the nearest enemy it can see: its drones launch at once. While the target is within the stingers' reach it turns onto it; otherwise it holds.",
+        tags: ["swarm", "station"],
+        target: "nearest",
+        rules: [
+            "when target_in_range(110%) -> face",
+            "always -> hold",
+        ],
+    ),
+]
