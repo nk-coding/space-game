@@ -30,7 +30,7 @@ use data::{Blueprint, Content};
 use kit::style::{Style, ui_color};
 use kit::ui_icons::{Glyph, Stroke, UiIcon};
 use kit::ui_kit::{
-    HudFonts, Edge, Hot, Pill, ScreenFx, ScreenPart, ScrollRows, Scrollbar, Tip, Tone, UiClick, UiInputSet, show_screen, UiStyleSet, label, number, prose, set_color, set_text,
+    CompactText, LayoutClass, HudFonts, Edge, Hot, Pill, ScreenFx, ScreenPart, ScrollRows, Scrollbar, Tip, Tone, UiClick, UiInputSet, show_screen, UiStyleSet, label, number, prose, set_color, set_text,
     spawn_brackets, spawn_close, spawn_head, spawn_pill, frame, tracked,
 };
 use world::career::{EscortDesigns, Granted, PlayerCareer, readiness_words, voyage_line};
@@ -42,27 +42,80 @@ use world::player::library::{DesignDoc, parts_size};
 use world::sim_bridge::GameContent;
 use world::storage::{Document, Storage};
 
-use crate::home::HomeAction;
+use crate::home::{COMPACT_TEXT, HomeAction, by_class};
 
 /// Escort slots the layout has (placeholder: the slice's mind grows to 4 cores, so at most 3 escorts fly).
 pub const MAX_ESCORTS: usize = 4;
-/// Design cards that fit side by side (the rest scroll by).
-const CARDS: usize = 4;
 /// Card nodes in the row's pool: a card node that shows another design builds its ship icon again (a blink), so
 /// the pool moves on rarely, by many cards at once.
 const CARD_POOL: usize = 12;
-/// A design card's width and the gap after it (logical px).
-const CARD_W: f32 = 292.0;
-const CARD_GAP: f32 = 14.0;
-/// The layout's size (logical px), like home's.
-const STAGE: Vec2 = Vec2::new(1280.0, 720.0);
-/// The flagship's box (centre and size) and the escort slots' boxes (centres, one size).
-const FLAGSHIP: (Vec2, Vec2) = (Vec2::new(640.0, 250.0), Vec2::new(320.0, 190.0));
-const SLOTS: [Vec2; MAX_ESCORTS] = [Vec2::new(250.0, 215.0), Vec2::new(1030.0, 215.0), Vec2::new(250.0, 395.0), Vec2::new(1030.0, 395.0)];
-const SLOT_BOX: Vec2 = Vec2::new(150.0, 96.0);
-/// The dotted formation ring round the flagship and its words, inside the slots, clear of every slot's words
-/// (centre and radii, stage px).
-const RING: (Vec2, Vec2) = (Vec2::new(640.0, 300.0), Vec2::new(280.0, 205.0));
+
+/// Where the layer's parts go (stage px). [`Lay::WIDE`]: a 1280 × 720 stage (home's UI scale grows it with the
+/// window). [`Lay::COMPACT`]: a phone's 844 × 390 at `compact_scale` (docs/client.md "Phones"): the slots' words
+/// beside their boxes (left of the left ones), a smaller flagship and ring, three narrower cards, no line about
+/// escorts.
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct Lay {
+    /// The phone's: a slot's words beside its box rather than under it, tighter cards.
+    compact: bool,
+    stage: Vec2,
+    /// The flagship's box (centre and size) and the escort slots' boxes (centres, one size).
+    flagship: (Vec2, Vec2),
+    slots: [Vec2; MAX_ESCORTS],
+    slot_box: Vec2,
+    /// The dotted formation ring round the flagship and its words, inside the slots, clear of every slot's words
+    /// (centre and radii).
+    ring: (Vec2, Vec2),
+    /// Design cards that fit side by side (the rest scroll by), a card's size and the gap after it, the row's top.
+    cards: usize,
+    card: Vec2,
+    card_gap: f32,
+    cards_y: f32,
+    /// The flagship's words' top, the list's head's top, the status line's top; the stage's side margin.
+    ship_words_y: f32,
+    list_head_y: f32,
+    status_y: f32,
+    side: f32,
+}
+
+impl Lay {
+    const WIDE: Lay = Lay {
+        compact: false,
+        stage: Vec2::new(1280.0, 720.0),
+        flagship: (Vec2::new(640.0, 250.0), Vec2::new(320.0, 190.0)),
+        slots: [Vec2::new(250.0, 215.0), Vec2::new(1030.0, 215.0), Vec2::new(250.0, 395.0), Vec2::new(1030.0, 395.0)],
+        slot_box: Vec2::new(150.0, 96.0),
+        ring: (Vec2::new(640.0, 300.0), Vec2::new(280.0, 205.0)),
+        cards: 4,
+        card: Vec2::new(292.0, 94.0),
+        card_gap: 14.0,
+        cards_y: 562.0,
+        ship_words_y: 359.0,
+        list_head_y: 540.0,
+        status_y: 676.0,
+        side: 36.0,
+    };
+    const COMPACT: Lay = Lay {
+        compact: true,
+        stage: Vec2::new(844.0, 390.0),
+        flagship: (Vec2::new(422.0, 116.0), Vec2::new(160.0, 88.0)),
+        slots: [Vec2::new(270.0, 104.0), Vec2::new(574.0, 104.0), Vec2::new(270.0, 190.0), Vec2::new(574.0, 190.0)],
+        slot_box: Vec2::new(96.0, 60.0),
+        ring: (Vec2::new(422.0, 132.0), Vec2::new(100.0, 110.0)),
+        cards: 3,
+        card: Vec2::new(262.0, 68.0),
+        card_gap: 10.0,
+        cards_y: 268.0,
+        ship_words_y: 166.0,
+        list_head_y: 250.0,
+        status_y: 346.0,
+        side: 16.0,
+    };
+
+    fn of(class: LayoutClass) -> Lay {
+        if class.is_compact() { Lay::COMPACT } else { Lay::WIDE }
+    }
+}
 /// The capacity dots top right.
 const DOTS: usize = 8;
 
@@ -143,12 +196,12 @@ pub fn flies<'a>(content: &'a Content, behaviors: &'a PlayerBehaviors, bp: &Blue
 
 /// The formation's line from the escort slot `k` to the flagship (stage px): a curve leaving the slot's box and
 /// the flagship's box sideways.
-fn formation_line(k: usize) -> Vec<Vec2> {
-    let (ship, size) = FLAGSHIP;
-    let at = SLOTS[k];
+fn formation_line(lay: &Lay, k: usize) -> Vec<Vec2> {
+    let (ship, size) = lay.flagship;
+    let at = lay.slots[k];
     let side = if at.x < ship.x { 1.0 } else { -1.0 };
-    let a = at + Vec2::new(side * SLOT_BOX.x / 2.0, 0.0);
-    let b = Vec2::new(ship.x - side * size.x / 2.0, ship.y + (at.y - RING.0.y) * 0.4);
+    let a = at + Vec2::new(side * lay.slot_box.x / 2.0, 0.0);
+    let b = Vec2::new(ship.x - side * size.x / 2.0, ship.y + (at.y - lay.ring.0.y) * 0.4);
     let pull = Vec2::new((b.x - a.x) * 0.5, 0.0);
     (0..=24)
         .map(|i| {
@@ -317,10 +370,12 @@ fn input(
     design: Res<PlayerDesign>,
     granted: Res<Granted>,
     content: Res<GameContent>,
+    class: Res<LayoutClass>,
 ) {
     if !fleet.open {
         return;
     }
+    let lay = Lay::of(*class);
     if keys.just_pressed(KeyCode::Escape) {
         match fleet.preview {
             Some(_) => fleet.preview = None,
@@ -337,7 +392,7 @@ fn input(
     let step = keys.just_pressed(KeyCode::ArrowRight) as i32 - keys.just_pressed(KeyCode::ArrowLeft) as i32;
     if step != 0 && !fleet.designs.is_empty() {
         // From the preview, else from the first card in view; the row scrolls to show it.
-        let pitch = CARD_W + CARD_GAP;
+        let pitch = lay.card.x + lay.card_gap;
         let last = fleet.designs.len() - 1;
         let next = match fleet.preview {
             Some(p) => (p as i32 + step).clamp(0, last as i32) as usize,
@@ -346,9 +401,9 @@ fn input(
         fleet.preview = Some(next);
         fleet.say = None;
         let x = next as f32 * pitch;
-        rows.scroll = rows.scroll.min(x).max(x + CARD_W - view);
+        rows.scroll = rows.scroll.min(x).max(x + lay.card.x - view);
     }
-    let w = ScrollRows::lay(&mut rows, &vec![CARD_W; fleet.designs.len()], CARD_GAP, view, CARD_POOL);
+    let w = ScrollRows::lay(&mut rows, &vec![lay.card.x; fleet.designs.len()], lay.card_gap, view, CARD_POOL);
     if (fleet.offset, fleet.seen_to) != (w.first, w.seen.1) {
         (fleet.offset, fleet.seen_to) = (w.first, w.seen.1);
     }
@@ -477,9 +532,12 @@ fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>, clear:
     let column = |gap: f32, at: Node| Node { flex_direction: FlexDirection::Column, align_items: AlignItems::Center, row_gap: px(gap), ..at };
     let placeholder = |size: f32| UiIcon::Glyph { glyph: Glyph::Formation, color: ui.dim.with_alpha(size) };
     let boxed = |accent: Tone| Pill { bare: true, ..Pill::new(accent) };
+    // Every part is laid out for both layout classes (`home::ByClass`).
+    let (wl, cl) = (Lay::WIDE, Lay::COMPACT);
     commands
         .spawn((
             FleetRoot,
+            CompactText(COMPACT_TEXT),
             world::backdrop::VeilsBackdrop,
             ScreenFx::closed().dimming(),
             Node { position_type: PositionType::Absolute, width: percent(100), height: percent(100), ..default() },
@@ -495,124 +553,159 @@ fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>, clear:
                 ..default()
             })
             .with_children(|centre| {
-                centre.spawn(Node { width: px(STAGE.x), height: px(STAGE.y), flex_shrink: 0.0, ..default() }).with_children(|stage| {
+                let stage_node = |l: &Lay| Node { width: px(l.stage.x), height: px(l.stage.y), flex_shrink: 0.0, ..default() };
+                centre.spawn(by_class(stage_node(&wl), stage_node(&cl))).with_children(|stage| {
                     // The formation ring and lines, under everything else.
-                    stage.spawn((Formation, ScreenPart::new(Edge::Fade, 1), UiIcon::Sketch(Vec::new()), abs(Vec2::ZERO, Some(STAGE))));
+                    stage.spawn((Formation, ScreenPart::new(Edge::Fade, 1), UiIcon::Sketch(Vec::new()), by_class(abs(Vec2::ZERO, Some(wl.stage)), abs(Vec2::ZERO, Some(cl.stage)))));
+                    // On a phone the line about escorts is left out.
                     stage.spawn((
                         ScreenPart::new(Edge::Fade, 1),
                         prose(fonts, "Escorts fly the behavior their design names and follow the flagship's lock.", 12.0, c(Tone::Label, 1.0)),
-                        abs(Vec2::new(28.0, 84.0), Some(Vec2::new(300.0, 40.0))),
+                        by_class(abs(Vec2::new(28.0, 84.0), Some(Vec2::new(300.0, 40.0))), Node { display: Display::None, ..default() }),
                     ));
 
                     // The flagship on the dock.
-                    let (centre_at, size) = FLAGSHIP;
-                    stage.spawn((ScreenPart::new(Edge::Fade, 1), abs(centre_at - size / 2.0, Some(size)))).with_children(|b| {
+                    let flagship = |l: &Lay| abs(l.flagship.0 - l.flagship.1 / 2.0, Some(l.flagship.1));
+                    stage.spawn((ScreenPart::new(Edge::Fade, 1), by_class(flagship(&wl), flagship(&cl)))).with_children(|b| {
                         spawn_brackets(b, 16.0, 1.4, c(Tone::Teal, 0.55));
-                        b.spawn((
-                            FleetIcon::Flagship,
-                            placeholder(0.5),
-                            Node { position_type: PositionType::Absolute, left: px(24), top: px(20), width: px(size.x - 48.0), height: px(size.y - 40.0), ..default() },
-                        ));
+                        let icon = |l: &Lay, inset: Vec2| Node {
+                            position_type: PositionType::Absolute,
+                            left: px(inset.x),
+                            top: px(inset.y),
+                            width: px(l.flagship.1.x - 2.0 * inset.x),
+                            height: px(l.flagship.1.y - 2.0 * inset.y),
+                            ..default()
+                        };
+                        b.spawn((FleetIcon::Flagship, placeholder(0.5), by_class(icon(&wl, Vec2::new(24.0, 20.0)), icon(&cl, Vec2::new(14.0, 10.0)))));
                     });
-                    stage.spawn((ScreenPart::new(Edge::Fade, 1), column(6.0, abs(Vec2::new(centre_at.x - 240.0, centre_at.y + size.y / 2.0 + 14.0), Some(Vec2::new(480.0, 90.0))))))
+                    let words = |l: &Lay, width: f32| column(if l.compact { 4.0 } else { 6.0 }, abs(Vec2::new(l.flagship.0.x - width / 2.0, l.ship_words_y), Some(Vec2::new(width, 90.0))));
+                    stage.spawn((ScreenPart::new(Edge::Fade, 1), by_class(words(&wl, 480.0), words(&cl, 200.0))))
                         .with_children(|t| {
-                            t.spawn(label(fonts, "FLAGSHIP  ·  THE DRYDOCK'S DESIGN", 8.5, c(Tone::Dim, 1.0)));
+                            // On a phone the short form, between the lower slots.
+                            let hidden = Node { display: Display::None, ..default() };
+                            t.spawn((label(fonts, "FLAGSHIP  ·  THE DRYDOCK'S DESIGN", 8.5, c(Tone::Dim, 1.0)), by_class(Node::default(), hidden.clone())));
+                            t.spawn((label(fonts, "FLAGSHIP", 8.5, c(Tone::Dim, 1.0)), by_class(hidden, Node::default())));
                             t.spawn((FleetText::ShipName, prose(fonts, "", 18.0, c(Tone::Number, 1.0))));
                             t.spawn((FleetText::ShipSub, label(fonts, "", 8.5, c(Tone::Dim, 1.0))));
                             t.spawn((FleetText::ShipVoyage, label(fonts, "", 8.5, c(Tone::Teal, 1.0))));
                         });
 
-                    // The escort slots.
-                    for (k, at) in SLOTS.iter().enumerate() {
-                        let side = if at.x < STAGE.x / 2.0 { Edge::Left } else { Edge::Right };
+                    // The escort slots: their words under the box, on a phone beside it (left of the left ones).
+                    for slot in 0..MAX_ESCORTS {
+                        let left = wl.slots[slot].x < wl.stage.x / 2.0;
+                        let side = if left { Edge::Left } else { Edge::Right };
                         // Gaps of 4 px: with 6 an upper slot's REMOVE ran into the box of the slot below it.
-                        stage.spawn((FleetNode::Slot(k), ScreenPart::new(side, 2), column(4.0, abs(Vec2::new(at.x - 120.0, at.y - SLOT_BOX.y / 2.0), Some(Vec2::new(240.0, 170.0))))))
+                        let wide = column(4.0, abs(Vec2::new(wl.slots[slot].x - 120.0, wl.slots[slot].y - wl.slot_box.y / 2.0), Some(Vec2::new(240.0, 170.0))));
+                        const BESIDE: Vec2 = Vec2::new(302.0, 80.0);
+                        let at = cl.slots[slot];
+                        let x = if left { at.x + cl.slot_box.x / 2.0 - BESIDE.x } else { at.x - cl.slot_box.x / 2.0 };
+                        let compact = Node {
+                            flex_direction: if left { FlexDirection::RowReverse } else { FlexDirection::Row },
+                            align_items: AlignItems::Center,
+                            column_gap: px(10),
+                            ..abs(Vec2::new(x, at.y - BESIDE.y / 2.0), Some(BESIDE))
+                        };
+                        let boxed_node = |l: &Lay| Node {
+                            width: px(l.slot_box.x),
+                            height: px(l.slot_box.y),
+                            flex_shrink: 0.0,
+                            border: UiRect::all(px(1.2)),
+                            border_radius: BorderRadius::all(px(12)),
+                            margin: UiRect::bottom(px(if l.compact { 0.0 } else { 2.0 })),
+                            ..default()
+                        };
+                        let icon = |l: &Lay, inset: Vec2| Node {
+                            position_type: PositionType::Absolute,
+                            left: px(inset.x),
+                            top: px(inset.y),
+                            width: px(l.slot_box.x - 2.0 * inset.x),
+                            height: px(l.slot_box.y - 2.0 * inset.y),
+                            ..default()
+                        };
+                        let texts = |align: AlignItems| Node { flex_direction: FlexDirection::Column, align_items: align, row_gap: px(4), ..default() };
+                        stage.spawn((FleetNode::Slot(slot), ScreenPart::new(side, 2), by_class(wide, compact)))
                             .with_children(|s| {
                                 s.spawn((
-                                    FleetButton::Slot(k),
+                                    FleetButton::Slot(slot),
                                     boxed(Tone::Teal),
                                     Hot::default(),
-                                    Node {
-                                        width: px(SLOT_BOX.x),
-                                        height: px(SLOT_BOX.y),
-                                        flex_shrink: 0.0,
-                                        border: UiRect::all(px(1.2)),
-                                        border_radius: BorderRadius::all(px(12)),
-                                        margin: UiRect::bottom(px(2)),
-                                        ..default()
-                                    },
+                                    by_class(boxed_node(&wl), boxed_node(&cl)),
                                     BorderColor::all(Color::NONE),
                                     BackgroundColor(Color::NONE),
                                 ))
                                 .with_children(|b| {
                                     spawn_brackets(b, 10.0, 1.2, c(Tone::Label, 0.45));
+                                    b.spawn((FleetIcon::Slot(slot), placeholder(0.6), by_class(icon(&wl, Vec2::new(16.0, 12.0)), icon(&cl, Vec2::new(10.0, 8.0)))));
                                     b.spawn((
-                                        FleetIcon::Slot(k),
-                                        placeholder(0.6),
-                                        Node { position_type: PositionType::Absolute, left: px(16), top: px(12), width: px(SLOT_BOX.x - 32.0), height: px(SLOT_BOX.y - 24.0), ..default() },
-                                    ));
-                                    b.spawn((
-                                        PreviewVeil(k),
+                                        PreviewVeil(slot),
                                         Node { position_type: PositionType::Absolute, width: percent(100), height: percent(100), border_radius: BorderRadius::all(px(12)), display: Display::None, ..default() },
                                         BackgroundColor(clear.0.with_alpha(0.5)),
                                     ));
                                 });
-                                s.spawn((FleetText::SlotHead(k), label(fonts, "", 8.5, c(Tone::Dim, 1.0))));
-                                s.spawn((FleetText::SlotName(k), prose(fonts, "", 15.0, c(Tone::Number, 1.0))));
-                                s.spawn((FleetText::SlotSub(k), label(fonts, "", 8.0, c(Tone::Dim, 1.0))));
-                                s.spawn((FleetNode::Remove(k), Node::default())).with_children(|r| {
-                                    spawn_pill(r, fonts, "REMOVE", 8.0, 22.0, None, Pill::new(Tone::Coral), FleetButton::Remove(k));
+                                let compact_align = if left { AlignItems::FlexEnd } else { AlignItems::FlexStart };
+                                s.spawn(by_class(texts(AlignItems::Center), texts(compact_align))).with_children(|t| {
+                                    t.spawn((FleetText::SlotHead(slot), label(fonts, "", 8.5, c(Tone::Dim, 1.0))));
+                                    t.spawn((FleetText::SlotName(slot), prose(fonts, "", 15.0, c(Tone::Number, 1.0))));
+                                    t.spawn((FleetText::SlotSub(slot), label(fonts, "", 8.0, c(Tone::Dim, 1.0))));
+                                    t.spawn((FleetNode::Remove(slot), Node::default())).with_children(|r| {
+                                        spawn_pill(r, fonts, "REMOVE", 8.0, 22.0, None, Pill::new(Tone::Coral), FleetButton::Remove(slot));
+                                    });
                                 });
                             });
                     }
 
                     // The player's designs.
-                    stage.spawn((FleetText::ListHead, ScreenPart::new(Edge::Bottom, 3), label(fonts, "", 9.0, c(Tone::Dim, 1.0)), abs(Vec2::new(36.0, 540.0), None)));
-                    stage
-                        .spawn((
-                            CardRow,
-                            Scrollbar::horizontal().outside(),
-                            ScrollRows::default(),
-                            ScreenPart::new(Edge::Bottom, 3),
-                            Node {
+                    let head = |l: &Lay| abs(Vec2::new(l.side, l.list_head_y), None);
+                    stage.spawn((FleetText::ListHead, ScreenPart::new(Edge::Bottom, 3), label(fonts, "", 9.0, c(Tone::Dim, 1.0)), by_class(head(&wl), head(&cl))));
+                    let row = |l: &Lay| Node {
                                 flex_direction: FlexDirection::Row,
-                                column_gap: px(CARD_GAP),
+                                column_gap: px(l.card_gap),
                                 overflow: Overflow::scroll_x(),
-                                ..abs(Vec2::new(36.0, 562.0), Some(Vec2::new(CARDS as f32 * (CARD_W + CARD_GAP) - CARD_GAP, 94.0)))
-                            },
-                        ))
+                                ..abs(Vec2::new(l.side, l.cards_y), Some(Vec2::new(l.cards as f32 * (l.card.x + l.card_gap) - l.card_gap, l.card.y)))
+                            };
+                    stage
+                        .spawn((CardRow, Scrollbar::horizontal().outside(), ScrollRows::default(), ScreenPart::new(Edge::Bottom, 3), by_class(row(&wl), row(&cl))))
                         .with_children(|row| {
+                            let card = |l: &Lay| Node {
+                                width: px(l.card.x),
+                                height: px(l.card.y),
+                                flex_shrink: 0.0,
+                                flex_direction: FlexDirection::Row,
+                                align_items: AlignItems::Center,
+                                column_gap: px(if l.compact { 10.0 } else { 14.0 }),
+                                padding: UiRect::horizontal(px(if l.compact { 10.0 } else { 12.0 })),
+                                border: UiRect::all(px(1.2)),
+                                border_radius: BorderRadius::all(px(14)),
+                                ..default()
+                            };
+                            // The ship's box: its size, the icon's inset.
+                            let ship = |size: Vec2, _: f32| Node { width: px(size.x), height: px(size.y), flex_shrink: 0.0, ..default() };
+                            let icon = |size: Vec2, inset: f32| Node {
+                                position_type: PositionType::Absolute,
+                                left: px(inset),
+                                top: px(inset),
+                                width: px(size.x - 2.0 * inset),
+                                height: px(size.y - 2.0 * inset),
+                                ..default()
+                            };
+                            let (wide_ship, phone_ship) = ((Vec2::new(104.0, 72.0), 8.0), (Vec2::new(78.0, 54.0), 6.0));
                             for k in 0..CARD_POOL {
                                 row.spawn((
                                     FleetNode::Card(k),
                                     FleetButton::Card(k),
                                     boxed(Tone::Teal),
                                     Hot::default(),
-                                    Node {
-                                        width: px(CARD_W),
-                                        height: px(94),
-                                        flex_shrink: 0.0,
-                                        flex_direction: FlexDirection::Row,
-                                        align_items: AlignItems::Center,
-                                        column_gap: px(14),
-                                        padding: UiRect::horizontal(px(12)),
-                                        border: UiRect::all(px(1.2)),
-                                        border_radius: BorderRadius::all(px(14)),
-                                        ..default()
-                                    },
+                                    by_class(card(&wl), card(&cl)),
                                     BorderColor::all(Color::NONE),
                                     BackgroundColor(Color::NONE),
                                 ))
                                 .with_children(|card| {
-                                    card.spawn(Node { width: px(104), height: px(72), flex_shrink: 0.0, ..default() }).with_children(|b| {
+                                    card.spawn(by_class(ship(wide_ship.0, wide_ship.1), ship(phone_ship.0, phone_ship.1))).with_children(|b| {
                                         spawn_brackets(b, 8.0, 1.0, c(Tone::Label, 0.35));
-                                        b.spawn((
-                                            FleetIcon::Card(k),
-                                            placeholder(0.5),
-                                            Node { position_type: PositionType::Absolute, left: px(8), top: px(8), width: px(88), height: px(56), ..default() },
-                                        ));
+                                        b.spawn((FleetIcon::Card(k), placeholder(0.5), by_class(icon(wide_ship.0, wide_ship.1), icon(phone_ship.0, phone_ship.1))));
                                     });
-                                    card.spawn(Node { flex_direction: FlexDirection::Column, row_gap: px(6), flex_shrink: 1.0, min_width: px(0), ..default() })
+                                    let texts = |gap: f32| Node { flex_direction: FlexDirection::Column, row_gap: px(gap), flex_shrink: 1.0, min_width: px(0), ..default() };
+                                    card.spawn(by_class(texts(6.0), texts(3.0)))
                                         .with_children(|t| {
                                             t.spawn((FleetText::CardName(k), prose(fonts, "", 14.0, c(Tone::Number, 1.0))));
                                             t.spawn((FleetText::CardSub(k), tracked(fonts, "", 7.5, c(Tone::Dim, 1.0), 0.15)));
@@ -621,7 +714,8 @@ fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>, clear:
                                 });
                             }
                         });
-                    stage.spawn((FleetText::Status, ScreenPart::new(Edge::Bottom, 3), label(fonts, "", 9.5, c(Tone::Teal, 1.0)), abs(Vec2::new(36.0, 676.0), Some(Vec2::new(1208.0, 30.0)))));
+                    let status = |l: &Lay| abs(Vec2::new(l.side, l.status_y), Some(Vec2::new(l.stage.x - 2.0 * l.side, 30.0)));
+                    stage.spawn((FleetText::Status, ScreenPart::new(Edge::Bottom, 3), label(fonts, "", 9.5, c(Tone::Teal, 1.0)), by_class(status(&wl), status(&cl))));
                 });
             });
             // Top left: the way back, where we are; top right: the mind's cores, CLOSE (the frame's corners, `ui_kit::frame`).
@@ -665,12 +759,14 @@ fn sync(
     mut nodes: Query<(&FleetNode, &mut Node, Option<&mut BackgroundColor>)>,
     mut veils: Query<(&PreviewVeil, &mut Node), Without<FleetNode>>,
     mut pills: Query<(&FleetButton, &mut Pill)>,
+    class: Res<LayoutClass>,
 ) {
     if !fleet.open
-        || !(fleet.is_changed() || career.is_changed() || granted.is_changed() || escorts.is_changed() || design.is_changed() || behaviors.is_changed())
+        || !(fleet.is_changed() || class.is_changed() || career.is_changed() || granted.is_changed() || escorts.is_changed() || design.is_changed() || behaviors.is_changed())
     {
         return;
     }
+    let lay = Lay::of(*class);
     let content = &content.0;
     let ui = &style.ui;
     let ids = career.career().escorts();
@@ -724,7 +820,7 @@ fn sync(
             FleetText::ListHead if fleet.designs.is_empty() => ("YOUR DESIGNS  ·  NONE SAVED YET  ·  SAVE ONE IN THE DRYDOCK".into(), Tone::Dim),
             FleetText::ListHead => {
                 let mut s = format!("YOUR DESIGNS  ·  PICK ONE FOR ESCORT {}", picked + 1);
-                if fleet.designs.len() > CARDS {
+                if fleet.designs.len() > lay.cards {
                     s.push_str(&format!("  ·  {} OF {}", fleet.seen_to, fleet.designs.len()));
                 }
                 (s, Tone::Dim)
@@ -801,15 +897,15 @@ fn sync(
     }
     // The formation: the dotted ring, a line from each escort to the flagship, dashed from the preview (coral when
     // it would be refused).
-    let mut strokes = vec![Stroke::Dots { centre: RING.0, radii: RING.1, step: 7.0, dot: 1.6, color: ui.label.with_alpha(0.4) }];
+    let mut strokes = vec![Stroke::Dots { centre: lay.ring.0, radii: lay.ring.1, step: 7.0, dot: 1.6, color: ui.label.with_alpha(0.4) }];
     for k in 0..escorts.0.len().min(MAX_ESCORTS) {
         if !previewing(k) {
-            strokes.push(Stroke::Line { points: formation_line(k), width: 1.2, dash: None, color: ui.teal.with_alpha(0.45) });
+            strokes.push(Stroke::Line { points: formation_line(&lay, k), width: 1.2, dash: None, color: ui.teal.with_alpha(0.45) });
         }
     }
     if let Some(p) = &preview_pick {
         let color = if p.is_ok() { ui.teal.with_alpha(0.6) } else { ui.coral.with_alpha(0.5) };
-        strokes.push(Stroke::Line { points: formation_line(picked), width: 1.2, dash: Some((5.0, 4.0)), color });
+        strokes.push(Stroke::Line { points: formation_line(&lay, picked), width: 1.2, dash: Some((5.0, 4.0)), color });
     }
     let sketch = UiIcon::Sketch(strokes);
     if **formation != sketch {
@@ -874,17 +970,19 @@ mod tests {
     /// holds the flagship's box and leaves every slot's box outside.
     #[test]
     fn formation_lines_join_the_boxes() {
-        let (ship, size) = FLAGSHIP;
-        let inside = |p: Vec2| ((p - RING.0) / RING.1).length_squared() < 1.0;
-        let corners = |c: Vec2, s: Vec2| [c - s / 2.0, c + s / 2.0, c + Vec2::new(s.x, -s.y) / 2.0, c - Vec2::new(s.x, -s.y) / 2.0];
-        assert!(corners(ship, size).into_iter().all(inside));
-        assert!(SLOTS.iter().all(|&at| corners(at, SLOT_BOX).into_iter().all(|p| !inside(p))));
-        for (k, at) in SLOTS.iter().enumerate() {
-            let line = formation_line(k);
-            let (a, b) = (line[0], line[line.len() - 1]);
-            assert!((a.x - at.x).abs() == SLOT_BOX.x / 2.0 && a.y == at.y, "{k} {a}");
-            assert_eq!((b.x - ship.x).abs(), size.x / 2.0, "{k}");
-            assert!((b.y - ship.y).abs() < size.y / 2.0 && (a.x - ship.x).abs() > (b.x - ship.x).abs(), "{k} {b}");
+        for lay in [Lay::WIDE, Lay::COMPACT] {
+            let (ship, size) = lay.flagship;
+            let inside = |p: Vec2| ((p - lay.ring.0) / lay.ring.1).length_squared() < 1.0;
+            let corners = |c: Vec2, s: Vec2| [c - s / 2.0, c + s / 2.0, c + Vec2::new(s.x, -s.y) / 2.0, c - Vec2::new(s.x, -s.y) / 2.0];
+            assert!(corners(ship, size).into_iter().all(inside));
+            assert!(lay.slots.iter().all(|&at| corners(at, lay.slot_box).into_iter().all(|p| !inside(p))));
+            for (k, at) in lay.slots.iter().enumerate() {
+                let line = formation_line(&lay, k);
+                let (a, b) = (line[0], line[line.len() - 1]);
+                assert!((a.x - at.x).abs() == lay.slot_box.x / 2.0 && a.y == at.y, "{k} {a}");
+                assert_eq!((b.x - ship.x).abs(), size.x / 2.0, "{k}");
+                assert!((b.y - ship.y).abs() < size.y / 2.0 && (a.x - ship.x).abs() > (b.x - ship.x).abs(), "{k} {b}");
+            }
         }
     }
 
