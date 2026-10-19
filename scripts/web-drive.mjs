@@ -82,10 +82,10 @@ for (const raw of steps.split(';').map(s => s.trim()).filter(Boolean)) {
       await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
       break;
     }
-    case 'shot': await page.screenshot({ path: path.join(outDir, a[0]), scale: dpr ? 'css' : 'device' }); console.log(`[shot] ${path.join(outDir, a[0])}`); break;
+    case 'shot': await page.screenshot({ path: path.join(outDir, a[0]), scale: dpr ? 'css' : 'device', timeout: 120000 }); console.log(`[shot] ${path.join(outDir, a[0])}`); break;
     case 'crop': {
       const to = path.join(outDir, a[4]);
-      await page.screenshot({ path: to, clip: { x: n(0), y: n(1), width: n(2), height: n(3) } });
+      await page.screenshot({ path: to, clip: { x: n(0), y: n(1), width: n(2), height: n(3) }, timeout: 120000 });
       console.log(`[crop] ${to}`);
       break;
     }
