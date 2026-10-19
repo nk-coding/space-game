@@ -725,7 +725,7 @@ fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>, conten
         ..default()
     };
     let list = |(at, size): (Vec2, Vec2)| Node { flex_direction: FlexDirection::Column, overflow: Overflow::scroll_y(), padding: UiRect::right(px(14)), ..abs(at, Some(size)) };
-    // Every part is laid out for both layout classes (`home::ByClass`).
+    // Every part is laid out for both layout classes (`kit::ui_kit::ByClass`).
     let (wl, cl) = (Lay::WIDE, Lay::COMPACT);
     let stage_node = |l: Lay| Node { width: px(l.stage.x), height: px(l.stage.y), flex_shrink: 0.0, ..default() };
     let parts = |l: Lay| Node { flex_direction: FlexDirection::Column, row_gap: px(10), ..abs(l.parts.0, Some(l.parts.1)) };

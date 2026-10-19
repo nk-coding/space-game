@@ -244,7 +244,7 @@ pub(super) fn role_color(ui: &UiPalette, role: NodeRole, rhai: bool) -> Color {
 pub(super) fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>) {
     let kit = Kit { fonts: &fonts, ui: style.ui, class: LayoutClass::Wide };
     let fonts = &*fonts;
-    // Every part placed for both layout classes (`home::ByClass`, scrolling areas `ScrollFit`): the wide layout as it
+    // Every part placed for both layout classes (`kit::ui_kit::ByClass`, scrolling areas `ScrollFit`): the wide layout as it
     // was, the phone layout (`C_*`, docs/plans/android.md 4.4); a part only one of them has is hidden in the other.
     let none = || Node { display: Display::None, ..default() };
     let row = |gap: f32| Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(gap), flex_shrink: 0.0, ..default() };
@@ -483,7 +483,7 @@ fn spawn_status(p: &mut ChildSpawnerCommands, kit: &Kit, node: impl Bundle) {
     ));
 }
 
-/// A scrolling area's wide and phone forms, as `home::ByClass`, keeping what the kit's `Scrollbar` writes into its
+/// A scrolling area's wide and phone forms, as `kit::ui_kit::ByClass`, keeping what the kit's `Scrollbar` writes into its
 /// node (the bar's gutter; the glow room, unless the phone's form has its own), which a swapped node would lose.
 #[derive(Component, Clone, Debug)]
 pub(super) struct ScrollFit {

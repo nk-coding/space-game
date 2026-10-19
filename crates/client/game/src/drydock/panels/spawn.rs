@@ -26,7 +26,7 @@ pub(in crate::drydock) fn spawn(mut commands: Commands, fonts: Res<HudFonts>, st
     let sep = || (Node { width: px(1), height: px(24), margin: UiRect::horizontal(px(4)), flex_shrink: 0.0, ..default() }, BackgroundColor(c(Tone::Label, 0.22)));
     let fonts = &*fonts;
     let back = style.background.outer();
-    // Every part placed for both layout classes (`home::ByClass`): the wide layout as it was, the phone layout
+    // Every part placed for both layout classes (`kit::ui_kit::ByClass`): the wide layout as it was, the phone layout
     // (`C_*`, docs/plans/android.md 4.3); a part only one of them has is hidden in the other.
     let none = || Node { display: Display::None, ..default() };
 

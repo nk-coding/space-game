@@ -37,29 +37,29 @@ per sim tick with `sim::flight::turn_ramp_step` (like the lock's nudge with `nud
 
 | | PC | Touch (landscape) |
 |---|---|---|
-| Fly | A/D rotate (GDR-0055, numbers in GDR-0058: a tap nudges the nose a little, holding ramps up to the key turn rate, 1.5 rad/s, in 0.8 s; never faster than the ship's gyros, cores and RCS can stop), W/S thrust along the nose, Q/E strafe (arrows: rotate + thrust). The flight computer cancels sideways drift while keys are held; released keys coast, nose kept (GDR-0086) | virtual stick bottom left: "fly that way", push = speed |
+| Fly | A/D rotate (GDR-0055, numbers in GDR-0058: a tap nudges the nose a little, holding ramps up to the key turn rate, 1.5 rad/s, in 0.8 s; never faster than the ship's gyros, cores and RCS can stop), W/S thrust along the nose, Q/E strafe (arrows: rotate + thrust). The flight computer cancels sideways drift while keys are held; released keys coast, nose kept (GDR-0086) | floating stick: where the left thumb lands in the left 45 % under the speed block, "fly that way", push = speed (GDR-0120) |
 | Drift toggle (pure momentum while keys are held: no drift cancelling; a release coasts either way, GDR-0086) | X | – (drift changes only the keys; the stick always flies where it points) |
-| Lock a target | left-click a ship (or a salvage piece) | tap it |
+| Lock a target | left-click a ship (or a salvage piece) | tap it (2 m + 24 dp of slack) |
 | While locked | the ship turns its strongest working guns onto the target (lead point for projectiles); A/D nudge the aim and it springs back; W/S and Q/E still thrust and strafe | the stick strafes |
 | Unlock | click empty space, or Esc (with nothing locked Esc opens the flight menu: RESUME, CONTROLS, SETTINGS, SHIPYARD or ABANDON VOYAGE…; it pauses the test range, never a voyage; Esc closes it, GDR-0090) | tap empty space |
-| LOCK TARGET (`lock_next`, GDR-0088): the first press locks the nearest enemy, each next press the next one by distance, round to the nearest again; the order is the sim's (`sim::flight::next_lock`: from the flown ship's position, ties by id), the lock the one a click sets (`PlayerInput::lock`) | L (Tab until 18 Oct 2026, when Tab went to the cluster map) | – |
+| LOCK TARGET (`lock_next`, GDR-0088): the first press locks the nearest enemy, each next press the next one by distance, round to the nearest again; the order is the sim's (`sim::flight::next_lock`: from the flown ship's position, ties by id), the lock the one a click sets (`PlayerInput::lock`) | L (Tab until 18 Oct 2026, when Tab went to the cluster map) | tap the target panel |
 | Auto-lock (the `auto_lock` pilot assist): while nothing is locked, the ship it asks for (`AssistState::auto_lock`) becomes the lock at the scene's tick (`scene::tick_lock`), the same lock as a click's (HUD, target panel, lock ring, sim). Esc or a click on empty space drops it and pauses auto-lock until you lock again or switch it (`AUTO-LOCK · PAUSED` in the HUD) | – | – |
-| Fire (by weapon group, GDR-0088: each gun's group is set in the drydock, a gun without one is group 1) | Space: every group; 1 / 2 / 3: that group; hold the left button on empty space: group 1; hold the right button: group 2. The held triggers OR into the pilot's fire mask (`PlayerInput::fire`, `sim::PilotInput::fire`); the controls overlay shows each from the bindings | fire button bottom right: every group |
-| Pilot assists (GDR-0088; the design's PILOT ASSISTS, set on the BEHAVIOR screen): switch the assists on toggle 1–4 on and off for the mission / switch every assist off and back on (as the toggles left them). Each switch is a `ShipCommand::SwitchAssists` for the flown ship; the banner says what changed (`BRAKE ON · AUTO-FIRE 2 OFF`, `ALL ASSISTS OFF`, `F3 · NO ASSIST ON TOGGLE 3`) | F1–F4 / Z | – |
+| Fire (by weapon group, GDR-0088: each gun's group is set in the drydock, a gun without one is group 1) | Space: every group; 1 / 2 / 3: that group; hold the left button on empty space: group 1; hold the right button: group 2. The held triggers OR into the pilot's fire mask (`PlayerInput::fire`, `sim::PilotInput::fire`); the controls overlay shows each from the bindings | hold FIRE bottom right: every group; FLARE beside it |
+| Pilot assists (GDR-0088; the design's PILOT ASSISTS, set on the BEHAVIOR screen): switch the assists on toggle 1–4 on and off for the mission / switch every assist off and back on (as the toggles left them). Each switch is a `ShipCommand::SwitchAssists` for the flown ship; the banner says what changed (`BRAKE ON · AUTO-FIRE 2 OFF`, `ALL ASSISTS OFF`, `F3 · NO ASSIST ON TOGGLE 3`) | F1–F4 / Z | – / ASSISTS in the flight menu |
 | Switch vessel (the focus) | V / Shift+V (the sim's vessel list, ascending ship id), click a friendly vessel, or click its chip in the fleet bar | tap a friendly vessel or its chip |
 | Wake a dormant vessel (swap) | click its chip in the fleet bar | tap its chip |
-| Zoom (3–160 px per metre; while a target is locked the camera zooms out enough to keep it in view, and it widens up to 1.4 × at top speed: "Lock framing" and "Speed widening" under [Structure](#structure)) | wheel, + / − | pinch |
-| Camera | F: follow (load test: frame) ↔ free; drag with the middle button (the left button too while nobody is piloted: showcase, load test, watch). Panned away (free while the scene follows or frames, `CameraRig::detached`), the BACK TO SHIP pill (FRAME THE FIGHT in a framed replay) shows at the bottom centre: a click, or F, brings the camera back (18 Oct 2026) | – |
-| Drydock (back to the ship editor; the design is untouched); in TEST IN RANGE back to where the test started; nothing in a voyage | T | – |
-| Home (the shipyard; the flight ends); in a voyage M opens the ABANDON VOYAGE? panel instead (GDR-0077: Enter abandons the voyage, lost; Esc or M again close it) | M, or the ring top left (not in a voyage) | the ring top left |
+| Zoom (3–160 px per metre; while a target is locked the camera zooms out enough to keep it in view, and it widens up to 1.4 × at top speed: "Lock framing" and "Speed widening" under [Structure](#structure)) | wheel, + / − | pinch (two fingers off the stick, FIRE and the UI) |
+| Camera | F: follow (load test: frame) ↔ free; drag with the middle button (the left button too while nobody is piloted: showcase, load test, watch). Panned away (free while the scene follows or frames, `CameraRig::detached`), the BACK TO SHIP pill (FRAME THE FIGHT in a framed replay) shows at the bottom centre: a click, or F, brings the camera back (18 Oct 2026). A drag that starts on a HUD button does not pan | two fingers (once their midpoint has moved 16 dp); one finger while nobody is piloted |
+| Drydock (back to the ship editor; the design is untouched); in TEST IN RANGE back to where the test started; nothing in a voyage | T | DRYDOCK (BEHAVIOR) in the flight menu |
+| Home (the shipyard; the flight ends); in a voyage M opens the ABANDON VOYAGE? panel instead (GDR-0077: Enter abandons the voyage, lost; Esc or M again close it) | M, or the ring top left (not in a voyage) | the ring top left opens the flight menu (GDR-0120): SHIPYARD or ABANDON VOYAGE… |
 | Recall home from a voyage (when no armed awake enemy is within 200 m, or the fleet has no working gun left: the emergency recall; a 3 s warp-out) | R, or the RECALL pill | the RECALL pill |
 | The cluster map on a voyage: the whole cluster laid over the view (galaxy plan E6); held, it shows until the key is let go; a click on the minimap opens it until Esc, a click anywhere or the key (18 Oct 2026; N toggled it before) | hold Tab, or click the minimap | — |
 | The minimap on a voyage ([GDR-0106](gdr/0106-flight-minimap.md)): steps its range 1 km → 2.5 km → hidden → 1 km | B | – (always 1 km) |
-| Raider waves off / on (sandbox; off removes the raiders) | C | – |
-| The controls (18 Oct 2026, in place of the help line along the bottom): lays this scene's controls over the view, a column per SETTINGS group with the bound inputs and a line for the mouse (`flight_hud/help.rs`); the flight goes on under it; again or Esc closes it | / (also ? with Shift), or CONTROLS in the flight menu (Esc) | CONTROLS in the flight menu |
+| Raider waves off / on (sandbox; off removes the raiders) | C | WAVES OFF / ON in the flight menu |
+| The controls (18 Oct 2026, in place of the help line along the bottom): lays this scene's controls over the view, a column per SETTINGS group with the bound inputs and a line for the mouse (`flight_hud/help.rs`); the flight goes on under it; again or Esc closes it | / (also ? with Shift), or CONTROLS in the flight menu (Esc) | CONTROLS in the flight menu (the touch controls) |
 | Debug overlay (fps, frame and sim times, the focus ship's heading, turn rate, speed and whether the last resort turns it, the locked ship's active behavior rule; in TEST IN RANGE every rule of the tested behavior with why) | F8 (F3 until 15 Oct 2026: the assist toggles took F1–F4) | – |
 | Render toggles | F5 debug shapes, F6 glow sprites, F7 bloom (1, 2 and 3 until GDR-0090: they are the fire groups' keys now) | – |
-| Hide HUD / pause (`PAUSED · P` shows) / reset scene (not in a voyage) | H / P / Shift+R | – |
+| Hide HUD / pause (`PAUSED · P` shows) / reset scene (not in a voyage) | H / P / Shift+R | – / the flight menu (the ring) / RESTART in the flight menu |
 
 Ships with engines only at the back can't brake or strafe while locked (GDR-0011); S does nothing on them.
 
@@ -108,7 +108,7 @@ what fits the window, `kit::ui_kit::UiSize`, applied by every screen's UI scale)
 | `fleet=N` | N extra copies (at most 8; none in TEST IN RANGE) of the player's design fly with you under the behavior the design names (default its faction's, `skirmisher`), following your lock (`target locked`); switch with V or the fleet bar |
 | `debug=1`, `glow=0`, `bloom=1`, `hud=0`, `stats=1` | render toggles, HUD, debug overlay |
 | `zoom=N` | start zoom in px per metre (3–160) |
-| `touch=1` | show the touch widgets without a touch first |
+| `touch=1` / `touch=0` | a touch screen or not (`kit::ui_kit::TouchScreen`), whatever the browser's pointer says: `1` shows the touch widgets and words at once, `0` keeps the mouse's even after a touch (e.g. a desktop check in `web-drive.mjs`, which always emulates touch) |
 | `slowmo=N` | the game's clock runs N times slower (1–50; the sim steps the same ticks, only later): for looking at animations such as the voyage's warp in headless screenshots. Real-time parts (screen transitions, the lift after a voyage) keep their speed |
 
 Natively the same `key=value&…` string comes from the `GAME_PARAMS` environment variable (`params.rs`). A bare
@@ -191,6 +191,12 @@ generation (its best child's hardest fight); paste one after `fight=`, e.g.
   replay doesn't use): **Space** or K pause and play (at the end: play again from the start), **,** and **.** slower
   and faster (0.25×, 0.5×, 1×, 2×, 4×, 8×; `Time<Virtual>`'s speed, back to 1× when flight ends), **←** / **→** (or J
   / L) one second back and forward, **R** (or Home) from the start. The flight menu (Esc) pauses too; M goes home.
+- **Scrubbing and touch** (20 Oct 2026, [GDR-0120](gdr/0120-flight-and-the-fight-viewer-on-a-phone.md)): a press on
+  the timeline (the mouse or a finger, its press area 24 px high) shows a thumb that follows the pointer; the release
+  seeks there (back through a keyframe, or on; a fight that had ended plays again). On a touch screen START, −1 S,
+  PLAY / PAUSE sit left of the timeline and +1 S, SLOWER, FASTER right of it (the replay actions, through
+  `world::settings::ActionTaps`), the bar takes the room between them; a tap on a ship follows it, on empty space
+  frames again, one finger pans, two pinch. Screenshot `docs/results/phone-fight-viewer-2026-10-20.png`.
 - **Seeking**: the first pass keeps a copy of the `Sim` and the referee every 10 s (`replay::KEYFRAME_TICKS`).
   Back restores the keyframe before the target and runs on; forward runs ahead; both within the frame, then every
   piece view is rebuilt (`SimWorld::rebuild_views`) and effects and shield ripples are cleared.
@@ -1968,7 +1974,7 @@ scale the screen like the drydock.
 **On a phone** (the compact class, 19 Oct 2026, [GDR-0119](gdr/0119-behavior-editor-on-a-phone.md) Proposed,
 `docs/plans/android.md` 4.4; screenshots `docs/results/phone-behavior-2026-10-19.png` (a rule selected),
 `phone-behavior-panned-2026-10-19.png`, `phone-behavior-modes-2026-10-19.png`): laid out for 844 × 390 at
-`compact_scale` with `CompactText(9)`, every node in its wide and phone form (`home::ByClass`; the three scrolling
+`compact_scale` with `CompactText(9)`, every node in its wide and phone form (`kit::ui_kit::ByClass`; the three scrolling
 areas `screen::ScrollFit`, which keeps the gutter and glow room the kit's `Scrollbar` writes into the node). The
 graph is 592 px wide with smaller chips (`screen::GraphDims`: 30 px high, 12.5 px type, rows 46 px, the root column
 104 px) and its notes on one line; it scrolls both ways (glow room 6 px, so its rules don't show over the column).
@@ -2385,8 +2391,8 @@ but the type is too small to read). Numbers are placeholders.
   `phone-fleet-2026-10-19.png`, `phone-workshop-2026-10-19.png`, `phone-settings-2026-10-19.png`): on a phone home's
   `ui_scale` is `compact_scale` for home and every layer over it (FLEET, WORKSHOP, the LOG, EVOLUTION, SETTINGS, the
   debrief; SETTINGS over flight too), each root with `CompactText(9)` (home's on each place label, not on the name
-  plate, whose letters follow the zoom). The layers keep their entities and swap their nodes: `home::ByClass` holds
-  a node's wide and compact form and puts the window's one in place when the class changes (its `display` stays as
+  plate, whose letters follow the zoom). The layers keep their entities and swap their nodes: `kit::ui_kit::ByClass` (home's
+  until 20 Oct 2026) holds a node's wide and compact form and puts the window's one in place when the class changes (its `display` stays as
   the screen sets it, unless a form hides it), so the wide layouts are exactly as before.
   - *Home*: the station is fitted with the phone-sized labels as before (`overview`); the building area's label
     hangs inside the area's top (`Layout::label(place, compact)`: at the bottom it ran into the gate's line), one
@@ -2403,7 +2409,7 @@ but the type is too small to read). Numbers are placeholders.
 
 - **Drydock** (B, 19 Oct 2026, [GDR-0118](gdr/0118-drydock-on-a-phone.md) Proposed; `docs/drydock.md` "Phones and
   touch"; screenshots `docs/results/phone-drydock-2026-10-19.png`, `phone-drydock-selected-2026-10-19.png`): at
-  `compact_scale` with `CompactText(9)`, every node in its wide and phone form (`home::ByClass`): palette 190 px, a
+  `compact_scale` with `CompactText(9)`, every node in its wide and phone form (`kit::ui_kit::ByClass`): palette 190 px, a
   tool strip beside it, the right column 214 px with the stats or the selected part, the bottom bar without the tool
   pills; BLUEPRINTS scrolls. It opens at about 28 dp per cell, the view home flies onto. Touch (`drydock/touch.rs`):
   one finger runs the tool after a 120 ms hold, machines and slopes hang 48 dp above the finger and drop where it
@@ -2411,6 +2417,28 @@ but the type is too small to read). Numbers are placeholders.
   dragged sideways drops its part on the grid. Checked headless at 844 × 390 (taps on the strip, select, a paint
   stroke, a palette drag) and 1280 × 720.
 
+- **Flight and the fight viewer** (A, 20 Oct 2026, [GDR-0120](gdr/0120-flight-and-the-fight-viewer-on-a-phone.md)
+  Proposed; screenshots `docs/results/phone-flight-2026-10-20.png`, `phone-voyage-flight-2026-10-20.png`,
+  `phone-flight-menu-2026-10-20.png`, `phone-fight-viewer-2026-10-20.png`): in flight the UI scale is `compact_scale`
+  on a phone (`flight_hud/phone.rs` `flight_ui_scale`, every frame in flight unless SETTINGS lies over it; SETTINGS
+  gives back the flight's own scale when it closes), the plain UI size in a wide window as before. The HUD's nodes
+  have a phone form (`kit::ui_kit::ByClass`, moved down from home; `CompactSize` for a text's phone size): the corners
+  inside `kit::ui_kit::SafeArea` (the plan's placeholders, 32 dp at the long edges' ends and 16 dp top and bottom, in
+  the compact class only), the hull map 84 × 44 under its number, values 28 px, the title 13 px and the subtitle 10 px
+  between 185 px columns (`TEST RANGE · WAVE 1` in one line, a fight's title in two), the banner between the same
+  columns; in a voyage SALVAGE and RECALL at the bottom centre and the minimap (radius 40) over FIRE.
+  **Touch** (`controls.rs`): the widgets show from the start on a touch screen (`kit::ui_kit::TouchScreen`: Android,
+  `(pointer: coarse)` in the browser, `?touch=1`, or after any touch; `?touch=0` off): a floating stick (where the
+  left thumb lands in the left 45 % under the speed block; ring 124 dp, knob 44 dp, dead zone 6 %), FIRE 76 dp (hit
+  96 dp), FLARE 44 dp beside it for a ship with a flare launcher; a tap (0.3 s, 10 dp) on a ship locks it (2 m + 24
+  dp), on the target panel locks the next; the ring top left opens the flight menu, whose second row on touch holds
+  DRYDOCK (or BEHAVIOR), WAVES, RESTART and ASSISTS; the controls overlay lists the touch controls; no key hints
+  (`TAP A SHIP OR HERE`). A finger that lands on a HUD button (its 48 dp target) or the fleet bar is the UI's
+  (`PlayerInput::captures`): it never steers, fires, locks or pans. Two fingers pinch and pan (a camera that follows
+  comes free after 16 dp), one finger pans without a pilot. Touch buttons press their action for a frame
+  (`world::settings::ActionTaps`), so the keys' handlers serve them. Checked headless at 844 × 390 DPR 3 (the test
+  range: stick, a tap on the target panel, the ring, the menu, CONTROLS, SETTINGS; a voyage; the fight viewer: PAUSE,
+  a scrub, a one-finger pan) and at 1280 × 720 (unchanged with `touch=0`; a mouse scrub).
 - **BEHAVIOR** (C, 19 Oct 2026, [GDR-0119](gdr/0119-behavior-editor-on-a-phone.md) Proposed; "Behavior screen" "On a
   phone"; screenshots `docs/results/phone-behavior-2026-10-19.png`, `phone-behavior-panned-2026-10-19.png`,
   `phone-behavior-modes-2026-10-19.png`): at `compact_scale` with `CompactText(9)`: the graph 592 px with smaller
@@ -2422,7 +2450,7 @@ What still breaks at 844 × 390 (audit of 19 Oct 2026, DPR 3), grouped into work
 
 | Package | Screens and files | What breaks | Size |
 |---|---|---|---|
-| A. Flight and viewer | flight HUD, pause menu, fleet bar, fight viewer: `world/src/flight_hud/`, `hud.rs`, `controls.rs`, `fleet_bar.rs`, `replay.rs`, `camera.rs` | the HUD stays at the UI size (1.0, readable and fitting) but its title wraps ("TEST RANGE · WAVE" / "1"; the fight viewer's long title in four lines over the top centre: `hud.title_side` keeps 300 px a side of 844); touch widgets wait for a first touch (plan 4.2: on from the start on touch); the help line ("CLICK OR L TO LOCK") shows on touch; the viewer's scrubber and the free camera's drag are mouse-only; set the HUD's scale to `compact_scale` in flight from a world system | L |
+| A. Flight and viewer | flight HUD, pause menu, fleet bar, fight viewer: `world/src/flight_hud/`, `hud.rs`, `controls.rs`, `fleet_bar.rs`, `replay.rs`, `camera.rs` | **done 20 Oct 2026** (above, GDR-0120). Left: FIRE's ring showing the guns' heat, more ability slots round FIRE as features come, single assist toggles on touch (ALL ASSISTS is in the menu), the fleet bar unchanged (its 68 × 50 chips fit; not seen with many vessels on a phone), the debug overlay's phone numbers (thermal headroom, atlas tier: Android), the pinch and the two-finger pan checked by reading only (headless has one finger), `SafeArea` from Android's insets | L |
 | B. Drydock | `game/src/drydock/**`, `world/src/part_card.rs` | **done 19 Oct 2026** (above). Left: double tap to fit, a fling, the plan's palette with headers and a lens; the pinch checked by unit tests only (headless has one finger); the hover card on a held palette row and the soft keyboard (name, paste box) not checked on a phone | L |
 | C. BEHAVIOR | `game/src/behavior_ui/**` | **done 19 Oct 2026** (above; "Behavior screen", GDR-0119). Left: the ring menu (DRYDOCK, BEHAVIORS and SAVE stay in a bottom bar), zoom of the graph, a fling, the soft keyboard (name, notes, palette search, the list's rename, an editable TEXT view); the hold's 350 ms only checked headless (one finger, slow frames: a frame that comes 350 ms after the press arms the hold) | L |
 | D1. Shipyard screens | home `home.rs`, `shipyard/`, FLEET `fleet.rs`, workshop `workshop.rs`, LOG `voyage_log.rs`, debrief `debrief.rs`, settings `settings.rs` | **done 19 Oct 2026** (above). Left: FLEET's card row and the LOG's rows not seen on a phone with saved designs or voyages (laid out for them: a card 262 px, a row's haul gets about 320 px and may take two lines); home's camera flies into the drydock's opening view, measured at home's scale, which on a phone is the drydock's too since B (19 Oct 2026), so the flight ends where the drydock opens; the flight menu (pause) is package A's | L (M each) |

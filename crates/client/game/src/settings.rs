@@ -443,7 +443,7 @@ fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>, conten
         ..default()
     };
     let row = |gap: f32| Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(gap), ..default() };
-    // Every part is laid out for both layout classes (`home::ByClass`).
+    // Every part is laid out for both layout classes (`kit::ui_kit::ByClass`).
     let (wl, cl) = (Lay::WIDE, Lay::COMPACT);
     let width = |w: f32| Node { width: px(w), flex_shrink: 0.0, ..default() };
     commands

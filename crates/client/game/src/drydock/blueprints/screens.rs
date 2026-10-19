@@ -131,7 +131,7 @@ pub(in crate::drydock) fn spawn_shelf(mut commands: Commands, fonts: Res<HudFont
             // room pushed its pill's label right of centre. The drydock's parts it covers hide meanwhile
             // (`UnderShelf`): they would draw over it.
             UiIcon::Scrim { color: clear.0.with_alpha(0.985), hole: [f32::INFINITY; 4], out: 0.0, into: 0.0 },
-            // On a phone (`home::ByClass`, docs/drydock.md "Phones") narrower margins, the BLUEPRINTS page scrolls.
+            // On a phone (`kit::ui_kit::ByClass`, docs/drydock.md "Phones") narrower margins, the BLUEPRINTS page scrolls.
             by_class(
                 Node {
                     position_type: PositionType::Absolute,

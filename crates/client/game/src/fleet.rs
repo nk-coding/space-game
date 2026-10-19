@@ -532,7 +532,7 @@ fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>, clear:
     let column = |gap: f32, at: Node| Node { flex_direction: FlexDirection::Column, align_items: AlignItems::Center, row_gap: px(gap), ..at };
     let placeholder = |size: f32| UiIcon::Glyph { glyph: Glyph::Formation, color: ui.dim.with_alpha(size) };
     let boxed = |accent: Tone| Pill { bare: true, ..Pill::new(accent) };
-    // Every part is laid out for both layout classes (`home::ByClass`).
+    // Every part is laid out for both layout classes (`kit::ui_kit::ByClass`).
     let (wl, cl) = (Lay::WIDE, Lay::COMPACT);
     commands
         .spawn((

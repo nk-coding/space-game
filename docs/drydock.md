@@ -387,7 +387,7 @@ with a gun selected, rotate / flip / delete sit below the fold). The groups are 
 
 19 Oct 2026, [GDR-0118](gdr/0118-drydock-on-a-phone.md) (Proposed), `docs/plans/android.md` 4.3, `docs/client.md`
 "Phones". In the compact layout class (a window under 500 dp high) the drydock is laid out for 844 × 390 at
-`compact_scale` (`panels/spawn.rs`, every node in both forms through `home::ByClass`; `C_*` in `panels/mod.rs`):
+`compact_scale` (`panels/spawn.rs`, every node in both forms through `kit::ui_kit::ByClass`; `C_*` in `panels/mod.rs`):
 the palette 190 dp, a **tool strip** (PAINT, FILL, ERASE, SELECT, ROTATE) between it and the grid, the right column
 214 dp with the stats' labels over their values, the bottom bar without the tool pills (`fit_bar` keeps it folded,
 the dropdown hidden: mirror and bevel as rings). The right column shows the stats, or while a placed part is selected
