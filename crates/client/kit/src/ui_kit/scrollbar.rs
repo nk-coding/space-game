@@ -35,7 +35,8 @@
 //!   then it fades out over [`FADE_OUT_SECONDS`] ([`bar_alpha`]). Never while the content fits.
 //! * **Mouse and touch**: the bar is a [`Hot`] node (it takes the pointer from the rows under it); a press on the
 //!   thumb drags it, a press on the track beside it jumps the thumb's middle there and drags on from there (at
-//!   once: no glide).
+//!   once: no glide). A finger dragged along the area itself (on its rows too) scrolls it under the finger
+//!   ([`finger_scroll`], after [`FINGER_SLOP`]; no fling yet).
 //! * **Look** (style guide "UI"): the label grey at low alpha, 4 px wide, 6 px while the pointer is on it or it is
 //!   dragged, fully rounded, [`EDGE_INSET`] px in from the area's edge.
 
@@ -339,7 +340,7 @@ struct Track {
 struct Thumb;
 
 pub(super) fn plugin(app: &mut App) {
-    app.add_systems(Update, (attach, (wheel, drag, glide).chain().after(super::hit_test)).in_set(super::UiInputSet))
+    app.add_systems(Update, (attach, (wheel, finger_scroll, drag, glide).chain().after(super::hit_test)).in_set(super::UiInputSet))
         .add_systems(Update, (shift_rows, show).in_set(super::UiStyleSet))
         .add_systems(PostUpdate, cut_scrolled_edges.in_set(ScrollClipSet).after(UiSystems::PostLayout));
 }
@@ -471,6 +472,119 @@ fn within(mut e: Entity, area: Entity, parents: &Query<&ChildOf>) -> bool {
     }
 }
 
+/// Every [`Scrollbar`] area, for the wheel and a finger's drag.
+type Areas<'w, 's> = Query<
+    'w,
+    's,
+    (
+        Entity,
+        &'static Scrollbar,
+        &'static mut SmoothScroll,
+        &'static ComputedNode,
+        &'static UiGlobalTransform,
+        &'static InheritedVisibility,
+        &'static ComputedStackIndex,
+        Option<&'static CalculatedClip>,
+        &'static mut ScrollPosition,
+        Option<&'static mut ScrollRows>,
+    ),
+    Without<Track>,
+>;
+
+/// The topmost area under `at` (physical px) with more to show than fits, unless a layer above it (a [`Hot`] node
+/// `over` outside it) has the pointer.
+fn area_under(at: Vec2, over: Option<Entity>, stacks: &Query<&ComputedStackIndex>, parents: &Query<&ChildOf>, areas: &Areas) -> Option<Entity> {
+    let mut best: Option<(u32, Entity)> = None;
+    for (e, bar, _, node, tf, vis, z, clip, pos, rows) in areas {
+        let under = vis.get() && node.size.cmpgt(Vec2::ZERO).all() && node.contains_point(*tf, at) && clip.is_none_or(|c| c.contains_point(at));
+        let (view, content, _) = extent(bar.axis, node, pos, rows);
+        if under && content - view > 0.5 && best.is_none_or(|b| z.0 >= b.0) {
+            best = Some((z.0, e));
+        }
+    }
+    let (z, area) = best?;
+    let covered = over.is_some_and(|h| stacks.get(h).is_ok_and(|s| s.0 > z) && !within(h, area, parents));
+    (!covered).then_some(area)
+}
+
+/// A finger moves this far (logical px) along an area before its drag scrolls it (a shorter one stays a tap).
+pub const FINGER_SLOP: f32 = 10.0;
+
+/// A finger's drag that may scroll an area: the finger, the area, where the finger was and the area's scroll then
+/// (UI px), and whether it scrolls yet.
+#[derive(Clone, Copy, Debug)]
+struct FingerScroll {
+    finger: u64,
+    area: Entity,
+    from: Vec2,
+    start: f32,
+    engaged: bool,
+}
+
+/// A finger dragged along an area (on its rows too) scrolls it 1:1 under the finger, at once (docs/plans/android.md
+/// 4.1: touch has no wheel). It starts once the finger has moved [`FINGER_SLOP`] along the area's axis (more than
+/// across it, so a sideways slider in a list still drags); then the press on the row under it ends without a click.
+#[allow(clippy::too_many_arguments)]
+fn finger_scroll(
+    window: Single<&Window, With<PrimaryWindow>>,
+    touches: Res<Touches>,
+    mut pointer: ResMut<UiPointer>,
+    tracks: Query<&Track>,
+    stacks: Query<&ComputedStackIndex>,
+    parents: Query<&ChildOf>,
+    mut areas: Areas,
+    mut drag: Local<Option<FingerScroll>>,
+) {
+    let Some(id) = pointer.finger() else {
+        *drag = None;
+        return;
+    };
+    let Some(at) = touches.get_pressed(id).map(|t| t.position() * window.scale_factor()) else {
+        *drag = None;
+        return;
+    };
+    if touches.just_pressed(id) || drag.is_some_and(|d| d.finger != id) {
+        let on_bar = pointer.over.is_some_and(|e| tracks.get(e).is_ok());
+        *drag = (!on_bar)
+            .then(|| area_under(at, pointer.over, &stacks, &parents, &areas))
+            .flatten()
+            .and_then(|area| areas.get(area).ok().map(|(_, bar, _, node, _, _, _, _, pos, rows)| (area, extent(bar.axis, node, pos, rows).2)))
+            .map(|(area, start)| FingerScroll { finger: id, area, from: at, start, engaged: false });
+    }
+    let Some(d) = drag.as_mut() else { return };
+    let Ok((_, bar, mut smooth, node, _, _, _, _, mut pos, mut rows)) = areas.get_mut(d.area) else {
+        *drag = None;
+        return;
+    };
+    let axis = bar.axis;
+    let moved = at - d.from;
+    let across = match axis {
+        BarAxis::Vertical => moved.x,
+        BarAxis::Horizontal => moved.y,
+    };
+    if !d.engaged {
+        let along = axis.of(moved);
+        if along.abs() < FINGER_SLOP * window.scale_factor() || along.abs() <= across.abs() {
+            return;
+        }
+        // From here on (no jump by the slop): the press on the row under the finger is no click.
+        d.engaged = true;
+        d.from = at;
+        d.start = extent(axis, node, &pos, rows.as_deref()).2;
+        pointer.cancel_press();
+        return;
+    }
+    let (view, content, now) = extent(axis, node, &pos, rows.as_deref());
+    let to = (d.start - axis.of(moved) * node.inverse_scale_factor).clamp(0.0, (content - view).max(0.0));
+    if to != now {
+        set_scroll(axis, &mut pos, rows.as_mut(), to);
+    }
+    if smooth.glide.is_some() || smooth.wrote != Some(to) {
+        smooth.glide = None;
+        smooth.wrote = Some(to);
+    }
+}
+
 /// The wheel scrolls one [`Scrollbar`] area: the one whose bar is under the pointer, else the topmost one under it
 /// with more to show than fits, unless a layer above it (a screen opened over it) has the pointer. A notch glides,
 /// a touchpad's step moves at once ([`wheel_move`]); an area that scrolls sideways takes the wheel's up and down too.
@@ -482,38 +596,12 @@ fn wheel(
     tracks: Query<&Track>,
     stacks: Query<&ComputedStackIndex>,
     parents: Query<&ChildOf>,
-    mut areas: Query<
-        (
-            Entity,
-            &Scrollbar,
-            &mut SmoothScroll,
-            &ComputedNode,
-            &UiGlobalTransform,
-            &InheritedVisibility,
-            &ComputedStackIndex,
-            Option<&CalculatedClip>,
-            &mut ScrollPosition,
-            Option<&mut ScrollRows>,
-        ),
-        Without<Track>,
-    >,
+    mut areas: Areas,
 ) {
     let events: Vec<MouseWheel> = wheels.read().copied().collect();
     let Some(cursor) = window.physical_cursor_position().filter(|_| !events.is_empty()) else { return };
     let over = pointer.over;
-    let target = over.and_then(|e| tracks.get(e).ok()).map(|t| t.area).or_else(|| {
-        let mut best: Option<(u32, Entity)> = None;
-        for (e, bar, _, node, tf, vis, z, clip, pos, rows) in &areas {
-            let under = vis.get() && node.size.cmpgt(Vec2::ZERO).all() && node.contains_point(*tf, cursor) && clip.is_none_or(|c| c.contains_point(cursor));
-            let (view, content, _) = extent(bar.axis, node, pos, rows);
-            if under && content - view > 0.5 && best.is_none_or(|b| z.0 >= b.0) {
-                best = Some((z.0, e));
-            }
-        }
-        let (z, area) = best?;
-        let covered = over.is_some_and(|h| stacks.get(h).is_ok_and(|s| s.0 > z) && !within(h, area, &parents));
-        (!covered).then_some(area)
-    });
+    let target = over.and_then(|e| tracks.get(e).ok()).map(|t| t.area).or_else(|| area_under(cursor, over, &stacks, &parents, &areas));
     let Some(Ok((_, bar, mut smooth, node, _, _, _, _, mut pos, mut rows))) = target.map(|a| areas.get_mut(a)) else { return };
     let axis = bar.axis;
     let (view, content, start) = extent(axis, node, &pos, rows.as_deref());

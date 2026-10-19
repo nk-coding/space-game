@@ -182,13 +182,36 @@ pub struct UiBlock;
 /// Where the pointer is, for the world's input systems.
 #[derive(Resource, Default, Debug)]
 pub struct UiPointer {
-    /// The mouse is over the UI, or a press that started on the UI is held: the world ignores it.
+    /// The pointer (the mouse, or a finger that is down) is over the UI, or a press that started on the UI is held:
+    /// the world ignores it.
     pub blocked: bool,
     /// A text field has the keyboard: shortcuts are off.
     pub typing: bool,
     pressed: Option<(Entity, PressSource)>,
-    /// The topmost [`Hot`] node under the mouse (the scrollbars' wheel looks whether it covers an area).
+    /// The topmost [`Hot`] node under the pointer (the scrollbars' wheel looks whether it covers an area).
     over: Option<Entity>,
+    /// The first finger that is down (the pointer while no mouse is over the window).
+    finger: Option<u64>,
+    /// Where the pointer is (physical px): the mouse, else that finger.
+    at: Option<Vec2>,
+}
+
+impl UiPointer {
+    /// Where the pointer is (physical px): the mouse cursor, else the first finger that is down (touch has no
+    /// hover: no position between touches).
+    pub fn position(&self) -> Option<Vec2> {
+        self.at
+    }
+
+    /// The finger that is the pointer (none for the mouse).
+    pub fn finger(&self) -> Option<u64> {
+        self.finger
+    }
+
+    /// Drops the press on a node without a click (a drag that turned out to scroll its list).
+    fn cancel_press(&mut self) {
+        self.pressed = None;
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -211,11 +234,12 @@ impl Plugin for UiKitPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<UiPointer>()
             .init_resource::<UiSize>()
+            .init_resource::<LayoutClass>()
             .init_resource::<TipState>()
             .add_message::<UiClick>()
             .configure_sets(Update, UiStyleSet.after(UiInputSet))
             .add_systems(Startup, (load_fonts, spawn_tip.after(load_fonts)))
-            .add_systems(Update, (hit_test, type_into_fields).chain().in_set(UiInputSet))
+            .add_systems(Update, (classify, hit_test, type_into_fields).chain().in_set(UiInputSet))
             .add_systems(Update, (style_widgets, show_locks, show_tip).in_set(UiStyleSet));
         transition::plugin(app);
         scrollbar::plugin(app);
@@ -236,28 +260,55 @@ fn hit_test(
     mut clicks: MessageWriter<UiClick>,
 ) {
     let scale = window.scale_factor();
-    let topmost = |at: Vec2| {
+    // Under a finger a node is hit within an invisible slop that makes it at least TOUCH_TARGET square.
+    let slop = TOUCH_TARGET * scale;
+    let topmost = |at: Vec2, finger: bool| {
         let mut best: Option<(u32, Entity)> = None;
+        let mut near: Option<(f32, u32, Entity)> = None;
         for (e, _, node, tf, vis, stack, clip) in &hots {
             // A node scrolled out of a clipping parent (a scrolled list) is not under the pointer.
-            if vis.get() && node.size.cmpgt(Vec2::ZERO).all() && node.contains_point(*tf, at) && clip.is_none_or(|c| c.contains_point(at)) {
-                let z = stack.map_or(0, |s| s.0);
+            if !vis.get() || !node.size.cmpgt(Vec2::ZERO).all() || !clip.is_none_or(|c| c.contains_point(at)) {
+                continue;
+            }
+            let z = stack.map_or(0, |s| s.0);
+            if node.contains_point(*tf, at) {
                 if best.is_none_or(|b| z >= b.0) {
                     best = Some((z, e));
                 }
+            } else if finger
+                && best.is_none()
+                && let Some(d) = slop_distance(node.size, tf.try_inverse().map(|i| i.transform_point2(at)), slop)
+                && near.is_none_or(|n| d < n.0 || (d == n.0 && z >= n.1))
+            {
+                near = Some((d, z, e));
             }
         }
-        best.map(|b| b.1)
+        best.map(|b| b.1).or(near.map(|n| n.2))
+    };
+    // The first finger down is the pointer until it lifts (its last place still counts for the release).
+    if pointer.finger.is_none_or(|id| touches.get_pressed(id).is_none() && !touches.just_released(id) && !touches.just_canceled(id)) {
+        pointer.finger = touches.iter_just_pressed().next().map(|t| t.id()).or_else(|| touches.iter().next().map(|t| t.id()));
+    }
+    let finger_at = |id: u64| {
+        touches
+            .get_pressed(id)
+            .or_else(|| touches.iter_just_released().chain(touches.iter_just_canceled()).find(|t| t.id() == id))
+            .map(|t| t.position() * scale)
     };
     let cursor = window.physical_cursor_position();
-    let over = cursor.and_then(topmost);
+    let held = pointer.finger.and_then(|id| touches.get_pressed(id)).map(|t| t.position() * scale);
+    pointer.at = cursor.or(held);
+    let over = match cursor {
+        Some(c) => topmost(c, false),
+        None => held.and_then(|h| topmost(h, true)),
+    };
 
     // Presses: the mouse, then the first new touch.
     let mut press: Option<(Option<Entity>, PressSource)> = None;
     if buttons.just_pressed(MouseButton::Left) {
         press = Some((over, PressSource::Mouse));
     } else if let Some(t) = touches.iter_just_pressed().next() {
-        press = Some((topmost(t.position() * scale), PressSource::Touch(t.id())));
+        press = Some((topmost(t.position() * scale, true), PressSource::Touch(t.id())));
     }
     if let Some((on, source)) = press {
         pointer.pressed = on.map(|e| (e, source));
@@ -277,11 +328,7 @@ fn hit_test(
     if let Some((e, source)) = pointer.pressed {
         let released = match source {
             PressSource::Mouse => buttons.just_released(MouseButton::Left).then_some(over),
-            PressSource::Touch(id) => touches
-                .iter_just_released()
-                .chain(touches.iter_just_canceled())
-                .find(|t| t.id() == id)
-                .map(|t| topmost(t.position() * scale)),
+            PressSource::Touch(id) => (touches.just_released(id) || touches.just_canceled(id)).then(|| finger_at(id).and_then(|at| topmost(at, true))),
         };
         if let Some(at) = released {
             if at == Some(e) {
@@ -297,12 +344,68 @@ fn hit_test(
             *hot = want;
         }
     }
-    let on_block = cursor.is_some_and(|c| {
+    let on_block = pointer.at.is_some_and(|c| {
         blocks.iter().any(|(node, tf, vis)| vis.get() && node.size.cmpgt(Vec2::ZERO).all() && node.contains_point(*tf, c))
     });
     pointer.blocked = over.is_some() || on_block || pressed.is_some();
     pointer.over = over;
     pointer.typing = fields.iter().any(|(_, f)| f.focused);
+}
+
+/// Under a finger every [`Hot`] node is hit as if it were at least this many logical px (Android's dp) square: a
+/// tap on no node goes to the nearest one whose grown box holds it (docs/plans/android.md 4.1, Android's 48 dp
+/// touch targets; the mouse hits the drawn box only).
+pub const TOUCH_TARGET: f32 = 48.0;
+
+/// How far `local` (a point relative to a node's centre, physical px) is from a node `size` big, if it is inside the
+/// node's box grown to at least `slop` square; none outside it.
+fn slop_distance(size: Vec2, local: Option<Vec2>, slop: f32) -> Option<f32> {
+    let p = local?.abs();
+    let half = size / 2.0;
+    (p.cmple(half.max(Vec2::splat(slop / 2.0))).all()).then(|| (p - half).max(Vec2::ZERO).length())
+}
+
+/// The layout class (docs/plans/android.md 4.1; ADR-0045): chosen by the window's size, not by the platform, so
+/// Chrome DevTools' device mode or a small desktop window shows what a phone shows. A window under
+/// [`COMPACT_HEIGHT`] logical px (Android dp) high is [`LayoutClass::Compact`]: a screen with a phone layout lays it
+/// out for [`COMPACT_SIZE`] and scales it by [`compact_scale`]; a screen without one keeps its 1280 × 720 layout,
+/// fitted by [`ui_scale_for`] (it fits, but small). Everything else is [`LayoutClass::Wide`]: today's layouts.
+#[derive(Resource, Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum LayoutClass {
+    #[default]
+    Wide,
+    Compact,
+}
+
+/// Windows lower than this (logical px) are [`LayoutClass::Compact`] (*placeholder*).
+pub const COMPACT_HEIGHT: f32 = 500.0;
+/// The size the phone layouts are made for (a phone in landscape, dp: the mockups' 844 × 390).
+pub const COMPACT_SIZE: Vec2 = Vec2::new(844.0, 390.0);
+/// [`compact_scale`]'s range (*placeholder*).
+pub const COMPACT_SCALE: (f32, f32) = (0.9, 1.3);
+
+impl LayoutClass {
+    /// The class of a window `size` logical px big.
+    pub fn of(size: Vec2) -> Self {
+        if size.y < COMPACT_HEIGHT { LayoutClass::Compact } else { LayoutClass::Wide }
+    }
+
+    pub fn is_compact(self) -> bool {
+        self == LayoutClass::Compact
+    }
+}
+
+/// The UI scale of a phone layout in a window `size` logical px big: min(w / 844, h / 390), 0.9 to 1.3.
+pub fn compact_scale(size: Vec2) -> f32 {
+    (size.x / COMPACT_SIZE.x).min(size.y / COMPACT_SIZE.y).clamp(COMPACT_SCALE.0, COMPACT_SCALE.1)
+}
+
+/// Keeps [`LayoutClass`] with the primary window (written only when it changes, so screens can react to the change).
+fn classify(window: Single<&Window, With<PrimaryWindow>>, mut class: ResMut<LayoutClass>) {
+    let c = LayoutClass::of(window.size());
+    if *class != c {
+        *class = c;
+    }
 }
 
 /// The screens (the drydock, the BEHAVIOR screen, home, FLEET) are laid out for 1280 × 720 logical px; larger
@@ -323,7 +426,8 @@ impl Default for UiSize {
 }
 
 /// The UI scale for a window: min(w / 1280, h / 720), [`MIN_UI_SCALE`] to [`MAX_UI_SCALE`]. So the 1280 × 720
-/// layout always fits the window: a window narrower or lower than that scales it down (until 13 Oct 2026 the scale
+/// layout always fits the window (on a phone, [`LayoutClass::Compact`], about 0.54: it fits, but its type is too
+/// small to read until the screen has a phone layout scaled by [`compact_scale`]): a window narrower or lower than that scales it down (until 13 Oct 2026 the scale
 /// stopped at 1, and a centred layout such as FLEET's lost its left and top edges in a 1080 px wide or a 650 px
 /// high window); a wider aspect leaves room at the sides, a taller one below and above.
 pub fn ui_scale_for(window: &Window, size: UiSize) -> f32 {
@@ -404,6 +508,36 @@ mod tests {
         assert_eq!(ui_scale_for(&window(1920.0, 1080.0), UiSize(1.0)), 1.5);
         assert_eq!(ui_scale_for(&window(5120.0, 2880.0), UiSize(1.0)), MAX_UI_SCALE);
         assert_eq!(ui_scale_for(&window(400.0, 200.0), UiSize(1.0)), MIN_UI_SCALE);
+    }
+
+    /// Phones in landscape (Chrome DevTools' Pixel 7, Pixel 5, the mockups' 844 × 390) are compact and their phone
+    /// layout's scale stays near 1; a 1280 × 720 window and larger keep today's layouts (docs/plans/android.md 4.1).
+    #[test]
+    fn phones_are_compact() {
+        for (w, h, k) in [(915.0, 412.0, 1.0564), (851.0, 393.0, 1.0077), (844.0, 390.0, 1.0), (740.0, 360.0, 0.9)] {
+            let size = Vec2::new(w, h);
+            assert_eq!(LayoutClass::of(size), LayoutClass::Compact, "{size}");
+            assert!((compact_scale(size) - k).abs() < 1e-3, "{size}: {}", compact_scale(size));
+        }
+        for (w, h) in [(1280.0, 720.0), (1024.0, 600.0), (2560.0, 1440.0), (800.0, 500.0)] {
+            assert_eq!(LayoutClass::of(Vec2::new(w, h)), LayoutClass::Wide);
+        }
+        assert_eq!(compact_scale(Vec2::new(1400.0, 600.0)), 1.3);
+    }
+
+    /// Under a finger a small node is hit within its box grown to the touch target; a large one only on its box.
+    #[test]
+    fn a_finger_hits_within_the_touch_target() {
+        let slop = TOUCH_TARGET * 3.0; // a phone at 3 physical px per dp
+        let pill = Vec2::new(200.0, 60.0);
+        assert_eq!(slop_distance(pill, Some(Vec2::new(10.0, 5.0)), slop), Some(0.0));
+        // Above the pill's top edge (30 px from its centre), within 72 px: hit, 30 px away from it.
+        assert_eq!(slop_distance(pill, Some(Vec2::new(0.0, 60.0)), slop), Some(30.0));
+        assert_eq!(slop_distance(pill, Some(Vec2::new(0.0, 73.0)), slop), None);
+        // Wider than the target: no slop sideways.
+        assert_eq!(slop_distance(pill, Some(Vec2::new(101.0, 0.0)), slop), None);
+        assert_eq!(slop_distance(Vec2::splat(300.0), Some(Vec2::new(151.0, 0.0)), slop), None);
+        assert_eq!(slop_distance(pill, None, slop), None);
     }
 
     /// The 1280 × 720 layout fits every window the play-test named (Niklas, 13 Oct 2026: things at the left and
