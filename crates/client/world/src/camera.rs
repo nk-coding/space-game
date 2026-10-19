@@ -121,7 +121,10 @@ pub struct CameraRig {
     /// Where on screen `pos` sits, relative to the window centre (logical pixels, y down). Zero in flight.
     pub view_offset: Vec2,
     drag_last: Option<Vec2>,
-    pinch_last: Option<(f32, Vec2)>,
+    /// Two fingers: their distance and midpoint last frame, and how far the midpoint has moved since they landed.
+    pinch_last: Option<(f32, Vec2, f32)>,
+    /// One finger panning (nobody piloted): which, and where it was last frame.
+    finger_last: Option<(u64, Vec2)>,
     /// While a zoom around a screen point eases in (free camera): the point's offset from the view centre
     /// (logical pixels, y up) and the world point kept under it until the zoom arrives. Moving the camera any
     /// other way ends it ([`CameraRig::end_zoom_anchor`]).
@@ -150,6 +153,7 @@ impl Default for CameraRig {
             view_offset: Vec2::ZERO,
             drag_last: None,
             pinch_last: None,
+            finger_last: None,
             zoom_anchor: None,
         }
     }
@@ -379,6 +383,7 @@ fn zoom_by(rig: &mut CameraRig, factor: f32, around: Option<Vec2>) {
     rig.user_zoom = true;
 }
 
+#[allow(clippy::too_many_arguments)]
 fn wheel_and_drag(
     mut rig: ResMut<CameraRig>,
     scroll: Res<AccumulatedMouseScroll>,
@@ -386,6 +391,8 @@ fn wheel_and_drag(
     act: Act,
     focus: Res<PilotFocus>,
     window: Single<&Window, With<PrimaryWindow>>,
+    hud: crate::flight_hud::HudButtons,
+    mut on_hud: Local<bool>,
 ) {
     rig.viewport = window.size();
     let cursor = window.cursor_position();
@@ -410,9 +417,12 @@ fn wheel_and_drag(
             rig.user_zoom = false;
         }
     }
-    // Drag to pan: middle button always; left button only without a ship to fly (load test, showcase).
-    let drag_button = buttons.pressed(MouseButton::Middle)
-        || (focus.0.is_none() && buttons.pressed(MouseButton::Left));
+    // Drag to pan: middle button always; left button only without a ship to fly (load test, showcase); not a press
+    // that started on a HUD button (the replay's timeline scrubs).
+    if buttons.any_just_pressed([MouseButton::Left, MouseButton::Middle]) {
+        *on_hud = cursor.is_some_and(|c| crate::flight_hud::on_hud_button(&hud, c, false));
+    }
+    let drag_button = !*on_hud && (buttons.pressed(MouseButton::Middle) || (focus.0.is_none() && buttons.pressed(MouseButton::Left)));
     match (drag_button, cursor) {
         (true, Some(c)) => {
             if let Some(last) = rig.drag_last
@@ -429,28 +439,55 @@ fn wheel_and_drag(
     }
 }
 
-/// Two fingers that are not on the stick or the fire button: pinch zoom (and pan in free mode).
-fn pinch(mut rig: ResMut<CameraRig>, touches: Res<Touches>, input: Res<PlayerInput>) {
+/// How far (logical px) two fingers' midpoint moves before they pan a camera that follows or frames (a pinch's own
+/// wobble stays a zoom).
+const PINCH_PAN: f32 = 16.0;
+
+/// Fingers that are not on the stick, FIRE or the UI (`PlayerInput::captures`): two pinch to zoom and pan (the
+/// mouse's wheel and middle drag; a camera that follows or frames comes free once the midpoint has moved
+/// [`PINCH_PAN`]); while nobody is piloted (a replayed fight, watch, the showcase) one finger dragged past the tap's
+/// slop pans too, like the left button there.
+fn pinch(mut rig: ResMut<CameraRig>, touches: Res<Touches>, input: Res<PlayerInput>, focus: Res<PilotFocus>) {
     let mut free = touches.iter().filter(|t| !input.captures(t.id()));
-    let (Some(a), Some(b)) = (free.next(), free.next()) else {
+    let pan = |rig: &mut CameraRig, d: Vec2| {
+        let z = rig.zoom;
+        rig.pos -= Vec2::new(d.x, -d.y) / z;
+        rig.mode = CamMode::Free;
+    };
+    let (a, b) = (free.next(), free.next());
+    let (Some(a), Some(b)) = (a, b) else {
         rig.pinch_last = None;
+        let one = a.filter(|t| focus.0.is_none() && t.start_position().distance(t.position()) > crate::controls::FINGER_SLOP);
+        match one {
+            Some(t) => {
+                if let Some((id, last)) = rig.finger_last
+                    && id == t.id()
+                {
+                    pan(&mut rig, t.position() - last);
+                }
+                rig.finger_last = Some((t.id(), t.position()));
+            }
+            None => rig.finger_last = None,
+        }
         return;
     };
+    rig.finger_last = None;
     let (pa, pb) = (a.position(), b.position());
     let dist = pa.distance(pb).max(1.0);
     let mid = (pa + pb) / 2.0;
-    if let Some((last_dist, last_mid)) = rig.pinch_last {
+    let mut moved = 0.0;
+    if let Some((last_dist, last_mid, was)) = rig.pinch_last {
         let f = dist / last_dist;
         rig.hand_zoom();
         rig.zoom_target = (rig.zoom_target * f).clamp(rig.floor, MAX_PX_PER_M);
         rig.user_zoom = true;
-        if rig.mode == CamMode::Free {
-            let d = mid - last_mid;
-            let z = rig.zoom;
-            rig.pos -= Vec2::new(d.x, -d.y) / z;
+        let d = mid - last_mid;
+        moved = was + d.length();
+        if rig.mode == CamMode::Free || moved > PINCH_PAN {
+            pan(&mut rig, d);
         }
     }
-    rig.pinch_last = Some((dist, mid));
+    rig.pinch_last = Some((dist, mid, moved));
 }
 
 /// Framing every active ship: their centre and the zoom (px per metre, unclamped) that shows them all in a view of

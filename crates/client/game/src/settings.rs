@@ -401,7 +401,7 @@ fn show(
     }
 }
 
-/// Over flight (whose UI scale is the plain UI size) the stage is fitted to the window while open (on a phone the
+/// Over flight (whose UI scale is the plain UI size, on a phone the phone HUD's) the stage is fitted to the window while open (on a phone the
 /// phone layout's scale, as at home), and the flight's scale comes back when it closes.
 fn fit(
     mode: Res<State<AppMode>>,
@@ -422,8 +422,11 @@ fn fit(
         if (scale.0 - s).abs() > 1e-3 {
             scale.0 = s;
         }
-    } else if ui.flight_scale.take().is_some() && scale.0 != size.0 {
-        scale.0 = size.0;
+    } else if let Some(flight) = ui.flight_scale.take()
+        && scale.0 != flight
+    {
+        // The flight's own scale (on a phone the phone HUD's, `world::flight_hud`).
+        scale.0 = flight;
     }
 }
 

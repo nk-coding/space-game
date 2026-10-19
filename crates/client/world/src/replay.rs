@@ -25,7 +25,11 @@
 //! * **The HUD**: the title names both sides and the seed, the subtitle the time, the speed, each side's build
 //!   points left and who flew side 0's first ship when a stand-in pilot did (`FLOWN BY STAND-IN · CASUAL`, GDR-0092
 //!   step 6: the referee flies it, so the replay is the fight); a timeline under the view shows how far the fight is, how far it has been simulated, and a mark
-//!   for every vessel lost (teal: side 0's, coral: side 1's).
+//!   for every vessel lost (teal: side 0's, coral: side 1's). A press on the timeline (the mouse or a finger) scrubs:
+//!   a thumb follows the pointer, the release seeks there.
+//! * **Touch** (docs/plans/android.md 4.2, GDR-0120): on a touch screen the timeline has the playback's buttons on
+//!   each side (START, −1 S, PLAY / PAUSE and +1 S, SLOWER, FASTER: the replay actions through `ActionTaps`); a tap on
+//!   a ship follows it, on empty space frames again; one finger pans, two pinch (`camera.rs`).
 
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
@@ -37,17 +41,18 @@ use bevy_egui::input::egui_wants_any_pointer_input;
 use data::input::Action;
 use kit::params::{Params, RenderToggles};
 use kit::style::{Style, ui_color};
-use kit::ui_kit::Tone;
+use bevy::ui::{ComputedNode, UiGlobalTransform};
+use kit::ui_kit::{Hot, HudFonts, SafeArea, by_class, Pill, PillText, Tone, TouchScreen, UiClick, UiInputSet, UiPointer, UiStyleSet, frame, set_text, spawn_pill};
 use sim::{Owner, ShipId, Sim, SimEvent, Target, TickInputs, VoyageRunner};
 use sim::voyage::runner::{Outcome as VoyageOutcome, VoyageRun};
 
 use crate::camera::{CamMode, CameraRig, LOCK_MIN_SHARE, MIN_PX_PER_M, frame_fit};
-use crate::controls::pick;
-use crate::flight_hud::{FlightMenu, HudZone};
+use crate::controls::{CLICK_SLACK, FINGER_SLOP, PlayerInput, TAP_SLACK, pick};
+use crate::flight_hud::{FlightMenu, HudButton, HudButtons, HudZone, on_hud_button};
 use crate::fx::Effects;
 use crate::mode::{AppMode, FlightUi};
 use crate::scene::{Scene, SceneKind};
-use crate::settings::Act;
+use crate::settings::{Act, ActionTaps};
 use crate::shield::ShieldBubbles;
 use crate::ship_model::Look;
 use crate::sim_bridge::{SimSet, SimWorld};
@@ -429,9 +434,24 @@ impl Replay {
     }
 }
 
-/// The timeline's bar, its fills and its marks.
+/// The timeline's row: the bar in its press area, and on a touch screen the playback's buttons on each side.
 #[derive(Component)]
 struct Timeline;
+/// The press area round the bar: a press scrubs.
+#[derive(Component)]
+struct Scrub;
+/// The bar.
+#[derive(Component)]
+struct Bar;
+/// Where a scrub would seek, while the pointer holds the timeline.
+#[derive(Component)]
+struct Thumb;
+/// The touch screen's playback buttons (hidden for the mouse), each an action of the replay.
+#[derive(Component, Clone, Copy)]
+struct PlayButton(Action);
+/// The buttons each side of the bar.
+#[derive(Component)]
+struct PlayGroup;
 /// How far the fight has been simulated, and how far it is.
 #[derive(Component, Clone, Copy, PartialEq, Eq)]
 enum Fill {
@@ -448,7 +468,8 @@ impl Plugin for ReplayPlugin {
         let params = app.world().resource::<Params>();
         let code = (params.text("scene") == Some("fight")).then(|| params.text("fight").unwrap_or_default().to_string());
         app.insert_resource(Replay { code, watch: None })
-            .add_systems(Startup, spawn_timeline)
+            .add_systems(Startup, spawn_timeline.after(kit::ui_kit::load_fonts))
+            .add_systems(Update, (play_buttons, scrub).chain().after(UiInputSet).before(UiStyleSet).run_if(in_state(AppMode::Flight)))
             .add_systems(FixedUpdate, (drop_inputs.in_set(SimSet::Inputs), fly.in_set(SimSet::Step), observe.in_set(SimSet::Events)))
             .add_systems(
                 Update,
@@ -546,16 +567,18 @@ fn playback(
     }
 }
 
-/// A click (not a drag, which pans) on a ship follows it; on empty space frames the fight again.
+/// A click or a tap (not a drag, which pans) on a ship follows it; on empty space frames the fight again. Not on the
+/// HUD's buttons (the timeline).
 #[allow(clippy::too_many_arguments)]
 fn follow_click(
     mut scene: ResMut<Scene>,
     replay: Res<Replay>,
     world: Res<SimWorld>,
     mut rig: ResMut<CameraRig>,
-    buttons: Res<ButtonInput<MouseButton>>,
+    (buttons, touches, input): (Res<ButtonInput<MouseButton>>, Res<Touches>, Res<PlayerInput>),
     window: Single<&Window, With<PrimaryWindow>>,
     fixed: Res<Time<Fixed>>,
+    hud: HudButtons,
     mut press: Local<Option<Vec2>>,
 ) {
     if !fight_scene(&scene) {
@@ -563,14 +586,25 @@ fn follow_click(
     }
     let cursor = window.cursor_position();
     if buttons.just_pressed(MouseButton::Left) {
-        *press = cursor;
+        *press = cursor.filter(|c| !on_hud_button(&hud, *c, false));
     }
+    let mut at = None;
     if buttons.just_released(MouseButton::Left)
-        && let (Some(at), Some(c)) = (press.take(), cursor)
-        && at.distance(c) < CLICK_SLOP
+        && let (Some(p), Some(c)) = (press.take(), cursor)
+        && p.distance(c) < CLICK_SLOP
     {
+        at = Some((c, CLICK_SLACK));
+    }
+    // A finger: one alone, off the UI, that hardly moved (the tap's time is the camera's business: a hold is no pan).
+    if touches.iter().count() <= 1
+        && let Some(t) = touches.iter_just_released().find(|t| !input.captures(t.id()))
+        && t.start_position().distance(t.position()) < FINGER_SLOP
+    {
+        at = Some((t.position(), TAP_SLACK));
+    }
+    if let Some((c, slack)) = at {
         let alpha = fixed.overstep_fraction();
-        match pick(&world, None, rig.screen_to_world(c), 1.0 / rig.zoom, alpha) {
+        match pick(&world, None, rig.screen_to_world(c), slack / rig.zoom, alpha) {
             Some(Target::Ship(id) | Target::Piece(id, _)) => {
                 scene.spectate = Some(id);
                 rig.mode = CamMode::Follow;
@@ -599,52 +633,148 @@ fn zoom_floor(scene: Res<Scene>, world: Res<SimWorld>, mut rig: ResMut<CameraRig
     rig.zoom_target = rig.zoom_target.max(rig.floor);
 }
 
-/// The timeline over the help line: a thin bar, how far the fight has been simulated (dim) and how far it is
-/// (teal), and the vessels lost.
-fn spawn_timeline(mut commands: Commands, style: Res<Style>) {
+/// The timeline under the view: a thin bar, how far the fight has been simulated (dim) and how far it is (teal), and
+/// the vessels lost; round it a press area (a [`HudButton`]: a press there scrubs and never reaches the world), and on
+/// a touch screen the playback's buttons on each side.
+fn spawn_timeline(mut commands: Commands, style: Res<Style>, fonts: Res<HudFonts>) {
     let ui = &style.ui;
-    commands
-        .spawn((
-            Timeline,
-            FlightUi,
-            HudZone,
-            Visibility::Hidden,
-            Node {
-                position_type: PositionType::Absolute,
-                bottom: px(52),
-                left: percent(25),
-                width: percent(50),
-                height: px(4),
-                ..default()
-            },
-            BackgroundColor(ui_color(ui.dim, 0.35)),
-        ))
-        .with_children(|bar| {
-            let fill = |w: f32| Node { position_type: PositionType::Absolute, left: px(0), top: px(0), height: percent(100), width: percent(w), ..default() };
-            bar.spawn((Fill::Seen, fill(0.0), BackgroundColor(ui_color(ui.label, 0.45))));
-            bar.spawn((Fill::Now, fill(0.0), BackgroundColor(ui_color(ui.teal, 0.95))));
-            for k in 0..MARKS {
-                bar.spawn((
-                    Mark(k),
-                    Visibility::Hidden,
-                    Node { position_type: PositionType::Absolute, top: px(-4), width: px(2), height: px(12), ..default() },
-                    BackgroundColor(Color::NONE),
-                ));
+    let f = frame();
+    let buttons = |row: &mut ChildSpawnerCommands, list: &[(&str, Action)]| {
+        row.spawn((PlayGroup, Node { display: Display::None, flex_direction: FlexDirection::Row, column_gap: px(f.pill_gap), ..default() })).with_children(|row| {
+            for (text, action) in list {
+                spawn_pill(row, &fonts, text, f.pill_text, f.pill, None, Pill::new(Tone::Teal), (PlayButton(*action), HudButton, HudZone));
             }
+        });
+    };
+    // The bar's bottom 52 px from the window's, as before it took presses; on a phone inside the safe area, over
+    // FRAME THE FIGHT.
+    let row = Node { position_type: PositionType::Absolute, bottom: px(52.0 - SCRUB_H / 2.0 + 2.0), width: percent(100), flex_direction: FlexDirection::Row, justify_content: JustifyContent::Center, align_items: AlignItems::Center, column_gap: px(12), ..default() };
+    let safe = SafeArea::PHONE;
+    let phone = Node { bottom: px(safe.bottom + f.pill + 10.0), padding: UiRect::horizontal(px(safe.left)), ..row.clone() };
+    commands
+        .spawn((Timeline, FlightUi, Visibility::Hidden, by_class(row, phone)))
+        .with_children(|row| {
+            buttons(row, &[("START", Action::ReplayRestart), ("−1 S", Action::ReplayBack), ("PLAY", Action::ReplayPause)]);
+            row.spawn((Scrub, HudButton, HudZone, Hot::default(), Node { width: percent(50), height: px(SCRUB_H), justify_content: JustifyContent::Center, flex_direction: FlexDirection::Column, ..default() }))
+                .with_children(|area| {
+                    area.spawn((Bar, Node { width: percent(100), height: px(4), ..default() }, BackgroundColor(ui_color(ui.dim, 0.35)))).with_children(|bar| {
+                        let fill = |w: f32| Node { position_type: PositionType::Absolute, left: px(0), top: px(0), height: percent(100), width: percent(w), ..default() };
+                        bar.spawn((Fill::Seen, fill(0.0), BackgroundColor(ui_color(ui.label, 0.45))));
+                        bar.spawn((Fill::Now, fill(0.0), BackgroundColor(ui_color(ui.teal, 0.95))));
+                        for k in 0..MARKS {
+                            bar.spawn((
+                                Mark(k),
+                                Visibility::Hidden,
+                                Node { position_type: PositionType::Absolute, top: px(-4), width: px(2), height: px(12), ..default() },
+                                BackgroundColor(Color::NONE),
+                            ));
+                        }
+                        bar.spawn((Thumb, Visibility::Hidden, Node { position_type: PositionType::Absolute, top: px(-7), width: px(3), height: px(18), ..default() }, BackgroundColor(ui_color(ui.number, 0.95))));
+                    });
+                });
+            buttons(row, &[("+1 S", Action::ReplayForward), ("SLOWER", Action::ReplaySlower), ("FASTER", Action::ReplayFaster)]);
         });
 }
 
+/// The timeline's press area's height (logical px at UI scale 1).
+const SCRUB_H: f32 = 24.0;
+
+/// The playback buttons: shown on a touch screen (the bar then takes the room between them), PLAY or PAUSE as the
+/// clock is, a tap is their action.
+#[allow(clippy::type_complexity, clippy::too_many_arguments)]
+fn play_buttons(
+    mut clicks: MessageReader<UiClick>,
+    touch: Res<TouchScreen>,
+    time: Res<Time<Virtual>>,
+    mut taps: ResMut<ActionTaps>,
+    buttons: Query<(Entity, &PlayButton)>,
+    mut groups: Query<&mut Node, (With<PlayGroup>, Without<Scrub>)>,
+    mut area: Single<&mut Node, With<Scrub>>,
+    mut texts: Query<(&ChildOf, &mut Text), With<PillText>>,
+) {
+    for c in clicks.read() {
+        if let Ok((_, b)) = buttons.get(c.0) {
+            taps.tap(b.0);
+        }
+    }
+    let display = if touch.on() { Display::Flex } else { Display::None };
+    for mut node in &mut groups {
+        if node.display != display {
+            node.display = display;
+        }
+    }
+    for (e, b) in &buttons {
+        if b.0 == Action::ReplayPause {
+            let word = if time.is_paused() { "PLAY" } else { "PAUSE" };
+            for (parent, mut text) in &mut texts {
+                if parent.parent() == e {
+                    set_text(&mut text, word);
+                }
+            }
+        }
+    }
+    // Between the buttons the bar takes what is left; alone it is half the window, centred.
+    let (width, grow) = if touch.on() { (Val::Auto, 1.0) } else { (percent(50), 0.0) };
+    if area.width != width || area.flex_grow != grow {
+        area.width = width;
+        area.flex_grow = grow;
+    }
+}
+
+/// A press on the timeline scrubs: the thumb follows the pointer along the bar, the release seeks there (back
+/// through a keyframe, or on; a fight that had ended plays again).
+#[allow(clippy::too_many_arguments, clippy::type_complexity)]
+fn scrub(
+    pointer: Res<UiPointer>,
+    area: Single<&Hot, With<Scrub>>,
+    bar: Single<(&ComputedNode, &UiGlobalTransform), With<Bar>>,
+    thumb: Single<(&mut Node, &mut Visibility), With<Thumb>>,
+    mut replay: ResMut<Replay>,
+    mut world: ResMut<SimWorld>,
+    mut time: ResMut<Time<Virtual>>,
+    (mut fx, mut shields): (ResMut<Effects>, ResMut<ShieldBubbles>),
+    mut held: Local<Option<f32>>,
+) {
+    let Some(Ok(w)) = replay.watch.as_mut() else { return };
+    let (node, tf) = *bar;
+    if area.pressed {
+        if let Some(p) = pointer.position()
+            && node.size.x > 0.0
+        {
+            // Physical px, as the node's.
+            let left = tf.translation.x - node.size.x / 2.0;
+            *held = Some(((p.x - left) / node.size.x).clamp(0.0, 1.0));
+        }
+    } else if let Some(share) = held.take() {
+        let ended = world.hold;
+        w.seek(&mut world, (share * w.limit() as f32).round() as u64);
+        fx.clear();
+        shields.clear();
+        if ended && !world.hold {
+            time.unpause();
+        }
+    }
+    let (mut n, mut v) = thumb.into_inner();
+    v.set_if_neq(if held.is_some() { Visibility::Inherited } else { Visibility::Hidden });
+    if let Some(share) = *held {
+        let left = percent(share * 100.0);
+        if n.left != left {
+            n.left = left;
+        }
+    }
+}
+
 /// Places the timeline's fills and marks (hidden outside a replay and with the HUD off).
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments, clippy::type_complexity)]
 fn update_timeline(
     scene: Res<Scene>,
     replay: Res<Replay>,
     world: Res<SimWorld>,
     toggles: Res<RenderToggles>,
     style: Res<Style>,
-    mut bar: Query<&mut Visibility, (With<Timeline>, Without<Mark>)>,
-    mut fills: Query<(&Fill, &mut Node), Without<Mark>>,
-    mut marks: Query<(&Mark, &mut Node, &mut BackgroundColor, &mut Visibility), Without<Timeline>>,
+    mut bar: Query<&mut Visibility, (With<Timeline>, Without<Mark>, Without<Thumb>)>,
+    mut fills: Query<(&Fill, &mut Node), (Without<Mark>, Without<Thumb>)>,
+    mut marks: Query<(&Mark, &mut Node, &mut BackgroundColor, &mut Visibility), (Without<Timeline>, Without<Thumb>)>,
 ) {
     let shown = fight_scene(&scene) && toggles.hud && replay.watched().is_some();
     for mut v in &mut bar {

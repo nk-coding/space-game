@@ -74,7 +74,7 @@ pub(super) fn update(
     mut timer: Local<Option<Timer>>,
     world: Res<SimWorld>,
     focus: Res<PilotFocus>,
-    controls: Res<crate::settings::Controls>,
+    (controls, touch): (Res<crate::settings::Controls>, Res<kit::ui_kit::TouchScreen>),
     style: Res<Style>,
     mut block: Single<&mut Visibility, With<AssistBlock>>,
     mut title: Single<(&mut Text, &mut TextColor), (With<AssistTitle>, Without<AssistRow>)>,
@@ -95,6 +95,10 @@ pub(super) fn update(
     if st.all_on() {
         set_text(text, "ASSISTS");
         set_color(color, ui_color(ui.label, 1.0));
+    } else if touch.on() {
+        // No keys on a touch screen: the flight menu's ASSISTS ON switches them.
+        set_text(text, "ASSISTS OFF");
+        set_color(color, ui_color(ui.gold, 1.0));
     } else {
         set_text(text, &format!("ASSISTS OFF  ·  {}", controls.0.label(Action::AllAssists)));
         set_color(color, ui_color(ui.gold, 1.0));
@@ -120,7 +124,7 @@ pub(super) fn update(
         if st.lock_paused() && st.channel(k) == Some(sim::behavior::Channel::Lock) {
             name.push_str("  ·  PAUSED");
         }
-        let line = match st.toggle(k).and_then(Action::assist_toggle) {
+        let line = match st.toggle(k).and_then(Action::assist_toggle).filter(|_| !touch.on()) {
             Some(a) => format!("{}  ·  {name}", controls.0.label(a)),
             None => name,
         };

@@ -15,6 +15,11 @@ use kit::atlas::Atlas;
 /// fire button.
 const BOTTOM: f32 = 46.0;
 const BOTTOM_TOUCH: f32 = 184.0;
+/// On a phone (GDR-0120): a smaller disc over FIRE (`controls.rs`), between it and the target panel, from the window's
+/// right and bottom edges.
+const PHONE_RADIUS: f32 = 40.0;
+const PHONE_RIGHT: f32 = 26.0;
+const PHONE_BOTTOM: f32 = 122.0;
 
 /// The minimap's numbers (style tokens) and its step: 0 near, 1 far, 2 hidden.
 #[derive(Resource)]
@@ -101,7 +106,7 @@ pub(super) fn update(
     scene: Res<Scene>,
     map: Res<Minimap>,
     overview: Res<super::overview::Overview>,
-    input: Res<PlayerInput>,
+    (touch, class): (Res<kit::ui_kit::TouchScreen>, Res<kit::ui_kit::LayoutClass>),
     controls: Res<crate::settings::Controls>,
     mut block: Query<(&mut Node, &mut Visibility), (With<MinimapBlock>, Without<MinimapDisc>)>,
     mut disc: Query<&mut Node, (With<MinimapDisc>, Without<MinimapBlock>)>,
@@ -114,12 +119,18 @@ pub(super) fn update(
         *vis = want;
     }
     let Some(range) = range else { return };
-    let bottom = px(if input.touch_ui { BOTTOM_TOUCH } else { BOTTOM });
-    if node.bottom != bottom {
-        node.bottom = bottom;
+    let phone = class.is_compact();
+    let (right, bottom) = match (phone, touch.on()) {
+        (true, _) => (PHONE_RIGHT, PHONE_BOTTOM),
+        (false, true) => (kit::ui_kit::frame().edge, BOTTOM_TOUCH),
+        (false, false) => (kit::ui_kit::frame().edge, BOTTOM),
+    };
+    if node.bottom != px(bottom) || node.right != px(right) {
+        node.bottom = px(bottom);
+        node.right = px(right);
     }
     if let Ok(mut d) = disc.single_mut() {
-        let size = px(2.0 * map.radius);
+        let size = px(2.0 * if phone { PHONE_RADIUS } else { map.radius });
         if d.width != size {
             d.width = size;
             d.height = size;
@@ -127,7 +138,8 @@ pub(super) fn update(
     }
     if let Ok(mut t) = line.single_mut() {
         let r = if range < 1000.0 { format!("{range:.0} M") } else { format!("{:.1} KM", range / 1000.0) };
-        let key = controls.0.inputs(Action::Minimap).next().map_or_else(String::new, |c| format!("  ·  {}", c.label()));
+        // No key on a touch screen (a tap opens the cluster map).
+        let key = controls.0.inputs(Action::Minimap).next().filter(|_| !touch.on()).map_or_else(String::new, |c| format!("  ·  {}", c.label()));
         set_text(&mut t, &format!("RANGE {r}{key}"));
     }
 }

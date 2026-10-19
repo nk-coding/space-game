@@ -16,10 +16,14 @@
 //!   (`ShipCommand::SwitchAssists`, GDR-0088); the HUD's banner says what changed ([`assist_switches`]). Clicks and
 //!   taps on the fleet bar (`fleet_bar.rs`) and the HUD's buttons (`flight_hud::HudButton`: the home ring, RECALL,
 //!   the ABANDON VOYAGE? panel) are theirs, never the world's.
-//! * **Touch** (landscape): virtual stick bottom-left (push distance = speed), fire button (every group)
-//!   bottom-right, tap a
-//!   ship = lock, tap empty space = unlock, two fingers = zoom. The touch widgets appear after the first touch
-//!   (or with `?touch=1`).
+//! * **Touch** (landscape; docs/plans/android.md 4.2, GDR-0120): a floating stick (where the left thumb lands in the
+//!   left 45 % of the window under the speed block; push distance = speed, a dead zone of 6 % of its radius), FIRE
+//!   bottom right (held: every group), FLARE beside it for a ship with a flare launcher, tap a ship = lock (2 m +
+//!   24 dp of slack), tap empty space = unlock, a tap on the target panel = LOCK TARGET (`flight_hud/phone.rs`), two
+//!   fingers = zoom and pan (`camera.rs`). A tap is shorter than 0.3 s and moves less than 10 dp. The touch widgets
+//!   show from the start on a touch screen (`kit::ui_kit::TouchScreen`: Android, a coarse pointer in the browser,
+//!   `?touch=1`, or after a first touch). A finger that lands on a HUD button (within its 48 dp touch target) or on
+//!   the fleet bar is the UI's: it never steers, fires, locks or pans.
 //!
 //! **Timing.** The input systems run every frame before the frame's sim ticks (`RunFixedMainLoop`, before the
 //! fixed loop), so a press reaches the tick of the same frame. Between ticks the keys and fire buttons are latched
@@ -31,24 +35,44 @@ use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
 use bevy_egui::input::{egui_wants_any_keyboard_input, egui_wants_any_pointer_input};
 use sim::{AssistSwitch, FIRE_ALL, ShipCommand, ShipId, Target};
+use bevy::ui::{ComputedNode, UiGlobalTransform, UiScale};
 use kit::style::{Style, ui_color};
+use kit::ui_kit::{HudFonts, TouchScreen, UiClick, label, ring_node};
 
 use crate::camera::CameraRig;
 use crate::fleet_bar::FleetBar;
-use crate::flight_hud::{HudButtons, HudZone, on_hud_button, switch_note};
+use crate::flight_hud::{HudButton, HudButtons, HudZone, StickZone, logical_rect, on_hud_button, switch_note};
 use crate::mode::{AppMode, FlightUi};
 use crate::scene::{Scene, is_friendly, player_vessels};
 use crate::sim_bridge::{PilotFocus, SimWorld, piece_com, sv, v2};
 use crate::flight_hud::{FlightMenu, Overview};
-use crate::settings::{Act, SettingsLayer};
+use crate::settings::{Act, ActionTaps, SettingsLayer};
 use crate::voyage::VoyageRun;
 use data::input::Action;
 
 /// Hold the left button this long on empty space to fire (shorter = a click = unlock).
 const HOLD_TO_FIRE: f32 = 0.18;
-const STICK_RADIUS: f32 = 70.0;
-const FIRE_RADIUS: f32 = 56.0;
+/// The touch stick (docs/plans/android.md 4.2; *placeholders*): its ring and knob (dp), the dead zone (a share of
+/// the radius; full speed at the rim), its ring at rest (from the window's left and bottom edges, inside the phone's
+/// safe area) and its zone (the left share of the window, under the speed block).
+const STICK_RING: f32 = 124.0;
+const STICK_KNOB: f32 = 44.0;
+const STICK_DEAD: f32 = 0.06;
+const STICK_REST: Vec2 = Vec2::new(32.0, 24.0);
+const STICK_ZONE: f32 = 0.45;
+/// FIRE (dp): the button, its hit area and its distance from the right and bottom edges.
+const FIRE_SIZE: f32 = 76.0;
+const FIRE_HIT: f32 = 96.0;
+const FIRE_EDGE: f32 = 32.0;
+/// An ability's slot beside FIRE (FLARE; dp).
+const SLOT: f32 = 44.0;
+/// A tap: shorter than this (s), and moved less than [`FINGER_SLOP`].
 const TAP_TIME: f32 = 0.3;
+/// How far (dp) a finger moves before it drags (pans) instead of tapping (the kit's and the drydock's 10 dp).
+pub const FINGER_SLOP: f32 = 10.0;
+/// A pick's slack around a piece's centre beside its 2 m: a click's and a finger's (screen px, dp).
+pub const CLICK_SLACK: f32 = 20.0;
+pub const TAP_SLACK: f32 = 24.0;
 /// The weapon group the held left button fires (GDR-0088).
 const LMB_GROUP: u8 = 1;
 /// How long the banner says what an assist switch did (sim seconds).
@@ -80,16 +104,17 @@ pub struct PlayerInput {
     pub fire: u8,
     pub lock: Option<Target>,
     pub drift: bool,
-    /// Show the touch widgets.
-    pub touch_ui: bool,
     key_axes: Vec3,
     key_fire: u8,
     /// What was held since the last tick.
     latch: TickLatch,
     lmb: Option<LmbPress>,
-    stick_touch: Option<(u64, Vec2)>,
+    /// The stick's finger, where it landed (the stick's centre) and the ring's radius (logical px).
+    stick_touch: Option<(u64, Vec2, f32)>,
     fire_touch: Option<u64>,
     tap: Option<(u64, Vec2, f32)>,
+    /// Fingers that landed on the UI (a HUD button, the fleet bar, SETTINGS): kept until the frame after they lift.
+    ui_touches: Vec<u64>,
 }
 
 #[derive(Clone, Copy)]
@@ -100,9 +125,9 @@ struct LmbPress {
 }
 
 impl PlayerInput {
-    /// Is this touch used by the stick or the fire button (camera pinch ignores it)?
+    /// Is this touch the stick's, FIRE's or the UI's (the camera's pinch and pan and the replay's taps ignore it)?
     pub fn captures(&self, id: u64) -> bool {
-        self.stick_touch.is_some_and(|(t, _)| t == id) || self.fire_touch == Some(id)
+        self.stick_touch.is_some_and(|(t, ..)| t == id) || self.fire_touch == Some(id) || self.ui_touches.contains(&id)
     }
     pub fn locked_ship(&self) -> Option<ShipId> {
         match self.lock {
@@ -184,13 +209,16 @@ struct StickBase;
 struct StickKnob;
 #[derive(Component)]
 struct FireButton;
+#[derive(Component)]
+struct FlareButton;
 
 pub struct ControlsPlugin;
 
 impl Plugin for ControlsPlugin {
     fn build(&self, app: &mut App) {
         add_input_systems(app);
-        app.add_systems(Startup, spawn_touch_ui).add_systems(Update, touch_ui.run_if(in_state(AppMode::Flight)));
+        app.add_systems(Startup, spawn_touch_ui.after(kit::ui_kit::load_fonts))
+            .add_systems(Update, (touch_ui, flare_tap.after(kit::ui_kit::UiInputSet)).run_if(in_state(AppMode::Flight)));
     }
 }
 
@@ -322,10 +350,10 @@ fn mouse(
     if buttons.just_pressed(MouseButton::Left)
         && let Some(c) = cursor
         && !fleet.blocks(c)
-        && !on_hud_button(&hud, c)
+        && !on_hud_button(&hud, c, false)
     {
         let alpha = fixed.overstep_fraction();
-        let hit = pick(&world, focus.0, rig.screen_to_world(c), 1.0 / rig.zoom, alpha);
+        let hit = pick(&world, focus.0, rig.screen_to_world(c), CLICK_SLACK / rig.zoom, alpha);
         apply_pick(hit, &mut world, &focus, &mut input);
         input.lmb = Some(LmbPress { at: c, time: now, on_ship: hit.is_some() });
     }
@@ -347,6 +375,12 @@ fn mouse(
     }
 }
 
+/// The laid-out nodes the touch input measures: FIRE and the speed block (the stick's zone starts under it).
+type TouchLayout<'w, 's> = (
+    Query<'w, 's, (&'static ComputedNode, &'static UiGlobalTransform), With<FireButton>>,
+    Query<'w, 's, (&'static ComputedNode, &'static UiGlobalTransform), With<StickZone>>,
+);
+
 #[allow(clippy::too_many_arguments)]
 fn touch(
     time: Res<Time<Real>>,
@@ -356,30 +390,39 @@ fn touch(
     focus: Res<PilotFocus>,
     rig: Res<CameraRig>,
     fixed: Res<Time<Fixed>>,
-    fleet: Res<FleetBar>,
+    (fleet, layer, ui_scale): (Res<FleetBar>, Res<SettingsLayer>, Res<UiScale>),
     hud: HudButtons,
+    (fire, zone): TouchLayout,
     mut input: ResMut<PlayerInput>,
 ) {
     let size = window.size();
-    let stick_c = Vec2::new(40.0 + STICK_RADIUS + 10.0, size.y - 40.0 - STICK_RADIUS - 10.0);
-    let fire_c = Vec2::new(size.x - 50.0 - FIRE_RADIUS, size.y - 50.0 - FIRE_RADIUS);
+    let s = ui_scale.0;
     let now = time.elapsed_secs();
+    input.ui_touches.retain(|&id| touches.get_pressed(id).is_some() || touches.just_released(id) || touches.just_canceled(id));
+    let rect = |(node, tf): (&ComputedNode, &UiGlobalTransform)| logical_rect(node, tf);
+    let fire_at = fire.single().ok().and_then(rect).map(|r| r.center());
+    let zone_top = zone.single().ok().and_then(rect).map_or(size.y * 0.45, |r| r.max.y + 8.0 * s);
+    let flying = focus.0.is_some();
     for t in touches.iter_just_pressed() {
-        input.touch_ui = true;
-        let p = t.position();
-        if fleet.blocks(p) || on_hud_button(&hud, p) {
+        let (id, p) = (t.id(), t.position());
+        if layer.open || fleet.blocks(p) || on_hud_button(&hud, p, true) {
+            input.ui_touches.push(id);
             continue;
         }
-        if focus.0.is_some() && input.stick_touch.is_none() && p.distance(stick_c) < STICK_RADIUS * 1.7 {
-            input.stick_touch = Some((t.id(), stick_c));
-        } else if focus.0.is_some() && input.fire_touch.is_none() && p.distance(fire_c) < FIRE_RADIUS * 1.4 {
-            input.fire_touch = Some(t.id());
+        if flying && input.fire_touch.is_none() && fire_at.is_some_and(|c| c.distance(p) < FIRE_HIT / 2.0 * s) {
+            input.fire_touch = Some(id);
+        } else if flying && input.stick_touch.is_none() && p.x < size.x * STICK_ZONE && p.y > zone_top {
+            // The stick's base appears under the thumb.
+            input.stick_touch = Some((id, p, STICK_RING / 2.0 * s));
+        } else if input.tap.is_some() {
+            // A second finger: a pinch, not a tap.
+            input.tap = None;
         } else {
-            input.tap = Some((t.id(), p, now));
+            input.tap = Some((id, p, now));
         }
     }
     for t in touches.iter_just_released().chain(touches.iter_just_canceled()) {
-        if input.stick_touch.is_some_and(|(id, _)| id == t.id()) {
+        if input.stick_touch.is_some_and(|(id, ..)| id == t.id()) {
             input.stick_touch = None;
         }
         if input.fire_touch == Some(t.id()) {
@@ -389,9 +432,9 @@ fn touch(
             && id == t.id()
         {
             input.tap = None;
-            if now - t0 < TAP_TIME && t.position().distance(at) < 14.0 && focus.0.is_some() {
+            if now - t0 < TAP_TIME && t.position().distance(at) < FINGER_SLOP * s && flying {
                 let alpha = fixed.overstep_fraction();
-                let hit = pick(&world, focus.0, rig.screen_to_world(at), 1.0 / rig.zoom, alpha);
+                let hit = pick(&world, focus.0, rig.screen_to_world(at), TAP_SLACK * s / rig.zoom, alpha);
                 if hit.is_none() {
                     input.lock = None;
                 }
@@ -399,17 +442,32 @@ fn touch(
             }
         }
     }
+    // SETTINGS over the flight takes the fingers.
+    if layer.open {
+        input.stick_touch = None;
+        input.fire_touch = None;
+        input.tap = None;
+    }
+}
+
+/// The stick's push: the finger's offset from where it landed over the ring's radius, nothing inside the dead zone,
+/// then rising to 1 at the rim (screen down is the world's −y).
+fn stick_push(offset: Vec2, radius: f32) -> Vec2 {
+    let v = Vec2::new(offset.x, -offset.y) / radius.max(1.0);
+    let len = v.length();
+    if len <= STICK_DEAD {
+        return Vec2::ZERO;
+    }
+    v / len * ((len - STICK_DEAD) / (1.0 - STICK_DEAD)).min(1.0)
 }
 
 /// Stick, axes and fire from all sources: the touch stick wins while it is held, else the keyboard axes.
 fn combine(touches: Res<Touches>, mut input: ResMut<PlayerInput>) {
     let mut stick = None;
-    if let Some((id, centre)) = input.stick_touch
+    if let Some((id, centre, radius)) = input.stick_touch
         && let Some(t) = touches.get_pressed(id)
     {
-        let d = t.position() - centre;
-        let v = Vec2::new(d.x, -d.y) / STICK_RADIUS;
-        stick = Some(if v.length() > 1.0 { v.normalize() } else { v });
+        stick = Some(stick_push(t.position() - centre, radius));
     }
     input.stick_mode = stick.is_some();
     input.stick = stick.unwrap_or(Vec2::ZERO);
@@ -434,8 +492,8 @@ fn apply_pick(hit: Option<Target>, world: &mut SimWorld, focus: &PilotFocus, inp
 }
 
 /// The ship (or salvage piece) under a world point: exact part test in each piece frame, else the nearest
-/// piece centre within a few pixels' worth of slack.
-pub fn pick(world: &SimWorld, player: Option<ShipId>, at: Vec2, m_per_px: f32, alpha: f32) -> Option<Target> {
+/// piece centre within 2 m and `slack` metres (a click's [`CLICK_SLACK`] or a finger's [`TAP_SLACK`] px at the zoom).
+pub fn pick(world: &SimWorld, player: Option<ShipId>, at: Vec2, slack: f32, alpha: f32) -> Option<Target> {
     let mut best: Option<(f32, Target)> = None;
     for ship in world.sim.ships() {
         if Some(ship.id()) == player {
@@ -449,7 +507,7 @@ pub fn pick(world: &SimWorld, player: Option<ShipId>, at: Vec2, m_per_px: f32, a
                 return Some(target);
             }
             let d = piece_com(piece, alpha).distance(at);
-            let slack = 2.0 + 20.0 * m_per_px;
+            let slack = 2.0 + slack;
             if d < slack && best.is_none_or(|b| d < b.0) {
                 best = Some((d, target));
             }
@@ -458,122 +516,133 @@ pub fn pick(world: &SimWorld, player: Option<ShipId>, at: Vec2, m_per_px: f32, a
     best.map(|b| b.1)
 }
 
-fn spawn_touch_ui(mut commands: Commands, style: Res<Style>, params: Res<kit::params::Params>, mut input: ResMut<PlayerInput>) {
-    input.touch_ui = params.flag("touch").unwrap_or(false);
+/// The touch widgets: the stick's ring (at rest bottom left, faint), FIRE bottom right, FLARE beside it.
+fn spawn_touch_ui(mut commands: Commands, style: Res<Style>, fonts: Res<HudFonts>) {
     let teal = style.glow_player;
     let coral = style.glow_enemy;
-    let d = STICK_RADIUS * 2.0;
+    let round = |size: f32, border: f32| Node {
+        position_type: PositionType::Absolute,
+        width: px(size),
+        height: px(size),
+        border: UiRect::all(px(border)),
+        border_radius: BorderRadius::MAX,
+        justify_content: JustifyContent::Center,
+        align_items: AlignItems::Center,
+        ..default()
+    };
     commands
         .spawn((
             StickBase,
             FlightUi,
             HudZone,
-            Node {
-                position_type: PositionType::Absolute,
-                left: px(50),
-                bottom: px(50),
-                width: px(d),
-                height: px(d),
-                border: UiRect::all(px(2)),
-                border_radius: BorderRadius::MAX,
-                justify_content: JustifyContent::Center,
-                align_items: AlignItems::Center,
-                ..default()
-            },
-            BorderColor::all(ui_color(teal, 0.45)),
-            BackgroundColor(ui_color(teal, 0.04)),
+            Node { left: px(STICK_REST.x), bottom: px(STICK_REST.y), ..round(STICK_RING, 2.0) },
+            BorderColor::all(ui_color(teal, 0.25)),
+            BackgroundColor(ui_color(teal, 0.02)),
             Visibility::Hidden,
         ))
         .with_children(|p| {
-            p.spawn((
-                StickKnob,
-                Node {
-                    position_type: PositionType::Absolute,
-                    width: px(56),
-                    height: px(56),
-                    border: UiRect::all(px(2)),
-                    border_radius: BorderRadius::MAX,
-                    ..default()
-                },
-                BorderColor::all(ui_color(teal, 0.8)),
-                BackgroundColor(ui_color(teal, 0.18)),
-            ));
+            p.spawn((StickKnob, round(STICK_KNOB, 2.0), BorderColor::all(ui_color(teal, 0.35)), BackgroundColor(ui_color(teal, 0.06))));
         });
-    let f = FIRE_RADIUS * 2.0;
     commands
         .spawn((
             FireButton,
             FlightUi,
             HudZone,
-            Node {
-
-                position_type: PositionType::Absolute,
-                right: px(50),
-                bottom: px(50),
-                width: px(f),
-                height: px(f),
-                border: UiRect::all(px(3)),
-                border_radius: BorderRadius::MAX,
-                justify_content: JustifyContent::Center,
-                align_items: AlignItems::Center,
-                ..default()
-            },
+            Node { right: px(FIRE_EDGE), bottom: px(FIRE_EDGE), ..round(FIRE_SIZE, 3.0) },
             BorderColor::all(ui_color(coral, 0.7)),
             BackgroundColor(ui_color(coral, 0.06)),
             Visibility::Hidden,
         ))
         .with_children(|p| {
-            p.spawn((
-                Text::new("FIRE"),
-                TextFont { font_size: FontSize::Px(13.0), ..default() },
-                TextColor(ui_color(coral, 0.9)),
-            ));
+            p.spawn(label(&fonts, "FIRE", 12.0, ui_color(coral, 0.9)));
+        });
+    // FLARE: a ring left of FIRE, its centre at FIRE's height (a HUD button: a tap is the FLARES action).
+    commands
+        .spawn((
+            FlightUi,
+            Node { position_type: PositionType::Absolute, right: px(FIRE_EDGE + FIRE_SIZE + 14.0), bottom: px(FIRE_EDGE + (FIRE_SIZE - SLOT) / 2.0), ..default() },
+        ))
+        .with_children(|p| {
+            p.spawn((FlareButton, HudButton, HudZone, Visibility::Hidden, ring_node(SLOT))).with_child(label(&fonts, "FLARE", 8.0, ui_color(style.ui.label, 1.0)));
         });
 }
 
-#[allow(clippy::type_complexity)]
+/// A tap on FLARE: the flown ship's flare launcher (the FLARES action).
+fn flare_tap(mut clicks: MessageReader<UiClick>, button: Query<(), With<FlareButton>>, mut taps: ResMut<ActionTaps>) {
+    if clicks.read().any(|c| button.contains(c.0)) {
+        taps.tap(Action::Flare);
+    }
+}
+
+/// The widgets on a touch screen while a ship is flown: the stick's ring at rest, or under the thumb with its knob
+/// where the thumb is; FIRE lit while held; FLARE for a ship with a flare launcher.
+#[allow(clippy::type_complexity, clippy::too_many_arguments)]
 fn touch_ui(
     input: Res<PlayerInput>,
     focus: Res<PilotFocus>,
     touches: Res<Touches>,
-    mut base: Query<&mut Visibility, (With<StickBase>, Without<FireButton>)>,
-    mut fire: Query<(&mut Visibility, &mut BackgroundColor), (With<FireButton>, Without<StickBase>)>,
-    mut knob: Query<&mut Node, With<StickKnob>>,
+    (screen, layer, ui_scale, world): (Res<TouchScreen>, Res<SettingsLayer>, Res<UiScale>, Res<SimWorld>),
+    mut base: Query<(&mut Visibility, &mut Node, &mut BorderColor), (With<StickBase>, Without<FireButton>, Without<StickKnob>, Without<FlareButton>)>,
+    mut fire: Query<(&mut Visibility, &mut BackgroundColor), (With<FireButton>, Without<StickBase>, Without<FlareButton>)>,
+    mut flare: Query<&mut Visibility, (With<FlareButton>, Without<StickBase>, Without<FireButton>)>,
+    mut knob: Query<(&mut Node, &mut BorderColor, &mut BackgroundColor), (With<StickKnob>, Without<StickBase>, Without<FireButton>)>,
     style: Res<Style>,
 ) {
-    let show = input.touch_ui && focus.0.is_some();
+    let show = screen.on() && focus.0.is_some() && !layer.open;
     let want = if show { Visibility::Inherited } else { Visibility::Hidden };
-    for mut v in &mut base {
-        if *v != want {
-            *v = want;
-        }
+    let flares = focus.0.and_then(|id| world.sim.ship(id)).is_some_and(|s| !s.design().flares.is_empty());
+    for mut v in &mut flare {
+        v.set_if_neq(if show && flares { Visibility::Inherited } else { Visibility::Hidden });
     }
     for (mut v, mut bg) in &mut fire {
-        if *v != want {
-            *v = want;
-        }
+        v.set_if_neq(want);
         let a = if input.fire_touch.is_some() { 0.3 } else { 0.06 };
         let c = ui_color(style.glow_enemy, a);
         if bg.0 != c {
             bg.0 = c;
         }
     }
-    if !show {
-        return;
-    }
-    let mut off = Vec2::ZERO;
-    if let Some((id, centre)) = input.stick_touch
-        && let Some(t) = touches.get_pressed(id)
-    {
+    let s = ui_scale.0.max(1e-3);
+    // Where the stick is (UI px from the window's top left) and the knob's offset, while a thumb holds it.
+    let held = input.stick_touch.and_then(|(id, centre, radius)| {
+        let t = touches.get_pressed(id)?;
         let d = t.position() - centre;
-        off = if d.length() > STICK_RADIUS { d.normalize() * STICK_RADIUS } else { d };
+        Some((centre / s, d.clamp_length_max(radius) / s))
+    });
+    for (mut v, mut node, mut border) in &mut base {
+        v.set_if_neq(want);
+        let r = STICK_RING / 2.0;
+        let (left, top, bottom) = match held {
+            Some((c, _)) => (px(c.x - r), px(c.y - r), Val::Auto),
+            None => (px(STICK_REST.x), Val::Auto, px(STICK_REST.y)),
+        };
+        if node.left != left || node.top != top || node.bottom != bottom {
+            node.left = left;
+            node.top = top;
+            node.bottom = bottom;
+        }
+        let c = BorderColor::all(ui_color(style.glow_player, if held.is_some() { 0.5 } else { 0.25 }));
+        if *border != c {
+            *border = c;
+        }
     }
-    for mut n in &mut knob {
-        let l = px(STICK_RADIUS - 28.0 - 2.0 + off.x);
-        let t = px(STICK_RADIUS - 28.0 - 2.0 + off.y);
+    let off = held.map_or(Vec2::ZERO, |h| h.1);
+    let k = (STICK_RING - STICK_KNOB) / 2.0 - 2.0;
+    // At rest the stick is faint; under a thumb it lights up.
+    let (edge, fill) = if held.is_some() { (0.8, 0.18) } else { (0.35, 0.06) };
+    for (mut n, mut border, mut bg) in &mut knob {
+        let (l, t) = (px(k + off.x), px(k + off.y));
         if n.left != l || n.top != t {
             n.left = l;
             n.top = t;
+        }
+        let c = BorderColor::all(ui_color(style.glow_player, edge));
+        if *border != c {
+            *border = c;
+        }
+        let c = ui_color(style.glow_player, fill);
+        if bg.0 != c {
+            bg.0 = c;
         }
     }
 }
@@ -598,6 +667,18 @@ mod tests {
         // D held at the tick after an A tap and some W: D and W.
         latch.note(Vec3::new(1.0, 1.0, 0.0), 0);
         assert_eq!(latch.take(Vec3::new(-1.0, 0.0, 0.0), 0), (Vec3::new(-1.0, 1.0, 0.0), 0));
+    }
+
+    /// The touch stick: nothing inside its dead zone, full speed at the rim and past it, screen down is the
+    /// world's −y.
+    #[test]
+    fn the_stick_has_a_dead_zone_and_is_full_at_the_rim() {
+        let r = STICK_RING / 2.0;
+        assert_eq!(stick_push(Vec2::new(r * STICK_DEAD * 0.9, 0.0), r), Vec2::ZERO);
+        assert!((stick_push(Vec2::new(r, 0.0), r) - Vec2::X).length() < 1e-5);
+        assert!((stick_push(Vec2::new(0.0, 3.0 * r), r) - Vec2::NEG_Y).length() < 1e-5);
+        let half = stick_push(Vec2::new(r * 0.5, 0.0), r).x;
+        assert!(half > 0.45 && half < 0.5, "{half}");
     }
 
     #[derive(Resource, Default)]

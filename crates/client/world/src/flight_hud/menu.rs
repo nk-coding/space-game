@@ -2,21 +2,25 @@
 //! test range it pauses the flight; a voyage never pauses, so there it lies over the running fight. SETTINGS opens
 //! the SETTINGS screen over it (`settings::OpenSettings`), CONTROLS the controls overlay over it (`help.rs`; Esc
 //! comes back to the menu), SHIPYARD goes home (the test range), ABANDON VOYAGE… opens the ABANDON VOYAGE? panel (a
-//! voyage).
+//! voyage). On a touch screen (docs/plans/android.md 4.2, GDR-0120; the ring top left opens it there) a second row
+//! holds what only keys do: in the test range DRYDOCK (or BEHAVIOR, where T goes), WAVES OFF / ON (C) and RESTART
+//! (Shift+R), and for a ship with pilot assists ASSISTS OFF / ON (Z), each through `ActionTaps`.
 //!
 //! ```text
 //!          PAUSED                    (a voyage: MENU · THE FLIGHT GOES ON)
 //!   [ RESUME ]  [ CONTROLS ]  [ SETTINGS ]  [ SHIPYARD ]          ([ ABANDON VOYAGE… ] in a voyage)
+//!        [ DRYDOCK ]  [ WAVES OFF ]  [ RESTART ]  [ ASSISTS OFF ]  (touch)
 //! ```
 
 use bevy::prelude::*;
 use kit::style::{Style, ui_color};
-use kit::ui_kit::{Edge, Hot, HudFonts, Pill, ScreenFx, ScreenPart, Tip, Tone, UiClick, frame, label, panel_colors, panel_node, panel_title, show_screen, spawn_pill};
+use data::input::Action;
+use kit::ui_kit::{Edge, Hot, HudFonts, Pill, PillText, ScreenFx, ScreenPart, Tip, Tone, TouchScreen, UiClick, frame, label, panel_colors, panel_node, panel_title, set_text, show_screen, spawn_pill};
 
 use super::{HudButton, HudZone};
 use crate::mode::{AppMode, FlightUi};
 use crate::scene::Scene;
-use crate::settings::{ActionTip, OpenSettings};
+use crate::settings::{ActionTaps, ActionTip, OpenSettings};
 use crate::voyage::VoyageRun;
 
 /// Is the flight menu open, and did it pause the flight (so closing it resumes)?
@@ -44,7 +48,17 @@ pub(super) enum MenuButton {
     Settings,
     Shipyard,
     Abandon,
+    /// Touch: T, C and Shift+R.
+    Back,
+    Waves,
+    Restart,
+    /// Touch: ALL ASSISTS (Z).
+    Assists,
 }
+
+/// The touch screen's second row.
+#[derive(Component)]
+pub(super) struct TouchRow;
 
 /// The menu: a dark plate in the middle of the view (a [`HudButton`]: clicks on it never reach the world).
 pub(super) fn spawn_menu(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>, clear: Res<ClearColor>) {
@@ -71,6 +85,11 @@ pub(super) fn spawn_menu(mut commands: Commands, fonts: Res<HudFonts>, style: Re
                     spawn_pill(row, &fonts, "SHIPYARD", 11.0, 36.0, None, Pill::new(Tone::Teal), (MenuButton::Shipyard, Tip::new("SHIPYARD"), ActionTip(data::input::Action::Leave)));
                     spawn_pill(row, &fonts, "ABANDON VOYAGE…", 11.0, 36.0, None, Pill::new(Tone::Coral), (MenuButton::Abandon, Tip::new("ABANDON VOYAGE"), ActionTip(data::input::Action::Leave)));
                 });
+                p.spawn((TouchRow, Node { display: Display::None, flex_direction: FlexDirection::Row, column_gap: px(f.pill_gap), margin: UiRect::top(px(f.panel.gap)), ..default() })).with_children(|row| {
+                    for (b, text) in [(MenuButton::Back, "DRYDOCK"), (MenuButton::Waves, "WAVES OFF"), (MenuButton::Restart, "RESTART"), (MenuButton::Assists, "ASSISTS OFF")] {
+                        spawn_pill(row, &fonts, text, 11.0, 36.0, None, Pill::new(Tone::Teal), b);
+                    }
+                });
             });
         });
 }
@@ -87,9 +106,12 @@ pub(super) fn flight_menu(
     mut next: ResMut<NextState<AppMode>>,
     mut settings: MessageWriter<OpenSettings>,
     mut root: Single<&mut ScreenFx, With<MenuRoot>>,
-    mut texts: ParamSet<(Single<&mut Text, With<MenuTitle>>, Single<&mut Text, With<MenuSub>>)>,
-    mut shown: Query<(&MenuButton, &mut Node)>,
+    mut texts: ParamSet<(Single<&mut Text, With<MenuTitle>>, Single<&mut Text, With<MenuSub>>, Query<(&ChildOf, &mut Text), With<PillText>>)>,
+    mut shown: Query<(Entity, &MenuButton, &mut Node), Without<TouchRow>>,
     layer: Res<crate::settings::SettingsLayer>,
+    (touch, exit, mut taps): (Res<TouchScreen>, Res<crate::mode::FlightExit>, ResMut<ActionTaps>),
+    (focus, world): (Res<crate::sim_bridge::PilotFocus>, Res<crate::sim_bridge::SimWorld>),
+    mut touch_row: Single<&mut Node, With<TouchRow>>,
 ) {
     let voyage = scene.voyage().is_some();
     for c in clicks.read() {
@@ -106,6 +128,15 @@ pub(super) fn flight_menu(
             Ok(MenuButton::Abandon) if voyage => {
                 menu.open = false;
                 run.asking = true;
+            }
+            Ok(b @ (MenuButton::Back | MenuButton::Waves | MenuButton::Restart | MenuButton::Assists)) => {
+                menu.open = false;
+                taps.tap(match b {
+                    MenuButton::Back => Action::TestReturn,
+                    MenuButton::Waves => Action::Waves,
+                    MenuButton::Restart => Action::ResetScene,
+                    _ => Action::AllAssists,
+                });
             }
             _ => {}
         }
@@ -136,16 +167,42 @@ pub(super) fn flight_menu(
         if texts.p1().0 != sub {
             texts.p1().0 = sub.into();
         }
-        for (b, mut node) in &mut shown {
+        let range = scene.kind == crate::scene::SceneKind::Sandbox;
+        let assists = focus.0.and_then(|id| world.sim.ship(id)).and_then(|s| s.assists()).filter(|a| !a.program().program.rules.is_empty());
+        let mut touch_buttons = false;
+        for (e, b, mut node) in &mut shown {
             let on = match b {
                 MenuButton::Shipyard => !voyage,
                 MenuButton::Abandon => voyage,
+                MenuButton::Back | MenuButton::Restart => range,
+                MenuButton::Waves => range && scene.test_mode().is_none(),
+                MenuButton::Assists => assists.is_some(),
                 _ => true,
             };
+            touch_buttons |= on && matches!(b, MenuButton::Back | MenuButton::Waves | MenuButton::Restart | MenuButton::Assists);
             let d = if on { Display::Flex } else { Display::None };
             if node.display != d {
                 node.display = d;
             }
+            // What the touch row's buttons do here.
+            let word = match b {
+                MenuButton::Back if exit.0 == AppMode::Behavior => "BEHAVIOR",
+                MenuButton::Back => "DRYDOCK",
+                MenuButton::Waves if scene.waves => "WAVES OFF",
+                MenuButton::Waves => "WAVES ON",
+                MenuButton::Assists if assists.is_some_and(|a| a.all_on()) => "ASSISTS OFF",
+                MenuButton::Assists => "ASSISTS ON",
+                _ => continue,
+            };
+            for (parent, mut text) in &mut texts.p2() {
+                if parent.parent() == e {
+                    set_text(&mut text, word);
+                }
+            }
+        }
+        let d = if touch.on() && touch_buttons { Display::Flex } else { Display::None };
+        if touch_row.display != d {
+            touch_row.display = d;
         }
     }
 }

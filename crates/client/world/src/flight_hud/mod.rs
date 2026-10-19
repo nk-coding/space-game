@@ -41,6 +41,7 @@ mod markers;
 mod menu;
 mod minimap;
 mod overview;
+mod phone;
 mod scan;
 mod text;
 
@@ -53,7 +54,7 @@ use sim::{ShipDesign, ShipId, Stat, Target};
 use bevy::ui::{ComputedNode, UiGlobalTransform};
 use kit::params::RenderToggles;
 use kit::style::{Style, ui_color};
-use kit::ui_kit::{Edge, Hot, HudFonts, Pill, PillText, ScreenFx, ScreenPart, Tip, Tone, show_screen, UiClick, UiInputSet, UiStyleSet, frame, label, load_fonts, number, panel_colors, panel_node, panel_title, prose, set_color, set_text, spawn_back, spawn_pill, tracked};
+use kit::ui_kit::{CompactSize, SafeArea, Edge, Hot, HudFonts, by_class, Pill, PillText, ScreenFx, ScreenPart, Tip, Tone, show_screen, UiClick, UiInputSet, UiStyleSet, frame, label, load_fonts, number, panel_colors, panel_node, panel_title, prose, set_color, set_text, spawn_back, spawn_pill, tracked};
 
 use crate::camera::{CameraRig, CameraSet};
 use crate::controls::PlayerInput;
@@ -73,6 +74,7 @@ use markers::{lock_ring, offscreen_markers, site_markers};
 pub use assists::{assist_name, switch_note};
 pub use menu::FlightMenu;
 pub use overview::Overview;
+pub use phone::{StickZone, TargetTap};
 pub use text::hull_fraction;
 use text::update_text;
 
@@ -103,13 +105,14 @@ enum HudText {
     LostHome,
 }
 
-/// The voyage's cargo block and RECALL (shown in voyages).
+/// The voyage's cargo block and RECALL (shown in voyages): in the top left column, or (`true`) on a phone at the
+/// bottom centre, where the left column would run into the stick.
 #[derive(Component)]
-struct VoyageBlock;
+struct VoyageBlock(bool);
 
-/// One cargo unit's pip under the salvage number.
+/// One cargo unit's pip under the salvage number (`.1`: a phone's, beside it, out of the layout when unused).
 #[derive(Component)]
-struct CargoPip(u32);
+struct CargoPip(u32, bool);
 
 /// Pips shown at most (a bigger hold shows its share).
 const PIPS: u32 = 20;
@@ -178,13 +181,20 @@ pub struct HudZone;
 pub type HudButtons<'w, 's> =
     Query<'w, 's, (&'static ComputedNode, &'static UiGlobalTransform, &'static InheritedVisibility), With<HudButton>>;
 
-/// Is this logical window point on a visible [`HudButton`]?
-pub fn on_hud_button(buttons: &HudButtons, p: Vec2) -> bool {
-    buttons.iter().any(|(node, tf, vis)| vis.get() && logical_rect(node, tf).is_some_and(|r| r.contains(p)))
+/// Is this logical window point on a visible [`HudButton`], or (`finger`: under a finger) within its box grown to the
+/// kit's 48 dp touch target?
+pub fn on_hud_button(buttons: &HudButtons, p: Vec2, finger: bool) -> bool {
+    buttons.iter().any(|(node, tf, vis)| {
+        vis.get()
+            && logical_rect(node, tf).is_some_and(|r| {
+                let r = if finger { Rect::from_center_size(r.center(), r.size().max(Vec2::splat(kit::ui_kit::TOUCH_TARGET))) } else { r };
+                r.contains(p)
+            })
+    })
 }
 
 /// A laid-out node's rectangle in logical window pixels (`None` while it has no size).
-fn logical_rect(node: &ComputedNode, tf: &UiGlobalTransform) -> Option<Rect> {
+pub(crate) fn logical_rect(node: &ComputedNode, tf: &UiGlobalTransform) -> Option<Rect> {
     let s = node.inverse_scale_factor;
     node.size.cmpgt(Vec2::ZERO).all().then(|| Rect::from_center_size(tf.translation * s, node.size * s))
 }
@@ -245,6 +255,7 @@ impl Plugin for FlightHudPlugin {
         .add_systems(Update, abandon_panel.after(UiInputSet).before(UiStyleSet).run_if(in_state(AppMode::Flight)))
         .add_systems(Update, voyage_widgets.after(UiInputSet).before(UiStyleSet).run_if(in_state(AppMode::Flight)))
         .add_systems(OnExit(AppMode::Flight), forget_ship)
+        .add_systems(Update, (phone::flight_ui_scale, phone::touch_targets, phone::target_tap.after(UiInputSet)).run_if(in_state(AppMode::Flight)))
         .add_systems(PostUpdate, (lock_ring, offscreen_markers, site_markers, scan::scan_world, overview::draw, minimap::draw).chain().after(CameraSet).before(crate::fx::FxFlush));
         app.init_resource::<scan::ScanFx>()
             .add_systems(Update, (scan::scan_widgets, scan::scan_click).after(UiInputSet).before(UiStyleSet).run_if(in_state(AppMode::Flight)))
@@ -293,24 +304,32 @@ pub fn spawn_hud(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>
             let f = frame();
             let hud = &f.hud;
             let group = || Node { flex_direction: FlexDirection::Column, row_gap: px(2), ..default() };
-            root.spawn((ScreenPart::new(Edge::Left, 0), Node { align_items: AlignItems::FlexStart, height: Val::Auto, ..f.top_left() })).with_children(|tl| {
+            // On a phone (docs/plans/android.md 4.2) inside the safe area, the hull map under its number, the values
+            // smaller; the title between narrower columns (`phone.rs`).
+            let safe = SafeArea::PHONE;
+            let tl = Node { align_items: AlignItems::FlexStart, height: Val::Auto, ..f.top_left() };
+            let tl_phone = Node { left: px(safe.left), top: px(safe.top), ..tl.clone() };
+            root.spawn((ScreenPart::new(Edge::Left, 0), by_class(tl, tl_phone))).with_children(|tl| {
                 spawn_back(tl, ui, (HomeRing, HudButton, HudZone, Tip::new("SHIPYARD"), ActionTip(Action::Leave)));
                 tl.spawn(Node { flex_direction: FlexDirection::Column, row_gap: px(hud.group_gap), ..default() }).with_children(|c| {
                     c.spawn(group()).with_children(|g| {
                         g.spawn(label(&fonts, "HULL", hud.head, grey));
-                        g.spawn(Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(18), ..default() }).with_children(|row| {
-                            row.spawn((HudText::HullValue, number(&fonts, "–", hud.value, white)));
-                            row.spawn((HullMap, HudZone, Node { width: px(100), height: px(60), position_type: PositionType::Relative, ..default() }));
+                        let row = Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(18), ..default() };
+                        let column = Node { flex_direction: FlexDirection::Column, align_items: AlignItems::FlexStart, row_gap: px(4), ..default() };
+                        g.spawn(by_class(row, column)).with_children(|row| {
+                            row.spawn((HudText::HullValue, number(&fonts, "–", hud.value, white), CompactSize(phone::VALUE)));
+                            let map = |size: Vec2| Node { width: px(size.x), height: px(size.y), position_type: PositionType::Relative, ..default() };
+                            row.spawn((HullMap, HudZone, by_class(map(phone::HULL_MAP.0), map(phone::HULL_MAP.1))));
                         });
                         g.spawn((HudText::Cargo, label(&fonts, "", hud.sub, dim)));
                     });
                     // Voyages: the cargo block, RECALL right under it (GDR-0065); out of the column elsewhere.
-                    c.spawn((VoyageBlock, Node { display: Display::None, row_gap: px(5), ..group() })).with_children(|v| {
+                    c.spawn((VoyageBlock(false), Node { display: Display::None, row_gap: px(5), ..group() })).with_children(|v| {
                         v.spawn(label(&fonts, "SALVAGE", hud.head, grey));
                         v.spawn((HudText::SalvageValue, number(&fonts, "", hud.value_minor, gold)));
                         v.spawn(Node { flex_direction: FlexDirection::Row, column_gap: px(3), ..default() }).with_children(|row| {
                             for k in 0..PIPS {
-                                row.spawn((CargoPip(k), Node { width: px(11), height: px(3), ..default() }, BackgroundColor(Color::NONE)));
+                                row.spawn((CargoPip(k, false), Node { width: px(11), height: px(3), ..default() }, BackgroundColor(Color::NONE)));
                             }
                         });
                         v.spawn((HudText::SalvageSub, label(&fonts, "", hud.sub, dim)));
@@ -319,44 +338,51 @@ pub fn spawn_hud(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>
                         });
                         v.spawn((HudText::RecallSub, label(&fonts, "", hud.sub, teal)));
                     });
-                    c.spawn(group()).with_children(|g| {
+                    c.spawn((StickZone, group())).with_children(|g| {
                         g.spawn(label(&fonts, "SPEED", hud.head, grey));
-                        g.spawn((HudText::SpeedValue, number(&fonts, "0", hud.value, white)));
+                        g.spawn((HudText::SpeedValue, number(&fonts, "0", hud.value, white), CompactSize(phone::VALUE)));
                         g.spawn((HudText::SpeedSub, label(&fonts, "M/S", hud.sub, dim)));
                     });
                     // The pilot assists of the ship flown (hidden without).
                     assists::spawn(c, &fonts, grey, dim);
                 });
             });
-            // Top right: target.
-            root.spawn((ScreenPart::new(Edge::Right, 0), Node { align_items: AlignItems::FlexEnd, row_gap: px(2), ..abs(None, Some(f.edge), Some(f.top), None) }))
+            // Top right: target (on touch a tap on it locks the next one, `phone.rs`).
+            let tr = Node { align_items: AlignItems::FlexEnd, row_gap: px(2), ..abs(None, Some(f.edge), Some(f.top), None) };
+            let tr_phone = Node { right: px(safe.right), top: px(safe.top), ..tr.clone() };
+            root.spawn((ScreenPart::new(Edge::Right, 0), by_class(tr, tr_phone)))
                 .with_children(|c| {
-                    c.spawn((HudText::TargetName, label(&fonts, "NO TARGET", hud.head, grey)));
-                    c.spawn((HudText::TargetValue, number(&fonts, "", hud.value, coral)));
-                    c.spawn((HudText::TargetSub, label(&fonts, "", hud.sub, dim)));
+                    c.spawn((TargetTap, Node { flex_direction: FlexDirection::Column, align_items: AlignItems::FlexEnd, row_gap: px(2), ..default() })).with_children(|c| {
+                        c.spawn((HudText::TargetName, label(&fonts, "NO TARGET", hud.head, grey)));
+                        c.spawn((HudText::TargetValue, number(&fonts, "", hud.value, coral), CompactSize(phone::VALUE)));
+                        c.spawn((HudText::TargetSub, label(&fonts, "", hud.sub, dim)));
+                    });
                     scan::spawn(c, &fonts, ui);
                 });
             // Top centre: title, between the columns (`hud.title_side`); a long one (a fight viewer's) wraps, centred.
             let centred = || TextLayout::justify(bevy::text::Justify::Center);
-            root.spawn((ScreenPart::new(Edge::Top, 0), Node { flex_direction: FlexDirection::Column, align_items: AlignItems::Center, row_gap: px(2), ..abs(Some(hud.title_side), Some(hud.title_side), Some(f.top), None) }))
+            let title = Node { flex_direction: FlexDirection::Column, align_items: AlignItems::Center, row_gap: px(2), ..abs(Some(hud.title_side), Some(hud.title_side), Some(f.top), None) };
+            let title_phone = Node { left: px(phone::TITLE_SIDE), right: px(phone::TITLE_SIDE), top: px(safe.top), ..title.clone() };
+            root.spawn((ScreenPart::new(Edge::Top, 0), by_class(title, title_phone)))
                 .with_children(|c| {
-                    c.spawn((HudText::Title, label(&fonts, "", hud.title, white), centred()));
-                    c.spawn((HudText::Subtitle, label(&fonts, "", hud.subtitle, grey), centred()));
+                    c.spawn((HudText::Title, label(&fonts, "", hud.title, white), centred(), CompactSize(phone::TITLE)));
+                    c.spawn((HudText::Subtitle, label(&fonts, "", hud.subtitle, grey), centred(), CompactSize(phone::SUBTITLE)));
                 });
             // Centre: banner, and the line under it (voyages).
-            root.spawn(Node { position_type: PositionType::Absolute, top: percent(25), width: percent(100), flex_direction: FlexDirection::Column, align_items: AlignItems::Center, row_gap: px(10), ..default() })
+            // On a phone between the columns (a long one wraps, centred).
+            let banner = Node { position_type: PositionType::Absolute, top: percent(25), width: percent(100), flex_direction: FlexDirection::Column, align_items: AlignItems::Center, row_gap: px(10), ..default() };
+            let banner_phone = Node { padding: UiRect::horizontal(px(phone::TITLE_SIDE)), row_gap: px(6), ..banner.clone() };
+            root.spawn(by_class(banner, banner_phone))
                 .with_children(|c| {
-                    c.spawn((HudText::Banner, label(&fonts, "", 22.0, teal)));
-                    c.spawn((HudText::BannerSub, label(&fonts, "", 11.0, grey)));
+                    c.spawn((HudText::Banner, label(&fonts, "", 22.0, teal), centred(), CompactSize(phone::BANNER)));
+                    c.spawn((HudText::BannerSub, label(&fonts, "", 11.0, grey), centred()));
                 });
             // Voyages: the lost banner and its countdown.
-            root.spawn((
-                LostBlock,
-                Visibility::Hidden,
-                Node { position_type: PositionType::Absolute, top: percent(62), width: percent(100), flex_direction: FlexDirection::Column, align_items: AlignItems::Center, row_gap: px(12), ..default() },
-            ))
+            let lost = Node { position_type: PositionType::Absolute, top: percent(62), width: percent(100), flex_direction: FlexDirection::Column, align_items: AlignItems::Center, row_gap: px(12), ..default() };
+            let lost_phone = Node { top: percent(42), row_gap: px(8), ..lost.clone() };
+            root.spawn((LostBlock, Visibility::Hidden, by_class(lost, lost_phone)))
             .with_children(|c| {
-                c.spawn((HudText::LostTitle, tracked(&fonts, "", 40.0, coral, 0.3)));
+                c.spawn((HudText::LostTitle, tracked(&fonts, "", 40.0, coral, 0.3), CompactSize(28.0)));
                 c.spawn((HudText::LostSub, label(&fonts, "", 16.0, white)));
                 c.spawn((HudText::LostNote, label(&fonts, "", 10.5, grey)));
                 c.spawn(Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(18), margin: UiRect::top(px(10)), ..default() })
@@ -387,9 +413,29 @@ pub fn spawn_hud(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>
                 });
             }
             // Bottom centre: warnings, then BACK TO SHIP.
-            root.spawn((ScreenPart::new(Edge::Bottom, 1), Node { position_type: PositionType::Absolute, bottom: px(f.top), width: percent(100), flex_direction: FlexDirection::Column, align_items: AlignItems::Center, row_gap: px(8), ..default() }))
+            let bottom = Node { position_type: PositionType::Absolute, bottom: px(f.top), width: percent(100), flex_direction: FlexDirection::Column, align_items: AlignItems::Center, row_gap: px(8), ..default() };
+            let bottom_phone = Node { bottom: px(safe.bottom), ..bottom.clone() };
+            root.spawn((ScreenPart::new(Edge::Bottom, 1), by_class(bottom, bottom_phone)))
                 .with_children(|c| {
                     c.spawn((HudText::Warnings, label(&fonts, "", hud.head, coral)));
+                    // A phone's cargo block and RECALL: SALVAGE, the number and the pips beside RECALL, what it does under them.
+                    c.spawn((VoyageBlock(true), Node { display: Display::None, flex_direction: FlexDirection::Column, align_items: AlignItems::Center, row_gap: px(4), ..default() })).with_children(|v| {
+                        v.spawn(Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(16), ..default() }).with_children(|row| {
+                            row.spawn(group()).with_children(|g| {
+                                g.spawn(label(&fonts, "SALVAGE", hud.head, grey));
+                                g.spawn(Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(10), ..default() }).with_children(|r| {
+                                    r.spawn((HudText::SalvageValue, number(&fonts, "", 20.0, gold)));
+                                    r.spawn(Node { flex_direction: FlexDirection::Row, column_gap: px(3), ..default() }).with_children(|pips| {
+                                        for k in 0..PIPS {
+                                            pips.spawn((CargoPip(k, true), Node { width: px(8), height: px(3), ..default() }, BackgroundColor(Color::NONE)));
+                                        }
+                                    });
+                                });
+                            });
+                            spawn_pill(row, &fonts, "RECALL", f.pill_text, f.pill + 4.0, None, Pill::new(Tone::Teal), (RecallButton, HudButton, HudZone));
+                        });
+                        v.spawn((HudText::RecallSub, label(&fonts, "", hud.sub, teal)));
+                    });
                     c.spawn(Node { min_height: px(f.pill), ..default() }).with_children(|r| {
                         spawn_pill(r, &fonts, "BACK TO SHIP", f.pill_text, f.pill, None, Pill::new(Tone::Teal), (CameraBack, HudButton, HudZone, Visibility::Hidden, Tip::new("CAMERA BACK"), ActionTip(Action::CameraFollow)));
                     });
@@ -468,9 +514,22 @@ fn abandon_panel(
     }
 }
 
-/// The home ring: home, like M (not in a voyage, where it is hidden).
-fn go_home(mut clicks: MessageReader<UiClick>, ring: Query<(), With<HomeRing>>, scene: Res<Scene>, mut next: ResMut<NextState<AppMode>>) {
-    if clicks.read().any(|c| ring.contains(c.0)) && scene.voyage().is_none() {
+/// The home ring: home, like M (not in a voyage, where it is hidden). On a touch screen it is the pause ring
+/// (docs/plans/android.md 4.2): it opens the flight menu, in every scene (the menu has SHIPYARD or ABANDON VOYAGE…).
+fn go_home(
+    mut clicks: MessageReader<UiClick>,
+    ring: Query<(), With<HomeRing>>,
+    scene: Res<Scene>,
+    touch: Res<kit::ui_kit::TouchScreen>,
+    mut menu: ResMut<FlightMenu>,
+    mut next: ResMut<NextState<AppMode>>,
+) {
+    if !clicks.read().any(|c| ring.contains(c.0)) {
+        return;
+    }
+    if touch.on() {
+        menu.open = true;
+    } else if scene.voyage().is_none() {
         next.set(AppMode::Home);
     }
 }
@@ -513,25 +572,30 @@ fn voyage_widgets(
     world: Res<SimWorld>,
     focus: Res<PilotFocus>,
     style: Res<Style>,
+    touch: Res<kit::ui_kit::TouchScreen>,
     mut blocks: Query<(&mut Visibility, Has<LostBlock>), (Or<(With<LostBlock>, With<HomeRing>)>, Without<CargoPip>)>,
-    mut block: Single<&mut Node, With<VoyageBlock>>,
-    mut pips: Query<(&CargoPip, &mut Visibility, &mut BackgroundColor), Without<VoyageBlock>>,
+    mut block: Query<(&VoyageBlock, &mut Node)>,
+    class: Res<kit::ui_kit::LayoutClass>,
+    mut pips: Query<(&CargoPip, &mut Visibility, &mut BackgroundColor, &mut Node), Without<VoyageBlock>>,
     mut pill: Query<(Entity, &mut Pill), With<RecallButton>>,
     mut pill_text: Query<(&ChildOf, &mut Text), With<PillText>>,
 ) {
     let voyage = scene.voyage().is_some();
     let lost = matches!(run.phase, Phase::Lost { .. });
     for (mut v, lost_block) in &mut blocks {
-        let want = if lost_block { lost } else { !voyage };
+        // The home ring: hidden in a voyage, unless it is the touch screen's pause ring.
+        let want = if lost_block { lost } else { !voyage || touch.on() };
         let want = if want { Visibility::Inherited } else { Visibility::Hidden };
         if *v != want {
             *v = want;
         }
     }
-    // The cargo block takes its place in the column only in voyages.
-    let display = if voyage { Display::Flex } else { Display::None };
-    if block.display != display {
-        block.display = display;
+    // The cargo block takes its place (in the column, or a phone's at the bottom) only in voyages.
+    for (b, mut node) in &mut block {
+        let display = if voyage && b.0 == class.is_compact() { Display::Flex } else { Display::None };
+        if node.display != display {
+            node.display = display;
+        }
     }
     if !voyage {
         return;
@@ -554,10 +618,14 @@ fn voyage_widgets(
     let (used, cap) = ship.map_or((0, 0), |s| (s.cargo().used(), s.cargo_capacity()));
     let (shown, filled) = if cap > PIPS { (PIPS, (used * PIPS).div_ceil(cap.max(1))) } else { (cap, used) };
     let ui = style.ui;
-    for (pip, mut v, mut bg) in &mut pips {
+    for (pip, mut v, mut bg, mut node) in &mut pips {
         let want = if pip.0 < shown { Visibility::Inherited } else { Visibility::Hidden };
         if *v != want {
             *v = want;
+        }
+        let display = if pip.1 && pip.0 >= shown { Display::None } else { Display::Flex };
+        if node.display != display {
+            node.display = display;
         }
         let c = if pip.0 < filled { ui_color(ui.gold, 0.95) } else { ui_color(ui.dim, 0.6) };
         if bg.0 != c {
@@ -588,15 +656,18 @@ fn update_hull_map(
     style: Res<Style>,
     map: Query<Entity, With<HullMap>>,
     mut cells: Query<(&HullCell, &mut BackgroundColor)>,
+    class: Res<kit::ui_kit::LayoutClass>,
 ) {
     let Ok(map) = map.single() else { return };
     let ship = focus.0.or(scene.watched()).and_then(|id| world.sim.ship(id));
-    if !state.map_for.matches(ship) {
+    // A phone's map is smaller: built again when the class changes.
+    if !state.map_for.matches(ship) || class.is_changed() {
         state.map_for.set(ship);
         commands.entity(map).despawn_children();
         if let Some(s) = ship {
             let b = s.design().grid.bounds().unwrap_or(data::Bounds { min_x: 0, min_y: 0, max_x: 1, max_y: 1 });
-            let cell = (100.0 / b.width() as f32).min(60.0 / b.height() as f32).floor().max(3.0);
+            let size = if class.is_compact() { phone::HULL_MAP.1 } else { phone::HULL_MAP.0 };
+            let cell = (size.x / b.width() as f32).min(size.y / b.height() as f32).floor().max(3.0);
             commands.entity(map).with_children(|m| {
                 for (i, p) in s.design().parts.iter().enumerate() {
                     for (x, y) in p.shape.cells() {
@@ -702,7 +773,7 @@ mod tests {
         };
         let panel = |world: &SimWorld, lock: Option<Target>| {
             let mut name = String::new();
-            super::text::target_text(HudText::TargetName, &mut name, world, lock, Some("TAB"), None);
+            super::text::target_text(HudText::TargetName, &mut name, world, lock, Some(&super::text::Hint::Key("L".into())), None);
             name
         };
         assert_eq!(panel(&world, None), "NO TARGET");

@@ -3,7 +3,8 @@
 //! their bound inputs; Esc closes it (back to the menu when it was opened there; Niklas, 18 Oct 2026: from the menu,
 //! not a `?` ring on the HUD), its key again too. It lists what acts in this scene: in a voyage no test-range keys, in
 //! the test range no voyage keys, in a replayed fight the fight viewer's keys instead of flying. The flight goes on
-//! under it (the test range pauses only under the menu).
+//! under it (the test range pauses only under the menu). On a touch screen it lists the touch controls instead of
+//! the keys (GDR-0120).
 //!
 //! ```text
 //!                                  CONTROLS
@@ -82,7 +83,7 @@ pub(super) fn spawn_overlay(mut commands: Commands, fonts: Res<HudFonts>, style:
                         });
                     }
                 });
-                p.spawn((HelpMouse, label(&fonts, "", 9.5, dim)));
+                p.spawn((HelpMouse, label(&fonts, "", 9.5, dim), TextLayout::justify(bevy::text::Justify::Center), kit::ui_kit::CompactSize(11.0)));
             });
         });
 }
@@ -112,6 +113,16 @@ fn mouse_line(kind: &SceneKind, piloted: bool) -> &'static str {
     }
 }
 
+/// The touch controls for the scene (a touch screen's overlay, in place of the key columns).
+fn touch_lines(kind: &SceneKind, piloted: bool) -> &'static str {
+    match kind {
+        SceneKind::Fight => "TAP A SHIP  FOLLOW  ·  TAP EMPTY SPACE  FRAME THE FIGHT\nDRAG  PAN  ·  PINCH  ZOOM\nTHE BUTTONS BY THE TIMELINE  PLAY, SEEK, SPEED  ·  PRESS THE TIMELINE  SCRUB",
+        SceneKind::Voyage(_) if piloted => "STICK (LEFT THUMB)  FLY  ·  FIRE  HOLD  ·  TAP A SHIP  LOCK  ·  TAP THE TARGET  NEXT\nTWO FINGERS  ZOOM AND PAN  ·  TAP THE MINIMAP  CLUSTER MAP  ·  RECALL  HOME",
+        _ if piloted => "STICK (LEFT THUMB)  FLY  ·  FIRE  HOLD  ·  TAP A SHIP  LOCK  ·  TAP THE TARGET  NEXT\nTWO FINGERS  ZOOM AND PAN  ·  THE RING TOP LEFT  THIS MENU",
+        _ => "DRAG  PAN  ·  PINCH  ZOOM",
+    }
+}
+
 /// Opening and closing, and what the overlay lists while it is open.
 #[allow(clippy::type_complexity, clippy::too_many_arguments)]
 pub(super) fn update(
@@ -125,6 +136,7 @@ pub(super) fn update(
     mut columns: Query<(&HelpColumn, &mut Node), Without<HelpRow>>,
     mut keys: Query<(&HelpKeys, &mut Text), Without<HelpMouse>>,
     mut mouse: Single<&mut Text, With<HelpMouse>>,
+    touch: Res<kit::ui_kit::TouchScreen>,
 ) {
     show_screen(&mut root, menu.help && !layer.open);
     if !menu.help {
@@ -141,7 +153,7 @@ pub(super) fn update(
         }
     }
     for (col, mut node) in &mut columns {
-        let d = if shown[col.0 as usize] { Display::Flex } else { Display::None };
+        let d = if shown[col.0 as usize] && !touch.on() { Display::Flex } else { Display::None };
         if node.display != d {
             node.display = d;
         }
@@ -149,5 +161,5 @@ pub(super) fn update(
     for (k, mut text) in &mut keys {
         set_text(&mut text, &controls.label(k.0));
     }
-    set_text(&mut mouse, mouse_line(&scene.kind, piloted));
+    set_text(&mut mouse, if touch.on() { touch_lines(&scene.kind, piloted) } else { mouse_line(&scene.kind, piloted) });
 }

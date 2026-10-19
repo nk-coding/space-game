@@ -10,7 +10,7 @@ type Clocks<'w> = (Res<'w, Time<Real>>, Res<'w, Time<Virtual>>, Res<'w, Time<Fix
 #[allow(clippy::too_many_arguments)]
 pub(super) fn update_text(
     (time, virtual_time, fixed): Clocks,
-    (controls, menu, layer): (Res<Controls>, Res<FlightMenu>, Res<crate::settings::SettingsLayer>),
+    (controls, menu, layer, touch): (Res<Controls>, Res<FlightMenu>, Res<crate::settings::SettingsLayer>, Res<kit::ui_kit::TouchScreen>),
     mut state: ResMut<HudState>,
     world: Res<SimWorld>,
     scene: Res<Scene>,
@@ -123,9 +123,13 @@ pub(super) fn update_text(
             }
             HudText::TargetName | HudText::TargetValue | HudText::TargetSub => {
                 let from = control.map(|p| piece_com(p, alpha)).or(rig.focus);
+                // How to lock (no help line on touch: a tap on the panel locks the next target, `phone.rs`).
                 let locks = !watching && !fight;
-                let lock_key = locks.then(|| controls.0.inputs(Action::LockNext).next().map(|c| c.label())).flatten();
-                target_text(*kind, s, &world, target, locks.then_some(lock_key.as_deref().unwrap_or("—")), from);
+                let hint = locks.then(|| match touch.on() {
+                    true => Hint::Touch,
+                    false => Hint::Key(controls.0.inputs(Action::LockNext).next().map_or_else(|| "—".to_string(), |c| c.label())),
+                });
+                target_text(*kind, s, &world, target, hint.as_ref(), from);
             }
             HudText::Title => match &scene.kind {
                 SceneKind::Sandbox => {
@@ -161,7 +165,7 @@ pub(super) fn update_text(
                         let pieces: usize = world.sim.ships().iter().map(|s| s.pieces().len()).sum();
                         let _ = write!(s, "ACTIVE {}  ·  PIECES {}  ·  SHOTS IN FLIGHT {}", active, pieces, world.sim.projectiles().len());
                     }
-                    SceneKind::Showcase => s.push_str("DRAG TO PAN  ·  WHEEL TO ZOOM"),
+                    SceneKind::Showcase => s.push_str(if touch.on() { "DRAG TO PAN  ·  PINCH TO ZOOM" } else { "DRAG TO PAN  ·  WHEEL TO ZOOM" }),
                     SceneKind::Voyage(_) => {
                         if let Some(v) = voyage {
                             let (done, all) = voyage::sites_done(v);
@@ -302,14 +306,28 @@ pub fn hull_fraction(ship: &sim::Ship, control: Option<sim::PieceId>) -> f32 {
     if full > 0.0 { have / full } else { 0.0 }
 }
 
+/// How the target panel says to lock.
+pub(super) enum Hint {
+    /// A click or the lock key (its label).
+    Key(String),
+    /// A tap on a ship or on the panel (which locks the next target).
+    Touch,
+}
+
 /// The target panel: the player's lock (with how to lock when there is none), or in watch mode the watched
-/// ship's behavior target (`hint`: the lock key; none: nobody can lock).
-pub(super) fn target_text(kind: HudText, s: &mut String, world: &SimWorld, target: Option<Target>, hint: Option<&str>, from: Option<Vec2>) {
+/// ship's behavior target (`hint`: how to lock; none: nobody can lock).
+pub(super) fn target_text(kind: HudText, s: &mut String, world: &SimWorld, target: Option<Target>, hint: Option<&Hint>, from: Option<Vec2>) {
     let Some(lock) = target else {
         if kind == HudText::TargetName {
             s.push_str("NO TARGET");
-        } else if kind == HudText::TargetSub && let Some(key) = hint {
-            let _ = write!(s, "CLICK OR {key} TO LOCK");
+        } else if kind == HudText::TargetSub {
+            match hint {
+                Some(Hint::Key(key)) => {
+                    let _ = write!(s, "CLICK OR {key} TO LOCK");
+                }
+                Some(Hint::Touch) => s.push_str("TAP A SHIP OR HERE"),
+                None => {}
+            }
         }
         return;
     };
@@ -349,6 +367,9 @@ pub(super) fn target_text(kind: HudText, s: &mut String, world: &SimWorld, targe
             }
             if !ship.is_active() {
                 s.push_str("  ·  DARK");
+            }
+            if matches!(hint, Some(Hint::Touch)) {
+                s.push_str("  ·  NEXT ›");
             }
         }
         _ => {}
