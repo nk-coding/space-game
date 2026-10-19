@@ -158,6 +158,38 @@ impl<'a> Validator<'a> {
                     }
                     self.count(p, "weapon.delivery.penetration", penetration, MAX_COUNT);
                 }
+                crate::content::model::Delivery::Missile {
+                    rate,
+                    salvo,
+                    speed,
+                    accel,
+                    turn,
+                    life,
+                    hp,
+                    radius,
+                } => {
+                    self.shot_rate(p, rate);
+                    if salvo == 0 {
+                        self.err(p, "weapon.delivery.salvo", "must be at least 1");
+                    }
+                    self.count(p, "weapon.delivery.salvo", salvo, MAX_COUNT);
+                    self.number(p, "weapon.delivery.speed", speed, 0.0, true);
+                    self.number(p, "weapon.delivery.accel", accel, 0.0, false);
+                    self.number(p, "weapon.delivery.turn", turn, 0.0, false);
+                    self.number(p, "weapon.delivery.life", life, 0.0, true);
+                    self.number(p, "weapon.delivery.hp", hp, 0.0, true);
+                    self.number(p, "weapon.delivery.radius", radius, 0.0, false);
+                }
+            }
+            if let Some(d) = &x.defence {
+                if !matches!(x.delivery, crate::content::model::Delivery::Pulse { .. }) {
+                    self.err(p, "weapon.defence", "point defence needs a Pulse delivery");
+                }
+                self.number(p, "weapon.defence.arc", d.arc, 0.0, true);
+                if d.arc > 180.0 {
+                    self.err(p, "weapon.defence.arc", format!("at most 180 degrees, got {}", d.arc));
+                }
+                self.number(p, "weapon.defence.ship_mass", d.ship_mass, 0.0, false);
             }
         }
         if let Some(x) = &p.engine {

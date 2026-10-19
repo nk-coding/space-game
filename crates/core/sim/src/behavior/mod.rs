@@ -152,6 +152,7 @@ pub const BUILTIN_NODES: &[NodeSig] = {
         node("target_on_me", Condition, None, &[]),
         node("under_attack", Condition, None, &[]),
         node("enemies_near", Condition, Some(Count), DIST),
+        node("missiles_incoming", Condition, Some(Count), &[]),
         node(
             "cycle",
             Condition,

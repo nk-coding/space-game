@@ -158,6 +158,16 @@ pub enum SimEvent {
         pos: Vec2,
         reason: GoneReason,
     },
+    /// Missile `id` of ship `by` struck at `at` and its warhead went off (GDR-0115): `damage` to every part
+    /// within `radius` m by the chain-reaction rule (the `Hit` events of what it reached come right before it,
+    /// its `ProjectileGone` after it).
+    Warhead {
+        by: ShipId,
+        id: ProjectileId,
+        at: Vec2,
+        radius: f32,
+        damage: f32,
+    },
     /// A shot struck an asteroid rock (GDR-0104; `Voyage::rocks`) and stopped there: the rock takes nothing (a
     /// mining beam's cut follows as `Mined`, GDR-0114). `by`: the shooter.
     RockHit {

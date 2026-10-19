@@ -91,6 +91,15 @@
         ],
     ),
     (
+        id: "missiles_incoming",
+        name: "Missiles incoming",
+        summary: "How many enemy missiles are homing on your ship.",
+        description: "Counts every live missile whose seeker has picked your ship (GDR-0115), however far off.",
+        tags: ["surroundings"],
+        role: Condition,
+        value: Count,
+    ),
+    (
         id: "cycle",
         name: "Cycle",
         summary: "Seconds into the current cycle, counted from when you picked your target.",

@@ -107,11 +107,11 @@ pub fn producing(ps: &PartState) -> bool {
 }
 
 /// Can this gun fire now, power aside? A clear line of fire, and its part (`ps`) alive, not overheated and not
-/// idle (GDR-0044). Firepower, reach and the smart lock aim count only these guns (power is the brown-out's
+/// idle (GDR-0044); never a point-defence gun, which aims itself (GDR-0115). Firepower, reach and the smart lock aim count only these guns (power is the brown-out's
 /// business: a gun of a starved tier still counts).
 #[inline]
 pub fn gun_works(g: &GunMount, ps: &PartState) -> bool {
-    g.clear && ps.alive && !ps.overheated && !ps.idle
+    g.clear && g.defence.is_none() && ps.alive && !ps.overheated && !ps.idle
 }
 
 /// Recomputes `piece.authority` from the actuators that can produce now (see [`ThrustAuthority`]). One pass
@@ -189,10 +189,22 @@ pub struct GunMount {
     pub range: f32,
     /// Shots per second at full power with bonuses (0 for beams).
     pub rate: f32,
-    /// Damage per pulse or projectile (`damage / base rate`; 0 for beams).
+    /// Damage per pulse or projectile (`damage / base rate`; per missile `damage / base rate / salvo`; 0 for
+    /// beams).
     pub shot_damage: f32,
+    /// Point defence (GDR-0115): it aims itself and fires on its own.
+    pub defence: Option<Defence>,
     /// Ore cut from rock per second at full power (GDR-0114; 0: not a mining gun).
     pub cut: f32,
+}
+
+/// A point-defence gun's targeting, compiled (`data::DefenceSpec`).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Defence {
+    /// Cosine of its arc: it aims at what lies within the arc of its facing.
+    pub arc_cos: f32,
+    /// The heaviest vessel (t) it shoots at once no missile is in reach; 0: missiles only.
+    pub ship_mass: f32,
 }
 
 /// A connected group of parts: one rigid body.

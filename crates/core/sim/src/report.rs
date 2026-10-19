@@ -274,6 +274,8 @@ pub struct GunReport {
     pub rate: f32,
     pub family: WeaponFamily,
     pub delivery: Delivery,
+    /// Point defence (GDR-0115): it aims itself within its arc and fires on its own; not in the firepower.
+    pub defence: Option<crate::ship::Defence>,
 }
 
 /// One engine and its exhaust plume (GDR-0039).
@@ -459,7 +461,7 @@ impl DesignReport {
     pub fn latent_firepower(&self) -> f32 {
         self.guns
             .iter()
-            .filter(|g| Some(g.piece) == self.main)
+            .filter(|g| Some(g.piece) == self.main && g.defence.is_none())
             .map(|g| g.dps)
             .sum()
     }
@@ -680,6 +682,7 @@ pub fn design_report_upgraded(
                 rate: g.rate,
                 family: g.family,
                 delivery: g.delivery,
+                defence: g.defence,
             });
         }
         for t in piece.thrusters.iter().filter(|t| t.slot != NO_SLOT) {

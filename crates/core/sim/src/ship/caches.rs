@@ -324,6 +324,11 @@ impl Ship {
                 let base_rate = match spec.delivery {
                     Delivery::Beam => 0.0,
                     Delivery::Pulse { rate } | Delivery::Projectile { rate, .. } => rate,
+                    Delivery::Missile { rate, .. } => rate,
+                };
+                let salvo = match spec.delivery {
+                    Delivery::Missile { salvo, .. } => salvo.max(1) as f32,
+                    _ => 1.0,
                 };
                 let damage = st.get(Stat::Damage);
                 piece.guns.push(GunMount {
@@ -340,10 +345,14 @@ impl Ship {
                     range: st.get(Stat::Range),
                     rate: base_rate * fire_rate,
                     shot_damage: if base_rate > 0.0 {
-                        damage / base_rate
+                        damage / base_rate / salvo
                     } else {
                         0.0
                     },
+                    defence: spec.defence.map(|d| Defence {
+                        arc_cos: crate::math::cos(d.arc.clamp(0.0, 180.0) * (core::f32::consts::PI / 180.0)),
+                        ship_mass: d.ship_mass,
+                    }),
                     cut: spec.cut,
                 });
             }

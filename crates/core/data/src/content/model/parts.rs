@@ -240,6 +240,22 @@ pub struct WeaponSpec {
     /// the shot only stops on rock.
     #[serde(default)]
     pub cut: f32,
+    /// Point defence (GDR-0115): the gun aims itself within `arc` of its facing and fires on its own whenever its
+    /// piece is active, at the nearest hostile missile in reach, else the nearest hostile vessel of at most
+    /// `ship_mass`. Pulse guns only.
+    #[serde(default)]
+    pub defence: Option<DefenceSpec>,
+}
+
+/// A point-defence gun's targeting (GDR-0115).
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct DefenceSpec {
+    /// Degrees to either side of the gun's facing it can aim (up to 180: all round).
+    pub arc: f32,
+    /// With no missile in reach it shoots at hostile vessels of at most this mass (t); 0: missiles only.
+    #[serde(default)]
+    pub ship_mass: f32,
 }
 
 /// How a weapon's shots travel.
@@ -261,6 +277,26 @@ pub enum Delivery {
         #[serde(default)]
         recoil: f32,
     },
+    /// A homing missile (GDR-0115): `rate` launches per second, each `salvo` missiles fanned out a little. A missile
+    /// leaves with the shooter's velocity, accelerates at `accel` (m/s²) to `speed` (m/s) and turns its course at
+    /// up to `turn` (degrees per second) towards the nearest hostile vessel ahead of it; after `life` seconds it is
+    /// gone. It has `hp` hit points (point defence shoots it down) and its warhead blasts `damage / rate / salvo`
+    /// within `radius` metres of where it strikes, by the chain-reaction rule (GDR-0085).
+    Missile {
+        rate: f32,
+        #[serde(default = "one_u32")]
+        salvo: u32,
+        speed: f32,
+        accel: f32,
+        turn: f32,
+        life: f32,
+        hp: f32,
+        radius: f32,
+    },
+}
+
+fn one_u32() -> u32 {
+    1
 }
 
 /// Pushes towards the part's forward side. It may sit anywhere (GDR-0039): its exhaust plume leaves through the

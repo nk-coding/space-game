@@ -108,12 +108,13 @@ pub struct Flagship {
     pub behavior: Option<BehaviorId>,
 }
 
-/// The shortest reach of a design's clear guns (m), the closing pilot's yardstick; infinite without one.
+/// The shortest reach of a design's clear guns (m), the closing pilot's yardstick; infinite without one. Point
+/// defence (GDR-0115) is no yardstick: it fires on its own.
 pub fn closing_reach(report: &DesignReport) -> f32 {
     report
         .guns
         .iter()
-        .filter(|g| g.clear)
+        .filter(|g| g.clear && g.defence.is_none())
         .map(|g| g.range)
         .fold(f32::INFINITY, f32::min)
 }

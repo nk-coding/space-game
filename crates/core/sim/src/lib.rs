@@ -51,6 +51,7 @@ pub mod world;
 pub use behavior::{AssistState, AssistSwitch, Assists, AssistsId, BehaviorId, BehaviorLibrary, BehaviorState, RuleStatus, Why};
 pub use combat::salvage::{Cargo, Item, Loose, LooseId, Salvaged, Stack};
 pub use combat::weapons::{BeamTrace, Bubble, GoneReason, Projectile, ProjectileId, ShotKind};
+pub use combat::missile::Seeker;
 pub use config::{FlightTuning, PhysicsTuning, SalvageTuning, SimConfig};
 pub use data::PowerTier;
 pub use events::{PieceSnapshot, SimEvent, SplitEvent};
@@ -63,7 +64,7 @@ pub use math::{Rot, Vec2};
 pub use report::{DesignReport, design_report, design_report_upgraded};
 pub use rng::{Pcg32, Stream};
 pub use ship::{
-    Body, GunMount, PartState, Piece, PowerState, Scan, Ship, ShipControls, ThrustAuthority, Thruster,
+    Body, Defence, GunMount, PartState, Piece, PowerState, Scan, Ship, ShipControls, ThrustAuthority, Thruster,
     Wrench, gun_works, inherited_velocity, producing, rated_falloff,
 };
 pub use ship::alloc::{Actuation, TorqueSource};

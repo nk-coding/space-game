@@ -160,6 +160,8 @@ pub struct PartSpec {
     pub delivery: Delivery,
     /// Ore it cuts from asteroid rock per second at full power (content `weapon.cut`, GDR-0114; 0: none).
     pub cut: f32,
+    /// Point defence (GDR-0115): the gun aims itself and fires on its own (guns only).
+    pub defence: Option<data::DefenceSpec>,
     /// Shield bubbles: share of each family's damage absorbed (indexed by [`family_index`]).
     pub absorb: [f32; FAMILIES],
     pub is_engine: bool,
@@ -476,7 +478,8 @@ impl ShipDesign {
                     ConsumerKind::Shield
                 } else if def.engine.is_some() || def.gyro.is_some() || def.rcs.is_some() {
                     ConsumerKind::Engine
-                } else if def.weapon.is_some() {
+                } else if def.weapon.as_ref().is_some_and(|w| w.defence.is_none()) {
+                    // Point defence fires on its own: always on, as `Other`.
                     ConsumerKind::Weapon
                 } else if def.scanner.is_some() {
                     ConsumerKind::Scanner
@@ -512,6 +515,7 @@ impl ShipDesign {
                 weapon: def.weapon.as_ref().map(|w| w.family),
                 delivery: def.weapon.as_ref().map_or(Delivery::Beam, |w| w.delivery),
                 cut: def.weapon.as_ref().map_or(0.0, |w| w.cut),
+                defence: def.weapon.as_ref().and_then(|w| w.defence),
                 absorb,
                 is_engine: def.engine.is_some(),
                 is_rcs: def.rcs.is_some(),

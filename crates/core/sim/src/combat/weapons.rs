@@ -92,6 +92,8 @@ pub enum GoneReason {
     Absorbed,
     /// Flew its full range.
     Expired,
+    /// A missile that point defence shot down (`missile.rs`).
+    ShotDown,
 }
 
 /// A flying shot.
@@ -116,6 +118,9 @@ pub struct Projectile {
     pub life: f32,
     pub ricochets: u8,
     pub(crate) crossed: Crossed,
+    /// A missile's seeker (GDR-0115, `missile.rs`): it homes, can be shot down, and its warhead blasts where it
+    /// strikes. `None`: a shell.
+    pub missile: Option<super::missile::Seeker>,
 }
 
 /// The shield bubbles a projectile is done with, as `(ship, emitter)`: those its muzzle was inside when it was
@@ -209,6 +214,13 @@ impl StateHash for Projectile {
         for &(ship, part) in &self.crossed.list[..self.crossed.len as usize] {
             h.u32(ship.0);
             h.u32(part);
+        }
+        match &self.missile {
+            Some(m) => {
+                h.u8(1);
+                m.hash_state(h);
+            }
+            None => h.u8(0),
         }
     }
 }
@@ -655,7 +667,7 @@ impl Sim {
 
     /// Damages one part and reports it.
     #[allow(clippy::too_many_arguments)]
-    fn damage_part(
+    pub(crate) fn damage_part(
         &mut self,
         by: ShipId,
         family: WeaponFamily,
@@ -881,6 +893,7 @@ impl Sim {
         for p in list.iter_mut() {
             p.prev_pos = p.pos;
             p.life -= DT;
+            self.steer_missile(p);
             let mut speed = p.vel.length();
             if speed <= 0.0 {
                 p.life = 0.0;
@@ -922,6 +935,9 @@ impl Sim {
                     Some(Cast::Rock(h)) => {
                         self.rock_hit(p.owner, p.family, &h);
                         p.pos = h.point;
+                        if let Some(m) = p.missile {
+                            self.warhead(p.owner, p.team, p.id, h.point, p.damage, m.radius);
+                        }
                         gone = Some(GoneReason::Hit);
                         break;
                     }
@@ -946,9 +962,15 @@ impl Sim {
                     });
                     continue;
                 }
-                self.penetrate(
-                    p.owner, p.family, &h, k, part, dir, p.damage, absorbed, p.pierce,
-                );
+                match p.missile {
+                    Some(m) => {
+                        let at = h.point + dir * super::missile::tuning::FUSE_DEPTH;
+                        self.warhead(p.owner, p.team, p.id, at, p.damage, m.radius);
+                    }
+                    None => self.penetrate(
+                        p.owner, p.family, &h, k, part, dir, p.damage, absorbed, p.pierce,
+                    ),
+                }
                 p.pos = h.point;
                 gone = Some(GoneReason::Hit);
                 break;
@@ -987,6 +1009,8 @@ impl Sim {
                 }
             }
         }
+        // Missiles point defence shot down are gone (ids stay ascending).
+        self.projectiles.retain(|p| p.life > 0.0);
         let hits = std::mem::take(&mut self.gun_hits);
         for g in &hits {
             let mut h = g.hit;
@@ -1051,7 +1075,7 @@ impl Sim {
                     hit: end.hit,
                 });
             }
-            Delivery::Pulse { .. } | Delivery::Projectile { .. } => {
+            Delivery::Pulse { .. } | Delivery::Projectile { .. } | Delivery::Missile { .. } => {
                 if g.rate <= 0.0 {
                     return;
                 }
@@ -1061,6 +1085,40 @@ impl Sim {
                     shots += 1;
                     self.ships[k].gun_cooldown[slot] += 1.0 / g.rate;
                     match g.delivery {
+                        // Point defence (`missile.rs`): at a missile, else a small vessel; no target, it holds.
+                        Delivery::Pulse { .. } if g.defence.is_some() => {
+                            use super::missile::DefenceShot;
+                            let to = match self.defence_target(owner, team, &g, from, dir) {
+                                Some(DefenceShot::Missile(i)) => self.shoot_missile(i, g.shot_damage),
+                                Some(DefenceShot::Vessel(at)) => {
+                                    let off = at - from;
+                                    let aim = off * (1.0 / off.length().max(1e-6));
+                                    let shot = g.shot_damage;
+                                    self.hitscan(owner, team, g.family, from, aim, g.range, shot).to
+                                }
+                                None => {
+                                    self.ships[k].gun_cooldown[slot] = 0.0;
+                                    break;
+                                }
+                            };
+                            self.events.push(SimEvent::ShotFired {
+                                ship: owner,
+                                piece: pid,
+                                gun: g.part,
+                                kind: ShotKind::Pulse,
+                                from,
+                                to,
+                                projectile: None,
+                            });
+                        }
+                        Delivery::Missile { salvo, speed, accel, turn, life, hp, radius, .. } => {
+                            let launch = super::missile::Launch { salvo, speed, accel, turn, life, hp, radius };
+                            let (family, damage) = (g.family, g.shot_damage);
+                            if !self.launch_missiles(k, pid, g.part, family, from, dir, v_muzzle, damage, launch) {
+                                self.ships[k].gun_cooldown[slot] = 0.0;
+                                break;
+                            }
+                        }
                         Delivery::Pulse { .. } => {
                             let end = self.hitscan(
                                 owner,
@@ -1103,6 +1161,7 @@ impl Sim {
                                 life: if speed > 0.0 { g.range / speed } else { 0.0 },
                                 ricochets: 0,
                                 crossed,
+                                missile: None,
                             });
                             self.events.push(SimEvent::ShotFired {
                                 ship: owner,

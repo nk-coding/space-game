@@ -395,6 +395,7 @@ impl Refs {
 /// default config, so the wiki shows what the game runs.
 pub fn sim_values() -> Vec<(&'static str, String)> {
     use sim::behavior::tuning as bt;
+    use sim::combat::missile::tuning as mt;
     use sim::ship::tuning as st;
     let cfg = sim::SimConfig::default();
     let pct = |x: f32| format!("{}%", format_number(x * 100.0, 0));
@@ -409,6 +410,9 @@ pub fn sim_values() -> Vec<(&'static str, String)> {
         ("fire_range", pct(bt::FIRE_RANGE)),
         ("fire_cone", num(bt::FIRE_CONE.to_degrees(), 1, "°")),
         ("default_reach", num(bt::DEFAULT_REACH, 0, "m")),
+        ("missile_seek_cone", num(mt::SEEK_CONE.to_degrees(), 0, "°")),
+        ("missile_fire_cone", num(mt::FIRE_CONE.to_degrees(), 0, "°")),
+        ("max_missiles", mt::MAX_MISSILES.to_string()),
         ("target_sticky", pct(bt::STICKY)),
         ("assist_turn_dv", num(bt::ASSIST_TURN_DV, 1, "m/s")),
         ("station_slack", num(bt::STATION_SLACK, 1, "m")),

@@ -38,7 +38,7 @@ use crate::ship::mass::{MassProps, combine, to_piece};
 use crate::math::{Rot, Vec2, sin};
 use crate::ship::power::{Consumer, PowerSetting, Reactor};
 
-pub use piece::{GunMount, Piece, ThrustAuthority, Thruster, gun_works, producing};
+pub use piece::{Defence, GunMount, Piece, ThrustAuthority, Thruster, gun_works, producing};
 pub use scan::{Scan, tuning as sensor_tuning};
 pub(crate) use piece::{HeatK, refresh_authority};
 pub(crate) use systems::{applied_bonuses, gun_blockers, power_pass, reactor_supply};

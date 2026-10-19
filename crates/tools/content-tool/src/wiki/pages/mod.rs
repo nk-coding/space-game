@@ -54,6 +54,7 @@ impl Wiki<'_> {
                 Delivery::Beam => "beam",
                 Delivery::Pulse { .. } => "pulses",
                 Delivery::Projectile { .. } => "projectiles",
+                Delivery::Missile { .. } => "missiles",
             };
             facts.push(("Weapon".into(), format!("{:?}, {delivery}", w.family)));
         }

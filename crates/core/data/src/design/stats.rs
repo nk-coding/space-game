@@ -279,6 +279,29 @@ impl Content {
                         v.push(("recoil", recoil));
                     }
                 }
+                crate::content::model::Delivery::Missile {
+                    rate,
+                    salvo,
+                    speed,
+                    accel,
+                    turn,
+                    life,
+                    hp,
+                    radius,
+                } => {
+                    v.push(("shot_rate", rate));
+                    v.push(("salvo", salvo as f32));
+                    v.push(("shot_speed", speed));
+                    v.push(("missile_accel", accel));
+                    v.push(("missile_turn", turn));
+                    v.push(("missile_life", life));
+                    v.push(("missile_hp", hp));
+                    v.push(("warhead_radius", radius));
+                }
+            }
+            if let Some(d) = &w.defence {
+                v.push(("defence_arc", d.arc));
+                v.push(("defence_mass", d.ship_mass));
             }
             if w.cut > 0.0 {
                 v.push(("cut", w.cut));

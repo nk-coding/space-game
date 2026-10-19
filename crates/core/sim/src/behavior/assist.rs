@@ -409,6 +409,7 @@ fn think_all(ships: &mut [Ship], rocks: &[Rock], lib: &BehaviorLibrary, scratch:
         centres,
         scopes,
         script_evals,
+        incoming,
         ..
     } = scratch;
     let world: &[Ship] = ships;
@@ -447,6 +448,7 @@ fn think_all(ships: &mut [Ship], rocks: &[Rock], lib: &BehaviorLibrary, scratch:
             script_evals,
             script_error: None,
             pilot: Some(pilot),
+            incoming: incoming.as_slice(),
         };
         think(&mut cx, rocks, st, input, out);
     }

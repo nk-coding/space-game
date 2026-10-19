@@ -302,6 +302,8 @@ pub(crate) struct Scratch {
     pub(crate) scopes: Vec<Scope<'static>>,
     /// Rhai evaluations so far (diagnostics; not part of the state).
     pub(crate) script_evals: u64,
+    /// Live missiles homing on each ship (by index), counted before each think pass (`Sim::count_incoming`).
+    pub(crate) incoming: Vec<u32>,
 }
 
 /// Does this ship think on this tick? Every ship on the same ticks (not staggered by id: a ship that thinks a
@@ -348,6 +350,7 @@ pub(crate) fn think_all(
         centres,
         scopes,
         script_evals,
+        incoming,
         ..
     } = scratch;
     {
@@ -380,6 +383,7 @@ pub(crate) fn think_all(
                 script_evals,
                 script_error: None,
                 pilot: None,
+                incoming: incoming.as_slice(),
             };
             cx.think(st, out, rocks);
             out.script_error = cx.script_error.take();
@@ -444,6 +448,8 @@ pub(super) struct Ctx<'a> {
     pub script_error: Option<String>,
     /// What the pilot's own conditions read (pilot assists; `None` for a behavior).
     pub pilot: Option<Pilot>,
+    /// Live missiles homing on each ship, by index (`missiles_incoming`).
+    pub incoming: &'a [u32],
 }
 
 /// The pilot as the assists' conditions see it.
@@ -633,8 +639,10 @@ pub(crate) fn fly(
 }
 
 /// Fire at will, per gun: a gun fires when the target (its lead point, for projectile guns) is within
-/// [`tuning::FIRE_CONE`] of the gun's facing and within [`tuning::FIRE_RANGE`] × the gun's reach, measured
-/// from its muzzle. Broadside and rear guns fire whenever the target crosses their line (GDR-0034). Fills
+/// [`tuning::FIRE_CONE`] of the gun's facing (a missile launcher: the wider `missile::tuning::FIRE_CONE`, its
+/// seeker does the rest) and within [`tuning::FIRE_RANGE`] × the gun's reach, measured from its muzzle.
+/// Broadside and rear guns fire whenever the target crosses their line (GDR-0034). Point defence fires on its
+/// own and is left out (GDR-0115). Fills
 /// `guns` per gun slot (`slots` = the design's gun count; no allocation once warmed up) and returns whether
 /// any gun fires.
 pub(crate) fn guns_at_will(
@@ -648,7 +656,7 @@ pub(crate) fn guns_at_will(
     let rot = Rot::from_angle(piece.body.angle);
     let com = piece.body.pos + rot.apply(piece.mass.com);
     let mut any = false;
-    for g in piece.guns.iter().filter(|g| g.clear) {
+    for g in piece.guns.iter().filter(|g| g.clear && g.defence.is_none()) {
         let muzzle = piece.body.pos + rot.apply(g.muzzle);
         if (ts.pos - muzzle).length() >= g.range * tuning::FIRE_RANGE {
             continue;
@@ -659,10 +667,14 @@ pub(crate) fn guns_at_will(
                     piece.body.linvel + Vec2::cross_scalar(piece.body.angvel, muzzle - com);
                 lead_point(muzzle, v_muzzle, ts.pos, ts.vel, speed)
             }
-            Delivery::Beam | Delivery::Pulse { .. } => ts.pos,
+            Delivery::Beam | Delivery::Pulse { .. } | Delivery::Missile { .. } => ts.pos,
+        };
+        let cone = match g.delivery {
+            Delivery::Missile { .. } => crate::combat::missile::tuning::FIRE_CONE,
+            _ => tuning::FIRE_CONE,
         };
         let (dir, to) = (rot.apply(g.dir), aim - muzzle);
-        if atan2(dir.cross(to), dir.dot(to)).abs() < tuning::FIRE_CONE
+        if atan2(dir.cross(to), dir.dot(to)).abs() < cone
             && let Some(f) = guns.get_mut(g.slot as usize)
         {
             *f = true;
@@ -1088,6 +1100,7 @@ impl Ctx<'_> {
                     .filter(|ts| (ts.pos - from).length() <= r)
                     .count() as f32
             }
+            Sensor::MissilesIncoming => self.incoming.get(self.my_k).copied().unwrap_or(0) as f32,
             Sensor::Cycle(period) => {
                 self.focus.ok_or(Why::NoTarget)?;
                 (self.since_acquired() % period) as f32 * DT

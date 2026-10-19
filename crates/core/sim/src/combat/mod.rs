@@ -3,6 +3,7 @@
 
 pub mod chain;
 pub mod mining;
+pub mod missile;
 pub(crate) mod plume;
 pub mod salvage;
 pub mod weapons;

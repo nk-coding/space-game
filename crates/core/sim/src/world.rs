@@ -171,7 +171,7 @@ pub struct Sim {
     pub(crate) chain_scratch: crate::combat::chain::ChainScratch,
     /// Behavior programs (shared; ships refer to them by `BehaviorId`).
     behaviors: BehaviorLibrary,
-    behavior_scratch: behavior::Scratch,
+    pub(crate) behavior_scratch: behavior::Scratch,
     /// The focus of each owner that has one, ascending owner (`vessel.rs`).
     pub(crate) focus: Vec<(Owner, ShipId)>,
     /// Claim counter of the mind pass (formation and wake order).
@@ -257,6 +257,7 @@ impl Sim {
     /// tools; `step` thinks on its own).
     #[doc(hidden)]
     pub fn think_all_behaviors_now(&mut self) {
+        self.count_incoming();
         let rocks = self.voyage.as_deref().map_or(&[][..], |v| v.rocks());
         behavior::think_all(
             &mut self.ships,
@@ -510,6 +511,7 @@ impl Sim {
             life,
             ricochets: 0,
             crossed,
+            missile: None,
         });
         self.events.push(SimEvent::ProjectileSpawned {
             id,
@@ -727,6 +729,7 @@ impl Sim {
 
         // Behaviors decide (each ship every few ticks, from one snapshot), then flight flies the decisions.
         mark(StepPhase::Flight);
+        self.count_incoming();
         let rocks = self.voyage.as_deref().map_or(&[][..], |v| v.rocks());
         behavior::think_all(
             &mut self.ships,

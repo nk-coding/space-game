@@ -29,7 +29,8 @@ use crate::ship::design::{PartIdx, family_index};
 use crate::ids::ShipId;
 use crate::ship::mass::to_piece;
 use crate::math::{Rot, Vec2};
-use crate::ship::Ship;
+use crate::ship::{Piece, Ship};
+use crate::ship::vessel::{Owner, friendly};
 use crate::world::Sim;
 
 /// The weapon family whose shield share a blast loses to a bubble it crosses (lead default, GDR-0085: an
@@ -42,13 +43,13 @@ const REACH_SLACK: f32 = 1.0;
 
 /// One hit of a blast, computed before any is applied.
 #[derive(Clone, Copy, Debug)]
-struct Hit {
+pub(crate) struct Hit {
     /// Index of the ship hit.
-    k: u32,
-    part: PartIdx,
-    damage: f32,
+    pub k: u32,
+    pub part: PartIdx,
+    pub damage: f32,
     /// The target cell's centre (world); bubbles covering it and not the blast's centre absorb first.
-    point: Vec2,
+    pub point: Vec2,
     /// On another piece: bubbles may absorb it.
     shields: bool,
 }
@@ -58,7 +59,7 @@ struct Hit {
 pub(crate) struct ChainScratch {
     /// `(ship index, part)` in the order the blasts go off.
     queue: Vec<(u32, PartIdx)>,
-    hits: Vec<Hit>,
+    pub hits: Vec<Hit>,
     own: Vec<(PartIdx, f32)>,
     reach: Vec<(PartIdx, [f32; 2])>,
     cover: Vec<PartIdx>,
@@ -171,6 +172,50 @@ fn to_blueprint(world: Vec2, pos: Vec2, rot: Rot, origin: [f32; 2]) -> [f32; 2] 
     [origin[0] + l.x, origin[1] - l.y]
 }
 
+/// The hits of a blast at the world point `centre` (`damage` within `r` m) on piece `q` of ship `s` (index `j`),
+/// appended to `sc.hits`, targets ascending: every alive part of the piece with a cell in reach, `damage × its
+/// blast_factor × the blast_factor of the piece's own intact armour on the line` (the exploding piece's armour is
+/// the caller's). Chain blasts on other pieces and missile warheads (`missile.rs`).
+pub(crate) fn piece_hits(
+    s: &Ship,
+    j: usize,
+    q: &Piece,
+    centre: Vec2,
+    damage: f32,
+    r: f32,
+    sc: &mut ChainScratch,
+) {
+    let reach = q.radius + r + REACH_SLACK;
+    let off = q.body.pos - centre;
+    if off.x.abs() > reach || off.y.abs() > reach || off.length_squared() > reach * reach {
+        return;
+    }
+    let rot = Rot::from_angle(q.body.angle);
+    let c = to_blueprint(centre, q.body.pos, rot, q.origin);
+    in_reach(&s.grid, c, r, |o| s.parts[o].piece == q.id, &mut sc.reach);
+    let td = &s.design.parts;
+    for &(t, cell) in &sc.reach {
+        let mut hit = damage * td[t as usize].blast_factor;
+        cover(
+            &s.grid,
+            c,
+            cell,
+            |o| o != t as usize && s.parts[o].piece == q.id && td[o].blast_factor < 1.0,
+            &mut sc.cover,
+        );
+        for &o in &sc.cover {
+            hit *= td[o as usize].blast_factor;
+        }
+        sc.hits.push(Hit {
+            k: j as u32,
+            part: t,
+            damage: hit,
+            point: q.body.pos + rot.apply(to_piece(cell, q.origin)),
+            shields: true,
+        });
+    }
+}
+
 impl Ship {
     /// The hits of part `p`'s blast on its own piece: the compiled targets ([`crate::ShipDesign::blast`]) still
     /// alive on it, each damage times the `blast_factor` of its cover still alive on it. Appended to `out`.
@@ -250,7 +295,7 @@ impl Sim {
             let h = sc.hits[n];
             let mut damage = h.damage;
             if h.shields {
-                damage = self.blast_shields(by, centre, h.point, damage);
+                damage = self.blast_shields(by, None, centre, h.point, damage);
             }
             if damage > 0.0 {
                 let target = &mut self.ships[h.k as usize];
@@ -285,36 +330,11 @@ impl Sim {
                 if j == k && q.id == pid {
                     continue;
                 }
-                let reach = q.radius + r + REACH_SLACK;
-                let off = q.body.pos - centre;
-                if off.x.abs() > reach
-                    || off.y.abs() > reach
-                    || off.length_squared() > reach * reach
-                {
-                    continue;
-                }
-                let rot = Rot::from_angle(q.body.angle);
-                let c = to_blueprint(centre, q.body.pos, rot, q.origin);
-                in_reach(&s.grid, c, r, |o| s.parts[o].piece == q.id, &mut sc.reach);
-                for &(t, cell) in &sc.reach {
-                    let td = &s.design.parts;
-                    let mut hit = damage * td[t as usize].blast_factor;
-                    // Armour of the target's piece on the line, then of the exploding piece (the exploding part
-                    // itself is out of the grid already).
-                    cover(
-                        &s.grid,
-                        c,
-                        cell,
-                        |o| {
-                            o != t as usize && s.parts[o].piece == q.id && td[o].blast_factor < 1.0
-                        },
-                        &mut sc.cover,
-                    );
-                    for &o in &sc.cover {
-                        hit *= td[o as usize].blast_factor;
-                    }
-                    let point = q.body.pos + rot.apply(to_piece(cell, q.origin));
-                    let b = to_blueprint(point, src.body.pos, src_rot, src.origin);
+                let first = sc.hits.len();
+                piece_hits(s, j, q, centre, damage, r, sc);
+                // Armour of the exploding piece on the line (the exploding part itself is out of the grid already).
+                for n in first..sc.hits.len() {
+                    let b = to_blueprint(sc.hits[n].point, src.body.pos, src_rot, src.origin);
                     cover(
                         &ship.grid,
                         centre_bp,
@@ -323,15 +343,8 @@ impl Sim {
                         &mut sc.cover,
                     );
                     for &o in &sc.cover {
-                        hit *= d.parts[o as usize].blast_factor;
+                        sc.hits[n].damage *= d.parts[o as usize].blast_factor;
                     }
-                    sc.hits.push(Hit {
-                        k: j as u32,
-                        part: t,
-                        damage: hit,
-                        point,
-                        shields: true,
-                    });
                 }
             }
         }
@@ -340,9 +353,17 @@ impl Sim {
 
     /// The bubbles a blast from `centre` crosses on its way to `point` (they cover the point, not the centre)
     /// take their [`BLAST_FAMILY`] share of `damage` first, in bubble order (ship, piece, emitter): every bubble of
-    /// this tick with charge left whose emitter is still alive, except those of the exploding ship `by`, friend or
-    /// foe (blasts spare nobody, so nobody's bubble lets them through). Returns the damage left for the part.
-    fn blast_shields(&mut self, by: ShipId, centre: Vec2, point: Vec2, mut damage: f32) -> f32 {
+    /// this tick with charge left whose emitter is still alive, except those of the exploding ship `by` and, for a
+    /// missile's warhead, of vessels friendly to its `team` (a chain blast has none: it spares nobody, so nobody's
+    /// bubble lets it through). Returns the damage left for the part.
+    pub(crate) fn blast_shields(
+        &mut self,
+        by: ShipId,
+        team: Option<Owner>,
+        centre: Vec2,
+        point: Vec2,
+        mut damage: f32,
+    ) -> f32 {
         let fi = family_index(BLAST_FAMILY);
         for b in 0..self.bubbles.len() {
             if damage <= 1e-6 {
@@ -356,6 +377,7 @@ impl Sim {
                 .get(bub.ship_index)
                 .is_some_and(|s| s.id() == bub.ship && s.parts[bub.part as usize].alive);
             if bub.ship == by
+                || friendly(team, bub.team)
                 || bub.left <= 0.0
                 || bub.absorb[fi] <= 0.0
                 || !live

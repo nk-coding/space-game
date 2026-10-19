@@ -88,6 +88,8 @@ pub enum Sensor {
     Power,
     TargetHull,
     EnemiesNear(Dist),
+    /// Live hostile missiles homing on the ship (GDR-0115).
+    MissilesIncoming,
     /// Period in ticks.
     Cycle(u64),
     TargetTime,
@@ -341,6 +343,7 @@ fn conditions(rule: &data::behavior::Rule, line: LineRef, vocab: &Vocab, conds: 
                 "power" => Sensor::Power,
                 "target_hull" => Sensor::TargetHull,
                 "enemies_near" => Sensor::EnemiesNear(dist(args[0])),
+                "missiles_incoming" => Sensor::MissilesIncoming,
                 "cycle" => {
                     let ticks = (seconds(args[0]) * TICK_HZ as f32 + 0.5) as u64;
                     Sensor::Cycle(ticks.max(1))
