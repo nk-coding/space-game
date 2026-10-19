@@ -272,9 +272,9 @@ pub(super) fn grid(
     let quick: Vec<(u64, Vec2)> = touches.iter_just_released().filter(|t| touches.just_pressed(t.id())).map(|t| (t.id(), t.position())).collect();
     let mut outs = Vec::new();
     if !quick.is_empty() {
-        outs = pad.update(&[fingers.as_slice(), quick.as_slice()].concat(), now, &start);
+        outs = pad.update(&[fingers.as_slice(), quick.as_slice()].concat(), now, start);
     }
-    outs.extend(pad.update(&fingers, now, &start));
+    outs.extend(pad.update(&fingers, now, start));
     let content = &content.0;
     let brush = ui.picked.as_deref().and_then(|p| content.parts.get(p)).map(Brush::of);
     let lift = Vec2::new(0.0, LIFT);

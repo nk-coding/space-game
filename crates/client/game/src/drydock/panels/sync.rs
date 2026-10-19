@@ -531,6 +531,7 @@ pub(in crate::drydock) fn sync_texts(
 
 /// The info line (hover cell, mirror, axis, and the pan help unless the coral hint after it needs the room; on a
 /// phone the cell and the mirror) and the zoom, every frame.
+#[allow(clippy::too_many_arguments)]
 pub(in crate::drydock) fn sync_live(
     design: Res<PlayerDesign>,
     cursor: Res<DrydockCursor>,
