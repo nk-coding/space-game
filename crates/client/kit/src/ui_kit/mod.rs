@@ -60,7 +60,7 @@ pub use scrollbar::{BAR_HIT, ScrollClipSet, ScrollRows, Scrollbar, SmoothScroll}
 pub use transition::{
     EXIT_SECONDS, Edge, IconMaterials, ScreenFx, ScreenPart, WorldCover, show_screen, snap_screen,
 };
-pub use tip::{TIP_DELAY, Tip, tip_position};
+pub use tip::{TIP_DELAY, TIP_HOLD, TIP_SLOP, Tip, tip_position, touch_tip_position};
 use tip::{TipState, show_tip, spawn_tip};
 pub use widgets::{Pill, PillLock, PillText, Ring, RingGlyph, ValueBar, ring_glyph, ring_node, spawn_bar, spawn_brackets, spawn_pill};
 use widgets::{show_locks, style_widgets};

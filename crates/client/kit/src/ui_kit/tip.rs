@@ -1,4 +1,5 @@
-//! Tooltips ([`Tip`]): a control's name and key, shown after a short hover beside the pointer, kept on screen.
+//! Tooltips ([`Tip`]): a control's name and key, shown after a short hover beside the pointer, or while a finger
+//! holds the control (a long press), kept on screen.
 
 use super::*;
 
@@ -9,7 +10,13 @@ use super::*;
 /// letters; the tooltip names the key). Put it on a [`Hot`] node (a pill, a ring, a field, a click area over the
 /// world such as home's places): resting the mouse on the node for [`TIP_DELAY`] shows a small dark plate near the
 /// pointer, the name in label grey and the key in white, kept inside the window ([`tip_position`]). A press hides
-/// it until the pointer leaves the node. Touch has no hover, so no tooltips.
+/// it until the pointer leaves the node.
+///
+/// **By touch** (no hover): a finger held on the node for [`TIP_HOLD`] without moving [`TIP_SLOP`] shows the tip
+/// above the finger ([`touch_tip_position`]) until it lifts or moves on; the press then ends without a click (a long
+/// press asks what a control is, as on Android, and never presses it). A press something else took first (a list
+/// that scrolled under the finger) shows none. The holds the screens use (BEHAVIOR's rule rows, the drydock's grid
+/// and palette rows, the flight's stick and FIRE) are on nodes without a tip, so the two never meet.
 #[derive(Component, Clone, Debug, PartialEq, Eq)]
 pub struct Tip {
     /// The name, or what the control picks with a few key numbers (an armour swatch: `STEEL  ·  MASS 2 T`).
@@ -32,6 +39,13 @@ impl Tip {
 
 /// How long the mouse rests on a control before its tooltip shows (seconds).
 pub const TIP_DELAY: f32 = 0.5;
+/// A finger held this long (seconds) on a control shows its tip, and must not move further than [`TIP_SLOP`]
+/// (logical px) meanwhile: the long press of BEHAVIOR's rule rows (*placeholders*).
+pub const TIP_HOLD: f32 = 0.35;
+pub const TIP_SLOP: f32 = 10.0;
+/// A touch tip's bottom this far above the finger (UI px): clear of the fingertip.
+pub(super) const TIP_LIFT: f32 = 40.0;
+
 /// The tooltip's offset from the pointer (right and down, UI px) and the least room to the window's edges.
 pub(super) const TIP_OFFSET: Vec2 = Vec2::new(12.0, 20.0);
 pub(super) const TIP_MARGIN: f32 = 6.0;
@@ -47,6 +61,17 @@ pub fn tip_position(cursor: Vec2, size: Vec2, window: Vec2) -> Vec2 {
     }
     if at.y + size.y > window.y - TIP_MARGIN {
         at.y = cursor.y - TIP_OFFSET.y.min(10.0) - size.y;
+    }
+    let max = (window - size - Vec2::splat(TIP_MARGIN)).max(Vec2::splat(TIP_MARGIN));
+    at.clamp(Vec2::splat(TIP_MARGIN), max)
+}
+
+/// Where a tooltip of `size` goes for a finger at `finger` (UI px, y down; its top-left corner): centred over the
+/// finger, [`TIP_LIFT`] above it, below it when there is no room above; kept inside the window as [`tip_position`].
+pub fn touch_tip_position(finger: Vec2, size: Vec2, window: Vec2) -> Vec2 {
+    let mut at = Vec2::new(finger.x - size.x / 2.0, finger.y - TIP_LIFT - size.y);
+    if at.y < TIP_MARGIN {
+        at.y = finger.y + TIP_LIFT;
     }
     let max = (window - size - Vec2::splat(TIP_MARGIN)).max(Vec2::splat(TIP_MARGIN));
     at.clamp(Vec2::splat(TIP_MARGIN), max)
@@ -71,6 +96,42 @@ pub(super) struct TipState {
     pressed: bool,
     /// The plate shows this control's tip (its texts are set; it is placed once laid out).
     shown: Option<Entity>,
+    /// The finger that is the pointer, while it is down.
+    touch: Option<TouchTip>,
+}
+
+/// A finger that is down: the control with a tip its press is on (none once it moved or its press went elsewhere),
+/// where and when it landed (logical px, seconds), and whether its tip shows.
+#[derive(Clone, Copy, Debug)]
+struct TouchTip {
+    finger: u64,
+    on: Option<Entity>,
+    from: Vec2,
+    since: f32,
+    shown: bool,
+}
+
+/// The control whose tip a finger shows (and the finger, logical px): held on it [`TIP_HOLD`] within [`TIP_SLOP`].
+/// The first frame it shows, the press ends without a click.
+fn touch_tip(state: &mut TipState, pointer: &mut UiPointer, touches: &Touches, now: f32, has_tip: impl Fn(Entity) -> bool) -> Option<(Entity, Vec2)> {
+    let Some((id, at)) = pointer.finger().and_then(|id| touches.get_pressed(id).map(|t| (id, t.position()))) else {
+        state.touch = None;
+        return None;
+    };
+    let pressed = |pointer: &UiPointer| pointer.pressed.filter(|(_, s)| *s == PressSource::Touch(id)).map(|(e, _)| e);
+    let t = match state.touch {
+        Some(t) if t.finger == id => state.touch.insert(t),
+        _ => state.touch.insert(TouchTip { finger: id, on: pressed(pointer).filter(|e| has_tip(*e)), from: at, since: now, shown: false }),
+    };
+    if t.on.is_some() && ((at - t.from).length() > TIP_SLOP || (!t.shown && pressed(pointer) != t.on)) {
+        t.on = None;
+    }
+    let on = t.on?;
+    if !t.shown && now - t.since >= TIP_HOLD {
+        t.shown = true;
+        pointer.cancel_press();
+    }
+    t.shown.then_some((on, at))
 }
 
 pub(super) fn spawn_tip(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>) {
@@ -110,6 +171,8 @@ pub(super) fn show_tip(
     window: Single<&Window, With<PrimaryWindow>>,
     ui_scale: Res<UiScale>,
     buttons: Res<ButtonInput<MouseButton>>,
+    touches: Res<Touches>,
+    mut pointer: ResMut<UiPointer>,
     mut state: ResMut<TipState>,
     tips: Query<(Entity, &Tip, &Hot, &InheritedVisibility)>,
     mut plate: Single<(&mut Visibility, &mut UiTransform, &ComputedNode), With<TipPlate>>,
@@ -125,7 +188,11 @@ pub(super) fn show_tip(
     if buttons.any_just_pressed([MouseButton::Left, MouseButton::Right, MouseButton::Middle]) && over.is_some() {
         state.pressed = true;
     }
-    let want = over.filter(|_| !state.pressed && now - state.since >= TIP_DELAY);
+    let touch = touch_tip(&mut state, &mut pointer, &touches, now, |e| tips.get(e).is_ok_and(|(_, _, _, v)| v.get()));
+    let want = match touch {
+        Some((e, _)) => Some(e),
+        None => over.filter(|_| !state.pressed && now - state.since >= TIP_DELAY),
+    };
     let (vis, tf, node) = &mut *plate;
     let Some((e, tip)) = want.and_then(|e| tips.get(e).ok()).map(|(e, t, ..)| (e, t)) else {
         state.shown = None;
@@ -150,12 +217,85 @@ pub(super) fn show_tip(
     }
     let k = ui_scale.0.max(1e-3);
     let size = node.size * node.inverse_scale_factor;
-    let at = tip_position(cursor.unwrap_or_default() / k, size, window.size() / k);
+    let at = match touch {
+        Some((_, finger)) => touch_tip_position(finger / k, size, window.size() / k),
+        None => tip_position(cursor.unwrap_or_default() / k, size, window.size() / k),
+    };
     let t = Val2::px(at.x, at.y);
     if tf.translation != t {
         tf.translation = t;
     }
     if **vis != Visibility::Inherited {
         **vis = Visibility::Inherited;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use bevy::ecs::system::RunSystemOnce;
+    use bevy::input::touch::{TouchInput, TouchPhase, touch_screen_input_system};
+
+    /// A finger at `at` (logical px) in `phase`, run into the world's [`Touches`].
+    fn finger(world: &mut World, phase: TouchPhase, at: Vec2) {
+        world.write_message(TouchInput { phase, position: at, window: Entity::PLACEHOLDER, force: None, id: 1 });
+        world.run_system_once(touch_screen_input_system).unwrap();
+    }
+
+    /// A finger held still on a control with a tip shows it after the hold and drops the press (no click on
+    /// release); one that moves, or whose press a scroll took, shows none.
+    #[test]
+    fn a_long_press_shows_the_tip_and_never_clicks() {
+        let mut world = World::new();
+        world.init_resource::<Messages<TouchInput>>();
+        world.init_resource::<Touches>();
+        let (tip, plain) = (world.spawn_empty().id(), world.spawn_empty().id());
+        let run = |world: &mut World, state: &mut TipState, pointer: &mut UiPointer, now: f32| {
+            touch_tip(state, pointer, world.resource::<Touches>(), now, |e| e == tip)
+        };
+        let press = |on: Entity| UiPointer { finger: Some(1), pressed: Some((on, PressSource::Touch(1))), ..default() };
+
+        let (mut state, mut pointer) = (TipState::default(), press(tip));
+        finger(&mut world, TouchPhase::Started, Vec2::new(100.0, 100.0));
+        assert_eq!(run(&mut world, &mut state, &mut pointer, 1.0), None);
+        finger(&mut world, TouchPhase::Moved, Vec2::new(104.0, 103.0));
+        assert_eq!(run(&mut world, &mut state, &mut pointer, 1.0 + TIP_HOLD - 0.01), None);
+        assert!(pointer.pressed.is_some());
+        assert_eq!(run(&mut world, &mut state, &mut pointer, 1.0 + TIP_HOLD), Some((tip, Vec2::new(104.0, 103.0))));
+        assert!(pointer.pressed.is_none(), "the press ends without a click");
+        assert!(run(&mut world, &mut state, &mut pointer, 2.0).is_some());
+        // Moved on: gone for this touch.
+        finger(&mut world, TouchPhase::Moved, Vec2::new(100.0, 112.0));
+        assert_eq!(run(&mut world, &mut state, &mut pointer, 2.1), None);
+        finger(&mut world, TouchPhase::Moved, Vec2::new(100.0, 100.0));
+        assert_eq!(run(&mut world, &mut state, &mut pointer, 2.2), None);
+        finger(&mut world, TouchPhase::Ended, Vec2::new(100.0, 100.0));
+        assert_eq!(run(&mut world, &mut state, &mut pointer, 2.3), None);
+        assert!(state.touch.is_none());
+
+        // A press a scroll took before the hold was up.
+        let (mut state, mut pointer) = (TipState::default(), press(tip));
+        finger(&mut world, TouchPhase::Started, Vec2::new(100.0, 100.0));
+        assert_eq!(run(&mut world, &mut state, &mut pointer, 1.0), None);
+        pointer.cancel_press();
+        assert_eq!(run(&mut world, &mut state, &mut pointer, 1.0 + TIP_HOLD), None);
+        finger(&mut world, TouchPhase::Ended, Vec2::new(100.0, 100.0));
+
+        // A control without a tip keeps its press (a screen's own hold).
+        let (mut state, mut pointer) = (TipState::default(), press(plain));
+        finger(&mut world, TouchPhase::Started, Vec2::new(100.0, 100.0));
+        assert_eq!(run(&mut world, &mut state, &mut pointer, 1.0), None);
+        assert_eq!(run(&mut world, &mut state, &mut pointer, 2.0), None);
+        assert!(pointer.pressed.is_some());
+    }
+
+    /// A touch tip sits over the finger, clear of it, or under it at the window's top; always inside the window.
+    #[test]
+    fn a_touch_tip_sits_above_the_finger() {
+        let (size, window) = (Vec2::new(80.0, 20.0), Vec2::new(844.0, 390.0));
+        assert_eq!(touch_tip_position(Vec2::new(400.0, 200.0), size, window), Vec2::new(360.0, 200.0 - TIP_LIFT - 20.0));
+        assert_eq!(touch_tip_position(Vec2::new(400.0, 30.0), size, window).y, 30.0 + TIP_LIFT);
+        assert_eq!(touch_tip_position(Vec2::new(10.0, 200.0), size, window).x, TIP_MARGIN);
+        assert_eq!(touch_tip_position(Vec2::new(840.0, 200.0), size, window).x, window.x - size.x - TIP_MARGIN);
     }
 }
