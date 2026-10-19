@@ -9,7 +9,7 @@
     target: "nearest",
     rules: [
         "when hull < 25% -> flee # too hurt to fight on",
-        "when shield_down and target_on_me -> orbit(80%, ccw) # dodge while the shields recharge",
+        "when shield_down and target_on_me and missiles_incoming < 1 -> orbit(80%, ccw) # dodge while the shields recharge (no use against homing missiles)",
         "when closing_in(2s) and not target_in_range(100%) -> face # meet it nose first",
         "always -> approach(67%)",
     ],

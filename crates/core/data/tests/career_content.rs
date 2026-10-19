@@ -65,12 +65,12 @@ fn new_kinds_load_from_their_dirs_with_texts_links_and_wiki() {
     let m = pack(&[
         (
             "families/extra.ron",
-            r#"(id: "missiles", name: "Missiles", summary: "Guided shots; see [[research:seeker]].", color: "weapons")"#,
+            r#"(id: "drones", name: "Drones", summary: "Small craft; see [[research:seeker]].", color: "weapons")"#,
         ),
         (
             "research.ron",
-            r#"[(id: "seeker", name: "Seeker", summary: "Feeds [[family:missiles]].", family: "missiles", kind: Variant,
-                 cost: (data: {"missiles": 5, "kinetic": 2.5}), requires: ["automaton_cannon"],
+            r#"[(id: "seeker", name: "Seeker", summary: "Feeds [[family:drones]].", family: "drones", kind: Variant,
+                 cost: (data: {"drones": 5, "kinetic": 2.5}), requires: ["automaton_cannon"],
                  unlocks: [MindCapacity(3)])]"#,
         ),
         (
@@ -78,7 +78,7 @@ fn new_kinds_load_from_their_dirs_with_texts_links_and_wiki() {
             r#"(id: "alt", name: "Alt start", summary: "Like [[start:rim_awakening]], with more mind.", ship: "sample_early",
                 mind_capacity: 3, voyages: ["yard_approach", "halvex_drift"])"#,
         ),
-        ("wiki/family/missiles.md", "# Missiles\n\n[[start:alt]]"),
+        ("wiki/family/drones.md", "# Drones\n\n[[start:alt]]"),
         ("wiki/research/seeker.md", "Seeks."),
         ("wiki/start/alt.md", "Starts."),
     ]);
@@ -88,9 +88,9 @@ fn new_kinds_load_from_their_dirs_with_texts_links_and_wiki() {
     );
     let c = Content::load(&[base(), m]).unwrap_or_else(|p| panic!("{}", show(&p)));
     // New ids are appended after the base entries.
-    assert_eq!(c.families.iter().last().unwrap().id, "missiles");
+    assert_eq!(c.families.iter().last().unwrap().id, "drones");
     assert_eq!(
-        c.families.get("missiles").unwrap().source.file,
+        c.families.get("drones").unwrap().source.file,
         "families/extra.ron"
     );
     let seeker = c.research.get("seeker").unwrap();
@@ -112,14 +112,14 @@ fn new_kinds_load_from_their_dirs_with_texts_links_and_wiki() {
     assert!(c.exists(Kind::Research, "seeker") && !c.exists(Kind::Research, "nope"));
     assert_eq!(c.name_of(Kind::Start, "alt"), Some("Alt start"));
     assert_eq!(
-        c.render_plain("[[family:missiles]], [[research:seeker]], [[start:alt|another]]"),
-        "Missiles, Seeker, another"
+        c.render_plain("[[family:drones]], [[research:seeker]], [[start:alt|another]]"),
+        "Drones, Seeker, another"
     );
     let texts = c.texts();
-    assert_eq!(texts["family.missiles.name"], "Missiles");
+    assert_eq!(texts["family.drones.name"], "Drones");
     assert_eq!(
         texts["research.seeker.summary"],
-        "Feeds [[family:missiles]]."
+        "Feeds [[family:drones]]."
     );
     assert!(texts.contains_key("start.alt.summary"));
     assert!(c.wiki_page(Kind::Research, "seeker").is_some());
@@ -568,6 +568,7 @@ fn base_families() {
             ("power", Some("power")),
             ("energy", Some("weapons")),
             ("kinetic", Some("weapons")),
+            ("missiles", Some("weapons")),
             ("shields", Some("shields")),
             ("thermal", Some("heat")),
             ("propulsion", Some("propulsion")),
@@ -661,6 +662,9 @@ fn base_locks_follow_the_early_game_kit() {
             "grown_ganglion",
             "spore_radiator",
             "heat_sink",
+            "rocket_pod",
+            "torpedo_launcher",
+            "point_defence",
             "fusion_reactor",
             "compact_reactor",
             "torch_drive",
@@ -702,6 +706,9 @@ fn base_research_nodes() {
             "grown_heart",
             "spore_lining",
             "smelter",
+            "rocket_pod",
+            "point_defence",
+            "torpedo",
             "automaton_cannon",
             "composite_plating",
             "beam_laser",

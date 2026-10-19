@@ -1,0 +1,72 @@
+// Missiles and point defence (GDR-0115; GDR-0018's missiles family). PLACEHOLDER NUMBERS (lead defaults of
+// 19 Oct 2026, tuned with the arena and the voyage runner: docs/results/missiles-2026-10-19.md).
+// `damage` is per second: a missile's warhead deals damage / rate / salvo, once, to every part within its blast
+// radius (the chain-reaction rule, GDR-0085: armour takes its share and shields what lies behind it). Shield bubbles
+// absorb missiles whole (GDR-0021). A missile can be shot down: point defence aims at it first.
+// Launchers keep their stored rounds: destroyed, they explode like a capacitor (rocket pod) or more (torpedo).
+[
+    // The rocket pod: small and quick, a salvo of three light rockets that live about two seconds.
+    (
+        id: "rocket_pod",
+        name: "Rocket pod",
+        summary: "Fires salvos of three small homing rockets that blast what they strike.",
+        description: "Rockets turn towards the nearest enemy ahead of them, so the pod needs no clear aim, only a clear line of fire. Each rocket's warhead hits every part close around where it strikes. Shields absorb rockets whole, and [[part:point_defence]] shoots them down.",
+        tags: ["missile"],
+        locked: true, // the missiles research's `rocket_pod` unlocks it
+        category: "weapons",
+        icon: "rocket-pod",
+        size: (1, 1),
+        build_points: 3,
+        mass: 2,
+        hp: 1,
+        power: (draw: 2, tier: Low),
+        heat: (output: 0.8, limit: 3),
+        weapon: (family: Missile, damage: 0.9, range: 70, delivery: Missile(rate: 0.45, salvo: 2, speed: 45, accel: 60, turn: 100, life: 2.2, hp: 0.2, radius: 0.5)),
+        explosion: (damage: 0.5, radius: 0.6),
+        salvage: (family: "missiles", data: 3),
+        recipe: (materials: {"copper": 2, "steel": 3}),
+    ),
+    // The torpedo: one big, slow, tough missile with a heavy blast, for big targets that cannot dodge it.
+    (
+        id: "torpedo_launcher",
+        name: "Torpedo launcher",
+        summary: "A 1×2 launcher for one heavy, slow torpedo at a time that tears a hole in big ships.",
+        description: "The torpedo turns slowly, so small, quick ships slip past it, and its hit points let it live through a little [[part:point_defence]] fire. Its warhead hits every part within a cell and a half of where it strikes. Shields absorb it whole.",
+        tags: ["missile"],
+        locked: true, // the missiles research's `torpedo` unlocks it
+        category: "weapons",
+        icon: "torpedo-launcher",
+        size: (1, 2),
+        build_points: 6,
+        control_cost: 2, // big machine, like the beam laser
+        mass: 4,
+        hp: 2,
+        power: (draw: 3, tier: Low),
+        heat: (output: 1, limit: 3.5),
+        weapon: (family: Missile, damage: 0.6, range: 120, delivery: Missile(rate: 0.15, speed: 22, accel: 12, turn: 45, life: 7, hp: 1, radius: 1.5)),
+        explosion: (damage: 1.2, radius: 1),
+        salvage: (family: "missiles", data: 5),
+        recipe: (materials: {"copper": 4, "crystal": 2, "steel": 5}),
+    ),
+    // Point defence: a quick, short-range pulse turret that picks its own targets, missiles first, then small ships.
+    (
+        id: "point_defence",
+        name: "Point-defence turret",
+        summary: "A fast, short-range turret that shoots down incoming missiles, and small ships when none come.",
+        description: "It aims itself anywhere ahead of and beside its facing and fires on its own while its vessel runs, whatever the trigger: first at the nearest enemy missile in reach, then at the nearest small enemy vessel. It draws its power all the time. Needs a clear line of fire.",
+        tags: ["defence"],
+        locked: true, // the missiles research's `point_defence` unlocks it
+        category: "weapons",
+        icon: "point-defence",
+        size: (1, 1),
+        build_points: 3,
+        mass: 1.5,
+        hp: 1,
+        power: (draw: 1.5, tier: Low),
+        heat: (output: 0.4, limit: 3), // always on, so it runs warm: below the pulse laser's
+
+        weapon: (family: Energy, damage: 0.9, range: 28, delivery: Pulse(rate: 6), defence: (arc: 120, ship_mass: 25)),
+        salvage: (family: "missiles", data: 2),
+        recipe: (materials: {"copper": 2, "crystal": 2, "steel": 1}),
+    ),
+]

@@ -1,13 +1,14 @@
 // Research families (GDR-0024): one tech tree each, and the pool its research data goes to. Salvaged parts give data
 // to the family their `salvage` block names. The order here is the display order of the research screen.
 // `color` is a system colour key from art/tokens.json (ship.system_colors); hull has none and shows neutral, like the
-// hull category. PLACEHOLDER (lead defaults for the first playable loop, 13 Oct 2026): missiles come when missiles
-// exist. The Grown's family, last (18 Oct 2026, GDR-0103): their salvage feeds it (GDR-0099 A4), in their coral.
+// hull category. PLACEHOLDER (lead defaults for the first playable loop, 13 Oct 2026): missiles came with missiles
+// (19 Oct 2026, GDR-0115). The Grown's family, last (18 Oct 2026, GDR-0103): their salvage feeds it (GDR-0099 A4), in their coral.
 [
     (id: "hull", name: "Hull and armour", summary: "Plating, slopes and bigger drydock frames."),
     (id: "power", name: "Power", summary: "Reactors and capacitors.", color: "power"),
     (id: "energy", name: "Energy weapons", summary: "Lasers and beams.", color: "weapons"),
     (id: "kinetic", name: "Kinetic weapons", summary: "Guns that throw mass.", color: "weapons"),
+    (id: "missiles", name: "Missiles", summary: "Homing rockets and torpedoes, and the point defence that shoots them down.", color: "weapons"),
     (id: "shields", name: "Shields", summary: "Bubbles that soak up hits before they reach the hull.", color: "shields"),
     (id: "thermal", name: "Thermal", summary: "Radiators and everything else that sheds heat.", color: "heat"),
     (id: "propulsion", name: "Propulsion", summary: "Engines, drives and everything that turns a ship.", color: "propulsion"),

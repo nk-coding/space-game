@@ -1,0 +1,37 @@
+// The missiles family (GDR-0115; GDR-0018: rocket swarms and torpedoes, countered by point defence). Its data comes
+// from salvaged launchers: the automaton lancers of the hunting reaches carry rocket pods. PLACEHOLDER NUMBERS (lead
+// defaults of 19 Oct 2026): the rocket pod about two lancers' salvage, point defence cheap in energy data so the
+// counter comes before the threat grows, the torpedo after the rocket pod.
+[
+    (
+        id: "rocket_pod",
+        name: "Rocket pod",
+        summary: "Build the lancers' homing rocket pods into your own ships.",
+        description: "Unlocks the [[part:rocket_pod]]: salvos of small homing rockets whose warheads blast what they strike.",
+        family: "missiles",
+        kind: NewPart,
+        cost: (data: {"missiles": 4, "kinetic": 2}),
+        unlocks: [Part("rocket_pod")],
+    ),
+    (
+        id: "point_defence",
+        name: "Point defence",
+        summary: "A quick turret that shoots down missiles on its own.",
+        description: "Unlocks the [[part:point_defence]], which aims itself at incoming missiles, and at small ships when none come.",
+        family: "missiles",
+        kind: NewPart,
+        cost: (data: {"missiles": 2, "energy": 3}),
+        unlocks: [Part("point_defence")],
+    ),
+    (
+        id: "torpedo",
+        name: "Torpedo",
+        summary: "A heavy, slow missile for big targets.",
+        description: "Unlocks the [[part:torpedo_launcher]]: one torpedo at a time, slow to turn, with a blast that tears a hole in big ships.",
+        family: "missiles",
+        kind: NewPart,
+        cost: (data: {"missiles": 8}),
+        requires: ["rocket_pod"],
+        unlocks: [Part("torpedo_launcher")],
+    ),
+]

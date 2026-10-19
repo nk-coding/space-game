@@ -213,7 +213,7 @@ fn the_arms_race_preset_and_its_refusals() {
     let c = data::base_content();
     assert_eq!(
         arena::evolve::enemy_starts(&c),
-        ["automaton_gunner", "automaton_hunter", "automaton_raider"],
+        ["automaton_gunner", "automaton_hunter", "automaton_lancer", "automaton_raider"],
         "the warden is a boss"
     );
     let preset = c.lab.trial("arms_race").unwrap();

@@ -552,6 +552,7 @@ fn inspector_and_palette_queries() {
         vec![
             NodeRef::Cond(rules[1].conds[0]),
             NodeRef::Cond(rules[1].conds[1]),
+            NodeRef::Cond(rules[1].conds[2]),
             NodeRef::Action(rules[1].id)
         ]
     );
@@ -685,24 +686,24 @@ fn the_text_view_replaces_the_program_and_keeps_ids() {
 
     // One rule edited in place keeps its id and the ids of its unchanged conditions.
     let text = ed.text().replace(
-        "when shield_down and target_on_me -> orbit(80%, ccw)",
-        "when shield_down and target_on_me and under_attack -> orbit(70%, ccw)",
+        "when shield_down and target_on_me and missiles_incoming < 1 -> orbit(80%, ccw)",
+        "when shield_down and target_on_me and missiles_incoming < 1 and under_attack -> orbit(70%, ccw)",
     );
     assert_eq!(ed.set_text(&text), Ok(true));
     assert_eq!(ed.revision(), rev + 1);
     assert_eq!(ids(&ed), before);
     let now = cond_ids(&ed, 1);
-    assert_eq!(&now[..2], &conds[..]);
-    assert_eq!(now.len(), 3);
+    assert_eq!(&now[..3], &conds[..]);
+    assert_eq!(now.len(), 4);
     assert_round_trip(&ed);
 
     // A condition removed from the middle: the others keep their ids.
     let text = ed.text().replace(
-        "when shield_down and target_on_me and under_attack",
-        "when shield_down and under_attack",
+        "when shield_down and target_on_me and missiles_incoming < 1 and under_attack",
+        "when shield_down and missiles_incoming < 1 and under_attack",
     );
     ed.set_text(&text).unwrap();
-    assert_eq!(cond_ids(&ed, 1), vec![now[0], now[2]]);
+    assert_eq!(cond_ids(&ed, 1), vec![now[0], now[2], now[3]]);
 
     // A line inserted: the other rules keep their ids.
     let text = ed

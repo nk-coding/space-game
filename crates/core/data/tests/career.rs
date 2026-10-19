@@ -1033,17 +1033,17 @@ fn closing_the_game_mid_voyage_loses_it() {
 fn a_removed_mod_takes_its_research_with_it() {
     let modded = with_mod(&[
         (
-            "families/missiles.ron",
-            r#"(id: "missiles", name: "Missiles", summary: "Guided shots.")"#,
+            "families/drones.ron",
+            r#"(id: "drones", name: "Drones", summary: "Small craft.")"#,
         ),
         (
             "parts/rack.ron",
-            &salvage_part("seeker_rack", "missiles", 5.0),
+            &salvage_part("seeker_rack", "drones", 5.0),
         ),
         (
             "research/seeker.ron",
-            r#"(id: "seeker", name: "Seeker", summary: "S.", family: "missiles", kind: Refinement,
-                cost: (data: {"missiles": 5}), unlocks: [MindCapacity(1)])"#,
+            r#"(id: "seeker", name: "Seeker", summary: "S.", family: "drones", kind: Refinement,
+                cost: (data: {"drones": 5}), unlocks: [MindCapacity(1)])"#,
         ),
         (
             "starts/alt.ron",
@@ -1056,7 +1056,7 @@ fn a_removed_mod_takes_its_research_with_it() {
     career.research(&modded, "seeker").unwrap();
     assert_eq!(career.mind_capacity(&modded), 4);
     bring_home(&mut career, &modded, &[(part("seeker_rack"), 2)]);
-    assert_eq!(career.data()["missiles"], 10.0);
+    assert_eq!(career.data()["drones"], 10.0);
 
     // The same save against the base content alone: the queries cope before it is reconciled...
     let c = content();
@@ -1068,9 +1068,9 @@ fn a_removed_mod_takes_its_research_with_it() {
     let notes = loaded.reconcile(&c);
     assert!(note(&notes, "packs").message.contains("test_mod"));
     assert_eq!(note(&notes, "researched[0]").id.as_deref(), Some("seeker"));
-    note(&notes, "data.missiles");
-    note(&notes, "history[0].report.data.missiles");
-    note(&notes, "history[1].report.data.missiles");
+    note(&notes, "data.drones");
+    note(&notes, "history[0].report.data.drones");
+    note(&notes, "history[1].report.data.drones");
     assert_eq!(note(&notes, "start").id.as_deref(), Some("alt"));
     assert_eq!(notes.len(), 6, "{}", show(&notes));
     assert_eq!(loaded.mind_capacity(&c), 2);

@@ -3,7 +3,8 @@
 // spaced as a voyage's, plus the trail places the galaxy put there. `words` give the second word of the name.
 // PLACEHOLDER NUMBERS (lead, 16 Oct 2026, GDR-0094; the slice's voyages are 0.6-1 km with 3-5 sites, these are
 // 2-3 km for searching, GDR-0080; a wreck drift's gunner pair 17 Oct 2026, GDR-0101;
-// a picket post in the wreck drifts and hunting reaches 18 Oct 2026, GDR-0111).
+// a picket post in the wreck drifts and hunting reaches 18 Oct 2026, GDR-0111; a lancer pack in the hunting reaches
+// 19 Oct 2026, GDR-0115).
 [
     (
         id: "wreck_drift",
@@ -41,6 +42,7 @@
         words: ["Reach", "Run"],
         sites: [
             (encounter: "hunter_pack", count: (1, 2)),
+            (encounter: "lancer_pack", count: (0, 1)),
             (encounter: "raider_pack", count: (0, 2)),
             (encounter: "precursor_wrecks", count: (0, 1)),
             (encounter: "hunter_den", count: (0, 1)),

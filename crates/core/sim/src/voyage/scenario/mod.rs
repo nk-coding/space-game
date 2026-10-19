@@ -293,10 +293,12 @@ impl Scenario {
         if kind == ScenarioKind::Core
             && let Ok(d) = ShipDesign::compile(content, &heat_stress_blueprint())
         {
+            // Away from the ring (like the burner), so the base ships' fire (the lancers' homing rockets, GDR-0115)
+            // cannot take it apart before it overheats.
             sim.spawn_ship(
                 Arc::new(d),
                 Owner::PLAYER,
-                Body::at(Vec2::new(0.0, -15.0), 0.0),
+                Body::at(Vec2::new(300.0, 0.0), 0.0),
             );
         }
         if kind == ScenarioKind::Core
