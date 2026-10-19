@@ -16,8 +16,10 @@ decide when guns fire.
 Each weapon belongs to a **family**, and shields treat the families differently
 ([shields](/mechanics/damage#shields)). The lasers are energy weapons; the [[part:automaton_cannon]] is a kinetic
 gun (research builds you a slower copy, the [[part:reverse_engineered_cannon]]); the [[part:rocket_pod]] and the
-[[part:torpedo_launcher]] fire missiles ([below](#missiles)). The game knows more families (disruption, drones,
-utility) that have no guns yet.
+[[part:torpedo_launcher]] fire missiles ([below](#missiles)); the [[part:point_defence]] is an energy gun that aims
+itself ([point defence](#point-defence)). The [[part:mining_laser]] is a utility gun: its beam barely scratches a
+ship but cuts ore from asteroid rock ([mining](/mechanics/salvage-and-cargo#mining)). The game knows more families (disruption,
+drones) that have no guns yet.
 
 <StatTable stats="damage,range,shot_rate,shot_speed,penetration,recoil" />
 
@@ -61,7 +63,7 @@ it too.
 ## Missiles
 
 A launcher fires a **salvo**: [[part:rocket_pod.salvo]] rockets at a time from the [[part:rocket_pod]], one torpedo
-from the [[part:torpedo_launcher]], [[stat:shot_rate]] salvos per second. A missile leaves slowly, speeds up at
+from the [[part:torpedo_launcher]], [[stat:shot_rate]] salvos per second. A missile leaves slowly, speeds up by its
 [[stat:missile_accel]] to its [[stat:shot_speed]], and turns its course at up to [[stat:missile_turn]] towards the
 nearest enemy vessel ahead of it (within [[sim:missile_seek_cone]] of its course), leading it as it moves. It picks
 a new one if that one is destroyed. After [[stat:missile_life]] it is spent and falls dark.
@@ -75,7 +77,7 @@ Your missiles never hurt your own vessels.
 Missiles have their counters:
 
 - **Shields** absorb a missile whole, up to what the bubble has left.
-- **Point defence** shoots them down: each missile has [[stat:missile_hp]] hit points.
+- **Point defence** shoots them down: each missile takes its [[stat:missile_hp]] in damage, then pops.
 - **Speed**: a small ship that turns hard can out-turn a slow torpedo.
 
 At most [[sim:max_missiles]] missiles fly at once in a fight; a launcher waits while the sky is full.
