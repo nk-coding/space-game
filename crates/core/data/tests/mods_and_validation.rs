@@ -786,3 +786,19 @@ fn sums_and_huge_parts_in_ships_do_not_overflow() {
     assert_eq!(c.ship_control(&two_cores), (0, u32::MAX));
     assert_eq!(c.ship_totals(&two_cores).rule_slots, u32::MAX);
 }
+
+/// Refining (GDR-0114): known materials, whole amounts, one step, one way into each material.
+#[test]
+fn refine_errors() {
+    let facility = |refine: &str| format!(r#"[(id: "kiln", name: "Kiln", summary: "s", within: "workshop", refine: [{refine}])]"#);
+    let e = errors_with("facilities.ron", &facility(r#"(from: "slag", take: 2, to: "steel", give: 1)"#));
+    assert_error(&e, "kiln", "refine[0]", "unknown material `slag`");
+    let e = errors_with("facilities.ron", &facility(r#"(from: "copper", take: 0, to: "ceramic", give: 1)"#));
+    assert_error(&e, "kiln", "refine[0]", "at least 1");
+    // Steel is refined by the base smelter already, and steel itself is refined: no second way, no second step.
+    let e = errors_with("facilities.ron", &facility(r#"(from: "copper", take: 2, to: "steel", give: 1)"#));
+    assert_error(&e, "kiln", "refine[0]", "refined by another conversion");
+    let e = errors_with("facilities.ron", &facility(r#"(from: "steel", take: 2, to: "ceramic", give: 1)"#));
+    assert_error(&e, "kiln", "refine[0]", "refining is one step");
+    assert!(errors_with("facilities.ron", &facility(r#"(from: "copper", take: 2, to: "ceramic", give: 1)"#)).is_empty());
+}
