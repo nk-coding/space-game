@@ -63,6 +63,9 @@ pub struct Metrics {
     pub row_pitch: f32,
     /// What a row is taller when the line under one of its cards takes two lines (its chips wrap).
     pub second_line: f32,
+    /// Room at the top of each lane for its head (on a phone the lane's name and data sit over its cards; 0 where
+    /// they sit beside them).
+    pub lane_head: f32,
 }
 
 /// The tree on the screen.
@@ -173,7 +176,7 @@ impl Tree {
         let mut top = m.origin.y;
         for (k, l) in self.lanes.iter().enumerate() {
             let mut tops = Vec::with_capacity(l.rows);
-            let mut h = 0.0;
+            let mut h = m.lane_head;
             for row in 0..l.rows {
                 tops.push(h);
                 let tall = self.cards.iter().enumerate().any(|(j, c)| c.lane == k && c.row == row && two_lines.get(j).copied().unwrap_or(false));
@@ -538,7 +541,7 @@ mod tests {
         extra.requires = vec!["fusion_reactor".into()];
         content.research.upsert(extra);
         let tree = Tree::new(&content);
-        let m = Metrics { origin: Vec2::new(150.0, 100.0), inset: 0.0, card: Vec2::new(200.0, 40.0), column_pitch: 250.0, row_pitch: 90.0, second_line: 20.0 };
+        let m = Metrics { origin: Vec2::new(150.0, 100.0), inset: 0.0, card: Vec2::new(200.0, 40.0), column_pitch: 250.0, row_pitch: 90.0, second_line: 20.0, lane_head: 0.0 };
         let placed = tree.place(&m, &[]);
         let rect = |n: &str| placed.cards[tree.card_of(n).unwrap()];
         assert_eq!(rect("composite_plating"), Rect::new(150.0, 100.0, 350.0, 140.0));

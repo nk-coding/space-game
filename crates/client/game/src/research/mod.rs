@@ -36,7 +36,7 @@ pub mod tree;
 use bevy::prelude::*;
 use bevy::ui::UiScale;
 use bevy::window::PrimaryWindow;
-use kit::ui_kit::{Tone, UiInputSet, UiPointer, UiSize, UiStyleSet, ui_scale_for};
+use kit::ui_kit::{LayoutClass, Tone, UiInputSet, UiPointer, UiSize, UiStyleSet, compact_scale, ui_scale_for};
 use world::camera::{CamMode, CameraRig};
 use world::career::PlayerCareer;
 use world::mode::AppMode;
@@ -113,6 +113,8 @@ impl Plugin for ResearchPlugin {
             .add_systems(OnEnter(AppMode::Research), enter)
             .add_systems(OnExit(AppMode::Research), exit)
             .add_systems(Update, screen::show.run_if(state_changed::<AppMode>))
+            // A phone's layout and a wide one's are built apart: built again when the window changes class.
+            .add_systems(Update, (screen::relayout.run_if(resource_changed::<LayoutClass>), screen::reopen, screen::fit_materials).chain().after(UiInputSet).before(ResearchSet::Input))
             .add_systems(
                 Update,
                 (
@@ -177,9 +179,10 @@ fn exit(mut rig: ResMut<CameraRig>, cam: Res<ResearchCamera>, mut ui_scale: ResM
     ui_scale.0 = size.0;
 }
 
-/// The layout is made for 1280 × 720 logical px and grows with larger windows (as the drydock's and home's).
-fn ui_scale(window: Single<&Window, With<PrimaryWindow>>, size: Res<UiSize>, mut ui_scale: ResMut<UiScale>) {
-    let s = ui_scale_for(&window, *size);
+/// The layout is made for 1280 × 720 logical px and grows with larger windows (as the drydock's and home's); a
+/// phone's for 844 × 390, scaled by `compact_scale` (docs/client.md "Phones").
+fn ui_scale(window: Single<&Window, With<PrimaryWindow>>, size: Res<UiSize>, class: Res<LayoutClass>, mut ui_scale: ResMut<UiScale>) {
+    let s = if class.is_compact() { compact_scale(window.size()) * size.0 } else { ui_scale_for(&window, *size) };
     if (ui_scale.0 - s).abs() > 1e-3 {
         ui_scale.0 = s;
     }

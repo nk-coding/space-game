@@ -9,8 +9,10 @@ use bevy::text::LetterSpacing;
 use data::{Content, ResearchNode, Unlock};
 use kit::style::{Style, ui_color};
 use kit::ui_icons::{Glyph, UiIcon};
+use bevy::ui::{ComputedNode, UiGlobalTransform};
+use bevy::window::PrimaryWindow;
 use kit::ui_kit::{
-    HudFonts, Edge, Hot, Pill, PillText, ScreenFx, ScreenPart, Scrollbar, Tip, Tone, UiBlock, show_screen, UiClick, glow, label, number, prose, set_color, set_text, spawn_brackets, spawn_pill,
+    CompactText, LayoutClass, snap_screen, HudFonts, Edge, Hot, Pill, PillText, ScreenFx, ScreenPart, Scrollbar, Tip, Tone, UiBlock, show_screen, UiClick, glow, label, number, prose, set_color, set_text, spawn_brackets, spawn_pill,
     frame, spawn_head, tracked,
 };
 use world::career::{Granted, PlayerCareer};
@@ -20,17 +22,91 @@ use world::sim_bridge::GameContent;
 use super::tree::{self, CardState, Metrics, Tree, family_label, kind_words};
 use super::{ResearchAction, ResearchTree, ResearchView};
 
-/// The layout's size (logical px), like the other screens'.
-const STAGE: Vec2 = Vec2::new(1280.0, 720.0);
-/// The lanes' heads start here; the first column at [`COLUMNS_X`]; the tree ends at [`TREE_RIGHT`].
-const TREE_LEFT: f32 = 24.0;
-const COLUMNS_X: f32 = 168.0;
-const TREE_RIGHT: f32 = 878.0;
-/// The tier heads, then the tree's area (the lanes scroll inside it).
-const TIER_Y: f32 = 84.0;
-const TREE_TOP: f32 = 104.0;
-const TREE_BOTTOM: f32 = 670.0;
-/// A card: its height, its widest, the least gap between columns; the line under it (its kind and cost chips): its
+/// Where the screen's parts go (stage px). [`Lay::WIDE`]: a 1280 × 720 stage (the UI scale grows it with the
+/// window), as always. [`Lay::COMPACT`]: a phone's 844 × 390 (scaled by `compact_scale`, docs/client.md "Phones"):
+/// each lane's name and data over its cards instead of beside them, so three columns of cards fit beside a narrower
+/// detail whose rows scroll over UNLOCK (no preview picture there), the materials in up to two rows right of the
+/// header (ALSO IN STORE left out), the type at least `COMPACT_TEXT` px.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Lay {
+    pub compact: bool,
+    stage: Vec2,
+    /// The lanes' heads start at `tree_left`; the first column at `columns_x`; the tree ends at `tree_right`.
+    tree_left: f32,
+    columns_x: f32,
+    tree_right: f32,
+    /// The tier heads, then the tree's area (the lanes scroll inside it).
+    tier_y: f32,
+    tree_top: f32,
+    tree_bottom: f32,
+    /// A card's widest, the least gap between columns, the room over a lane's cards for its head (0: beside them).
+    card_max_w: f32,
+    column_gap: f32,
+    lane_head: f32,
+    /// The detail panel, UNLOCK's top, the bottom bar's top and the top bar's height.
+    panel_x: f32,
+    panel_w: f32,
+    unlock_y: f32,
+    bottom_y: f32,
+    top_h: f32,
+    /// Text sizes: the detail's name, a card's name, a material's count.
+    name: f32,
+    card_name: f32,
+    material: f32,
+}
+
+impl Lay {
+    pub const WIDE: Lay = Lay {
+        compact: false,
+        stage: Vec2::new(1280.0, 720.0),
+        tree_left: 24.0,
+        columns_x: 168.0,
+        tree_right: 878.0,
+        tier_y: 84.0,
+        tree_top: 104.0,
+        tree_bottom: 670.0,
+        card_max_w: 210.0,
+        column_gap: 40.0,
+        lane_head: 0.0,
+        panel_x: 912.0,
+        panel_w: 344.0,
+        unlock_y: 614.0,
+        bottom_y: 674.0,
+        top_h: 70.0,
+        name: 24.0,
+        card_name: 12.5,
+        material: 18.0,
+    };
+    pub const COMPACT: Lay = Lay {
+        compact: true,
+        stage: Vec2::new(844.0, 390.0),
+        tree_left: 16.0,
+        columns_x: 16.0,
+        tree_right: 552.0,
+        tier_y: 60.0,
+        tree_top: 76.0,
+        tree_bottom: 344.0,
+        card_max_w: 200.0,
+        column_gap: 22.0,
+        lane_head: 22.0,
+        panel_x: 576.0,
+        panel_w: 254.0,
+        unlock_y: 332.0,
+        bottom_y: 352.0,
+        top_h: 58.0,
+        name: 18.0,
+        card_name: 11.5,
+        material: 13.0,
+    };
+
+    pub fn of(class: LayoutClass) -> Lay {
+        if class.is_compact() { Lay::COMPACT } else { Lay::WIDE }
+    }
+}
+
+/// The least text size on a phone (`kit::ui_kit::CompactText`).
+const COMPACT_TEXT: f32 = 9.0;
+/// A card: its height, the least gap between columns; the line under it (its kind and cost chips): its
 /// gap below the card and in from the card's left, the chips' height, the gap between its two lines when the chips
 /// wrap, and the least gap to the next row's card; a lane row's pitch (least, most); the card's place in its row.
 /// The least pitch is what a row lays out, the card and the line under it, a wrapped line one more chip line
@@ -38,8 +114,6 @@ const TREE_BOTTOM: f32 = 670.0;
 /// a long line ran on into the next column or the detail panel; the lanes scroll since 18 Oct, so nothing has to be
 /// squeezed in).
 const CARD_H: f32 = 40.0;
-const CARD_MAX_W: f32 = 210.0;
-const COLUMN_GAP: f32 = 40.0;
 const UNDER_GAP: f32 = 6.0;
 const UNDER_INSET: f32 = 16.0;
 const CHIP_H: f32 = 17.0;
@@ -47,11 +121,6 @@ const CHIP_ROW_GAP: f32 = 3.0;
 const ROW_GAP: f32 = 5.0;
 const ROW_PITCH: (f32, f32) = (CARD_H + UNDER_GAP + CHIP_H + ROW_GAP, 96.0);
 const CARD_TOP: f32 = 4.0;
-/// The detail panel on the right.
-const PANEL_X: f32 = 912.0;
-const PANEL_W: f32 = 344.0;
-/// UNLOCK's top.
-const UNLOCK_Y: f32 = 614.0;
 /// Stat cells and bonus lines of the preview; cost chips of the detail.
 const STATS: usize = 8;
 const BONUSES: usize = 2;
@@ -60,9 +129,9 @@ const COST_CHIPS: usize = 4;
 const LINE: f32 = 1.4;
 const DASH: (f32, f32) = (4.0, 4.0);
 
-/// The research screen's UI root (shown only on the research screen).
+/// The research screen's UI root (shown only on the research screen), and the layout it was built for.
 #[derive(Component)]
-pub struct ResearchRoot;
+pub struct ResearchRoot(Lay);
 
 /// A widget that sends an action when clicked.
 #[derive(Component, Clone, Debug, PartialEq)]
@@ -117,6 +186,27 @@ pub(super) enum RIcon {
     Preview,
 }
 
+/// The materials' bar on top, and the header it keeps clear of on a phone ([`fit_materials`]).
+#[derive(Component)]
+pub(super) struct MaterialsBar(Entity);
+
+/// The materials' bar starts right of the header (as laid out), so a long list wraps instead of running into the
+/// title.
+pub(super) fn fit_materials(mut bars: Query<(&MaterialsBar, &mut Node)>, heads: Query<(&ComputedNode, &UiGlobalTransform)>) {
+    for (bar, mut node) in &mut bars {
+        let Ok((head, tf)) = heads.get(bar.0) else { continue };
+        if head.size.x <= 0.0 {
+            continue;
+        }
+        // Physical px → UI px.
+        let right = (tf.translation.x + head.size.x / 2.0) * head.inverse_scale_factor;
+        let left = px((right + 24.0).round());
+        if node.left != left {
+            node.left = left;
+        }
+    }
+}
+
 /// The UNLOCK button.
 #[derive(Component)]
 pub(super) struct UnlockButton;
@@ -132,25 +222,26 @@ pub(super) enum UnlockText {
 #[derive(Component, Default)]
 pub struct CardStates(Vec<CardState>);
 
-/// Where the tree's cards go for this content.
-pub fn metrics(tree: &Tree) -> Metrics {
+/// Where the tree's cards go for this content in a layout.
+pub fn metrics(tree: &Tree, lay: &Lay) -> Metrics {
     let columns = tree.columns.max(1) as f32;
-    let pitch = ((TREE_RIGHT - COLUMNS_X + COLUMN_GAP) / columns).min(CARD_MAX_W + COLUMN_GAP + 10.0);
+    let pitch = ((lay.tree_right - lay.columns_x + lay.column_gap) / columns).min(lay.card_max_w + lay.column_gap + 10.0);
     let rows = tree.rows().max(1) as f32;
     Metrics {
-        origin: Vec2::new(COLUMNS_X, 0.0),
+        origin: Vec2::new(lay.columns_x, 0.0),
         inset: CARD_TOP,
-        card: Vec2::new((pitch - COLUMN_GAP).min(CARD_MAX_W), CARD_H),
+        card: Vec2::new((pitch - lay.column_gap).min(lay.card_max_w), CARD_H),
         column_pitch: pitch,
-        row_pitch: ((TREE_BOTTOM - TREE_TOP) / rows).clamp(ROW_PITCH.0, ROW_PITCH.1),
+        row_pitch: ((lay.tree_bottom - lay.tree_top) / rows).clamp(ROW_PITCH.0, ROW_PITCH.1),
         second_line: CHIP_H + CHIP_ROW_GAP,
+        lane_head: lay.lane_head,
     }
 }
 
 /// The room the line under a card in `column` has: up to the next column's line (less a gap), in the last column
 /// up to the tree's right edge.
-fn under_room(m: &Metrics, columns: usize, column: usize) -> f32 {
-    if column + 1 < columns { m.column_pitch - 10.0 } else { TREE_RIGHT - (m.origin.x + column as f32 * m.column_pitch) - UNDER_INSET }
+fn under_room(m: &Metrics, lay: &Lay, columns: usize, column: usize) -> f32 {
+    if column + 1 < columns { m.column_pitch - 10.0 } else { lay.tree_right - (m.origin.x + column as f32 * m.column_pitch) - UNDER_INSET }
 }
 
 /// The widest the line under a node's card gets: its kind and every cost chip at its longest (held just short of
@@ -169,8 +260,8 @@ fn under_width(node: &ResearchNode) -> f32 {
 }
 
 /// Which cards' lines under them take two lines (too long for their room): their rows are taller.
-fn two_lines(content: &Content, tree: &Tree, m: &Metrics) -> Vec<bool> {
-    tree.cards.iter().map(|c| content.research.get(&c.node).is_some_and(|n| under_width(n) > under_room(m, tree.columns, c.column))).collect()
+fn two_lines(content: &Content, tree: &Tree, m: &Metrics, lay: &Lay) -> Vec<bool> {
+    tree.cards.iter().map(|c| content.research.get(&c.node).is_some_and(|n| under_width(n) > under_room(m, lay, tree.columns, c.column))).collect()
 }
 
 /// Roman numerals for the tier heads (1 to 39 is plenty).
@@ -257,17 +348,49 @@ fn spawn_chip(parent: &mut ChildSpawnerCommands, fonts: &HudFonts, style: &Style
         });
 }
 
-/// Spawns the screen (hidden), from the content's tree.
-pub fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>, content: Res<GameContent>, tree: Res<ResearchTree>) {
+/// Spawns the screen (hidden), from the content's tree, for the window's layout class.
+pub fn spawn(commands: Commands, window: Single<&Window, With<PrimaryWindow>>, fonts: Res<HudFonts>, style: Res<Style>, content: Res<GameContent>, tree: Res<ResearchTree>) {
+    build(commands, &Lay::of(LayoutClass::of(window.size())), &fonts, &style, &content.0, &tree.0);
+}
+
+/// The window changed its layout class: the screen is built again for the new one (open at once when it was).
+#[allow(clippy::too_many_arguments)]
+pub fn relayout(
+    mut commands: Commands,
+    class: Res<LayoutClass>,
+    root: Single<(Entity, &ResearchRoot)>,
+    fonts: Res<HudFonts>,
+    style: Res<Style>,
+    content: Res<GameContent>,
+    tree: Res<ResearchTree>,
+) {
+    let lay = Lay::of(*class);
+    if root.1.0 == lay {
+        return;
+    }
+    commands.entity(root.0).despawn();
+    build(commands, &lay, &fonts, &style, &content.0, &tree.0);
+}
+
+/// A screen built again while open (`relayout`) shows at once.
+pub fn reopen(mode: Res<State<AppMode>>, mut roots: Query<&mut ScreenFx, Added<ResearchRoot>>) {
+    for mut fx in &mut roots {
+        if *mode.get() == AppMode::Research {
+            snap_screen(&mut fx, true);
+        }
+    }
+}
+
+fn build(mut commands: Commands, lay: &Lay, fonts: &HudFonts, style: &Style, content: &Content, tree: &Tree) {
     let ui = style.ui;
     let c = |tone: Tone, a: f32| ui_color(tone.color(&ui), a);
-    let (fonts, style, content, tree) = (&*fonts, &*style, &content.0, &tree.0);
-    let m = metrics(tree);
-    let placed = tree.place(&m, &two_lines(content, tree, &m));
+    let m = metrics(tree, lay);
+    let placed = tree.place(&m, &two_lines(content, tree, &m, lay));
     let inner_h = placed.lanes.last().map_or(0.0, |l| l.0 + l.1);
     commands
         .spawn((
-            ResearchRoot,
+            ResearchRoot(*lay),
+            CompactText(COMPACT_TEXT),
             world::backdrop::VeilsBackdrop,
             CardStates::default(),
             // Opens and closes with a transition (`ui_kit::ScreenFx`): the four roots slide in from their edges; the
@@ -279,35 +402,39 @@ pub fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>, co
         .with_children(|root| {
             root.spawn(Node { position_type: PositionType::Absolute, width: percent(100), height: percent(100), justify_content: JustifyContent::Center, align_items: AlignItems::Center, ..default() })
                 .with_children(|centre| {
-                    centre.spawn(Node { width: px(STAGE.x), height: px(STAGE.y), flex_shrink: 0.0, ..default() }).with_children(|stage| {
+                    centre.spawn(Node { width: px(lay.stage.x), height: px(lay.stage.y), flex_shrink: 0.0, ..default() }).with_children(|stage| {
                         // Three roots on the stage (the tree, the detail, the bottom bar) and the top bar over the window, so each
                         // can slide in on its own.
                         // The tree: tier heads over the columns, the lanes (scrolled when they don't fit).
-                        stage.spawn((ScreenPart::new(Edge::Left, 1), abs(Vec2::new(0.0, TIER_Y), Some(Vec2::new(TREE_RIGHT + 8.0, TREE_BOTTOM - TIER_Y))))).with_children(|left| {
+                        stage.spawn((ScreenPart::new(Edge::Left, 1), abs(Vec2::new(0.0, lay.tier_y), Some(Vec2::new(lay.tree_right + 8.0, lay.tree_bottom - lay.tier_y))))).with_children(|left| {
                             for col in 0..tree.columns {
-                                left.spawn((label(fonts, &format!("TIER {}", roman(col + 1)), 8.5, c(Tone::Dim, 1.0)), abs(Vec2::new(COLUMNS_X + col as f32 * m.column_pitch + 14.0, 0.0), None)));
+                                left.spawn((label(fonts, &format!("TIER {}", roman(col + 1)), 8.5, c(Tone::Dim, 1.0)), abs(Vec2::new(lay.columns_x + col as f32 * m.column_pitch + 14.0, 0.0), None)));
                             }
                             left.spawn((
                                 ScrollPosition::default(),
-                                Scrollbar::vertical(),
-                                Node { overflow: Overflow::scroll_y(), ..abs(Vec2::new(0.0, TREE_TOP - TIER_Y), Some(Vec2::new(TREE_RIGHT + 8.0, TREE_BOTTOM - TREE_TOP))) },
+                                // On a phone the tier heads sit close over the lanes: no glow room past its top.
+                                if lay.compact { Scrollbar::vertical().room(0) } else { Scrollbar::vertical() },
+                                Node { overflow: Overflow::scroll_y(), ..abs(Vec2::new(0.0, lay.tree_top - lay.tier_y), Some(Vec2::new(lay.tree_right + 8.0, lay.tree_bottom - lay.tree_top))) },
                             ))
                             .with_children(|area| {
                                 area.spawn(Node { width: percent(100), height: px(inner_h), flex_shrink: 0.0, ..default() }).with_children(|lanes| {
-                                    spawn_lanes(lanes, fonts, style, content, tree, &m, &placed);
+                                    spawn_lanes(lanes, lay, fonts, style, content, tree, &m, &placed);
                                 });
                             });
                         });
 
-                        spawn_detail(stage, fonts, style);
+                        spawn_detail(stage, lay, fonts, style);
 
-                        // Bottom: the way home, the line, the drydock.
-                        stage.spawn((UiBlock, ScreenPart::new(Edge::Bottom, 2), abs(Vec2::new(0.0, 674.0), Some(Vec2::new(STAGE.x, 32.0))))).with_children(|bottom| {
-                            bottom.spawn(abs(Vec2::new(22.0, 0.0), None)).with_children(|b| {
+                        // Bottom: the way home, the line, the drydock (on a phone under the tree only).
+                        let bar_w = if lay.compact { lay.panel_x - 16.0 } else { lay.stage.x };
+                        let edge = if lay.compact { lay.tree_left } else { 22.0 };
+                        stage.spawn((UiBlock, ScreenPart::new(Edge::Bottom, 2), abs(Vec2::new(0.0, lay.bottom_y), Some(Vec2::new(bar_w, 32.0))))).with_children(|bottom| {
+                            bottom.spawn(abs(Vec2::new(edge, 0.0), None)).with_children(|b| {
                                 spawn_pill(b, fonts, "‹  HOME", 9.5, 32.0, None, Pill::new(Tone::Teal), (ResearchButton(ResearchAction::Home), Tip::key("SHIPYARD", "ESC")));
                             });
-                            bottom.spawn((RText::Status, label(fonts, "", 9.0, c(Tone::Teal, 1.0)), TextLayout::no_wrap(), abs(Vec2::new(150.0, 11.0), None)));
-                            bottom.spawn(Node { position_type: PositionType::Absolute, right: px(24), top: px(0), ..default() }).with_children(|b| {
+                            let status = if lay.compact { abs(Vec2::new(edge + 92.0, 11.0), Some(Vec2::new(bar_w - edge - 92.0 - 110.0, 14.0))) } else { abs(Vec2::new(150.0, 11.0), None) };
+                            bottom.spawn((RText::Status, label(fonts, "", 9.0, c(Tone::Teal, 1.0)), TextLayout::no_wrap(), Node { overflow: Overflow::clip(), ..status }));
+                            bottom.spawn(Node { position_type: PositionType::Absolute, right: px(if lay.compact { 0.0 } else { 24.0 }), top: px(0), ..default() }).with_children(|b| {
                                 spawn_pill(b, fonts, "DRYDOCK", 9.5, 32.0, None, Pill::new(Tone::Teal), (ResearchButton(ResearchAction::Drydock), Tip::new("DRYDOCK"), ActionTip(Action::OpenDrydock)));
                             });
                         });
@@ -316,17 +443,32 @@ pub fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>, co
             // The top bar across the window: the way back and where we are (the frame's top left), the data of families
             // without a lane and the materials research costs (its top right).
             let f = frame();
-            root.spawn((UiBlock, ScreenPart::new(Edge::Top, 0), Node { position_type: PositionType::Absolute, left: px(0), top: px(0), width: percent(100), height: px(70.0), ..default() })).with_children(|top| {
-                top.spawn(f.top_left()).with_children(|tl| {
+            root.spawn((UiBlock, ScreenPart::new(Edge::Top, 0), Node { position_type: PositionType::Absolute, left: px(0), top: px(0), width: percent(100), height: px(lay.top_h), ..default() })).with_children(|top| {
+                let head = top.spawn(f.top_left()).with_children(|tl| {
                     spawn_head(tl, fonts, &ui, (ResearchButton(ResearchAction::Home), Tip::key("SHIPYARD", "ESC")), "SHIPYARD  ›  RESEARCH", "Research");
-                });
-                top.spawn(f.top_right()).with_children(|tr| {
-                    tr.spawn((RText::AlsoInStore, label(fonts, "", 8.5, c(Tone::Dim, 1.0)), Node { margin: UiRect::right(px(16)), ..default() }));
+                }).id();
+                // The materials wrap (on a phone in up to two rows, ALSO IN STORE left out) in the room right of the
+                // header, each one whole (`fit_materials` keeps them clear of the header; 19 Oct 2026: a long list
+                // ran into the title, on a phone and at 1280 × 720 alike). In one row they sit as the frame's top
+                // right does.
+                let materials = Node {
+                    flex_wrap: FlexWrap::Wrap,
+                    justify_content: JustifyContent::FlexEnd,
+                    align_content: AlignContent::Center,
+                    column_gap: px(if lay.compact { 12.0 } else { f.pill_gap }),
+                    ..if lay.compact { Node { right: px(lay.tree_left), top: px(4), min_height: px(lay.top_h - 8.0), ..f.top_right() } } else { f.top_right() }
+                };
+                top.spawn((MaterialsBar(head), materials)).with_children(|tr| {
+                    let shown = if lay.compact { Display::None } else { Display::Flex };
+                    tr.spawn((RText::AlsoInStore, label(fonts, "", 8.5, c(Tone::Dim, 1.0)), Node { display: shown, margin: UiRect::right(px(16)), ..default() }));
                     for (k, mat) in cost_materials(content).iter().enumerate() {
                         let name = content.materials.get(mat).map_or(mat.to_uppercase(), |m| m.name.to_uppercase());
-                        tr.spawn((UiIcon::Glyph { glyph: Glyph::Diamond, color: ui.gold }, Node { width: px(9), height: px(9), ..default() }));
-                        tr.spawn(label(fonts, &name, 9.0, c(Tone::Label, 1.0)));
-                        tr.spawn((RText::Material(k), number(fonts, "", 18.0, c(Tone::Gold, 1.0)), Node { margin: UiRect::right(px(6)), ..default() }));
+                        let gap = if lay.compact { 5.0 } else { f.pill_gap };
+                        tr.spawn(Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(gap), ..default() }).with_children(|one| {
+                            one.spawn((UiIcon::Glyph { glyph: Glyph::Diamond, color: ui.gold }, Node { width: px(9), height: px(9), ..default() }));
+                            one.spawn(label(fonts, &name, 9.0, c(Tone::Label, 1.0)));
+                            one.spawn((RText::Material(k), number(fonts, "", lay.material, c(Tone::Gold, 1.0)), Node { margin: UiRect::right(px(if lay.compact { 0.0 } else { 6.0 })), ..default() }));
+                        });
                     }
                 });
             });
@@ -334,25 +476,36 @@ pub fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>, co
 }
 
 /// The lanes' heads, separators and dots, the connectors, the cards and the lines under them.
-fn spawn_lanes(lanes: &mut ChildSpawnerCommands, fonts: &HudFonts, style: &Style, content: &Content, tree: &Tree, m: &Metrics, placed: &tree::Placed) {
+#[allow(clippy::too_many_arguments)]
+fn spawn_lanes(lanes: &mut ChildSpawnerCommands, lay: &Lay, fonts: &HudFonts, style: &Style, content: &Content, tree: &Tree, m: &Metrics, placed: &tree::Placed) {
     let ui = style.ui;
     let c = |tone: Tone, a: f32| ui_color(tone.color(&ui), a);
     for (k, lane) in tree.lanes.iter().enumerate() {
         let (top, h) = placed.lanes[k];
         let colour = family_color(content, style, &lane.family);
-        let mid = top + m.inset + m.card.y / 2.0;
-        lanes.spawn(Node { flex_direction: FlexDirection::Column, row_gap: px(3), ..abs(Vec2::new(TREE_LEFT, top + m.inset), None) }).with_children(|head| {
-            head.spawn(label(fonts, &family_label(&lane.family), 9.0, c(Tone::Label, 1.0)));
-            head.spawn(Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Baseline, column_gap: px(7), ..default() }).with_children(|row| {
-                row.spawn((RText::LaneAmount(k), number(fonts, "", 21.0, c(Tone::Number, 1.0))));
-                row.spawn(label(fonts, "DATA", 7.5, c(Tone::Dim, 1.0)));
+        let mid = top + m.lane_head + m.inset + m.card.y / 2.0;
+        if lay.compact {
+            // Over the cards: the family's dot, its name and its data in one line.
+            lanes.spawn(Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(7), ..abs(Vec2::new(lay.tree_left, top + 6.0), Some(Vec2::new(lay.tree_right - lay.tree_left, m.lane_head - 4.0))) }).with_children(|head| {
+                head.spawn((Node { width: px(7), height: px(7), border_radius: BorderRadius::MAX, ..default() }, BackgroundColor(ui_color(colour, 0.95))));
+                head.spawn(label(fonts, &family_label(&lane.family), 9.0, c(Tone::Label, 1.0)));
+                head.spawn((RText::LaneAmount(k), number(fonts, "", 13.0, c(Tone::Number, 1.0))));
+                head.spawn(label(fonts, "DATA", 7.5, c(Tone::Dim, 1.0)));
             });
-        });
-        // The family's dot, joined to the lane's first card.
-        lanes.spawn((Node { border_radius: BorderRadius::MAX, ..abs(Vec2::new(COLUMNS_X - 22.0, mid - 3.5), Some(Vec2::splat(7.0))) }, BackgroundColor(ui_color(colour, 0.95))));
-        lanes.spawn((abs(Vec2::new(COLUMNS_X - 15.0, mid - LINE / 2.0), Some(Vec2::new(15.0, LINE))), BackgroundColor(ui_color(colour, 0.45))));
+        } else {
+            lanes.spawn(Node { flex_direction: FlexDirection::Column, row_gap: px(3), ..abs(Vec2::new(lay.tree_left, top + m.inset), None) }).with_children(|head| {
+                head.spawn(label(fonts, &family_label(&lane.family), 9.0, c(Tone::Label, 1.0)));
+                head.spawn(Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Baseline, column_gap: px(7), ..default() }).with_children(|row| {
+                    row.spawn((RText::LaneAmount(k), number(fonts, "", 21.0, c(Tone::Number, 1.0))));
+                    row.spawn(label(fonts, "DATA", 7.5, c(Tone::Dim, 1.0)));
+                });
+            });
+            // The family's dot, joined to the lane's first card.
+            lanes.spawn((Node { border_radius: BorderRadius::MAX, ..abs(Vec2::new(lay.columns_x - 22.0, mid - 3.5), Some(Vec2::splat(7.0))) }, BackgroundColor(ui_color(colour, 0.95))));
+            lanes.spawn((abs(Vec2::new(lay.columns_x - 15.0, mid - LINE / 2.0), Some(Vec2::new(15.0, LINE))), BackgroundColor(ui_color(colour, 0.45))));
+        }
         if k + 1 < tree.lanes.len() {
-            lanes.spawn((abs(Vec2::new(TREE_LEFT, top + h - 1.0), Some(Vec2::new(TREE_RIGHT - TREE_LEFT, 1.0))), BackgroundColor(c(Tone::Label, 0.07))));
+            lanes.spawn((abs(Vec2::new(lay.tree_left, top + h - 1.0), Some(Vec2::new(lay.tree_right - lay.tree_left, 1.0))), BackgroundColor(c(Tone::Label, 0.07))));
         }
     }
     // Connectors under the cards: each run a node holding a solid line and its dashes (one of them shows).
@@ -386,8 +539,8 @@ fn spawn_lanes(lanes: &mut ChildSpawnerCommands, fonts: &HudFonts, style: &Style
                 Node {
                     flex_direction: FlexDirection::Row,
                     align_items: AlignItems::Center,
-                    column_gap: px(10),
-                    padding: UiRect::horizontal(px(14)),
+                    column_gap: px(if lay.compact { 7.0 } else { 10.0 }),
+                    padding: UiRect::horizontal(px(if lay.compact { 10.0 } else { 14.0 })),
                     border: UiRect::all(px(1.2)),
                     border_radius: BorderRadius::MAX,
                     ..abs(r.min, Some(r.size()))
@@ -398,12 +551,12 @@ fn spawn_lanes(lanes: &mut ChildSpawnerCommands, fonts: &HudFonts, style: &Style
             ))
             .with_children(|b| {
                 b.spawn((RIcon::Card(k), node_icon(content, style, node), Node { width: px(20), height: px(20), flex_shrink: 0.0, ..default() }));
-                b.spawn((RText::CardName(k), prose(fonts, &node.name, 12.5, c(Tone::Number, 1.0)), Node { flex_grow: 1.0, flex_shrink: 1.0, min_width: px(0), ..default() }));
+                b.spawn((RText::CardName(k), prose(fonts, &node.name, lay.card_name, c(Tone::Number, 1.0)), Node { flex_grow: 1.0, flex_shrink: 1.0, min_width: px(0), ..default() }));
                 b.spawn((RText::CardDone(k), label(fonts, "DONE", 7.5, c(Tone::Teal, 1.0)), Node { display: Display::None, flex_shrink: 0.0, ..default() }));
                 b.spawn((RIcon::Mark(k), UiIcon::Glyph { glyph: Glyph::Diamond, color: ui.gold }, Node { display: Display::None, width: px(9), height: px(9), flex_shrink: 0.0, ..default() }));
             });
         // Under the card: its kind and its cost, wrapping to a second line past its room.
-        let room = under_room(m, tree.columns, tree.cards[k].column);
+        let room = under_room(m, lay, tree.columns, tree.cards[k].column);
         lanes
             .spawn(Node {
                 flex_direction: FlexDirection::Row,
@@ -426,30 +579,45 @@ fn spawn_lanes(lanes: &mut ChildSpawnerCommands, fonts: &HudFonts, style: &Style
 }
 
 /// The selected node's detail on the right, the line over UNLOCK, and UNLOCK.
-fn spawn_detail(stage: &mut ChildSpawnerCommands, fonts: &HudFonts, style: &Style) {
+fn spawn_detail(stage: &mut ChildSpawnerCommands, lay: &Lay, fonts: &HudFonts, style: &Style) {
     let ui = style.ui;
     let c = |tone: Tone, a: f32| ui_color(tone.color(&ui), a);
-    stage.spawn((UiBlock, ScreenPart::new(Edge::Right, 1), abs(Vec2::new(PANEL_X, TIER_Y), Some(Vec2::new(PANEL_W, UNLOCK_Y + 44.0 - TIER_Y))))).with_children(|panel| {
+    let (tier_y, panel_w, unlock_y) = (lay.tier_y, lay.panel_w, lay.unlock_y);
+    stage.spawn((UiBlock, ScreenPart::new(Edge::Right, 1), abs(Vec2::new(lay.panel_x, tier_y), Some(Vec2::new(panel_w, unlock_y + 44.0 - tier_y))))).with_children(|panel| {
         // The divider between the tree and the detail.
-        panel.spawn((abs(Vec2::new(-20.0, 8.0), Some(Vec2::new(1.0, TREE_BOTTOM - TIER_Y - 8.0))), BackgroundColor(c(Tone::Label, 0.12))));
-        panel
-            .spawn(Node { flex_direction: FlexDirection::Column, row_gap: px(8), ..abs(Vec2::ZERO, Some(Vec2::new(PANEL_W, 500.0))) })
+        let gap = (lay.panel_x - lay.tree_right) / 2.0 - 4.0;
+        panel.spawn((abs(Vec2::new(-gap.min(20.0), 8.0), Some(Vec2::new(1.0, lay.tree_bottom - tier_y - 8.0))), BackgroundColor(c(Tone::Label, 0.12))));
+        // The rows: on a phone they scroll (over the line and UNLOCK).
+        let rows = Node {
+            flex_direction: FlexDirection::Column,
+            row_gap: px(8),
+            overflow: if lay.compact { Overflow::scroll_y() } else { Overflow::DEFAULT },
+            ..abs(Vec2::ZERO, Some(Vec2::new(panel_w, if lay.compact { unlock_y - 28.0 - tier_y } else { 500.0 })))
+        };
+        let mut rows = panel.spawn(rows);
+        if lay.compact {
+            // No glow room past its bottom: the rows would show under the line and UNLOCK.
+            rows.insert((ScrollPosition::default(), Scrollbar::vertical().room(0)));
+        }
+        rows
             .with_children(|p| {
                 p.spawn((RText::Kind, label(fonts, "", 8.5, c(Tone::Dim, 1.0))));
-                p.spawn((RText::Name, prose(fonts, "", 24.0, c(Tone::Number, 1.0))));
+                p.spawn((RText::Name, prose(fonts, "", lay.name, c(Tone::Number, 1.0))));
                 p.spawn((RText::Summary, prose(fonts, "", 12.0, c(Tone::Label, 1.0)), Node { margin: UiRect::bottom(px(6)), ..default() }));
                 // The preview: the icon in brackets, the stat cells beside it, the bonuses under them.
                 p.spawn((RNode::Preview, Node { flex_direction: FlexDirection::Column, row_gap: px(8), ..default() })).with_children(|pv| {
                     pv.spawn((RText::PreviewHead, label(fonts, "", 7.5, c(Tone::Dim, 1.0))));
                     pv.spawn(Node { flex_direction: FlexDirection::Row, column_gap: px(18), ..default() }).with_children(|row| {
-                        row.spawn(Node { width: px(84), height: px(110), flex_shrink: 0.0, ..default() }).with_children(|b| {
+                        let picture = if lay.compact { Display::None } else { Display::Flex };
+                        row.spawn(Node { display: picture, width: px(84), height: px(110), flex_shrink: 0.0, ..default() }).with_children(|b| {
                             spawn_brackets(b, 10.0, 1.2, c(Tone::Label, 0.45));
                             b.spawn((RIcon::Preview, UiIcon::Glyph { glyph: Glyph::Menu, color: ui.dim }, Node { position_type: PositionType::Absolute, left: px(12), top: px(12), width: px(60), height: px(86), ..default() }));
                         });
-                        row.spawn(Node { flex_direction: FlexDirection::Row, flex_wrap: FlexWrap::Wrap, row_gap: px(9), width: px(PANEL_W - 102.0), align_content: AlignContent::FlexStart, ..default() })
+                        row.spawn(Node { flex_direction: FlexDirection::Row, flex_wrap: FlexWrap::Wrap, row_gap: px(9), width: px(if lay.compact { panel_w } else { panel_w - 102.0 }), align_content: AlignContent::FlexStart, ..default() })
                             .with_children(|grid| {
                                 for k in 0..STATS {
-                                    grid.spawn((RNode::Stat(k), Node { flex_direction: FlexDirection::Column, row_gap: px(3), width: px(118), ..default() })).with_children(|cell| {
+                                    let cell_w = if lay.compact { ((panel_w - 12.0) / 2.0).floor() } else { 118.0 };
+                                    grid.spawn((RNode::Stat(k), Node { flex_direction: FlexDirection::Column, row_gap: px(3), width: px(cell_w), ..default() })).with_children(|cell| {
                                         cell.spawn((RText::StatLabel(k), tracked(fonts, "", 7.0, c(Tone::Dim, 1.0), 0.25)));
                                         cell.spawn((RText::StatValue(k), number(fonts, "", 14.0, c(Tone::Number, 1.0))));
                                     });
@@ -465,8 +633,10 @@ fn spawn_detail(stage: &mut ChildSpawnerCommands, fonts: &HudFonts, style: &Styl
                 });
                 p.spawn((Node { height: px(1), margin: UiRect::vertical(px(8)), flex_shrink: 0.0, ..default() }, BackgroundColor(c(Tone::Label, 0.12))));
                 let row = |gap: f32| Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(gap), ..default() };
-                let head = |text: &str| (label(fonts, text, 8.0, c(Tone::Dim, 1.0)), Node { width: px(80), flex_shrink: 0.0, ..default() });
-                p.spawn(row(6.0)).with_children(|r| {
+                let head_w = if lay.compact { 70.0 } else { 80.0 };
+                let head = |text: &str| (label(fonts, text, 8.0, c(Tone::Dim, 1.0)), Node { width: px(head_w), flex_shrink: 0.0, ..default() });
+                let wrap = if lay.compact { FlexWrap::Wrap } else { FlexWrap::NoWrap };
+                p.spawn(Node { flex_wrap: wrap, row_gap: px(4), ..row(6.0) }).with_children(|r| {
                     r.spawn(head("COST"));
                     for k in 0..COST_CHIPS {
                         spawn_chip(r, fonts, style, RNode::CostChip(k), RText::CostChip(k), Some(RNode::CostDiamond(k)));
@@ -482,9 +652,9 @@ fn spawn_detail(stage: &mut ChildSpawnerCommands, fonts: &HudFonts, style: &Styl
                     r.spawn((RText::Requires, prose(fonts, "", 12.0, c(Tone::Label, 1.0)), Node { flex_grow: 1.0, flex_basis: px(0), min_width: px(0), ..default() }));
                 });
             });
-        panel.spawn((RText::Say, label(fonts, "", 8.5, c(Tone::Teal, 1.0)), abs(Vec2::new(0.0, UNLOCK_Y - 22.0 - TIER_Y), Some(Vec2::new(PANEL_W, 14.0)))));
+        panel.spawn((RText::Say, label(fonts, "", 8.5, c(Tone::Teal, 1.0)), abs(Vec2::new(0.0, unlock_y - 22.0 - tier_y), Some(Vec2::new(panel_w, 14.0)))));
         // UNLOCK: a primary pill (the kit styles it), its cost in words and the materials after a diamond.
-        panel.spawn(Node { flex_direction: FlexDirection::Column, ..abs(Vec2::new(0.0, UNLOCK_Y - TIER_Y), Some(Vec2::new(PANEL_W, 44.0))) }).with_children(|b| {
+        panel.spawn(Node { flex_direction: FlexDirection::Column, ..abs(Vec2::new(0.0, unlock_y - tier_y), Some(Vec2::new(panel_w, 44.0))) }).with_children(|b| {
             b.spawn((
                 Pill { primary: true, ..Pill::new(Tone::Teal) },
                 Hot::default(),
@@ -898,15 +1068,16 @@ mod tests {
     fn the_tree_fits_the_layout() {
         let content = data::base_content();
         let tree = Tree::new(&content);
-        let m = metrics(&tree);
-        assert_eq!(m.card.x, CARD_MAX_W);
-        let two = two_lines(&content, &tree, &m);
+        let lay = Lay::WIDE;
+        let m = metrics(&tree, &lay);
+        assert_eq!(m.card.x, lay.card_max_w);
+        let two = two_lines(&content, &tree, &m, &lay);
         let placed = tree.place(&m, &two);
         let right = placed.cards.iter().map(|r| r.max.x).fold(0.0, f32::max);
-        const { assert!(TREE_RIGHT < PANEL_X - 20.0) };
-        assert!(right <= TREE_RIGHT, "{right}");
+        assert!(lay.tree_right < lay.panel_x - 20.0);
+        assert!(right <= lay.tree_right, "{right}");
         let bottom = placed.lanes.last().map(|l| l.0 + l.1).unwrap();
-        assert!(bottom > TREE_BOTTOM - TREE_TOP && m.row_pitch == ROW_PITCH.0, "{bottom}");
+        assert!(bottom > lay.tree_bottom - lay.tree_top && m.row_pitch == ROW_PITCH.0, "{bottom}");
         // A card's line under it (one or two lines of chips) ends before the next row's card starts, in every lane
         // and across lanes; the gate's and the Grown's long lines wrap.
         let mut rows: Vec<(f32, bool)> = placed.cards.iter().zip(&two).map(|(r, &t)| (r.min.y, t)).collect();
@@ -919,10 +1090,32 @@ mod tests {
         assert!(!two[tree.card_of("beam_laser").unwrap()]);
         // More columns: narrower cards, still inside.
         let wide = Tree { columns: 5, ..tree.clone() };
-        let m = metrics(&wide);
-        assert!(COLUMNS_X + 4.0 * m.column_pitch + m.card.x <= TREE_RIGHT + 0.01);
+        let m = metrics(&wide, &lay);
+        assert!(lay.columns_x + 4.0 * m.column_pitch + m.card.x <= lay.tree_right + 0.01);
         assert_eq!(roman(1), "I");
         assert_eq!(roman(14), "XIV");
+    }
+
+    /// On a phone (844 × 390): the three columns fit left of the detail with cards wide enough for a name, each
+    /// lane's head over its cards; the parts stay inside the stage and clear of each other.
+    #[test]
+    fn the_tree_fits_a_phone() {
+        let content = data::base_content();
+        let tree = Tree::new(&content);
+        let lay = Lay::COMPACT;
+        let m = metrics(&tree, &lay);
+        assert!(m.card.x >= 150.0, "{}", m.card.x);
+        let placed = tree.place(&m, &two_lines(&content, &tree, &m, &lay));
+        let right = placed.cards.iter().map(|r| r.max.x).fold(0.0, f32::max);
+        assert!(right <= lay.tree_right && lay.tree_right + 16.0 <= lay.panel_x, "{right}");
+        assert!(lay.panel_x + lay.panel_w <= lay.stage.x - 12.0);
+        // Every lane's first card sits under its head.
+        for (k, &(top, _)) in placed.lanes.iter().enumerate() {
+            let first = tree.cards.iter().zip(&placed.cards).filter(|(c, _)| c.lane == k).map(|(_, r)| r.min.y).fold(f32::MAX, f32::min);
+            assert!(first >= top + lay.lane_head, "lane {k}");
+        }
+        assert!(lay.tree_bottom <= lay.bottom_y && lay.bottom_y + 32.0 <= lay.stage.y);
+        assert!(lay.unlock_y + 44.0 <= lay.stage.y && lay.top_h <= lay.tier_y);
     }
 
     /// UNLOCK names the cost: the data in words, the materials after a diamond.
