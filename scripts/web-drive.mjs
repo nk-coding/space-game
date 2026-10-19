@@ -6,8 +6,10 @@
 // Steps, separated by ';':
 //   wait <ms> | down <key> | up <key> | press <key> | type <text>
 //   move <x> <y> | mousedown <x> <y> [left|right|middle] | mouseup [left|right|middle] | click <x> <y>
-//   wheel <dy> | tap <x> <y> | touchdrag <x0> <y0> <x1> <y1> <holdMs> [<preMs>] (one finger, CDP touch events;
-//   held <preMs> still before it moves, e.g. a long press, and <holdMs> at the end before it lifts)
+//   wheel <dy> | tap <x> <y> | touchdrag <x0> <y0> <x1> <y1> <holdMs> [<preMs>] [<stepMs>] (one finger, CDP touch
+//   events; held <preMs> still before it moves, e.g. a long press, six moves <stepMs> apart (default 60), and
+//   <holdMs> at the end before it lifts: 1 lifts at once, a fling)
+//   touchdown <x> <y> | touchup (one finger held down across other steps, e.g. a shot during a long press)
 //   shot <file.png> | crop <x> <y> <w> <h> <file.png> (a part of the page; enlarge with scripts/png-zoom.py)
 //   eval <js> | reload (the page again, same storage)
 //   upload <file> (the next file chooser gets this file) | clip <text> (put text on the clipboard) | readclip
@@ -71,14 +73,16 @@ for (const raw of steps.split(';').map(s => s.trim()).filter(Boolean)) {
     case 'click': await page.mouse.click(n(0), n(1)); break;
     case 'wheel': await page.mouse.wheel(0, n(0)); break;
     case 'tap': await page.touchscreen.tap(n(0), n(1)); break;
+    case 'touchdown': await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: n(0), y: n(1), id: 7 }] }); break;
+    case 'touchup': await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] }); break;
     case 'touchdrag': {
-      const [x0, y0, x1, y1, hold, pre] = a.map(Number);
+      const [x0, y0, x1, y1, hold, pre, step] = a.map(Number);
       const pt = (x, y) => [{ x, y, id: 7 }];
       await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: pt(x0, y0) });
       if (pre) await page.waitForTimeout(pre);
       for (let k = 1; k <= 6; k++) {
         await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: pt(x0 + (x1 - x0) * k / 6, y0 + (y1 - y0) * k / 6) });
-        await page.waitForTimeout(60);
+        await page.waitForTimeout(step || 60);
       }
       await page.waitForTimeout(hold || 1000);
       await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
