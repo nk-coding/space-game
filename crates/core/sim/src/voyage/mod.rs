@@ -968,11 +968,12 @@ impl Sim {
         any
     }
 
-    /// `owner`'s ships with a controlling piece (its vessels, running, dark or dormant).
+    /// `owner`'s ships with a controlling piece (its vessels, running, dark or dormant), drones aside (GDR-0117: they
+    /// are no part of the fleet).
     fn own_vessels(&self, owner: Owner) -> impl Iterator<Item = &Ship> + '_ {
         self.ships
             .iter()
-            .filter(move |s| s.team() == Some(owner) && s.control_piece().is_some())
+            .filter(move |s| s.team() == Some(owner) && s.control_piece().is_some() && s.drone().is_none())
     }
 
     fn running(&self, ship: ShipId) -> bool {
@@ -998,6 +999,7 @@ impl Sim {
         for s in &self.ships {
             if s.team() == Some(v.player)
                 && !s.is_dormant()
+                && s.drone().is_none()
                 && let Some(p) = s.control_piece().and_then(|c| s.piece(c))
             {
                 v.players.push((p.com_world(), s.sensor_range()));
@@ -1120,11 +1122,13 @@ impl Sim {
         };
         for e in &self.events {
             match e {
+                // A site's drones belong to it, as its split-off vessels do (GDR-0117).
                 &SimEvent::VesselFormed {
                     ship,
                     from: Some((parent, _)),
                     ..
-                } => {
+                }
+                | &SimEvent::DroneLaunched { ship, carrier: parent, .. } => {
                     if let Some(k) = v.site_of(parent)
                         && v.sites[k].ships.binary_search(&parent).is_ok()
                         && let Err(i) = v.sites[k].ships.binary_search(&ship)

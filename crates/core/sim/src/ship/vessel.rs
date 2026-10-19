@@ -300,7 +300,7 @@ impl Sim {
         self.ship(key.ship)?.piece_team(key.piece)
     }
 
-    fn next_claim(&mut self) -> i64 {
+    pub(crate) fn next_claim(&mut self) -> i64 {
         self.mind_seq += 1;
         self.mind_seq
     }

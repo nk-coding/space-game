@@ -373,8 +373,8 @@ impl Sim {
         self.ships.len() - 1
     }
 
-    /// Removes a ship and all its bodies. Emits `VesselLost` (if it was a vessel) and `ShipRemoved`; a
-    /// removed focus moves on.
+    /// Removes a ship and all its bodies. Emits `VesselLost` (if it was a vessel, not a drone: GDR-0117) and
+    /// `ShipRemoved`; a removed focus moves on.
     pub fn remove_ship(&mut self, id: ShipId) -> Option<Ship> {
         let k = self.ship_index(id)?;
         let ship = self.ships.remove(k);
@@ -385,10 +385,12 @@ impl Sim {
             });
         }
         if ship.is_vessel() {
-            self.events.push(SimEvent::VesselLost {
-                ship: id,
-                owner: ship.owner(),
-            });
+            if ship.drone.is_none() {
+                self.events.push(SimEvent::VesselLost {
+                    ship: id,
+                    owner: ship.owner(),
+                });
+            }
             self.mind_dirty = true;
         }
         self.events.push(SimEvent::ShipRemoved { ship: id });
@@ -614,10 +616,13 @@ impl Sim {
             // Salvage is never dormant (the mind pass looks at vessels only).
             self.ships[k].dormant = false;
             let s = &self.ships[k];
-            self.events.push(SimEvent::VesselLost {
-                ship: s.id(),
-                owner: s.owner(),
-            });
+            // A drone's loss is its own (`DroneLost` in the drone pass, GDR-0117).
+            if s.drone.is_none() {
+                self.events.push(SimEvent::VesselLost {
+                    ship: s.id(),
+                    owner: s.owner(),
+                });
+            }
             self.mind_dirty = true;
         }
         self.form_vessels(k);

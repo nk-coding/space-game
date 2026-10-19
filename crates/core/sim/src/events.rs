@@ -117,11 +117,11 @@ pub enum SimEvent {
     ShipSpawned { ship: ShipId },
     /// A ship was removed with all its pieces.
     ShipRemoved { ship: ShipId },
-    /// A hangar launched a drone (GDR-0117): `ship` (spawned this tick, `ShipSpawned` and `VesselFormed` came
-    /// first) left `carrier` by its hangar `part`.
+    /// A hangar launched a drone (GDR-0117): `ship` (spawned this tick, `ShipSpawned` came first; a drone has no
+    /// `VesselFormed`) left `carrier` by its hangar `part`.
     DroneLaunched { ship: ShipId, carrier: ShipId, part: PartIdx },
     /// A drone died with its hangar, or lost its core (GDR-0117): it is removed at once, without a wreck
-    /// (`VesselLost` and `ShipRemoved` follow).
+    /// (`ShipRemoved` follows; a drone has no `VesselLost`).
     DroneLost { ship: ShipId, carrier: ShipId, at: Vec2 },
     /// Two pieces pushed each other this tick with at least `PhysicsTuning::impact_min_impulse` (sparks,
     /// sound). Above `PhysicsTuning::ram_threshold` it carries ramming damage (none between vessels of one

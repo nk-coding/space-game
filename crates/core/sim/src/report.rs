@@ -111,6 +111,8 @@ pub struct DesignReport {
     pub engines: Vec<EngineReport>,
     /// Every shield emitter of the ship (all pieces).
     pub shields: Vec<ShieldReport>,
+    /// Every hangar of the ship (all pieces), in part order (GDR-0117).
+    pub hangars: Vec<HangarReport>,
     /// Every part that explodes when damage destroys it (all pieces), in part order: what its blast would do to
     /// the design as built.
     pub blasts: Vec<BlastReport>,
@@ -276,6 +278,26 @@ pub struct GunReport {
     pub delivery: Delivery,
     /// Point defence (GDR-0115): it aims itself within its arc and fires on its own; not in the firepower.
     pub defence: Option<crate::ship::Defence>,
+}
+
+/// One hangar (GDR-0117): where its drones leave, and whether they can.
+#[derive(Clone, Debug, PartialEq)]
+pub struct HangarReport {
+    pub part: PartIdx,
+    /// Index into `DesignReport::pieces`.
+    pub piece: usize,
+    /// Centre of the side its drones leave by (blueprint frame).
+    pub mouth: [f32; 2],
+    pub facing: Dir,
+    /// No part in the cells right in front of the mouth: drones can leave.
+    pub open: bool,
+    /// The parts in those cells.
+    pub blockers: Vec<PartIdx>,
+    pub capacity: u32,
+    /// Metres from the carrier its drones may range.
+    pub leash: f32,
+    /// The drone's content ship id.
+    pub drone: String,
 }
 
 /// One engine and its exhaust plume (GDR-0039).
@@ -725,6 +747,24 @@ pub fn design_report_upgraded(
     }
     guns.sort_by_key(|g| g.slot);
     engines.sort_by_key(|e| e.slot);
+    let hangars = d
+        .hangars
+        .iter()
+        .map(|h| {
+            let blockers: Vec<PartIdx> = h.front.iter().filter_map(|&c| ship.grid.occupant(c)).map(|p| p as PartIdx).collect();
+            HangarReport {
+                part: h.part,
+                piece: piece_of(h.part as usize),
+                mouth: h.mouth,
+                facing: h.facing,
+                open: blockers.is_empty(),
+                blockers,
+                capacity: h.capacity,
+                leash: h.leash,
+                drone: h.drone.id.clone(),
+            }
+        })
+        .collect();
 
     // Blasts: the compiled targets of each exploding part, with the cover on its piece or the target's.
     let blasts = (0..n)
@@ -790,6 +830,7 @@ pub fn design_report_upgraded(
         firepower,
         engines,
         shields,
+        hangars,
         blasts,
         cargo,
         rule_slots,

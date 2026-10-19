@@ -15,8 +15,10 @@
 //!   piece that broke off) dies with it, and so does a drone that lost its core: it is removed at once without a
 //!   wreck (`SimEvent::DroneLost`), so a flood never leaves a field of debris. A dormant or dark carrier keeps its
 //!   drones.
-//! * **Minds**: drones take no mind capacity, never go dormant and are never their owner's focus; `Sim::vessels`
-//!   leaves them out (the fleet), `Sim::drones` lists them.
+//! * **Not the fleet**: drones take no mind capacity, never go dormant and are never their owner's focus;
+//!   `Sim::vessels` leaves them out (the fleet), `Sim::drones` lists them. They have no `VesselFormed` or
+//!   `VesselLost` (their own `DroneLaunched` and `DroneLost`), so kills and losses count ships, and they neither
+//!   block nor allow a recall, nor spawn or reveal a voyage's sites. A voyage site's carrier takes its drones in.
 //!
 //! Order: the pass runs once per tick after the impacts, before the voyage director (so a site takes in its
 //! carriers' drones in the same tick): lost drones are removed in ascending ship id, then the carriers' bays
@@ -206,20 +208,22 @@ impl Sim {
             linvel: v_mouth + out * tuning::LAUNCH_SPEED,
             angvel: 0.0,
         };
-        let first = self.ships.len();
-        let id = self.spawn_ship(Arc::clone(&design), owner, body);
-        let behavior = self.behaviors().default_for(&design);
-        for j in first..self.ships.len() {
-            let d = self.ships[j].id;
-            self.ships[j].drone = Some(Tie { carrier, hangar: h as u32 });
-            self.command(d, ShipCommand::Leader(Some(carrier)));
-            if behavior.is_some() {
-                self.command(d, ShipCommand::Behavior(behavior));
-            }
-        }
-        // Drones take no mind capacity: the claims made at the spawn are undone.
+        // A drone is one vessel and no member of the fleet: no `VesselFormed` (its `DroneLaunched` instead), no
+        // further vessels formed from its other pieces, no mind capacity.
+        let j = self.new_ship(Arc::clone(&design), owner, body);
+        let claim = self.next_claim();
+        let tick = self.tick();
+        let s = &mut self.ships[j];
+        let id = s.id;
+        s.drone = Some(Tie { carrier, hangar: h as u32 });
+        s.claim = claim;
+        s.formed = tick;
         self.mind_dirty = true;
         self.update_minds();
+        self.command(id, ShipCommand::Leader(Some(carrier)));
+        if let Some(b) = self.behaviors().default_for(&design) {
+            self.command(id, ShipCommand::Behavior(Some(b)));
+        }
         self.events.push(SimEvent::DroneLaunched { ship: id, carrier, part });
     }
 }
