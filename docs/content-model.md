@@ -48,6 +48,7 @@ content/base/
   controls.ron             the action map: every player action, its section, screens and default inputs (GDR-0090)
   facilities.ron           the home shipyard's buildings research opens (the evolution lab; GDR-0092)
   lab.ron                  the evolution lab's words and numbers: goals, trials, genes, pilots, sizes, measures (GDR-0092)
+  playtest.ron             play-test kits by band: research, materials and data a `?bands=` test career gets (development)
   behavior_nodes/*.ron     the behavior vocabulary: conditions, actions, target selectors (+ Rhai conditions)
   behaviors/<id>.ron       behavior programs (a target line and rules in the text format)
   icons/<key>.svg          part, material and category icons as SVG (the glyph without its tile)
@@ -62,7 +63,9 @@ File rules:
   `categories`, `factions`, `materials`, `parts`, `frames`, `ships`, `behavior_nodes`, `behaviors`, `families`,
   `research`, `facilities`, `starts`, `voyages`, `encounters`, `galaxy`, `bands`, `cluster_types`, `rocks`,
   `landmarks`, `planets`, `trails`, `signal_sources`, `lore`, `controls`. File names are free; group however reads
-  best. `lab.ron` is one file of its own (one `( ... )`, not an entry kind).
+  best. `lab.ron` is one file of its own (one `( ... )`, not an entry kind), and so is `playtest.ron` (a list of kits
+  by `band`, not an entry kind either; a later pack's kit for a band replaces an earlier one's; `docs/client.md`
+  "Launch parameters").
 - A file holds **one entry** `( ... )` or **a list** `[ ( ... ), ... ]`. Comments (`//`, `/* */`) are fine.
 - `Some(...)` may be omitted (`power: (output: 10)`); RON's `implicit_some` is always on.
 - Unknown fields are errors (typos fail loudly). Unknown `.ron` files are errors; `.svg` files belong in

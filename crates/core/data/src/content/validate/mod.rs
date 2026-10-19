@@ -2,7 +2,7 @@
 //! drydock designs). Every problem names pack, file, kind, id and field where possible.
 //!
 //! The checks are split by what they check: parts (`parts.rs`), research and starts (`progression.rs`), encounters
-//! and voyages (`voyages.rs`), the galaxy's kinds (`galaxy.rs`), rock kinds, landmarks and scenery (`scenery.rs`), planet kinds and skies (`sky.rs`), behaviors (`behaviors.rs`), ships (`ships.rs`), the lab (`lab.rs`); packs, headers,
+//! and voyages (`voyages.rs`), the galaxy's kinds (`galaxy.rs`), rock kinds, landmarks and scenery (`scenery.rs`), planet kinds and skies (`sky.rs`), behaviors (`behaviors.rs`), ships (`ships.rs`), the lab (`lab.rs`), the play-test kits (`playtest.rs`); packs, headers,
 //! links, icons and numbers here.
 
 mod behaviors;
@@ -10,6 +10,7 @@ mod controls;
 mod galaxy;
 mod lab;
 mod parts;
+mod playtest;
 mod progression;
 mod scenery;
 mod ships;
@@ -102,6 +103,7 @@ pub fn validate(c: &Content) -> Vec<Problem> {
     v.entries(c.controls.as_slice(), |v, e| v.control(e));
     v.controls();
     v.lab();
+    v.playtest();
     v.voyages_open();
     v.locked();
     v.icons();

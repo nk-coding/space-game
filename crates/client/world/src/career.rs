@@ -68,7 +68,7 @@ impl Note {
     }
 }
 
-/// Where the save is and the development switches (`?save= ?newgame= ?unlock=all`).
+/// Where the save is and the development switches (`?save= ?newgame= ?unlock=all ?bands=`).
 #[derive(Clone, Debug, PartialEq)]
 pub struct Switches {
     /// The save's name in `saves/`.
@@ -77,6 +77,9 @@ pub struct Switches {
     pub new_game: bool,
     /// Every part, material and frame in the drydock; the save is untouched.
     pub free: bool,
+    /// A play-test career: the bands up to this one open, with the kits of `playtest.ron`
+    /// (`data::Career::playtest`). Only with `new_game` on a slot other than [`DEFAULT_SLOT`].
+    pub bands: Option<String>,
 }
 
 impl Switches {
@@ -95,7 +98,12 @@ impl Switches {
             }
             None => DEFAULT_SLOT.to_string(),
         };
-        let switches = Switches { slot, new_game: p.flag("newgame").unwrap_or(false), free: p.text("unlock") == Some("all") };
+        let switches = Switches {
+            slot,
+            new_game: p.flag("newgame").unwrap_or(false),
+            free: p.text("unlock") == Some("all"),
+            bands: p.text("bands").map(str::to_string),
+        };
         (switches, note)
     }
 }
@@ -118,13 +126,13 @@ pub struct PlayerCareer {
 /// Reads the save `saves/<slot>` (or starts a new game) at start. `seed` is a new game's seed, `now` the time
 /// it is written at.
 pub fn load(storage: &mut Storage, content: &Content, switches: Switches, seed: u64, now: u64) -> PlayerCareer {
-    let Switches { slot, new_game, free } = switches;
+    let Switches { slot, new_game: start_over, free, bands } = switches;
     let key = format!("{}/{slot}", CareerDoc::NAMESPACE);
     let mut notes = Vec::new();
     if let Some(why) = &storage.fallback {
         notes.push(Note::new("NO STORAGE", format!("The game is kept only until it closes: {why}."), Tone::Gold));
     }
-    let stored = if new_game { Ok(None) } else { storage.read::<CareerDoc>(&slot) };
+    let stored = if start_over { Ok(None) } else { storage.read::<CareerDoc>(&slot) };
     let mut kept = None;
     let mut replaced = false;
     let loaded = match stored {
@@ -166,6 +174,9 @@ pub fn load(storage: &mut Storage, content: &Content, switches: Switches, seed: 
         None => (new_career(content, seed, &mut notes, &mut kept, replaced), kept.is_none()),
     };
     let charted = chart(content, &mut career, &mut notes) && !new_game && kept.is_none();
+    if let Some(band) = &bands {
+        notes.push(playtest(content, &mut career, band, start_over && slot != DEFAULT_SLOT));
+    }
     if slot != DEFAULT_SLOT {
         let body = format!("This game is {key}; the usual one, {}/{DEFAULT_SLOT}, is untouched.", CareerDoc::NAMESPACE);
         notes.push(Note::new(format!("SAVE SLOT  ·  ?SAVE={}", slot.to_uppercase()), body, Tone::Gold));
@@ -178,6 +189,23 @@ pub fn load(storage: &mut Storage, content: &Content, switches: Switches, seed: 
         out.notes.push(Note::new("NOT SAVED", e, Tone::Coral));
     }
     out
+}
+
+/// `?bands=<band>`: a play-test career, only when `allowed` (a new game on another slot than the usual one, so it
+/// never touches the real save). The note says what it did or why not.
+fn playtest(content: &Content, career: &mut Career, band: &str, allowed: bool) -> Note {
+    if !allowed {
+        let body = format!("?bands= needs ?newgame=1 and ?save=<slot> other than {DEFAULT_SLOT}: it only makes a test career.");
+        return Note::new("NO PLAY-TEST BANDS", body, Tone::Gold);
+    }
+    let head = format!("PLAY-TEST  ·  ?BANDS={}", band.to_uppercase());
+    match career.playtest(content, band) {
+        Ok(()) => {
+            let name = content.bands.get(band).map_or(band, |b| b.name.as_str());
+            Note::new(head, format!("Open up to {name}, with the research and materials of playtest.ron."), Tone::Gold)
+        }
+        Err(e) => Note::new(head, format!("Not applied: {e}."), Tone::Coral),
+    }
 }
 
 /// Gives a career without a galaxy (a new game) the content's first galaxy, generated from its game seed (ADR-0035:
@@ -469,8 +497,11 @@ mod tests {
 
     #[test]
     fn the_url_picks_the_slot_and_the_switches() {
-        assert_eq!(switches(""), Switches { slot: "career".into(), new_game: false, free: false });
-        assert_eq!(switches("?save=test_2&newgame=1&unlock=all"), Switches { slot: "test_2".into(), new_game: true, free: true });
+        assert_eq!(switches(""), Switches { slot: "career".into(), new_game: false, free: false, bands: None });
+        assert_eq!(
+            switches("?save=test_2&newgame=1&unlock=all&bands=middle"),
+            Switches { slot: "test_2".into(), new_game: true, free: true, bands: Some("middle".into()) }
+        );
         assert!(!switches("?newgame=0&unlock=some").new_game);
         let (s, note) = Switches::from_params(&Params::parse("?save=Bad%20Name"));
         assert_eq!(s.slot, DEFAULT_SLOT);
@@ -574,6 +605,28 @@ mod tests {
         let n = load(&mut storage, &content, switches("?newgame=1"), 4, 40);
         assert!(n.new_game() && n.career().escorts().is_empty());
         assert_eq!(stored_text(&storage, "career").unwrap(), n.career().to_ron());
+    }
+
+    /// `?bands=`: a test career with the bands up to it open and the kits of `playtest.ron`, written to its slot;
+    /// never without `?newgame=1` or on the usual slot.
+    #[test]
+    fn a_playtest_career_opens_the_bands_only_on_a_new_test_slot() {
+        let content = data::base_content();
+        let mut storage = Storage::new(MemoryBackend::default());
+        let c = load(&mut storage, &content, switches("?newgame=1&save=deep&bands=middle"), 1, 10);
+        let k = c.career();
+        assert!(k.band_open(&content, "outer") && k.band_open(&content, "middle") && !k.band_open(&content, "inner"));
+        assert!(k.is_researched("jump_calibration_2") && k.is_researched("living_weapons") && !k.is_researched("drone_bay"));
+        assert!(k.materials().get("grown_tissue").is_some_and(|&n| n > 0));
+        assert!(c.notes.iter().any(|n| n.head.contains("?BANDS=MIDDLE") && n.tone == Tone::Gold), "{:?}", c.notes);
+        assert_eq!(stored_text(&storage, "deep"), Some(k.to_ron()));
+        for q in ["?newgame=1&bands=middle", "?save=other&bands=middle"] {
+            let c = load(&mut storage, &content, switches(q), 2, 20);
+            assert!(!c.career().band_open(&content, "outer") && c.career().researched().is_empty(), "{q}");
+            assert!(c.notes.iter().any(|n| n.head == "NO PLAY-TEST BANDS"), "{q}: {:?}", c.notes);
+        }
+        let rim = load(&mut storage, &content, switches("?newgame=1&save=deep&bands=rim"), 3, 30);
+        assert!(rim.notes.iter().any(|n| n.tone == Tone::Coral && n.body.contains("open from the start")), "{:?}", rim.notes);
     }
 
     /// Content changes reach a loaded save as a note (no panic); a gone escort design empties its slot.

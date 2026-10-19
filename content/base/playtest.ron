@@ -1,0 +1,43 @@
+// Play-test kits (development, not game content a player meets): `?newgame=1&save=<slot>&bands=<band>` opens the bands
+// up to <band> on a test career as if their gates were beaten, and gives the kit of every band from the outer reach up
+// to <band> (docs/client.md "Launch parameters"; `data::Career::playtest`). A band's kit is what a player arriving
+// there might have: the research of the bands behind it (researched, unpaid; a node's `requires` before it, here or in
+// an earlier band's kit), and materials and research data in store. PLACEHOLDER NUMBERS (19 Oct 2026): enough to
+// build and fit a couple of ships for the band, not a balance target.
+[
+    (
+        // Past the rim's gates: the rim's research.
+        band: "outer",
+        research: [
+            "automaton_cannon", "composite_plating", "beam_laser", "fusion_reactor", "torch_drive", "jump_calibration_1",
+            "tamed_core", "mind_expansion_1", "simulation_vault", "smelter",
+            "wide_bubble", "heat_sink", "ammo_feeder", "burst_laser", "long_cannon", "compact_reactor",
+            "rocket_pod", "point_defence",
+            "shield_regen_1", "radiator_vent_1", "thruster_speed_1", "pulse_rate_1",
+        ],
+        materials: {"steel": 40, "copper": 30, "ceramic": 20, "crystal": 20, "composite": 20, "coolant": 8, "programmable_matter": 6},
+        data: {"hull": 6, "power": 6, "propulsion": 6, "energy": 6, "kinetic": 6},
+    ),
+    (
+        // Past the outer reach's gates: the Grown's research and the rim's later steps.
+        band: "middle",
+        research: [
+            "regrowing_tissue", "living_weapons", "grown_heart", "spore_lining",
+            "jump_calibration_2", "mind_expansion_2", "cruiser_drydock", "reactive_plating", "automaton_forge",
+            "torpedo", "flares",
+            "shield_regen_2", "radiator_vent_2", "thruster_speed_2", "pulse_rate_2",
+        ],
+        materials: {"steel": 40, "copper": 30, "ceramic": 20, "crystal": 20, "composite": 30, "grown_tissue": 20, "heartwood": 4, "spores": 6, "gate_shard": 2, "programmable_matter": 8},
+        data: {"grown": 8, "logic": 6, "missiles": 4},
+    ),
+    (
+        // Past the middle band's gates: the Swarm's research and the last steps.
+        band: "inner",
+        research: [
+            "chitin_plating", "stingers", "drone_bay", "capital_drydock",
+            "shield_regen_3", "radiator_vent_3", "thruster_speed_3", "pulse_rate_3",
+        ],
+        materials: {"steel": 40, "composite": 30, "reactive": 20, "chitin": 20, "resin": 6, "nerve_core": 4, "gate_shard": 2, "programmable_matter": 8},
+        data: {"swarm": 10, "hull": 10},
+    ),
+]
