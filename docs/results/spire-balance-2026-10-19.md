@@ -85,3 +85,7 @@ which made the Spire's escort lighter. Re-measured alone, the same harness, flee
 Three lancers put three rocket pods in the escort (four before the cut) and the strong late fleets back at
 42–45 %, inside the 30–45 % target; the Runner and one skiff clears it 0 of 240. The mixed fleet no longer leads
 guns and rockets (42 against 45 %, within the seeds' noise): one rocket pod fewer leaves its point defence less to do.
+
+Screenshot (1280×720): `spire-fight-2026-10-19.png`, a fight code of the Runner and three rim skiffs against the Spire,
+three lancers and two hunters (seed 2, 18 s in: the Spire's four prism wards over its spine). The fight viewer's title
+wraps over the HUD's top left at this width when the sides list many designs (open).

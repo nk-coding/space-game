@@ -109,3 +109,8 @@ Patrols and raids are now a modest threat (70–80 %). The carrier and nest site
 patrol first is harder (the fleet is not repaired between sites): the carrier voyage 21–37 %, the hive voyage
 14–37 %, below the Keeper's gate for a Keeper-capable fleet. The drones' own behavior orbits too (four seconds of
 every six, diving in for two); it was tuned with that and is unchanged.
+
+Screenshots (1280×720, the web build `game-ea6f6f67fce6c9d8`): `hive-carrier-flood-2026-10-19.png` (a fight code of the
+Runner and two rim skiffs against a hive carrier, 140 m apart, seed 4, ten seconds in: the flood out round the Runner)
+and `galaxy-map-middle-band-2026-10-19.png` (a new test save `?save=middletest`, the map zoomed out: the middle band's
+ring, sealed, between the outer reach and the inner band).
