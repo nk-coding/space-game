@@ -134,7 +134,7 @@ mod tests {
         let c = data::base_content();
         let enemies = wave_enemies(&c);
         let ids: Vec<&str> = enemies.iter().map(|e| e.0.as_str()).collect();
-        assert_eq!(ids, ["automaton_raider", "automaton_gunner", "automaton_lancer", "automaton_hunter", "automaton_warden"]);
+        assert_eq!(ids, ["automaton_raider", "automaton_lancer", "automaton_gunner", "automaton_hunter", "automaton_warden"]);
         let bp = |id: &str| build_points(&ShipDesign::compile(&c, c.ships.get(id).unwrap()).unwrap());
         assert_eq!(wave(bp("rim_skiff"), &enemies), ["automaton_hunter"]);
         assert_eq!(wave(bp("halvex_runner"), &enemies), ["automaton_hunter", "automaton_hunter", "automaton_raider"]);

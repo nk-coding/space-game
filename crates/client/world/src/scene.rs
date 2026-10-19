@@ -879,7 +879,7 @@ mod tests {
         let bp = |id: &str| waves::build_points(&ShipDesign::compile(&content, content.ships.get(id).unwrap()).unwrap());
         let ids = |wave: Vec<Arc<ShipDesign>>| wave.iter().map(|d| d.id.clone()).collect::<Vec<_>>();
         let (raider, hunter, warden) = ("automaton_raider", "automaton_hunter", "automaton_warden");
-        assert_eq!(ids(designs.clone()), [raider, "automaton_gunner", "automaton_lancer", hunter, warden], "smallest first");
+        assert_eq!(ids(designs.clone()), [raider, "automaton_lancer", "automaton_gunner", hunter, warden], "smallest first");
         assert_eq!(ids(next_wave(&designs, bp("rim_skiff"))), [hunter], "the starter meets a hunter");
         assert_eq!(ids(next_wave(&designs, bp("halvex_runner"))), [hunter, hunter, raider], "biggest first");
         assert_eq!(ids(next_wave(&designs, 300.0)), [warden, warden]);

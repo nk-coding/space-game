@@ -1007,7 +1007,7 @@ fn assist_lists_take_the_pilot_nodes_and_may_be_empty() {
     // The palette offers the assists' actions and every condition (the pilot's too), no target selector; edits keep
     // to the list.
     let actions: Vec<&str> = ed.palette(NodeRole::Action).map(|n| n.id.as_str()).collect();
-    assert_eq!(actions, ["auto_lock", "brake", "hold_station", "avoid_collisions", "auto_fire"]);
+    assert_eq!(actions, ["auto_lock", "brake", "hold_station", "avoid_collisions", "auto_flare", "auto_fire"]);
     assert_eq!(ed.palette(NodeRole::Target).count(), 0);
     assert!(ed.palette(NodeRole::Condition).any(|n| n.id == "hull"));
     assert!(ed.palette(NodeRole::Condition).any(|n| n.id == "idle"));
