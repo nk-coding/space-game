@@ -59,11 +59,12 @@
         wake_radius: 300,
     ),
     // Missiles (GDR-0115, 19 Oct 2026): a lancer's rocket salvos behind a raider, in the hunting reaches.
-    // PLACEHOLDER (docs/results/missiles-2026-10-19.md).
+    // PLACEHOLDER (docs/results/missiles-2026-10-19.md: the lancer alone was still too hard for the laser starter,
+    // 12 of 60, so the pack keeps its raider and the lancer has one pod).
     (
         id: "lancer_pack",
         name: "Lancer pack",
-        summary: "An automaton with two rocket pods, and a raider running ahead of it.",
+        summary: "An automaton with a rocket pod, and a raider running ahead of it.",
         tags: ["hunters"],
         ships: [
             (ship: "automaton_lancer", count: (1, 1)),

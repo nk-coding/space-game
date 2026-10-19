@@ -1,19 +1,19 @@
-// Automaton lancer (GDR-0115): the gunner's frame with two rocket pods in its nose instead of cannons, so the player
-// meets missiles in the hunting reaches. One automaton core powers exactly two pods and one thruster (6 MW), as it
-// does two cannons. It flies its faction's raider behavior. PLACEHOLDER layout (lead default, 19 Oct 2026;
-// docs/results/missiles-2026-10-19.md).
+// Automaton lancer (GDR-0115): the gunner's frame with a rocket pod in its nose instead of cannons, so the player
+// meets missiles in the hunting reaches. It flies its faction's raider behavior. PLACEHOLDER layout (lead default,
+// 19 Oct 2026; docs/results/missiles-2026-10-19.md): two pods at first, one since the same day's tuning (the laser
+// starter won 4 of 60 against a lancer pack, 17 of 60 against the one-pod lancer's).
 (
     id: "automaton_lancer",
     name: "Automaton lancer",
-    summary: "A 4×3 rogue automaton with two rocket pods in its nose.",
-    description: "Lancers hunt with the heavier packs. Their rockets turn after you and blast what they strike: a [[part:shield_emitter|shield]] absorbs them whole, and [[part:point_defence]] shoots them down. Wrecks give the [[part:rocket_pod|pods]] and missile research data.",
+    summary: "A 4×3 rogue automaton with a rocket pod in its nose.",
+    description: "A lancer hunts with the heavier packs. Its rockets turn after you and blast what they strike: a [[part:shield_emitter|shield]] absorbs them whole, and [[part:point_defence]] shoots them down. Wrecks give the [[part:rocket_pod|pod]] and missile research data.",
     tags: ["enemy"],
     faction: "automatons",
     size: (4, 3),
     parts: [
         (part: "slope_1x1", x: 0, y: 0, flip: true, material: "automaton_plate"),
         (part: "rocket_pod", x: 1, y: 0),
-        (part: "rocket_pod", x: 2, y: 0),
+        (part: "armor_block", x: 2, y: 0, material: "automaton_plate"),
         (part: "slope_1x1", x: 3, y: 0, material: "automaton_plate"),
         (part: "armor_block", x: 0, y: 1, material: "automaton_plate"),
         (part: "automaton_core", x: 1, y: 1),
