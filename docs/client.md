@@ -849,7 +849,8 @@ off, the flash and its ring where it left), `voyage-warp-emergency.png` (the eme
     starting zoom, over 100 seeds of every sky and 200 camera places each, exactly one planet is in view from
     94 / 73 / 73 / 71 / 62 % of a 1 / 2 / 2.5 / 3 / 4 km cluster, one or more from 95 / 78 / 78 / 80 / 64 %, three or
     more from 0 / 0 / 0 / 0.1 / 0 % (before: some planet from 100 / 89 / 72 / 57 / 37 %, at Corran Reach all three at
-    once; `sky` tests, which also sample that no two planets meet from 600 m to 4 km). At home the home band's
+    once; `sky` tests, which also sample that no two planets meet from 600 m to 4 km). At home (and on every station
+    screen: the drydock, BEHAVIOR, research and the voyage map keep it, 19 Oct 2026) the home band's
     (the galaxy's first) nebula colours show without planets in the galaxy's `home_sky` (18 Oct 2026, GDR-0107's eighth
     status line: strength 0.8, was 0.55; three clouds, each along a curve of its own in its third of the view, smaller,
     and a small amber irregular galaxy top right; screenshot `docs/results/home-sky-clouds.png`; earlier that day one cloud and a

@@ -136,10 +136,11 @@ fn sync(
     let voyage = world.sim.voyage().filter(|_| *mode.get() == AppMode::Flight);
     // the shipyard's sky: the home band's (the galaxy's first) nebula colours, fainter, without planets, in the
     // galaxy's `home_sky` clouds and far galaxy (Niklas, 18 Oct 2026), from the packs (the running scene's content
-    // has no galaxy)
+    // has no galaxy); over every station screen, not only home, so it stays in place when one opens (the voyage map
+    // shows space through the gate: 19 Oct 2026, the sky vanished there and popped back on the way home)
     let packs = &game.0;
     let first = packs.galaxies.iter().next();
-    let home_sky = (*mode.get() == AppMode::Home).then(|| first.and_then(|g| g.bands.first()).and_then(|b| packs.bands.get(b)).and_then(|b| b.sky.as_ref())).flatten();
+    let home_sky = (*mode.get() != AppMode::Flight).then(|| first.and_then(|g| g.bands.first()).and_then(|b| packs.bands.get(b)).and_then(|b| b.sky.as_ref())).flatten();
     let key = if home_sky.is_some() { Some((String::from("home"), HOME_SKY_SEED)) } else { voyage.map(|v| (v.id().to_string(), v.seed())) };
     if key == state.key {
         return;
