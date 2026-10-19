@@ -17,6 +17,9 @@
 //! - **Strip** salvage within 250 m that fits its hold and drifts slower than 6 m/s, the best value per cargo unit
 //!   first (as the strip order counts it), a point of value worth 50 m of the way; it gives up on a piece after 20 s
 //!   without a part.
+//! - **Mine** (GDR-0114), a ship with a mining laser and room in its hold: the nearest rock with ore left within
+//!   300 m, as the `mine` behavior action flies (an approach to half its mining reach off the rock's circle, nose
+//!   on it), firing once within reach.
 //! - **Fly** to the nearest site still to do (a site with ships until it is cleared, a wreck site until it has been
 //!   there; a called group once it has come), the goal last. A site whose ships sleep: it stops 40 m outside the
 //!   wake radius, then creeps in at a quarter of its top speed, so the pack wakes in front of a slow ship.
@@ -31,8 +34,8 @@
 //! vessel any more) or out of time.
 //!
 //! Escorts start behind the flagship and fly the content's `escort` behavior with the flagship as their leader
-//! (they fight its lock); their holds count for the haul. Deterministic like the sim: the same setup and seed give
-//! the same run on every platform.
+//! (they fight its lock; an escort with a mining laser flies `miner`, which mines between fights); their holds count
+//! for the haul. Deterministic like the sim: the same setup and seed give the same run on every platform.
 
 use std::collections::BTreeSet;
 use std::sync::Arc;
@@ -78,6 +81,11 @@ const STALEMATE: u64 = 5400;
 const EASE: f32 = 40.0;
 /// ... and is never longer than this (a share of the top speed).
 const CLOSE_STICK: f32 = 0.6;
+/// It mines rocks with ore left within this many metres of their circle (GDR-0114), with a mining laser and room in
+/// its hold.
+const MINE_RANGE: f32 = 300.0;
+/// ... and fires once within this many stand-offs of the rock.
+const MINE_FIRE: f32 = 1.5;
 /// It finishes off disarmed awake enemies within this many metres (when its hold has room).
 const MOP_RANGE: f32 = 200.0;
 /// It stops this many metres outside a sleeping site's wake radius ...
@@ -279,6 +287,9 @@ impl VoyageRunner {
                     .ok_or("the behaviors have no `escort` for the escorts")?,
             ),
         };
+        // Mining (GDR-0114): escorts with a mining laser fly `miner`, which mines between fights.
+        let cuts = |d: &ShipDesign| d.parts.iter().any(|p| p.cut > 0.0);
+        let miner = behaviors.id("miner");
         let mut sim = Sim::with_config(seed, SimConfig::default());
         sim.set_behaviors(behaviors);
         let plan = VoyagePlan::roll(content, voyage, seed)?;
@@ -298,7 +309,7 @@ impl VoyageRunner {
             body.pos = entry.pos + Vec2::new(side * ESCORT_GAP * row, -ESCORT_GAP * row);
             let id = sim.spawn_ship(Arc::clone(d), Owner::PLAYER, body);
             sim.command(id, ShipCommand::Leader(Some(me)));
-            sim.command(id, ShipCommand::Behavior(escort_behavior));
+            sim.command(id, ShipCommand::Behavior(miner.filter(|_| cuts(d)).or(escort_behavior)));
             wing.push(id);
         }
         Ok(VoyageRunner {
@@ -380,6 +391,7 @@ impl VoyageRunner {
                 SimEvent::SiteWoke { .. } | SimEvent::SiteCleared { .. } => {
                     pilot.progress = self.sim.tick()
                 }
+                SimEvent::Mined { ship, .. } if *ship == me => pilot.progress = self.sim.tick(),
                 SimEvent::Collected { ship, .. } if *ship == me => {
                     // A part came: the piece it works on is still worth it.
                     pilot.progress = self.sim.tick();
@@ -470,8 +482,9 @@ impl VoyageRunner {
             });
         pilot.lock = foe.map(|f| f.1);
         // Done (or full), or given up: home as soon as the sim allows.
-        // (Done: the goal cleared, every site done and nothing left in reach to strip.)
-        let done = todo.is_empty() && salvage_near(sim, here, free, pilot).is_none();
+        // (Done: the goal cleared, every site done and nothing left in reach to strip or mine.)
+        let mining = rock_to_mine(sim, me, here, free);
+        let done = todo.is_empty() && salvage_near(sim, here, free, pilot).is_none() && mining.is_none();
         if ((goal && (done || free == 0)) || !fighting) && sim.can_recall(Owner::PLAYER) {
             return true;
         }
@@ -568,6 +581,13 @@ impl VoyageRunner {
                 None => Maneuver::Hold { at: pos },
             };
             fly(sim, me, maneuver, pilot);
+        } else if let Some((aim, standoff)) = mining {
+            let maneuver = Maneuver::Approach { target: Target::Point(aim), range: standoff, aim: AimMode::Target };
+            fly(sim, me, maneuver, pilot);
+            // Within reach: the guns fire (only the mining laser cuts; the rest stop on the rock).
+            if (aim - here).length() <= standoff * MINE_FIRE {
+                sim.command(me, ShipCommand::Maneuver { maneuver, fire: true });
+            }
         } else if let Some((k, pos, ..)) = next {
             // A site whose ships still sleep: stop short of its wake radius, then creep in, so the pack wakes in
             // front of a slow ship rather than one passing through at top speed.
@@ -700,4 +720,20 @@ fn pilot_input(sim: &mut Sim, ship: ShipId, mut input: PilotInput, pilot: &mut P
         pilot.flying_behavior = false;
     }
     sim.command(ship, ShipCommand::Pilot(input));
+}
+
+/// The rock to mine (GDR-0114), if the ship has a mining gun and room in its hold (`free`): the nearest spawned rock
+/// with ore left within [`MINE_RANGE`] of `here` (from its circle). The point on its circle nearest the ship and the
+/// stand-off from it, as the `mine` action flies (`behavior::tuning::MINE_STANDOFF` of the shortest mining reach).
+fn rock_to_mine(sim: &Sim, ship: ShipId, here: Vec2, free: u32) -> Option<(Vec2, f32)> {
+    let piece = sim.ship(ship).and_then(|s| s.piece(s.control_piece()?))?;
+    let reach = piece.guns.iter().filter(|g| g.cut > 0.0).map(|g| g.range).fold(f32::INFINITY, f32::min);
+    if free == 0 || !reach.is_finite() {
+        return None;
+    }
+    let rocks = sim.voyage().map_or(&[][..], |v| v.rocks());
+    let gap = |r: &crate::voyage::rocks::Rock| (r.pos - here).length() - r.radius;
+    let r = rocks.iter().filter(|r| r.ore > 0 && gap(r) <= MINE_RANGE).min_by(|a, b| gap(a).total_cmp(&gap(b)))?;
+    let away = here - r.pos;
+    Some((r.pos + away * (r.radius / away.length().max(1e-3)), reach * crate::behavior::tuning::MINE_STANDOFF))
 }

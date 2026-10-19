@@ -92,4 +92,13 @@
         tags: ["scan"],
         role: Action,
     ),
+    // Mining (GDR-0114); like `scan` it needs no target ship.
+    (
+        id: "mine",
+        name: "Mine nearest rock",
+        summary: "Fly to the nearest asteroid rock with ore left and cut it with the mining lasers.",
+        description: "Needs no target: it picks the nearest rock within sensor range that still holds ore, closes to its mining lasers' reach and holds them on it; the other guns hold fire. A ship without a working [[part:mining_laser]], with a full hold, or with no such rock in sight skips it, and the next rule gets its turn. Put it below the rules that fight, so a ship mines between fights: `when enemies_near(300m) < 1 -> mine`.",
+        tags: ["move", "mining"],
+        role: Action,
+    ),
 ]

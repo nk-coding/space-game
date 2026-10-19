@@ -357,10 +357,11 @@ pub(crate) struct GunHit {
     absorbed: f32,
 }
 
-/// Where a shot went.
+/// Where a shot went, and the asteroid rock it stopped on, if any (mining, GDR-0114).
 struct ShotEnd {
     to: Vec2,
     hit: bool,
+    rock: Option<u32>,
 }
 
 impl Sim {
@@ -719,12 +720,13 @@ impl Sim {
             return ShotEnd {
                 to: from + dir * t,
                 hit: false,
+                rock: None,
             };
         }
         match hit {
             Some(Cast::Rock(h)) => {
                 self.rock_hit(owner, family, &h);
-                ShotEnd { to: h.point, hit: true }
+                ShotEnd { to: h.point, hit: true, rock: h.key.as_rock() }
             }
             Some(Cast::Part(h)) => {
                 self.gun_hits.push(GunHit {
@@ -741,11 +743,13 @@ impl Sim {
                 ShotEnd {
                     to: h.hit.point,
                     hit: true,
+                    rock: None,
                 }
             }
             None => ShotEnd {
                 to: from + dir * len,
                 hit: false,
+                rock: None,
             },
         }
     }
@@ -1034,6 +1038,10 @@ impl Sim {
         match g.delivery {
             Delivery::Beam => {
                 let end = self.hitscan(owner, team, g.family, from, dir, g.range, g.output * DT);
+                // A mining beam cuts the rock it rests on (GDR-0114), as hard as the gun works.
+                if let Some(rock) = end.rock.filter(|_| g.cut > 0.0) {
+                    self.mine(k, rock, g.cut * work * DT, end.to, dir);
+                }
                 self.beams.push(BeamTrace {
                     ship: owner,
                     piece: pid,

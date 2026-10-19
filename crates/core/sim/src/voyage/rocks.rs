@@ -20,8 +20,9 @@
 //!   anchored body costs the solver nothing).
 //! * **What rocks do**: they block ships (a ship that hits one takes ramming damage like any ram, GDR-0047: the
 //!   impulse carries its mass and speed; an anchored rock gives nothing, so the kind's `ram` scales what the ship
-//!   takes, as a ram prow's factors do), shots (`SimEvent::RockHit`, the hook for mining later; GDR-0031) and plumes,
-//!   so they give cover. Behaviors and maneuvers bend their velocity goal round the rocks ahead ([`steer`]), and the
+//!   takes, as a ram prow's factors do), shots (`SimEvent::RockHit`) and plumes, so they give cover. A mining
+//!   laser's shot cuts its ore (GDR-0114, `combat::mining`): a rock holds its kind's `ore` per square metre of its
+//!   circle and is spent when none is left (it stays, as cover). Behaviors and maneuvers bend their velocity goal round the rocks ahead ([`steer`]), and the
 //!   pilot assist `avoid_collisions` sidesteps them like any piece.
 //!
 //! All placement math is `+ − × ÷`, `sqrt` and libm trig: the same rocks on every platform.
@@ -76,11 +77,15 @@ const PUSH_OFF: f32 = 2.0;
 /// One rock: its kind (content id), where it lies, how it is turned, its outline's control points ([`outline`],
 /// counter-clockwise round its position; the outline is [`curve`] through them), the convex pieces it collides as
 /// (each counter-clockwise; [`pieces`]), the radius of the circle round it and the share of a ram's damage a ship
-/// takes against it (its kind's `ram`).
+/// takes against it (its kind's `ram`). Mining (GDR-0114, `combat::mining`): the material it gives (its kind's), the
+/// ore units left in it (its kind's `ore` per square metre of its circle, rounded) and the cut towards the next unit.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Rock {
     pub kind: String,
     pub ram: f32,
+    pub material: String,
+    pub ore: u32,
+    pub cut: f32,
     pub pos: Vec2,
     pub angle: f32,
     pub points: Vec<Vec2>,
@@ -283,6 +288,9 @@ pub fn roll(content: &Content, scenery: &Scenery, radius: f32, sites: &[Vec2], e
                         placed.push(Rock {
                             kind: kind.id.clone(),
                             ram: kind.ram,
+                            material: kind.material.clone(),
+                            ore: (kind.ore * core::f32::consts::PI * r * r).round() as u32,
+                            cut: 0.0,
                             pos: p,
                             angle,
                             points: std::mem::take(&mut shape),

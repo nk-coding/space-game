@@ -124,7 +124,8 @@ impl DebriefData {
                 HaulItem::Part { part, .. } => (Kept::Whole, part.clone()),
                 HaulItem::Broken { part, .. } => (Kept::Broken, part.clone()),
                 HaulItem::Fragment { part } => (Kept::Fragment, part.clone()),
-                HaulItem::DataCore { .. } => continue,
+                // Ore is no part: it shows in GAINED (GDR-0114).
+                HaulItem::DataCore { .. } | HaulItem::Ore { .. } => continue,
             };
             let row = rows.entry(key).or_default();
             row.0 = row.0.saturating_add(n);

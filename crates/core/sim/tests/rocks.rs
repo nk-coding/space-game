@@ -16,7 +16,7 @@ fn rock_plan(at: Vec2, radius: f32) -> VoyagePlan {
             Vec2::new(libm::cosf(a), libm::sinf(a)) * radius
         })
         .collect();
-    let rock = Rock { kind: "iron_rock".into(), ram: 0.5, pos: at, angle: 0.0, parts: vec![points.clone()], points, radius };
+    let rock = Rock { kind: "iron_rock".into(), ram: 0.5, material: "nickel_iron".into(), ore: 0, cut: 0.0, pos: at, angle: 0.0, parts: vec![points.clone()], points, radius };
     VoyagePlan {
         voyage: "rocks".into(),
         seed: 1,
@@ -203,7 +203,7 @@ fn maneuvers_steer_round_a_rock_in_the_way() {
 
 #[test]
 fn steer_leaves_a_clear_way_alone_and_turns_aside_for_a_rock() {
-    let rock = Rock { kind: "iron_rock".into(), ram: 0.5, pos: Vec2::new(0.0, 50.0), angle: 0.0, points: Vec::new(), parts: Vec::new(), radius: 10.0 };
+    let rock = Rock { kind: "iron_rock".into(), ram: 0.5, material: "nickel_iron".into(), ore: 0, cut: 0.0, pos: Vec2::new(0.0, 50.0), angle: 0.0, points: Vec::new(), parts: Vec::new(), radius: 10.0 };
     let v = Vec2::new(0.0, 20.0);
     let at = |x: f32| Mover { pos: Vec2::new(x, 0.0), radius: 5.0, vel: Vec2::ZERO, accel: 10.0 };
     assert_eq!(steer(&at(0.0), v, &[]), v);
@@ -215,7 +215,7 @@ fn steer_leaves_a_clear_way_alone_and_turns_aside_for_a_rock() {
 
 #[test]
 fn steer_slows_for_a_gap_too_narrow_and_bends_a_ship_carried_into_a_rock() {
-    let rock = |x: f32| Rock { kind: "iron_rock".into(), ram: 0.5, pos: Vec2::new(x, 60.0), angle: 0.0, points: Vec::new(), parts: Vec::new(), radius: 10.0 };
+    let rock = |x: f32| Rock { kind: "iron_rock".into(), ram: 0.5, material: "nickel_iron".into(), ore: 0, cut: 0.0, pos: Vec2::new(x, 60.0), angle: 0.0, points: Vec::new(), parts: Vec::new(), radius: 10.0 };
     // Two rocks 4 m apart edge to edge: no way through for a 5 m ship.
     let pair = [rock(-12.0), rock(12.0)];
     let m = Mover { pos: Vec2::ZERO, radius: 5.0, vel: Vec2::ZERO, accel: 10.0 };
@@ -232,7 +232,7 @@ fn steer_slows_for_a_gap_too_narrow_and_bends_a_ship_carried_into_a_rock() {
 
 #[test]
 fn steer_pushes_a_ship_off_a_rock_it_rests_on_and_out_of_the_nearest_gap() {
-    let rock = |y: f32| Rock { kind: "iron_rock".into(), ram: 0.5, pos: Vec2::new(0.0, y), angle: 0.0, points: Vec::new(), parts: Vec::new(), radius: 10.0 };
+    let rock = |y: f32| Rock { kind: "iron_rock".into(), ram: 0.5, material: "nickel_iron".into(), ore: 0, cut: 0.0, pos: Vec2::new(0.0, y), angle: 0.0, points: Vec::new(), parts: Vec::new(), radius: 10.0 };
     // At rest against a rock (the circles overlap) with the goal to stop: pushed straight off it.
     let m = Mover { pos: Vec2::new(0.0, 14.0), radius: 5.0, vel: Vec2::ZERO, accel: 10.0 };
     let out = steer(&m, Vec2::ZERO, &[rock(0.0)]);

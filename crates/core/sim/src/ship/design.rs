@@ -158,6 +158,8 @@ pub struct PartSpec {
     pub weapon: Option<WeaponFamily>,
     /// How the gun's shots travel (guns only).
     pub delivery: Delivery,
+    /// Ore it cuts from asteroid rock per second at full power (content `weapon.cut`, GDR-0114; 0: none).
+    pub cut: f32,
     /// Shield bubbles: share of each family's damage absorbed (indexed by [`family_index`]).
     pub absorb: [f32; FAMILIES],
     pub is_engine: bool,
@@ -509,6 +511,7 @@ impl ShipDesign {
                 base,
                 weapon: def.weapon.as_ref().map(|w| w.family),
                 delivery: def.weapon.as_ref().map_or(Delivery::Beam, |w| w.delivery),
+                cut: def.weapon.as_ref().map_or(0.0, |w| w.cut),
                 absorb,
                 is_engine: def.engine.is_some(),
                 is_rcs: def.rcs.is_some(),

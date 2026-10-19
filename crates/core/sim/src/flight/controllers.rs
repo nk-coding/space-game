@@ -119,6 +119,9 @@ pub(crate) fn execute(ship: &mut Ship, plan: &Plan, cfg: &SimConfig) {
                     &mut controls.guns,
                 );
             }
+            Fire::Mine(ts) => {
+                controls.fire = crate::behavior::guns_mining(piece, &ts, design.guns.len(), &mut controls.guns);
+            }
             Fire::Assisted { held, auto, at } => {
                 crate::behavior::guns_at_will(piece, &at, design.guns.len(), &mut controls.guns);
                 for (f, g) in controls.guns.iter_mut().zip(&design.guns) {

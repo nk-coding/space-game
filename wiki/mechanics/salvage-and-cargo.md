@@ -1,6 +1,6 @@
 ---
 title: "Salvage and cargo"
-description: "What counts as salvage, how your ships collect it by flying slowly over it, cargo holds and what they spill, the fragments destroyed cores leave, why most parts break, and how the workshop turns a haul into stock, research data and materials."
+description: "What counts as salvage, how your ships collect it by flying slowly over it, cargo holds and what they spill, mining ore from rock, the fragments destroyed cores leave, why most parts break, and how the workshop turns a haul into stock, research data and materials."
 ---
 
 # Salvage and cargo
@@ -99,6 +99,26 @@ Your hold is the summed [[stat:cargo_capacity]] of the cargo parts on your vesse
   wreck's cargo first.
 - A piece that splits off as a vessel of its own starts with an empty hold; the cargo stays with the vessel that
   keeps the main piece.
+
+## Mining
+
+A [[part:mining_laser]] cuts ore out of asteroid rock. It fires like a gun, from its forward side and with a clear
+line of fire, but against ships it barely scratches ([[part:mining_laser.damage]]). Held on a rock, it cuts
+[[part:mining_laser.cut]] of ore at full power, and every whole unit goes into the hold as ore of the rock's material:
+[[material:nickel_iron]] from [[rock:iron_rock|iron rock]] and [[rock:slag_rock|slag]], [[material:water_ice]] from
+[[rock:ice_rock|ice rock]]. A unit of ore takes one unit of hold space and counts as the least valuable thing in a
+hold, so a shrinking hold spills it first. With the hold full, the ore drifts loose beside the rock, to be collected
+like any loose item.
+
+A rock holds ore by its size, a big one up to a few dozen units; when the last is cut it is spent: it stays where it
+is, as cover, drawn darker, and gives nothing more. Several mining lasers on one rock share its ore. Your escorts mine
+with the [[behavior_node:mine]] action, as the [[behavior:miner]] behavior does between fights.
+
+At home ore is its material, one unit each, under GAINED in the voyage's report. Researching the
+[[research:smelter]] (it takes nickel-iron itself) installs the [[facility:smelter]] in the workshop: whenever a
+recipe or a research cost needs more [[material:steel]] or [[material:coolant]] than the store holds, it refines the
+rest from the ore in store, two units of ore for one. Coolant goes into the [[part:fusion_reactor]], the
+[[part:torch_drive]] and [[research:radiator_vent_3]].
 
 ## Fragments
 

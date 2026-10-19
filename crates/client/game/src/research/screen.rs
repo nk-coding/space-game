@@ -661,10 +661,10 @@ pub(super) fn sync(
     let node_of = |k: usize| content.research.get(&tree.cards[k].node);
     let selected = view.selected.as_deref().and_then(|s| content.research.get(s));
     let sel_state = selected.map(|n| tree::state(content, c, &n.id));
-    let chips_of: Vec<Vec<tree::Chip>> = (0..tree.cards.len()).map(|k| node_of(k).map_or(Vec::new(), |n| tree::chips(c, n))).collect();
+    let chips_of: Vec<Vec<tree::Chip>> = (0..tree.cards.len()).map(|k| node_of(k).map_or(Vec::new(), |n| tree::chips(content, c, n))).collect();
     // A researched node shows what it cost, not what the stores hold now.
     let done = matches!(sel_state, Some(CardState::Done));
-    let sel_chips = selected.map_or(Vec::new(), |n| if done { tree::cost_chips(n) } else { tree::chips(c, n) });
+    let sel_chips = selected.map_or(Vec::new(), |n| if done { tree::cost_chips(n) } else { tree::chips(content, c, n) });
     let (head, icon, stats, bonuses) = selected.map_or((String::new(), UiIcon::Glyph { glyph: Glyph::Menu, color: ui.dim }, Vec::new(), Vec::new()), |n| preview(content, &style, n, now, (&granted.upgrades, done)));
     let ready = tree::ready(content, c);
     let lane_families: Vec<&str> = tree.lanes.iter().map(|l| l.family.as_str()).collect();

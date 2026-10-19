@@ -266,8 +266,9 @@ pub struct Chip {
     pub payable: bool,
 }
 
-/// The cost chips of `node`: data in the node's order (by family id), then materials.
-pub fn chips(career: &Career, node: &ResearchNode) -> Vec<Chip> {
+/// The cost chips of `node`: data in the node's order (by family id), then materials (what the workshop pays,
+/// refining included: `Career::available`, GDR-0114).
+pub fn chips(content: &Content, career: &Career, node: &ResearchNode) -> Vec<Chip> {
     let mut out = Vec::new();
     for (f, &cost) in &node.cost.data {
         let have = career.data().get(f).copied().unwrap_or(0.0);
@@ -276,7 +277,7 @@ pub fn chips(career: &Career, node: &ResearchNode) -> Vec<Chip> {
         out.push(Chip { material: false, text, payable });
     }
     for (m, &cost) in &node.cost.materials {
-        let have = career.materials().get(m).copied().unwrap_or(0);
+        let have = career.available(content, m);
         let payable = have >= cost;
         let text = if payable { cost.to_string() } else { format!("{have} / {cost}") };
         out.push(Chip { material: true, text, payable });
@@ -566,7 +567,7 @@ mod tests {
         assert_eq!(cost_chips(content.research.get("mind_expansion_1").unwrap()), [Chip { material: false, text: "LOGIC 10".into(), payable: true }, Chip { material: true, text: "3".into(), payable: true }]);
         let ready: Vec<&str> = ready(&content, &c).iter().map(|n| n.id.as_str()).collect();
         assert_eq!(ready, ["beam_laser", "simulation_vault", "burst_laser"]);
-        let chips_of = |n: &str| chips(&c, content.research.get(n).unwrap());
+        let chips_of = |n: &str| chips(&content, &c, content.research.get(n).unwrap());
         assert_eq!(chips_of("composite_plating"), [Chip { material: false, text: "HULL 6 / 8".into(), payable: false }]);
         assert_eq!(chips_of("beam_laser"), [Chip { material: false, text: "ENERGY 10".into(), payable: true }]);
         assert_eq!(

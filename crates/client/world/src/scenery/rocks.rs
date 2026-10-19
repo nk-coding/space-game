@@ -19,6 +19,9 @@
 //! same rock looks the same every time). A rock never moves (an anchored body): the rocks that spawn together (a
 //! field, a piece of a belt) are one mesh in world coordinates, drawn in one call, and one additive mesh.
 //!
+//! **Spent rocks** (GDR-0114): a rock a mining laser has cut empty is drawn darker, its outline filled with
+//! `world.rock_spent` ([`spent_rocks`]: one small mesh, rebuilt only when another rock is spent).
+//!
 //! **Near rocks** (GDR-0107's status line of 18 Oct 2026, ninth: what you can touch reads apart from the backdrop):
 //! a rock near the ship the camera follows gets a faint bright line over its edge, full within `world.rock_near`'s
 //! `range_m` of the ship (from the rock's edge), fading out smoothly over the next `fade_m` ([`near_rocks`]: one
@@ -43,6 +46,8 @@ const Z_ROCKS: f32 = 3.0;
 const Z_GLOW: f32 = 3.01;
 /// The near rocks' line, over the glints.
 const Z_NEAR: f32 = 3.02;
+/// A spent rock's shade, over the rock and under its glints.
+const Z_SPENT: f32 = 3.005;
 /// A near rock's strength is kept in this many steps (the mesh is rebuilt when one changes).
 const NEAR_STEPS: f32 = 24.0;
 /// The edge line's half width (m): about 1.4 px at the starting zoom (18 px/m).
@@ -486,4 +491,52 @@ pub(super) fn near_rocks(
         }
     }
     near.0 = want;
+}
+
+#[derive(Component)]
+pub(super) struct SpentMesh;
+
+/// The rocks the spent rocks' mesh shades (indices).
+#[derive(Resource, Default)]
+pub(super) struct SpentRocks(Vec<usize>);
+
+/// Shades the rocks a mining laser has cut empty (GDR-0114; see the module docs): those with no ore left whose kind
+/// had any.
+pub(super) fn spent_rocks(
+    mut commands: Commands,
+    mut spent: ResMut<SpentRocks>,
+    state: Res<Scenery>,
+    world: Res<SimWorld>,
+    atlas: Res<Atlas>,
+    mut meshes: ResMut<Assets<Mesh>>,
+    shown: Query<&Mesh2d, With<SpentMesh>>,
+) {
+    let rocks = world.sim.voyage().filter(|_| state.key.is_some()).map_or(&[][..], |v| v.rocks());
+    let mined = |r: &sim::voyage::rocks::Rock| r.ore == 0 && world.content.rocks.get(&r.kind).is_some_and(|k| k.ore > 0.0);
+    let want: Vec<usize> = rocks.iter().enumerate().filter(|&(_, r)| mined(r)).map(|(i, _)| i).collect();
+    let mesh = shown.iter().next();
+    if want == spent.0 && (mesh.is_some() || want.is_empty()) {
+        return;
+    }
+    let c = vcol(atlas.token_color("world.rock_spent.color"), atlas.token_f32("world.rock_spent.alpha"));
+    let uv = atlas.region("fx/white").uv_center();
+    let mut m = MeshBuf::default();
+    for &i in &want {
+        let r = &rocks[i];
+        let (pos, turn) = (v2(r.pos), Vec2::from_angle(r.angle));
+        let pts: Vec<Vec2> = curve(&r.points, OUTLINE_POINTS).into_iter().map(|p| pos + turn.rotate(v2(p))).collect();
+        m.fan(pos, &pts, uv, c);
+    }
+    let built = if m.is_empty() { MeshBuf::placeholder() } else { m.into_mesh() };
+    match mesh {
+        Some(h) => {
+            if let Some(mut slot) = meshes.get_mut(&h.0) {
+                *slot = built;
+            }
+        }
+        None => {
+            commands.spawn((SceneryPart, SpentMesh, Mesh2d(meshes.add(built)), MeshMaterial2d(atlas.material.clone()), Transform::from_xyz(0.0, 0.0, Z_SPENT)));
+        }
+    }
+    spent.0 = want;
 }

@@ -257,8 +257,10 @@ impl Sim {
     /// tools; `step` thinks on its own).
     #[doc(hidden)]
     pub fn think_all_behaviors_now(&mut self) {
+        let rocks = self.voyage.as_deref().map_or(&[][..], |v| v.rocks());
         behavior::think_all(
             &mut self.ships,
+            rocks,
             &self.behaviors,
             &mut self.behavior_scratch,
             self.tick,
@@ -725,15 +727,16 @@ impl Sim {
 
         // Behaviors decide (each ship every few ticks, from one snapshot), then flight flies the decisions.
         mark(StepPhase::Flight);
+        let rocks = self.voyage.as_deref().map_or(&[][..], |v| v.rocks());
         behavior::think_all(
             &mut self.ships,
+            rocks,
             &self.behaviors,
             &mut self.behavior_scratch,
             self.tick,
             false,
         );
         // The pilots' assists note the controls in use and decide on the same ticks.
-        let rocks = self.voyage.as_deref().map_or(&[][..], |v| v.rocks());
         behavior::assist_all(
             &mut self.ships,
             rocks,

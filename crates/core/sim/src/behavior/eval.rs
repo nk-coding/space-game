@@ -27,6 +27,7 @@ use crate::ship::mass::to_piece;
 use crate::math::{Rot, Vec2, atan2};
 use crate::flight::physics::wrap_angle;
 use crate::ship::{Piece, Ship};
+use crate::voyage::rocks::Rock;
 
 /// Why a condition did not hold.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -80,6 +81,8 @@ pub struct BehaviorState {
     /// Where a call sent it (GDR-0111: an enemy's scan, where the scanner saw its target): with no target in
     /// sight it flies there and holds; the first target it picks clears it.
     pub(crate) rally: Option<Vec2>,
+    /// The rock a `mine` rule cuts while it decides (GDR-0114): its index and the point the mining guns aim at.
+    pub(crate) mine: Option<(u32, Vec2)>,
 }
 
 impl BehaviorState {
@@ -98,6 +101,7 @@ impl BehaviorState {
             status: vec![RuleStatus::Skipped; n],
             script_error: None,
             rally: None,
+            mine: None,
         }
     }
 
@@ -239,6 +243,12 @@ impl StateHash for BehaviorState {
             h.u8(1);
             h.vec2(r);
         }
+        // Only while mining, so behaviors that never mine hash as before (GDR-0114).
+        if let Some((rock, at)) = self.mine {
+            h.u8(2);
+            h.u32(rock);
+            h.vec2(at);
+        }
     }
 }
 
@@ -256,6 +266,8 @@ pub(crate) struct Out {
     script_error: Option<String>,
     /// A `scan` rule started a scan.
     scan: bool,
+    /// The rock a deciding `mine` rule cuts (GDR-0114).
+    mine: Option<(u32, Vec2)>,
 }
 
 impl Default for Out {
@@ -271,6 +283,7 @@ impl Default for Out {
             status: Vec::new(),
             script_error: None,
             scan: false,
+            mine: None,
         }
     }
 }
@@ -307,9 +320,10 @@ pub(super) fn snapshot(ships: &[Ship], hull: &mut Vec<f32>, centres: &mut Vec<Op
 }
 
 /// The think pass: every ship with a behavior whose turn it is (or every one, with `all`) decides, from one
-/// snapshot of the world; then the decisions are applied.
+/// snapshot of the world and the voyage's rocks (`mine`, GDR-0114); then the decisions are applied.
 pub(crate) fn think_all(
     ships: &mut [Ship],
+    rocks: &[Rock],
     lib: &BehaviorLibrary,
     scratch: &mut Scratch,
     tick: u64,
@@ -367,7 +381,7 @@ pub(crate) fn think_all(
                 script_error: None,
                 pilot: None,
             };
-            cx.think(st, out);
+            cx.think(st, out, rocks);
             out.script_error = cx.script_error.take();
         }
     }
@@ -385,6 +399,7 @@ pub(crate) fn think_all(
             st.acquired = out.acquired;
             st.active = out.active;
             st.maneuver = out.maneuver;
+            st.mine = out.mine;
             st.slots = out.slots;
             st.thought = Some(tick);
             std::mem::swap(&mut st.status, &mut out.status);
@@ -604,6 +619,11 @@ pub(crate) fn fly(
     ships: &[Ship],
     tuning_f: &FlightTuning,
 ) -> (FlightGoal, Fire) {
+    // Mining (GDR-0114): only the mining guns fire, at the aim point on the rock.
+    if let Some((_, at)) = st.mine {
+        let ts = TargetState { pos: at, vel: Vec2::ZERO };
+        return (st.maneuver.goal_for(kin, Some(ts), tuning_f), Fire::Mine(ts));
+    }
     let ts = st.focus.and_then(|f| aim_state(ships, f, st.aim_part));
     let goal = match st.maneuver {
         m @ Maneuver::Escort { .. } => m.goal(kin, ships, tuning_f),
@@ -650,6 +670,17 @@ pub(crate) fn guns_at_will(
         }
     }
     any
+}
+
+/// Mining fire (GDR-0114): [`guns_at_will`] at the aim point on a rock, the mining guns only.
+pub(crate) fn guns_mining(piece: &Piece, ts: &TargetState, slots: usize, guns: &mut Vec<bool>) -> bool {
+    guns_at_will(piece, ts, slots, guns);
+    for g in piece.guns.iter().filter(|g| g.cut <= 0.0) {
+        if let Some(f) = guns.get_mut(g.slot as usize) {
+            *f = false;
+        }
+    }
+    guns.contains(&true)
 }
 
 /// Below this speed (m/s) a ship counts as standing still: nothing to stop.
@@ -700,7 +731,7 @@ impl Ctx<'_> {
         self.hull[k]
     }
 
-    fn think(&mut self, st: &BehaviorState, out: &mut Out) {
+    fn think(&mut self, st: &BehaviorState, out: &mut Out, rocks: &[Rock]) {
         let me = self.me;
         let Some(kin) = self.prepare() else {
             return;
@@ -724,6 +755,7 @@ impl Ctx<'_> {
         out.status.clear();
         out.status.resize(code.rules.len(), RuleStatus::Skipped);
         let mut active: Option<usize> = None;
+        out.mine = None;
         for (i, rule) in code.rules.iter().enumerate() {
             if i as u32 >= slots {
                 out.status[i] = RuleStatus::NoSlot;
@@ -754,6 +786,14 @@ impl Ctx<'_> {
                     out.scan |= started;
                     RuleStatus::Scan { started }
                 }
+                None if rule.action == Action::Mine => match self.rock_to_mine(rocks) {
+                    Some(m) => {
+                        out.mine = Some(m);
+                        active = Some(i);
+                        RuleStatus::Active
+                    }
+                    None => RuleStatus::NoTarget,
+                },
                 None if rule.needs_target && focus.is_none() => RuleStatus::NoTarget,
                 None => {
                     active = Some(i);
@@ -764,9 +804,20 @@ impl Ctx<'_> {
         let maneuver = match (active, focus_id, st.rally) {
             // Called with no one in sight: to the rally point (GDR-0111).
             (_, None, Some(at)) => Maneuver::Hold { at },
-            (Some(i), focus, _) => self.maneuver(code.rules[i].action, focus),
+            (Some(i), focus, _) => match out.mine {
+                // Mining: close to the stand-off from the aim point on the rock and face it (GDR-0114).
+                Some((_, at)) => Maneuver::Approach {
+                    target: Target::Point(at),
+                    range: self.mine_standoff(),
+                    aim: AimMode::Target,
+                },
+                None => self.maneuver(code.rules[i].action, focus),
+            },
             (None, _, _) => Maneuver::Brake,
         };
+        if focus_id.is_none() && st.rally.is_some() {
+            out.mine = None;
+        }
         out.valid = true;
         out.focus = focus_id;
         out.aim_part = aim_part;
@@ -774,6 +825,37 @@ impl Ctx<'_> {
         out.active = active.map(|i| i as u16);
         out.maneuver = maneuver;
         out.slots = slots;
+    }
+
+    /// The rock a `mine` rule cuts (GDR-0114): the nearest spawned rock with ore left within sensor range (from its
+    /// circle), while the controlling piece has a working mining gun with a clear line of fire and the hold a free
+    /// unit. Its index and the aim point: the point of its circle nearest the ship.
+    fn rock_to_mine(&self, rocks: &[Rock]) -> Option<(u32, Vec2)> {
+        let me = self.me;
+        let piece = me.control_piece().and_then(|c| me.piece(c))?;
+        if me.cargo().used() >= me.cargo_capacity() || !piece.guns.iter().any(|g| g.cut > 0.0 && g.clear && me.part(g.part).alive) {
+            return None;
+        }
+        let from = self.kin().pos;
+        let mut best: Option<(f32, usize)> = None;
+        for (i, r) in rocks.iter().enumerate() {
+            let d = (r.pos - from).length() - r.radius;
+            if r.ore > 0 && d <= self.sensor && best.is_none_or(|b| d < b.0) {
+                best = Some((d, i));
+            }
+        }
+        let (_, k) = best?;
+        let (r, away) = (&rocks[k], from - rocks[k].pos);
+        Some((k as u32, r.pos + away * (r.radius / away.length().max(1e-3))))
+    }
+
+    /// How far from the aim point on a rock a miner stands (GDR-0114): [`tuning::MINE_STANDOFF`] of its shortest
+    /// mining reach.
+    fn mine_standoff(&self) -> f32 {
+        let me = self.me;
+        let piece = me.control_piece().and_then(|c| me.piece(c));
+        let reach = piece.map_or(0.0, |p| p.guns.iter().filter(|g| g.cut > 0.0).map(|g| g.range).fold(f32::INFINITY, f32::min));
+        reach.min(tuning::DEFAULT_REACH) * tuning::MINE_STANDOFF
     }
 
     fn maneuver(&self, action: Action, focus: Option<ShipId>) -> Maneuver {
@@ -821,7 +903,7 @@ impl Ctx<'_> {
             },
             Action::Flee => Maneuver::Flee { from: target },
             Action::Ram => Maneuver::Ram { target },
-            Action::Hold | Action::Escort(_) | Action::Scan => Maneuver::Brake,
+            Action::Hold | Action::Escort(_) | Action::Scan | Action::Mine => Maneuver::Brake,
         }
     }
 

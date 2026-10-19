@@ -209,14 +209,14 @@ pub fn make_rows(content: &Content, career: &Career, need: &BTreeMap<String, u32
 }
 
 /// The materials column (pure): every material the store holds or `part` (and how many of it) needs, in content
-/// order, with that need.
+/// order, with that need; `have` counts what the workshop's refining adds (`Career::available`, GDR-0114).
 pub fn material_rows(content: &Content, career: &Career, part: Option<(&str, u32)>) -> Vec<MaterialRow> {
     let recipe = part.and_then(|(p, n)| content.parts.get(p).and_then(|p| p.recipe.as_ref()).map(|r| (r, n)));
     content
         .materials
         .iter()
         .filter_map(|m| {
-            let have = career.materials().get(&m.id).copied().unwrap_or(0);
+            let have = career.available(content, &m.id);
             let need = recipe.and_then(|(r, n)| r.materials.get(&m.id).map(|&a| a * n));
             (have > 0 || need.is_some()).then(|| MaterialRow { name: m.name.clone(), have, need })
         })

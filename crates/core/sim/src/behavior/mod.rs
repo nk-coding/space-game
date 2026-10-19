@@ -39,7 +39,7 @@ pub use assist::{AssistState, AssistSwitch, Channel, StationPoint};
 pub(crate) use assist::{assist_all, assist_plan};
 pub use compile::{AimAt, action_decides, action_needs_target};
 pub use eval::{BehaviorState, RuleStatus, Why};
-pub(crate) use eval::{Scratch, fly, guns_at_will, think_all};
+pub(crate) use eval::{Scratch, fly, guns_at_will, guns_mining, think_all};
 pub use script::{SCRIPT_API, ScriptFault, ShipView};
 
 use crate::ship::design::ShipDesign;
@@ -55,6 +55,9 @@ pub mod tuning {
     pub const FIRE_CONE: f32 = 0.12;
     /// Reach (m) assumed for a ship without working guns, for `%` distances and `me.reach`.
     pub const DEFAULT_REACH: f32 = 60.0;
+    /// `mine` (GDR-0114): a miner stands this share of its shortest mining reach off the aim point on the rock's
+    /// circle (the rock's outline lies inside it, so the beam reaches it with room to spare).
+    pub const MINE_STANDOFF: f32 = 0.5;
     /// The current target keeps its place unless another one's cost is lower than `STICKY` × its own.
     pub const STICKY: f32 = 0.8;
     /// `threat` cost = (distance + THREAT_DISTANCE) / (firepower × aiming).
@@ -182,6 +185,7 @@ pub const BUILTIN_NODES: &[NodeSig] = {
         node("hold", Action, None, &[]),
         node("escort", Action, None, DIST),
         node("scan", Action, None, &[]),
+        node("mine", Action, None, &[]),
         pilot(
             "auto_lock",
             Action,

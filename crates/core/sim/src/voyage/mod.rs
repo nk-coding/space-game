@@ -673,6 +673,8 @@ pub struct Voyage {
     fields: Vec<(rocks::FieldPlan, bool)>,
     /// The rocks spawned so far, in spawn order: rock `k` is the body `BodyKey::rock(k)`.
     rocks: Vec<rocks::Rock>,
+    /// A mining laser has cut a rock (GDR-0114): from then on the rocks' ore is in the state hash.
+    pub(crate) mined: bool,
     /// Every bearing a scan gave, oldest first.
     bearings: Vec<Bearing>,
     /// The site of every ship spawned for one and of the vessels split off them (derived from `sites`).
@@ -710,6 +712,11 @@ impl Voyage {
     /// their fields.
     pub fn rocks(&self) -> &[rocks::Rock] {
         &self.rocks
+    }
+    /// Rock `k` to mine (GDR-0114, `combat::mining`).
+    pub(crate) fn rock_mut(&mut self, k: u32) -> Option<&mut rocks::Rock> {
+        self.mined = true;
+        self.rocks.get_mut(k as usize)
     }
     pub fn star(&self) -> Option<&Star> {
         self.star.as_ref()
@@ -841,6 +848,13 @@ impl StateHash for Voyage {
                 }
             }
             h.u32(self.rocks.len() as u32);
+            // Only once a mining laser has cut, so voyages without mining hash as before (GDR-0114).
+            if self.mined {
+                for r in &self.rocks {
+                    h.u32(r.ore);
+                    h.f32(r.cut);
+                }
+            }
         }
         h.u32(self.bearings.len() as u32);
         for b in &self.bearings {
@@ -887,6 +901,7 @@ impl Sim {
             star: plan.star,
             fields: plan.rocks.into_iter().map(|f| (f, false)).collect(),
             rocks: Vec::new(),
+            mined: false,
             bearings: Vec::new(),
             site_of: BTreeMap::new(),
             players: Vec::new(),

@@ -484,6 +484,8 @@ pub(crate) enum Fire {
     /// Fire at will at a target (behaviors): each gun fires when the target is inside its own cone along its
     /// facing and within its reach (`behavior::guns_at_will`).
     AtWill(TargetState),
+    /// Mining (GDR-0114): the mining guns fire at will at a point on an asteroid rock, the others hold.
+    Mine(TargetState),
     /// The pilot's assisted fire (GDR-0088): the guns of the `held` groups fire (the triggers), those of the `auto`
     /// groups fire at will at `at` (auto-fire assists; never a held group).
     Assisted { held: u8, auto: u8, at: TargetState },

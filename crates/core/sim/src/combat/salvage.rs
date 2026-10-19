@@ -3,7 +3,8 @@
 //! * **Items** ([`Item`]): a whole part by content id (hull parts carry their armour material), the fragment
 //!   a destroyed part leaves, or a data core (a log of a trail's signal, galaxy plan E4: one cargo unit, worth
 //!   [`DATA_CORE_VALUE`], so it is taken first and dropped last; a voyage's log site puts it into its first wreck's
-//!   cargo, [`Sim::stow_data_core`]). The content's `salvage` blocks decide what counts (compiled into the design,
+//!   cargo, [`Sim::stow_data_core`]), or a unit of ore a mining laser cut (GDR-0114, `mining.rs`: one cargo unit,
+//!   worth `mining::ORE_VALUE`, so a full hold sheds it first). The content's `salvage` blocks decide what counts (compiled into the design,
 //!   `PartSpec::salvageable` and `PartSpec::fragment`): only parts with a block (hull parts: their material's)
 //!   are collected, and only parts whose block names a `fragment` leave one. A part takes its footprint cells in cargo units
 //!   (`PartSpec::cargo_units`), a fragment one.
@@ -69,6 +70,8 @@ pub enum Item {
     Fragment { part: String },
     /// A data core: the log of signal `signal` of the galaxy's trail `trail` (skeleton indices), decoded at home.
     DataCore { trail: u32, signal: u32 },
+    /// A unit of ore a mining laser cut from asteroid rock (GDR-0114; the rock's material id).
+    Ore { material: String },
 }
 
 /// A data core's value per cargo unit (lead default, GDR-0096): above any part's build points, so a hold takes it
@@ -80,7 +83,7 @@ impl Item {
     pub fn part(&self) -> Option<&str> {
         match self {
             Item::Part { part, .. } | Item::Broken { part, .. } | Item::Fragment { part } => Some(part),
-            Item::DataCore { .. } => None,
+            Item::DataCore { .. } | Item::Ore { .. } => None,
         }
     }
 
@@ -92,6 +95,7 @@ impl Item {
             Item::Broken { part, material } => HaulItem::Broken { part: part.clone(), material: material.clone() },
             Item::Fragment { part } => HaulItem::Fragment { part: part.clone() },
             &Item::DataCore { trail, signal } => HaulItem::DataCore { trail, signal },
+            Item::Ore { material } => HaulItem::Ore { material: material.clone() },
         }
     }
 }
@@ -118,6 +122,10 @@ impl StateHash for Item {
                 h.u8(2);
                 h.u32(*trail);
                 h.u32(*signal);
+            }
+            Item::Ore { material } => {
+                h.u8(4);
+                h.str(material);
             }
         }
     }
@@ -746,6 +754,15 @@ impl Sim {
                 count: stack.count,
             });
         }
+    }
+
+    /// One `item` of `units` worth `value` a unit set loose at `at` with velocity `vel` (ore a full hold can't take,
+    /// `mining.rs`).
+    pub(crate) fn set_loose(&mut self, item: Item, units: u32, value: f32, at: Vec2, vel: Vec2) {
+        let expires = self.loose_expiry();
+        let st = &mut self.salvage;
+        st.loose.push(Loose { id: LooseId(st.next_loose), item, units, value, pos: at, prev_pos: at, vel, expires });
+        st.next_loose += 1;
     }
 
     /// When a loose item made now is gone (`SalvageTuning::fragment_ticks`; `None`: never).

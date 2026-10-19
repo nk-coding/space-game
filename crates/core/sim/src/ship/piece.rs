@@ -191,6 +191,8 @@ pub struct GunMount {
     pub rate: f32,
     /// Damage per pulse or projectile (`damage / base rate`; 0 for beams).
     pub shot_damage: f32,
+    /// Ore cut from rock per second at full power (GDR-0114; 0: not a mining gun).
+    pub cut: f32,
 }
 
 /// A connected group of parts: one rigid body.

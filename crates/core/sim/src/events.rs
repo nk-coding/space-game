@@ -158,8 +158,8 @@ pub enum SimEvent {
         pos: Vec2,
         reason: GoneReason,
     },
-    /// A shot struck an asteroid rock (GDR-0104; `Voyage::rocks`) and stopped there: the rock takes nothing (mining
-    /// comes later, GDR-0031). `by`: the shooter.
+    /// A shot struck an asteroid rock (GDR-0104; `Voyage::rocks`) and stopped there: the rock takes nothing (a
+    /// mining beam's cut follows as `Mined`, GDR-0114). `by`: the shooter.
     RockHit {
         by: ShipId,
         rock: u32,
@@ -205,6 +205,10 @@ pub enum SimEvent {
     /// hold, the lowest-value items first, and spilled as loose items at the lost hold (`salvage.rs`, GDR-0076;
     /// `Sim::loose`, collected again like fragments).
     CargoLost { ship: ShipId, item: Item, count: u32 },
+    /// A mining beam of `ship` cut a unit of ore (`item`, an `Item::Ore`) from rock `rock` at `at` (GDR-0114,
+    /// `combat/mining.rs`): into its hold, or, with the hold full, loose beside the rock (`stowed` false). `spent`:
+    /// that was the rock's last.
+    Mined { ship: ShipId, rock: u32, item: Item, at: Vec2, stowed: bool, spent: bool },
     /// A ship's scan swept (`ship/scan.rs`): from `at` (its controlling piece's centre of mass), out to `range`
     /// m; it wakes sleeping voyage sites within `wake` m.
     Scanned {

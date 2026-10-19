@@ -344,6 +344,7 @@ impl Ship {
                     } else {
                         0.0
                     },
+                    cut: spec.cut,
                 });
             }
         }

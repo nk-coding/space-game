@@ -36,7 +36,8 @@ impl Plugin for SceneryPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<Scenery>()
             .init_resource::<rocks::NearRocks>()
-            .add_systems(Update, (sync, rocks::draw_rocks, rocks::near_rocks).chain())
+            .init_resource::<rocks::SpentRocks>()
+            .add_systems(Update, (sync, rocks::draw_rocks, rocks::near_rocks, rocks::spent_rocks).chain())
             .add_systems(
                 PostUpdate,
                 (place, filler::place_tiles, far::corona, far::blink, sky::place)

@@ -142,14 +142,16 @@ pub enum Action {
     Escort(Dist),
     /// Start a scan, then step aside for the next rule (`RuleStatus::Scan`).
     Scan,
+    /// Cut the nearest asteroid rock with ore left with the mining guns (GDR-0114).
+    Mine,
 }
 
 /// Whether the behavior action `id` needs a target to fly: all but `hold`, `escort` (it flies relative to the
-/// leader) and `scan`. Without a target such a rule steps aside and the next rule gets its turn
+/// leader), `scan` and `mine` (it flies to a rock, GDR-0114). Without a target such a rule steps aside and the next rule gets its turn
 /// (`RuleStatus::NoTarget`), so only an `always` rule whose action needs none and decides ([`action_decides`]) ends
 /// the list; the BEHAVIOR screen marks the rules below that one.
 pub fn action_needs_target(id: &str) -> bool {
-    !matches!(id, "hold" | "escort" | "scan")
+    !matches!(id, "hold" | "escort" | "scan" | "mine")
 }
 
 /// Whether the behavior action `id` decides the maneuver when its rule holds: all but `scan`, which starts a scan and
@@ -415,6 +417,7 @@ pub(crate) fn compile(program: &Program, vocab: &Vocab) -> Result<Code, Vec<Line
             "hold" => Action::Hold,
             "escort" => Action::Escort(dist(args[0])),
             "scan" => Action::Scan,
+            "mine" => Action::Mine,
             _ => return Err(fail(line, &r.action, "no implementation in the sim")),
         };
         code.rules.push(Rule {

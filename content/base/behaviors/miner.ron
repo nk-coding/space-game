@@ -1,0 +1,16 @@
+// A miner (GDR-0114): the escort template with mining between fights. It fights what the leader has locked; with
+// nothing locked it cuts the nearest rock with ore left ([[behavior_node:mine]]: it needs a mining laser and room in
+// the hold), and with nothing to cut it keeps near the leader. Three rules, so it fits a logic core. PLACEHOLDER.
+(
+    id: "miner",
+    name: "Miner",
+    summary: "Fight whatever your leader has locked; between fights, mine the nearest rock and stay near the leader when there is nothing to cut.",
+    description: "Attacks only the [[behavior_node:locked|leader's lock]], so it never wakes a sleeping pack on its own. Without a lock it [[behavior_node:mine|mines the nearest rock]] with ore left while its hold has room, and [[behavior_node:escort|keeps near its leader]] once there is none. Give it a [[part:mining_laser]] facing forward and cargo room.",
+    tags: ["escort", "mining"],
+    target: "locked(core)",
+    rules: [
+        "always -> approach(70%) # nose on the leader's target, inside every gun's reach",
+        "always -> mine # nothing locked: cut the nearest rock with ore",
+        "always -> escort(30m) # nothing to cut: keep near the leader",
+    ],
+)
