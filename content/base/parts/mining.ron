@@ -1,0 +1,25 @@
+// Mining (GDR-0114): the tool part that cuts ore from asteroid rock (GDR-0104's rocks, GDR-0031's harvesting). A
+// beam like the beam laser's, weak against ships, whose `cut` takes ore from the rock it hits: each whole unit goes
+// into the hold as ore of the rock's material (`rocks.ron`), until the rock has none left. PLACEHOLDER NUMBERS (lead
+// defaults, 19 Oct 2026; checked on the voyage runner, docs/results/mining-2026-10-19.md).
+// `salvage`, `recipe`: as every part's (GDR-0108).
+[
+    (
+        id: "mining_laser",
+        name: "Mining laser",
+        summary: "A cutting beam that takes ore from asteroid rock into the hold. Barely scratches a ship.",
+        description: "Fires from its forward side like a gun and needs a clear line of fire. Held on a rock, it cuts the rock's ore into the hold, a unit at a time, until the rock is spent: [[material:nickel_iron]] from iron rock and slag, [[material:water_ice]] from ice. A ship needs free cargo room for it; with the hold full the ore drifts loose beside the rock. Behaviors mine with [[behavior_node:mine]].",
+        tags: ["mining"],
+        category: "weapons",
+        icon: "mining-laser",
+        size: (1, 1),
+        build_points: 2,
+        mass: 2,
+        hp: 1,
+        power: (draw: 3, tier: Low),
+        heat: (output: 1, limit: 3),
+        weapon: (family: Utility, damage: 0.3, range: 40, delivery: Beam, cut: 0.5),
+        salvage: (family: "utility", data: 2),
+        recipe: (materials: {"copper": 2, "crystal": 1, "steel": 2}),
+    ),
+]

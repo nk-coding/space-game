@@ -1,0 +1,14 @@
+// Mining (GDR-0114): the smelter, the workshop upgrade that refines mined ore. Its cost takes nickel-iron, so the
+// first mining run pays for it. PLACEHOLDER NUMBERS (lead, 19 Oct 2026).
+[
+    (
+        id: "smelter",
+        name: "Smelter",
+        summary: "Install a smelter in the workshop: mined nickel-iron pays for steel, water ice for coolant.",
+        description: "Opens the [[facility:smelter]]. Cut the nickel-iron for it with a [[part:mining_laser]] from iron rock.",
+        family: "utility",
+        kind: Facility,
+        cost: (data: {"utility": 3}, materials: {"nickel_iron": 6}),
+        unlocks: [Facility("smelter")],
+    ),
+]

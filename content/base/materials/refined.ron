@@ -1,0 +1,11 @@
+// Refined materials (GDR-0114): what the workshop's smelter (facilities.ron) makes of the ores mined from asteroid
+// rock (ores.ron). PLACEHOLDER (lead, 19 Oct 2026).
+[
+    (
+        id: "coolant",
+        name: "Coolant",
+        summary: "Purified ice for the cooling loops of the hottest machines.",
+        description: "The [[facility:smelter]] melts and cleans [[material:water_ice]] into it. In the recipes of the [[part:fusion_reactor]] and the [[part:torch_drive]], and in [[research:radiator_vent_3]].",
+        icon: "coolant",
+    ),
+]

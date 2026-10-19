@@ -147,6 +147,27 @@ impl<'a> Validator<'a> {
                 }
             }
         }
+        // Refining (GDR-0114): known materials, whole amounts, one step only (nothing refined is refined again) and
+        // one way to each material over every facility (the workshop pays a shortfall from it).
+        let c = self.c;
+        for (k, r) in f.refine.iter().enumerate() {
+            let field = format!("refine[{k}]");
+            for m in [&r.from, &r.to] {
+                if !c.materials.contains(m) {
+                    self.err(f, &field, format!("unknown material `{m}`"));
+                }
+            }
+            if r.take == 0 || r.give == 0 {
+                self.err(f, &field, "`take` and `give` must be at least 1");
+            }
+            if r.from == r.to || c.facilities.iter().flat_map(|g| &g.refine).any(|x| x.to == r.from) {
+                self.err(f, &field, format!("`{}` is refined itself: refining is one step", r.from));
+            }
+            let first = c.facilities.iter().flat_map(|g| g.refine.iter().map(move |x| (g, x))).find(|(_, x)| x.to == r.to);
+            if first.is_some_and(|(g, x)| !(g.id == f.id && std::ptr::eq(x, r))) {
+                self.err(f, &field, format!("`{}` is refined by another conversion already", r.to));
+            }
+        }
     }
 
     pub(super) fn start(&mut self, s: &'a Start) {

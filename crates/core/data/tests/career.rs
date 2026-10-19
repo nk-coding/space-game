@@ -1376,3 +1376,38 @@ fn the_workshop_dismantles_stock_and_counts_what_it_can_make() {
     assert!(career.fabricate(&c, "capacitor", 1).is_err());
     assert_eq!(career.fabricable(&c, "beam_laser"), 0, "a locked part");
 }
+
+#[test]
+fn ore_comes_home_and_the_smelter_refines_it() {
+    let c = content();
+    let mut career = new_game(&c);
+    let ore = |m: &str| HaulItem::Ore { material: m.into() };
+    // Ore is its material, a unit each (GDR-0114); the broken cargo bays give the smelter's utility data.
+    let got = bring_home(&mut career, &c, &[(ore("nickel_iron"), 26), (ore("water_ice"), 5), (part("cargo_bay"), 2)]);
+    assert_eq!((got.materials["nickel_iron"], got.materials["water_ice"]), (26, 5));
+    let have = |career: &Career, m: &str| career.materials().get(m).copied().unwrap_or(0);
+    // Without the smelter ore pays for nothing but itself.
+    assert_eq!(career.available(&c, "steel"), have(&career, "steel"));
+    assert_eq!(career.available(&c, "coolant"), 0);
+    // The smelter's research takes nickel-iron; then two nickel-iron pay for one steel, two ice for one coolant.
+    career.research(&c, "smelter").unwrap();
+    assert_eq!(have(&career, "nickel_iron"), 20);
+    assert!(career.unlocks(&c).has_facility("smelter"));
+    let steel = have(&career, "steel");
+    assert_eq!(career.available(&c, "steel"), steel + 10);
+    assert_eq!(career.available(&c, "coolant"), 2);
+    // A cargo hold takes 10 steel: the store's first, the rest refined (whole batches).
+    assert_eq!(career.fabricable(&c, "cargo_hold"), (steel + 10) / 10);
+    career.fabricate(&c, "cargo_hold", 1).unwrap();
+    let refined = 10u32.saturating_sub(steel);
+    assert_eq!(have(&career, "steel"), steel.saturating_sub(10));
+    assert_eq!(have(&career, "nickel_iron"), 20 - refined * 2);
+    // Short even with refining: the shortfall counts what refining would add.
+    let left = career.available(&c, "steel");
+    match career.can_fabricate(&c, "cargo_hold", 9) {
+        Err(Refusal::CannotPay(s)) => {
+            assert_eq!(s, [Shortfall::Material { material: "steel".into(), have: left, cost: 90 }]);
+        }
+        other => panic!("{other:?}"),
+    }
+}

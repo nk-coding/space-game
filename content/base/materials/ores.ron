@@ -1,18 +1,19 @@
-// Raw materials in asteroid rock (GDR-0104): what a rock is made of, so mining can give it later (GDR-0031). No
-// `armor` block (the drydock never offers them) and nothing gives them yet. PLACEHOLDER (lead, 17 Oct 2026).
+// Raw materials in asteroid rock (GDR-0104): what a rock is made of and what the mining laser cuts from it (GDR-0031,
+// GDR-0114). No `armor` block (the drydock never offers them); the workshop's smelter refines them (facilities.ron).
+// PLACEHOLDER (lead, 17 Oct 2026).
 [
     (
         id: "nickel_iron",
         name: "Nickel-iron",
         summary: "Metal ore locked in asteroid rock.",
         icon: "ore-nickel-iron",
-        description: "The dark [[rock:iron_rock|iron rock]] and the glassy [[rock:slag_rock|slag]] near hot stars are mostly nickel-iron. Mining it comes later.",
+        description: "The dark [[rock:iron_rock|iron rock]] and the glassy [[rock:slag_rock|slag]] near hot stars are mostly nickel-iron: a [[part:mining_laser]] cuts it out. The [[facility:smelter]] refines it into [[material:steel]], and researching the smelter takes some.",
     ),
     (
         id: "water_ice",
         name: "Water ice",
         summary: "Dirty ice from the pale rocks of quiet clusters.",
         icon: "ore-water-ice",
-        description: "[[rock:ice_rock|Ice rock]] is mostly water ice. Mining it comes later.",
+        description: "[[rock:ice_rock|Ice rock]] is mostly water ice: a [[part:mining_laser]] cuts it out. The [[facility:smelter]] refines it into [[material:coolant]].",
     ),
 ]

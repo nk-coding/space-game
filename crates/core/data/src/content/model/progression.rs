@@ -136,10 +136,24 @@ pub struct Facility {
     /// The workshop's rules (GDR-0108): this facility keeps or dismantles the haul's parts and fabricates.
     #[serde(default)]
     pub workshop: Option<WorkshopRules>,
+    /// What it refines once open (GDR-0114, GDR-0031's chains): the workshop pays a material the store is short of
+    /// by refining another into it ([`crate::career::Career::can_fabricate`], research costs).
+    #[serde(default)]
+    pub refine: Vec<Refine>,
     #[serde(skip_deserializing)]
     pub source: Source,
 }
 entry!(Facility, Kind::Facility);
+
+/// One refining conversion of a facility (GDR-0114): `take` units of `from` give `give` units of `to`.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Refine {
+    pub from: String,
+    pub take: u32,
+    pub to: String,
+    pub give: u32,
+}
 
 /// How the workshop treats the haul (GDR-0108, provisional numbers in content).
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

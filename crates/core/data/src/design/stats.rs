@@ -27,6 +27,7 @@ pub const BUILTIN_STATS: &[&str] = &[
     "shot_speed",
     "penetration",
     "recoil",
+    "cut",
     "thrust",
     "rated_speed",
     "gimbal",
@@ -278,6 +279,9 @@ impl Content {
                         v.push(("recoil", recoil));
                     }
                 }
+            }
+            if w.cut > 0.0 {
+                v.push(("cut", w.cut));
             }
         }
         if let Some(e) = &part.engine {

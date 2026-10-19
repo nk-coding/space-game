@@ -235,6 +235,11 @@ pub struct WeaponSpec {
     /// How the shot travels. Default `Beam`.
     #[serde(default)]
     pub delivery: Delivery,
+    /// Ore cut from asteroid rock per second at full power (cargo units; GDR-0114): a hit on a rock with ore left
+    /// adds to it, and every whole unit goes into the shooter's hold as ore of the rock's material. 0 (default):
+    /// the shot only stops on rock.
+    #[serde(default)]
+    pub cut: f32,
 }
 
 /// How a weapon's shots travel.

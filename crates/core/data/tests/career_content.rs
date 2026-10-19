@@ -701,6 +701,7 @@ fn base_research_nodes() {
             "living_weapons",
             "grown_heart",
             "spore_lining",
+            "smelter",
             "automaton_cannon",
             "composite_plating",
             "beam_laser",

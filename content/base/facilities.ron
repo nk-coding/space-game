@@ -38,6 +38,21 @@
         locked: true,
         within: "workshop",
     ),
+    // The smelter (GDR-0114, GDR-0031's hub upgrade): refines the ores the mining laser cuts. The workshop pays a
+    // material the store is short of from it (`refine`: `take` units of `from` give `give` of `to`; PLACEHOLDER, lead,
+    // 19 Oct 2026), for parts and research alike.
+    (
+        id: "smelter",
+        name: "Smelter",
+        summary: "A workshop upgrade that refines mined ore: nickel-iron into steel, water ice into coolant.",
+        description: "Researching the [[research:smelter]] installs it in the [[facility:workshop]]. Whenever a recipe or a research cost needs more [[material:steel]] or [[material:coolant]] than the store holds, it refines the rest from [[material:nickel_iron]] or [[material:water_ice]] in store.",
+        locked: true,
+        within: "workshop",
+        refine: [
+            (from: "nickel_iron", take: 2, to: "steel", give: 1),
+            (from: "water_ice", take: 2, to: "coolant", give: 1),
+        ],
+    ),
     (
         id: "evolution",
         name: "Evolution",

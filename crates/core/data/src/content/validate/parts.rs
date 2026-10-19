@@ -140,6 +140,7 @@ impl<'a> Validator<'a> {
         if let Some(x) = &p.weapon {
             self.number(p, "weapon.damage", x.damage, 0.0, false);
             self.number(p, "weapon.range", x.range, 0.0, true);
+            self.number(p, "weapon.cut", x.cut, 0.0, false);
             match x.delivery {
                 crate::content::model::Delivery::Beam => {}
                 crate::content::model::Delivery::Pulse { rate } => self.shot_rate(p, rate),

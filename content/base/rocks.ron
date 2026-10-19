@@ -5,7 +5,8 @@
 // they block ships, shots and plumes and give cover, and a ship that hits one takes ramming damage like any ram
 // (GDR-0047) times `ram`: an anchored rock gives nothing, so a ram on it would hurt as much as on a ship of infinite
 // mass, and `ram` scales what the ship takes as a ram prow's factors do (ice crumbles more). `material` is what mining
-// will give (GDR-0031; none yet). `tone` is a key into art/tokens.json world.rock (shadow, mid, lit and edge colours);
+// gives (GDR-0031) and `ore` how much: units per square metre of the rock's circle, cut out by a mining laser until
+// none are left (GDR-0114; PLACEHOLDER, lead, 19 Oct 2026). `tone` is a key into art/tokens.json world.rock (shadow, mid, lit and edge colours);
 // `look` is what the client draws on it: a crater per `crater_every` m of radius, a ridge, a metal glint on the lit
 // side, bright cracks, small pits and ember veins on the shadow side (GDR-0104's status line of 18 Oct 2026).
 // PLACEHOLDER NUMBERS (lead defaults, 17 Oct 2026; `ram` set with the slice's balance runs,
@@ -16,6 +17,7 @@
         name: "Iron rock",
         summary: "Dark, heavy nickel-iron rock: good cover, and hard to ram.",
         material: "nickel_iron",
+        ore: 0.02,
         size: (6, 22),
         corners: (6, 10),
         roughness: 0.3,
@@ -30,6 +32,7 @@
         name: "Ice rock",
         summary: "Pale rock of dirty ice, smaller and rounder than iron.",
         material: "water_ice",
+        ore: 0.03,
         size: (4, 15),
         corners: (5, 8),
         roughness: 0.22,
@@ -44,6 +47,7 @@
         name: "Slag",
         summary: "Rock fused glassy and long by a hot star's heat.",
         material: "nickel_iron",
+        ore: 0.015,
         size: (5, 18),
         corners: (5, 9),
         roughness: 0.4,

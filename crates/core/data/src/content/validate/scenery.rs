@@ -50,6 +50,9 @@ impl<'a> Validator<'a> {
         if l.cracks > MAX_ROCK_MARKS || l.pits > MAX_ROCK_MARKS || l.embers > MAX_ROCK_MARKS {
             self.err(r, "look", format!("at most {MAX_ROCK_MARKS} cracks, pits and embers each"));
         }
+        if !(r.ore.is_finite() && (0.0..=1.0).contains(&r.ore)) {
+            self.err(r, "ore", format!("ore units per square metre from 0 to 1, got {}", r.ore));
+        }
         if !(r.ram.is_finite() && (0.0..=4.0).contains(&r.ram)) {
             self.err(r, "ram", format!("a factor from 0 to 4, got {}", r.ram));
         }

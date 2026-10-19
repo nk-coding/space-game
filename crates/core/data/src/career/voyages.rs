@@ -127,7 +127,7 @@ impl Career {
 /// waits in the workshop's intake, [`Career::keep`], [`Career::dismantle`]); a broken part gives its block's data
 /// and the rules' `broken` share of its recipe; a hull part (whole or broken) its armour material's data per cell of
 /// area (slopes count half a cell) and the `broken` share of one unit of that material per cell; a fragment its
-/// part's `fragment` materials; a data core is a log to decode (counted in `logs`; the career keeps which,
+/// part's `fragment` materials; ore its material, a unit each (GDR-0114); a data core is a log to decode (counted in `logs`; the career keeps which,
 /// [`Career::cluster_ended`]). Shares are summed per material over the haul and rounded to the nearest unit once. Items the content
 /// doesn't know or that have no block give nothing (but parts are still listed). Pure: the career adds the result
 /// to its stores in [`Career::voyage_ended`].
@@ -145,6 +145,10 @@ pub fn unload(content: &Content, haul: &Haul) -> HaulReport {
             HaulItem::Broken { part, material } => (part, material, true),
             HaulItem::DataCore { .. } => {
                 r.logs = r.logs.saturating_add(n);
+                continue;
+            }
+            HaulItem::Ore { material } => {
+                add_materials(&mut r.materials, material, n);
                 continue;
             }
             HaulItem::Fragment { part } => {

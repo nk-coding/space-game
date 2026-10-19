@@ -192,43 +192,99 @@ impl Career {
         if let Some(f) = recipe.needs.as_ref().filter(|f| !unlocks.has_facility(f)) {
             return Err(Refusal::NeedsFacility(f.clone()));
         }
-        let short: Vec<Shortfall> = recipe
-            .materials
-            .iter()
-            .filter_map(|(m, &a)| {
-                let (have, cost) = (self.materials.get(m).copied().unwrap_or(0), a.saturating_mul(n));
-                (have < cost).then(|| Shortfall::Material { material: m.clone(), have, cost })
-            })
-            .collect();
-        if short.is_empty() { Ok(()) } else { Err(Refusal::CannotPay(short)) }
+        self.payment(content, &recipe.materials, n).map(|_| ()).map_err(Refusal::CannotPay)
     }
 
     /// The most of `part` the workshop can fabricate now: 0 if [`Career::can_fabricate`] refuses one, else what the
-    /// scarcest material of its recipe pays for (`u32::MAX` for a recipe without materials).
+    /// store pays for, refining included (`u32::MAX` for a recipe without materials).
     pub fn fabricable(&self, content: &Content, part: &str) -> u32 {
         if self.can_fabricate(content, part, 1).is_err() {
             return 0;
         }
-        content.parts.get(part).and_then(|p| p.recipe.as_ref()).map_or(0, |r| {
-            r.materials.iter().map(|(m, &a)| self.materials.get(m).copied().unwrap_or(0) / a.max(1)).min().unwrap_or(u32::MAX)
-        })
+        let Some(r) = content.parts.get(part).and_then(|p| p.recipe.as_ref()) else { return 0 };
+        if r.materials.values().all(|&a| a == 0) {
+            return u32::MAX;
+        }
+        // Paying is monotonic in the count: the most it pays for lies below the store's whole size.
+        let (mut lo, mut hi) = (1u32, self.materials.values().fold(1u32, |s, &x| s.saturating_add(x)));
+        while lo < hi {
+            let mid = lo + (hi - lo).div_ceil(2);
+            if self.payment(content, &r.materials, mid).is_ok() { lo = mid } else { hi = mid - 1 }
+        }
+        lo
     }
 
-    /// Fabricates `n` of `part` (see [`Career::can_fabricate`]): its recipe's materials are taken, the parts go into
-    /// stock.
+    /// Fabricates `n` of `part` (see [`Career::can_fabricate`]): its recipe's materials are taken (refined from ore
+    /// where the store is short, [`Career::payment`]), the parts go into stock.
     pub fn fabricate(&mut self, content: &Content, part: &str, n: u32) -> Result<(), Refusal> {
         self.can_fabricate(content, part, n)?;
         if let Some(recipe) = content.parts.get(part).and_then(|p| p.recipe.as_ref()) {
-            for (m, &a) in &recipe.materials {
-                let left = self.materials.get(m).copied().unwrap_or(0) - a.saturating_mul(n);
-                if left > 0 {
-                    self.materials.insert(m.clone(), left);
-                } else {
-                    self.materials.remove(m);
-                }
-            }
+            let pay = self.payment(content, &recipe.materials, n).map_err(Refusal::CannotPay)?;
+            self.take_materials(&pay);
         }
         add_materials(&mut self.stock, part, n);
         Ok(())
+    }
+
+    /// The refining conversions open now (GDR-0114): those of every open facility, in content order.
+    fn refining<'c>(&self, content: &'c Content) -> impl Iterator<Item = &'c Refine> {
+        let unlocks = self.unlocks(content);
+        content.facilities.iter().filter(move |f| unlocks.has_facility(&f.id)).flat_map(|f| &f.refine)
+    }
+
+    /// What the workshop can pay of `material` (GDR-0114): the store's, and what the open refining makes of the
+    /// store's other materials (each material has one way in, validation). The research screen and the workshop's
+    /// materials column show it.
+    pub fn available(&self, content: &Content, material: &str) -> u32 {
+        let have = |m: &str| self.materials.get(m).copied().unwrap_or(0);
+        let refined = self.refining(content).find(|r| r.to == material).map_or(0, |r| have(&r.from) / r.take.max(1) * r.give);
+        have(material).saturating_add(refined)
+    }
+
+    /// What paying `n` times `cost` takes from the store, by material (GDR-0031's chains, GDR-0114): each material
+    /// from the store first; what the store is short of, refined by the open facilities from what the cost leaves
+    /// of their ore (whole batches of `take`, the leftover of the last batch lost to the refining). `Err`: every
+    /// material it can't pay, in id order (`have` counts what refining would add).
+    pub fn payment(&self, content: &Content, cost: &BTreeMap<String, u32>, n: u32) -> Result<BTreeMap<String, u32>, Vec<Shortfall>> {
+        let have = |m: &str| self.materials.get(m).copied().unwrap_or(0);
+        let mut take: BTreeMap<String, u32> = BTreeMap::new();
+        for (m, &a) in cost {
+            let x = a.saturating_mul(n).min(have(m));
+            if x > 0 {
+                take.insert(m.clone(), x);
+            }
+        }
+        let mut short = Vec::new();
+        for (m, &a) in cost {
+            let want = a.saturating_mul(n);
+            let missing = want - take.get(m).copied().unwrap_or(0);
+            if missing == 0 {
+                continue;
+            }
+            let way = self.refining(content).find(|r| &r.to == m);
+            let free = |r: &Refine, take: &BTreeMap<String, u32>| have(&r.from) - take.get(&r.from).copied().unwrap_or(0);
+            match way {
+                Some(r) if r.give > 0 && missing.div_ceil(r.give).saturating_mul(r.take) <= free(r, &take) => {
+                    *take.entry(r.from.clone()).or_default() += missing.div_ceil(r.give) * r.take;
+                }
+                _ => {
+                    let refined = way.map_or(0, |r| free(r, &take) / r.take.max(1) * r.give);
+                    short.push(Shortfall::Material { material: m.clone(), have: want - missing + refined, cost: want });
+                }
+            }
+        }
+        if short.is_empty() { Ok(take) } else { Err(short) }
+    }
+
+    /// Takes a [`Career::payment`] from the store.
+    pub(super) fn take_materials(&mut self, pay: &BTreeMap<String, u32>) {
+        for (m, &x) in pay {
+            let left = self.materials.get(m).copied().unwrap_or(0).saturating_sub(x);
+            if left > 0 {
+                self.materials.insert(m.clone(), left);
+            } else {
+                self.materials.remove(m);
+            }
+        }
     }
 }

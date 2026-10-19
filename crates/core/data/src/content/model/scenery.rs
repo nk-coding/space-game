@@ -22,8 +22,12 @@ pub struct RockKind {
     pub lore: Option<String>,
     #[serde(default)]
     pub tags: Vec<String>,
-    /// The material it is made of (a material id): what mining it will give (GDR-0031; no mining yet).
+    /// The material it is made of (a material id): what mining gives (GDR-0031, GDR-0114).
     pub material: String,
+    /// Ore units a rock of this kind holds per square metre of its circle (π r², `r` its rolled radius; GDR-0114):
+    /// a mining laser cuts them out until none are left. 0 (default): nothing to mine.
+    #[serde(default)]
+    pub ore: f32,
     /// Radius `(min, max)` in metres, rolled per rock.
     pub size: (f32, f32),
     /// Corners of its outline `(min, max)`, rolled per rock.

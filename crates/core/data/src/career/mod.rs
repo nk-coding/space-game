@@ -35,7 +35,7 @@ use crate::hash::{fnv1a64, splitmix64};
 use crate::content::kind::Kind;
 use crate::content::limits::MAX_DOCUMENT_BYTES;
 use crate::content::load::{Content, parse_error, ron_options, strip_bom};
-use crate::content::model::{Blueprint, Frame, ResearchNode, Unlock, WorkshopRules};
+use crate::content::model::{Blueprint, Frame, Refine, ResearchNode, Unlock, WorkshopRules};
 use crate::content::problem::Problem;
 
 pub use galaxy::{Charted, Exploration, Lead, Leads, SignalRecord, SignalState, TrailSignal, signal_to};
@@ -205,6 +205,8 @@ pub enum HaulItem {
     /// A data core from a log's wreck (GDR-0093: one hold slot, lost with the haul): decoded at home into the
     /// trail's signal `signal` of trail `trail` (skeleton indices).
     DataCore { trail: u32, signal: u32 },
+    /// A unit of ore cut from asteroid rock (GDR-0114; a material id): one unit of that material at home.
+    Ore { material: String },
 }
 
 /// The items a voyage brought home, with counts, in item order.
@@ -647,18 +649,8 @@ impl Career {
                 self.data.remove(family);
             }
         }
-        for (material, &cost) in &n.cost.materials {
-            let left = self
-                .materials
-                .get(material)
-                .copied()
-                .unwrap_or(0)
-                .saturating_sub(cost);
-            if left > 0 {
-                self.materials.insert(material.clone(), left);
-            } else {
-                self.materials.remove(material);
-            }
+        if let Ok(pay) = self.payment(content, &n.cost.materials, 1) {
+            self.take_materials(&pay);
         }
         self.researched.push(n.id.clone());
         Ok(n)
@@ -692,15 +684,9 @@ impl Career {
                 });
             }
         }
-        for (material, &cost) in &n.cost.materials {
-            let have = self.materials.get(material).copied().unwrap_or(0);
-            if have < cost {
-                short.push(Shortfall::Material {
-                    material: material.clone(),
-                    have,
-                    cost,
-                });
-            }
+        // Materials as the workshop pays them, refining included (GDR-0114).
+        if let Err(s) = self.payment(content, &n.cost.materials, 1) {
+            short.extend(s);
         }
         if short.is_empty() {
             Ok(n)

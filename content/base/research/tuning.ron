@@ -61,7 +61,7 @@
         summary: "The last step: every radiator sheds more heat still.",
         family: "thermal",
         kind: Refinement,
-        cost: (data: {"thermal": 7}, materials: {"copper": 4}),
+        cost: (data: {"thermal": 7}, materials: {"coolant": 2, "copper": 4}), // coolant from mined ice (GDR-0114)
         requires: ["radiator_vent_2"],
         unlocks: [PartStat(target: Tag("radiator"), stat: "heat_vent", step: Percent(8))],
     ),

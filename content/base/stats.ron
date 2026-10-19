@@ -18,6 +18,7 @@
     (id: "shot_speed", name: "Shot speed", summary: "Speed of the projectile, on top of the ship's own.", unit: "m/s", decimals: 0, better: Higher),
     (id: "penetration", name: "Penetration", summary: "Blocks a projectile hits, the first included: one that breaks a block carries the damage left into the next, up to this many. At 1 it stops in the first block.", decimals: 0, better: Higher),
     (id: "recoil", name: "Recoil", summary: "Push on the ship per shot.", unit: "kN·s", decimals: 1, better: Lower),
+    (id: "cut", name: "Mining", summary: "Ore cut from asteroid rock per second at full power. Each whole unit goes into the hold as ore of the rock's material, while the rock has any left.", unit: "/s", decimals: 2, better: Higher),
     (id: "fire_rate", name: "Fire rate", summary: "How fast a weapon fires. Raised by adjacency bonuses.", decimals: 0, better: Higher),
     (id: "thrust", name: "Thrust", summary: "Push of an engine at full power.", unit: "kN", decimals: 0, better: Higher),
     (id: "rated_speed", name: "Rated speed", summary: "Ship speed at which the engine's thrust has faded out while it pushes with the ship's motion. The fastest engines set the ship's top speed. Braking keeps full thrust; turning with the gimbal, or by thrusting harder on one side, fades with the push.", unit: "m/s", decimals: 1, better: Higher),

@@ -53,7 +53,7 @@
         engine: (thrust: 700, rated_speed: 22, gimbal: 3, plume: (length: 6, damage: 3, heat: 4)),
         explosion: (damage: 1.2, radius: 2), // PLACEHOLDER, lead default (14 Oct 2026, GDR-0084; radius 1.5 → 2, GDR-0085)
         salvage: (family: "propulsion", data: 9),
-        recipe: (materials: {"ceramic": 10, "copper": 3, "steel": 6}, needs: "fusion_workshop"),
+        recipe: (materials: {"ceramic": 10, "coolant": 3, "copper": 3, "steel": 6}, needs: "fusion_workshop"), // coolant: the smelter's, from mined ice (GDR-0114)
     ),
     (
         id: "gyro",
