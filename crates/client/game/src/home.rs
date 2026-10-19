@@ -369,49 +369,56 @@ fn place_view(place: Place, layout: &Layout, window: &Window, dock: &DockCamera,
 
 /// The yard's view: the station's overview and every place's label (their pixel size, [`LabelTags`]) at least
 /// [`MARGIN`] px inside the window, whatever its aspect (Niklas, 13 Oct 2026: things at the left and top were cut
-/// off at some aspects).
+/// off at some aspects). The labels hang where this layout puts them, so a view worked out for another frame than
+/// the one the labels were last measured in (home entered after the drydock changed the frame) is the one the yard
+/// settles on (19 Oct 2026: the flight out of the drydock ended in a jump the first time after a frame change).
 fn overview(layout: &Layout, window: &Window, tags: &LabelTags) -> View {
     // Every place whole too (research's dishes reach above the sketch's overview).
     let all = Place::ALL.iter().fold(layout.overview, |r, p| r.union(layout.hit(*p)));
-    let (centre, zoom) = fit_tagged(all, &tags.0, window.size(), MARGIN);
+    let tags: Vec<Tag> = tags
+        .0
+        .iter()
+        .map(|&(place, size)| {
+            let (at, align) = layout.label(place);
+            let x = match align {
+                Align::Start => (0.0, size.x),
+                Align::Middle => (-size.x / 2.0, size.x / 2.0),
+                Align::End => (-size.x, 0.0),
+            };
+            Tag { at, min: Vec2::new(x.0, 0.0), max: Vec2::new(x.1, size.y) }
+        })
+        .collect();
+    let (centre, zoom) = fit_tagged(all, &tags, window.size(), MARGIN);
     View { centre, zoom }
 }
 
-/// Where each place's label reaches from its anchor, in logical px (measured from the laid-out labels).
+/// Each place's label size in logical px (measured from the laid-out labels; where it hangs comes from the layout).
 #[derive(Resource, Debug, Default, PartialEq)]
-struct LabelTags(Vec<Tag>);
+struct LabelTags(Vec<(Place, Vec2)>);
 
 /// Measures the labels (their texts change with the career, their size with the UI scale): written only when a
 /// label's size changes by half a pixel or more.
-#[allow(clippy::type_complexity)]
 fn measure_labels(
     window: Single<&Window, With<PrimaryWindow>>,
     ui_scale: Res<UiScale>,
-    yard: Res<Yard>,
     titles: Query<(&LabelTitle, &ComputedNode)>,
     subs: Query<(&LabelSub, &ComputedNode, &Node)>,
     mut tags: ResMut<LabelTags>,
 ) {
     let k = 1.0 / window.scale_factor();
-    let new: Vec<Tag> = titles
+    let new: Vec<(Place, Vec2)> = titles
         .iter()
         .map(|(t, title)| {
             let title = title.size * k;
             let sub = subs.iter().find(|(s, ..)| s.0 == t.0).filter(|(_, _, n)| n.display != Display::None).map(|(_, c, _)| c.size * k);
-            let (w, h) = match sub {
-                Some(s) => (title.x.max(s.x), title.y + LABEL_GAP * ui_scale.0 + s.y),
-                None => (title.x, title.y),
+            let size = match sub {
+                Some(s) => Vec2::new(title.x.max(s.x), title.y + LABEL_GAP * ui_scale.0 + s.y),
+                None => title,
             };
-            let (at, align) = yard.layout.label(t.0);
-            let x = match align {
-                Align::Start => (0.0, w),
-                Align::Middle => (-w / 2.0, w / 2.0),
-                Align::End => (-w, 0.0),
-            };
-            Tag { at, min: Vec2::new(x.0, 0.0), max: Vec2::new(x.1, h) }
+            (t.0, size)
         })
         .collect();
-    let same = tags.0.len() == new.len() && tags.0.iter().zip(&new).all(|(a, b)| a.at == b.at && a.min.distance(b.min) < 0.5 && a.max.distance(b.max) < 0.5);
+    let same = tags.0.len() == new.len() && tags.0.iter().zip(&new).all(|(a, b)| a.0 == b.0 && a.1.distance(b.1) < 0.5);
     if !same {
         tags.0 = new;
     }
@@ -1099,5 +1106,35 @@ mod tests {
         go(Place::Voyages, &mut gate, &yard, &window, &rig, &dock, None);
         let Phase::Flying { mut fly, to: Some(Place::Voyages), .. } = gate.phase else { panic!("not flying: {:?}", gate.phase) };
         assert_eq!(fly.step(0.0), (View { centre: rig.pos, zoom: rig.zoom }, true));
+    }
+
+    /// The yard's view hangs the measured labels where the layout it is for puts them: entering home after the
+    /// drydock changed the frame, the flight out ends on the view the yard then keeps (the labels were last measured
+    /// at home in the old frame; hung on the old places, the flight ended in a jump to the new view).
+    #[test]
+    fn the_yard_view_hangs_the_labels_on_its_own_layout() {
+        let window = Window::default();
+        let tags = LabelTags(Place::ALL.iter().map(|p| (*p, Vec2::new(150.0, 30.0))).collect());
+        let hung = |on: &Layout, view: &Layout| {
+            let all = Place::ALL.iter().fold(view.overview, |r, p| r.union(view.hit(*p)));
+            let placed: Vec<Tag> = tags
+                .0
+                .iter()
+                .map(|&(p, size)| {
+                    let (at, align) = on.label(p);
+                    let x = match align {
+                        Align::Start => (0.0, size.x),
+                        Align::Middle => (-size.x / 2.0, size.x / 2.0),
+                        Align::End => (-size.x, 0.0),
+                    };
+                    Tag { at, min: Vec2::new(x.0, 0.0), max: Vec2::new(x.1, size.y) }
+                })
+                .collect();
+            fit_tagged(all, &placed, window.size(), MARGIN)
+        };
+        let (frigate, cruiser) = (Layout::new((24, 24)), Layout::new((40, 40)));
+        let view = overview(&cruiser, &window, &tags);
+        assert_eq!((view.centre, view.zoom), hung(&cruiser, &cruiser));
+        assert_ne!((view.centre, view.zoom), hung(&frigate, &cruiser), "the old frame's label places give another view");
     }
 }
