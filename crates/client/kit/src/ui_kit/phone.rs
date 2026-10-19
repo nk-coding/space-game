@@ -6,6 +6,7 @@ use bevy::prelude::*;
 use bevy::text::LetterSpacing;
 
 use super::LayoutClass;
+use super::scrollbar::Scrollbar;
 
 /// The device's main pointer is a finger: the screens show their touch widgets (the flight's stick and FIRE, the
 /// fight viewer's buttons) from the start and name taps, not clicks. True on Android, in a browser whose primary
@@ -42,7 +43,9 @@ impl SafeArea {
 }
 
 /// A node with a form for each layout class: `.0` in the wide class, `.1` in the compact one. Its `display` stays
-/// as the screen sets it, unless a form hides it.
+/// as the screen sets it, unless a form hides it. On a [`Scrollbar`] area each form gets the bar's gutter and glow
+/// room as the kit gives them ([`Scrollbar::fit`]; a swapped node lost them), unless the form has a clip margin of
+/// its own (less glow room on a phone, where something close by must stay clear).
 #[derive(Component, Clone, Debug)]
 pub struct ByClass(pub Node, pub Node);
 
@@ -103,12 +106,20 @@ fn safe_area(class: Res<LayoutClass>, mut area: ResMut<SafeArea>) {
     }
 }
 
-fn apply_by_class(class: Res<LayoutClass>, mut nodes: Query<(Ref<ByClass>, &mut Node)>) {
-    for (b, mut node) in &mut nodes {
-        if !(class.is_changed() || b.is_added()) {
+#[allow(clippy::type_complexity)]
+fn apply_by_class(class: Res<LayoutClass>, mut nodes: Query<(Ref<ByClass>, Option<Ref<Scrollbar>>, &mut Node)>) {
+    for (b, bar, mut node) in &mut nodes {
+        if !(class.is_changed() || b.is_added() || bar.as_ref().is_some_and(|b| b.is_added())) {
             continue;
         }
         let mut want = if class.is_compact() { b.1.clone() } else { b.0.clone() };
+        if let Some(bar) = bar {
+            let own = want.overflow_clip_margin;
+            bar.fit(&mut want);
+            if own != OverflowClipMargin::default() {
+                want.overflow_clip_margin = own;
+            }
+        }
         if b.0.display != Display::None && b.1.display != Display::None {
             want.display = node.display;
         }
@@ -146,12 +157,45 @@ fn compact_size(
 
 #[cfg(test)]
 mod tests {
+    use super::super::BAR_HIT;
     use super::*;
 
     #[test]
     fn the_safe_area_has_margins_only_on_a_phone() {
         assert_eq!(SafeArea::of(LayoutClass::Wide), SafeArea::default());
         assert_eq!(SafeArea::of(LayoutClass::Compact), SafeArea::PHONE);
+    }
+
+    /// A scrolling area with a form for each class keeps the kit's gutter and glow room in both, whichever runs
+    /// first, and a form's own clip margin.
+    #[test]
+    fn a_scrolling_area_keeps_its_gutter_and_glow_room_in_both_classes() {
+        let mut app = App::new();
+        app.insert_resource(LayoutClass::Wide).add_systems(Update, apply_by_class);
+        let room = OverflowClipMargin::padding_box().with_margin(6.0);
+        let wide = Node { width: px(100), padding: UiRect::right(px(4)), ..default() };
+        let compact = Node { width: px(50), overflow_clip_margin: room, ..default() };
+        let e = app.world_mut().spawn((Scrollbar::vertical(), by_class(wide, compact))).id();
+        let node = |app: &App| {
+            let n = app.world().get::<Node>(e).unwrap();
+            (n.width, n.padding.right, n.overflow_clip_margin)
+        };
+        let kit = OverflowClipMargin::padding_box().with_margin(f32::from(super::super::scrollbar::GLOW_ROOM));
+        app.update();
+        assert_eq!(node(&app), (px(100), px(4.0 + BAR_HIT), kit));
+        *app.world_mut().resource_mut::<LayoutClass>() = LayoutClass::Compact;
+        app.update();
+        assert_eq!(node(&app), (px(50), px(BAR_HIT), room));
+        *app.world_mut().resource_mut::<LayoutClass>() = LayoutClass::Wide;
+        app.update();
+        assert_eq!(node(&app), (px(100), px(4.0 + BAR_HIT), kit));
+        // A bar added later gets its gutter too; a horizontal one outside its strip only the glow room.
+        let e = app.world_mut().spawn(by_class(Node::default(), Node::default())).id();
+        app.update();
+        app.world_mut().entity_mut(e).insert(Scrollbar::horizontal().outside());
+        app.update();
+        let n = app.world().get::<Node>(e).unwrap();
+        assert_eq!((n.padding.bottom, n.overflow_clip_margin), (Val::ZERO, kit));
     }
 
     /// A text with a compact size is drawn that size in the compact class and as made in the wide one, its letter

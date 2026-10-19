@@ -244,7 +244,7 @@ pub(super) fn role_color(ui: &UiPalette, role: NodeRole, rhai: bool) -> Color {
 pub(super) fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>) {
     let kit = Kit { fonts: &fonts, ui: style.ui, class: LayoutClass::Wide };
     let fonts = &*fonts;
-    // Every part placed for both layout classes (`kit::ui_kit::ByClass`, scrolling areas `ScrollFit`): the wide layout as it
+    // Every part placed for both layout classes (`kit::ui_kit::ByClass`): the wide layout as it
     // was, the phone layout (`C_*`, docs/plans/android.md 4.4); a part only one of them has is hidden in the other.
     let none = || Node { display: Display::None, ..default() };
     let row = |gap: f32| Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(gap), flex_shrink: 0.0, ..default() };
@@ -354,7 +354,10 @@ pub(super) fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Sty
                 Scrollbar::vertical(),
                 // Long rules are clipped at the right edge, not drawn over the inspector.
                 // On a phone its glow room is small: its rules would show over the inspector's column.
-                scroll_fit(graph(SIDE, GRAPH_RIGHT, BOTTOM, OverflowAxis::Clip), graph(C_SIDE, C_GRAPH_RIGHT, C_GRAPH_BOTTOM, OverflowAxis::Scroll), Some(C_GRAPH_ROOM)),
+                by_class(
+                    graph(SIDE, GRAPH_RIGHT, BOTTOM, OverflowAxis::Clip),
+                    Node { overflow_clip_margin: OverflowClipMargin::padding_box().with_margin(C_GRAPH_ROOM), ..graph(C_SIDE, C_GRAPH_RIGHT, C_GRAPH_BOTTOM, OverflowAxis::Scroll) },
+                ),
             ))
             .with_children(|g| {
                 g.spawn((GraphContent, Node { flex_direction: FlexDirection::Column, flex_shrink: 0.0, padding: UiRect::vertical(px(6)), ..default() }));
@@ -417,7 +420,7 @@ pub(super) fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Sty
                     ScrollPosition::default(),
                     // No glow room: its pills don't glow, and the search field is just above.
                     Scrollbar::vertical().room(0),
-                    scroll_fit(palette(PALETTE_MIN), palette(C_PALETTE_MIN), None),
+                    by_class(palette(PALETTE_MIN), palette(C_PALETTE_MIN)),
                 ));
             });
 
@@ -481,48 +484,6 @@ fn spawn_status(p: &mut ChildSpawnerCommands, kit: &Kit, node: impl Bundle) {
         TextColor(kit.c(Tone::Coral, 1.0)),
         bevy::text::LetterSpacing::Px(3.0),
     ));
-}
-
-/// A scrolling area's wide and phone forms, as `kit::ui_kit::ByClass`, keeping what the kit's `Scrollbar` writes into its
-/// node (the bar's gutter; the glow room, unless the phone's form has its own), which a swapped node would lose.
-#[derive(Component, Clone, Debug)]
-pub(super) struct ScrollFit {
-    wide: Node,
-    compact: Node,
-    /// The phone's glow room (px), when it is not the kit's.
-    room: Option<f32>,
-    /// The kit's glow room, as it set it when it attached the bar.
-    kit: OverflowClipMargin,
-    /// The class whose form is in place.
-    applied: Option<LayoutClass>,
-}
-
-fn scroll_fit(wide: Node, compact: Node, room: Option<f32>) -> impl Bundle {
-    (wide.clone(), ScrollFit { wide, compact, room, kit: OverflowClipMargin::default(), applied: None })
-}
-
-/// Puts the window's form of each [`ScrollFit`] node in place (after the kit has attached the bars).
-pub(super) fn fit_scrolls(class: Res<LayoutClass>, mut nodes: Query<(&mut ScrollFit, &mut Node)>) {
-    for (mut fit, mut node) in &mut nodes {
-        if fit.applied == Some(*class) {
-            continue;
-        }
-        if fit.applied != Some(LayoutClass::Compact) {
-            fit.kit = node.overflow_clip_margin;
-        }
-        fit.applied = Some(*class);
-        let (mut want, margin) = match (class.is_compact(), fit.room) {
-            (true, Some(room)) => (fit.compact.clone(), OverflowClipMargin::padding_box().with_margin(room)),
-            (true, None) => (fit.compact.clone(), fit.kit),
-            (false, _) => (fit.wide.clone(), fit.kit),
-        };
-        want.padding = node.padding;
-        want.overflow_clip_margin = margin;
-        want.display = node.display;
-        if *node != want {
-            *node = want;
-        }
-    }
 }
 
 /// The phone's popover of TEST IN RANGE's modes.
@@ -1203,7 +1164,6 @@ pub(super) fn draw_dots(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use bevy::ecs::system::RunSystemOnce;
     use data::behavior::TextError;
     use data::behavior::edit::NodeRef;
 
@@ -1237,31 +1197,5 @@ mod tests {
         assert_eq!(status_line(&a, BehaviorView::Text, 0), ("VALID  ·  2 ASSISTS".into(), Tone::Teal));
         a.set_text("always -> orbit\n");
         assert_eq!(status_line(&a, BehaviorView::Text, 0), ("1 ERROR  ·  FIRST ON LINE 1, COLUMN 11".into(), Tone::Coral));
-    }
-
-    #[test]
-    fn a_scrolling_area_keeps_the_kits_gutter_and_glow_room_in_both_classes() {
-        let mut world = World::new();
-        world.insert_resource(LayoutClass::Wide);
-        let e = world.spawn(scroll_fit(Node { width: px(100), ..default() }, Node { width: px(50), ..default() }, Some(6.0))).id();
-        // The kit attaches the bar: a gutter and the glow room.
-        let kit = OverflowClipMargin::padding_box().with_margin(30.0);
-        {
-            let mut n = world.get_mut::<Node>(e).unwrap();
-            n.padding.right = px(10);
-            n.overflow_clip_margin = kit;
-        }
-        let node = |world: &mut World| world.get::<Node>(e).unwrap().clone();
-        world.run_system_once(fit_scrolls).unwrap();
-        let n = node(&mut world);
-        assert_eq!((n.width, n.padding.right, n.overflow_clip_margin), (px(100), px(10), kit));
-        world.insert_resource(LayoutClass::Compact);
-        world.run_system_once(fit_scrolls).unwrap();
-        let n = node(&mut world);
-        assert_eq!((n.width, n.padding.right, n.overflow_clip_margin), (px(50), px(10), OverflowClipMargin::padding_box().with_margin(6.0)));
-        world.insert_resource(LayoutClass::Wide);
-        world.run_system_once(fit_scrolls).unwrap();
-        let n = node(&mut world);
-        assert_eq!((n.width, n.padding.right, n.overflow_clip_margin), (px(100), px(10), kit));
     }
 }

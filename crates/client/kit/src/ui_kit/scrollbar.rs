@@ -398,15 +398,15 @@ fn cut_text(lo: f32, hi: f32, top: f32, bottom: f32) -> (f32, f32) {
     (lo, hi.max(lo))
 }
 
-/// Gives every new [`Scrollbar`] area its glow room and spawns its bar as its next sibling (it draws over it).
-fn attach(mut commands: Commands, mut areas: Query<(Entity, &Scrollbar, &ChildOf, &mut Node), Added<Scrollbar>>) {
-    for (area, bar, parent, mut node) in &mut areas {
-        node.overflow_clip_margin = OverflowClipMargin::padding_box().with_margin(f32::from(bar.room));
-        // A gutter for a bar inside the area, kept whether or not the content scrolls (the layout never shifts):
-        // the content ends where the bar's hit area starts (Niklas, 14 Oct 2026: "the scrollbar overlaps with the
-        // content").
-        if !bar.outside {
-            let side = match bar.axis {
+impl Scrollbar {
+    /// What the kit adds to its area's node: the glow room and, for a bar inside the area, a gutter, kept whether or
+    /// not the content scrolls (the layout never shifts): the content ends where the bar's hit area starts (Niklas,
+    /// 14 Oct 2026: "the scrollbar overlaps with the content"). A node with a form for each layout class
+    /// ([`super::ByClass`]) gets it again with each form.
+    pub(super) fn fit(&self, node: &mut Node) {
+        node.overflow_clip_margin = OverflowClipMargin::padding_box().with_margin(f32::from(self.room));
+        if !self.outside {
+            let side = match self.axis {
                 BarAxis::Vertical => &mut node.padding.right,
                 BarAxis::Horizontal => &mut node.padding.bottom,
             };
@@ -414,6 +414,17 @@ fn attach(mut commands: Commands, mut areas: Query<(Entity, &Scrollbar, &ChildOf
                 Val::Px(p) => Val::Px(p + BAR_HIT),
                 _ => Val::Px(BAR_HIT),
             };
+        }
+    }
+}
+
+/// Gives every new [`Scrollbar`] area its glow room and gutter ([`Scrollbar::fit`]; a [`super::ByClass`] node gets
+/// them with its form) and spawns its bar as its next sibling (it draws over it).
+#[allow(clippy::type_complexity)]
+fn attach(mut commands: Commands, mut areas: Query<(Entity, &Scrollbar, &ChildOf, &mut Node, Has<super::ByClass>), Added<Scrollbar>>) {
+    for (area, bar, parent, mut node, by_class) in &mut areas {
+        if !by_class {
+            bar.fit(&mut node);
         }
         commands.spawn((
             Track { area, bar: *bar, idle: HOLD_SECONDS + FADE_OUT_SECONDS, alpha: 0.0, seen: None, grab: None },

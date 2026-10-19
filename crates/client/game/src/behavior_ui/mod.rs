@@ -168,7 +168,6 @@ impl Plugin for BehaviorPlugin {
             .add_systems(OnExit(AppMode::Behavior), (assists::leave, give_back_zoom, controls::drop_drags, list::leave, saving::leave, text_view::leave).chain())
             .add_systems(OnTransition { exited: AppMode::Behavior, entered: AppMode::Flight }, |mut s: ResMut<UiScale>, size: Res<kit::ui_kit::UiSize>| s.0 = size.0)
             .add_systems(Update, show.run_if(state_changed::<AppMode>))
-            .add_systems(Update, screen::fit_scrolls.after(UiInputSet).before(UiStyleSet))
             .add_systems(PostUpdate, screen::draw_dots.after(CameraSet).before(FxFlush))
             .add_systems(
                 Update,
