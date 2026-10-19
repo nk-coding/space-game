@@ -88,4 +88,5 @@ guns and rockets (42 against 45 %, within the seeds' noise): one rocket pod fewe
 
 Screenshot (1280×720): `spire-fight-2026-10-19.png`, a fight code of the Runner and three rim skiffs against the Spire,
 three lancers and two hunters (seed 2, 18 s in: the Spire's four prism wards over its spine). The fight viewer's title
-wraps over the HUD's top left at this width when the sides list many designs (open).
+wraps over the HUD's top left at this width when the sides list many designs (fixed the same day: the title wraps
+between the HUD's columns, `fight-viewer-long-title-2026-10-19.png`).
