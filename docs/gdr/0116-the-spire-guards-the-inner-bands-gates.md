@@ -1,6 +1,10 @@
 # GDR-0116: The Spire guards the inner band's gates: a long three-section spine with torpedoes and rockets under crystal wards that turn energy fire
 
 - Status: Accepted (provisional, lead), 19 Oct 2026, for Niklas to review
+  2026-10-19: re-measured after the lancer was cut to one rocket pod (GDR-0115): with two one-pod lancers the gate
+  got easier (mixed 58 %, guns and rockets 51 %, lasers 25 %, 240 seeds), so `spire_gate` takes three lancers and two
+  hunters (three rocket pods in the escort instead of four): mixed 42 %, guns and rockets 45 %, lasers 12 %, the
+  Runner and a skiff 0 % (`docs/results/spire-balance-2026-10-19.md`, follow-up).
 - Date: 2026-10-19
 - Decided by: lead session (agent WARDEN-INNER; default for Niklas to review)
 - Related: [GDR-0026](0026-procedural-galaxy-and-bands.md) (a guardian at every band gate), [GDR-0027](0027-races.md) (the inner band is the Lattice's: refractive crystal armour), [GDR-0099](0099-the-grown-and-the-outer-reach.md) A7, [GDR-0112](0112-the-keeper-guards-the-middle-bands-gates.md) (the Keeper), [GDR-0021](0021-shields.md), [GDR-0115](0115-missiles-and-point-defence.md), [GDR-0031](0031-materials-and-fabrication.md) (gate shards), [GDR-0100](0100-fight-balance-targets.md), `docs/results/spire-balance-2026-10-19.md`

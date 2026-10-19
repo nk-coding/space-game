@@ -67,3 +67,21 @@ First layout: wards capacity 4, regen 0.4, the escort a lancer and two hunters.
   mixed fleet 6 points against the prism ward's; no wards at all would lift it to 55 %.
 - The runner fights the gate site alone here; behind packs (the Keeper's t_keep3) every gate is far harder.
   The inner band's clusters are still the uncharted stub; re-measure the gate in a run when the Lattice exist.
+
+## Follow-up: the one-pod lancer (19 Oct 2026, later)
+
+The automaton lancer was cut to one rocket pod the same day ([GDR-0115](../gdr/0115-missiles-and-point-defence.md)),
+which made the Spire's escort lighter. Re-measured alone, the same harness, fleets and research variant, seeds 1–240
+(the t_spire test voyage as above; clear / home / lost / out of time, clear %; load average about 2):
+
+| Escort | mixed | guns + rockets | lasers |
+|---|---|---|---|
+| two lancers, two hunters (as committed, one-pod lancers) | 139 / 58 / 40 / 3, 58 % | 122 / 77 / 38 / 3, 51 % | 59 / 132 / 49 / 0, 25 % |
+| **three lancers, two hunters (chosen)** | 102 / 96 / 40 / 2, **42 %** | 109 / 99 / 32 / 0, **45 %** | 29 / 153 / 56 / 2, **12 %** |
+| two lancers, three hunters | 34 % | 36 % | 13 % |
+| three lancers, three hunters | 31 % | 23 % | 6 % |
+| two lancers, two hunters, a gunner | 24 % | 25 % | 5 % |
+
+Three lancers put three rocket pods in the escort (four before the cut) and the strong late fleets back at
+42–45 %, inside the 30–45 % target; the Runner and one skiff clears it 0 of 240. The mixed fleet no longer leads
+guns and rockets (42 against 45 %, within the seeds' noise): one rocket pod fewer leaves its point defence less to do.
