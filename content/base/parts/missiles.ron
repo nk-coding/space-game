@@ -4,6 +4,8 @@
 // radius (the chain-reaction rule, GDR-0085: armour takes its share and shields what lies behind it). Shield bubbles
 // absorb missiles whole (GDR-0021). A missile can be shot down: point defence aims at it first.
 // Launchers keep their stored rounds: destroyed, they explode like a capacitor (rocket pod) or more (torpedo).
+// The launchers' recipes need the workshop's munitions bay (the Rocket pod or Flares research installs it); point
+// defence fires pulses and needs none.
 [
     // The rocket pod: small and quick, a salvo of three light rockets that live about two seconds.
     (
@@ -24,7 +26,7 @@
         weapon: (family: Missile, damage: 0.9, range: 70, delivery: Missile(rate: 0.45, salvo: 2, speed: 45, accel: 60, turn: 100, life: 2.2, hp: 0.2, radius: 0.5)),
         explosion: (damage: 0.5, radius: 0.6),
         salvage: (family: "missiles", data: 3),
-        recipe: (materials: {"copper": 2, "steel": 3}),
+        recipe: (materials: {"copper": 2, "steel": 3}, needs: "munitions_bay"),
     ),
     // The torpedo: one big, slow, tough missile with a heavy blast, for big targets that cannot dodge it.
     (
@@ -46,7 +48,7 @@
         weapon: (family: Missile, damage: 0.6, range: 120, delivery: Missile(rate: 0.15, speed: 22, accel: 12, turn: 45, life: 7, hp: 1, radius: 1.5)),
         explosion: (damage: 1.2, radius: 1),
         salvage: (family: "missiles", data: 5),
-        recipe: (materials: {"copper": 4, "crystal": 2, "steel": 5}),
+        recipe: (materials: {"copper": 4, "crystal": 2, "steel": 5}, needs: "munitions_bay"),
     ),
     // Point defence: a quick, short-range pulse turret that picks its own targets, missiles first, then small ships.
     (
@@ -86,6 +88,6 @@
         countermeasure: (charges: 3, cooldown: 6, decoys: 3, speed: 14, life: 2.5, lure: 12),
         explosion: (damage: 0.3, radius: 0.6),
         salvage: (family: "missiles", data: 2),
-        recipe: (materials: {"copper": 1, "steel": 2, "crystal": 1}),
+        recipe: (materials: {"copper": 1, "steel": 2, "crystal": 1}, needs: "munitions_bay"),
     ),
 ]

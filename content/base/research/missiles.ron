@@ -11,7 +11,7 @@
         family: "missiles",
         kind: NewPart,
         cost: (data: {"missiles": 4, "kinetic": 2}),
-        unlocks: [Part("rocket_pod")],
+        unlocks: [Part("rocket_pod"), Facility("munitions_bay")], // the workshop upgrade that fabricates the launchers,
     ),
     (
         id: "point_defence",
@@ -43,6 +43,6 @@
         kind: NewPart,
         cost: (data: {"missiles": 3, "energy": 1}),
         requires: ["point_defence"],
-        unlocks: [Part("flare_launcher")],
+        unlocks: [Part("flare_launcher"), Facility("munitions_bay")], // the workshop upgrade that fabricates the launchers,
     ),
 ]

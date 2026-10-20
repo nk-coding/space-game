@@ -5,7 +5,8 @@
 // unlocks the stinger and the drone bay, the nerve node, the jet and the brood hangar stay the Swarm's own.
 // `salvage`: data to the Swarm family; a destroyed nerve node leaves a nerve core, a brood hangar resin. A drone that
 // dies leaves nothing (GDR-0117): the hive's own parts are the salvage. `recipe`: what the workshop would fabricate
-// it from (GDR-0108; PLACEHOLDER amounts); only the stinger's and the drone bay's are ever used.
+// it from (GDR-0108; PLACEHOLDER amounts); only the stinger's and the drone bay's are ever used, and all need the
+// hive cradle, which the Stingers research installs.
 [
     // The Swarm's mind and power, in every drone and hive (GDR-0117: a drone's core-equivalent): a small hard knot
     // that runs a drone's four rules and feeds its stinger and jet (2.5 MW of 4).
@@ -29,7 +30,7 @@
         sensor: (range: 700),
         gyro: (torque: 120),
         salvage: (family: "swarm", data: 3, fragment: {"nerve_core": 1}),
-        recipe: (materials: {"copper": 1, "nerve_core": 1, "resin": 2}),
+        recipe: (materials: {"copper": 1, "nerve_core": 1, "resin": 2}, needs: "hive_cradle"),
     ),
     (
         id: "swarm_jet",
@@ -49,7 +50,7 @@
         heat: (output: 0.5, limit: 3),
         engine: (thrust: 110, rated_speed: 28, gimbal: 8, plume: (length: 1.5, damage: 0.4, heat: 0.6)),
         salvage: (family: "swarm", data: 1),
-        recipe: (materials: {"ceramic": 1, "copper": 1, "resin": 2}),
+        recipe: (materials: {"ceramic": 1, "copper": 1, "resin": 2}, needs: "hive_cradle"),
     ),
     (
         id: "stinger",
@@ -69,7 +70,7 @@
         heat: (output: 0.6, limit: 3),
         weapon: (family: Kinetic, damage: 0.6, range: 55, delivery: Pulse(rate: 3)),
         salvage: (family: "swarm", data: 2),
-        recipe: (materials: {"copper": 1, "crystal": 1, "resin": 2}),
+        recipe: (materials: {"copper": 1, "crystal": 1, "resin": 2}, needs: "hive_cradle"),
     ),
     // The Swarm's hangar (GDR-0117): six drones out of its mouth, one rebuilt every 7 s.
     (
@@ -92,7 +93,7 @@
         heat: (output: 1, limit: 5),
         hangar: (drone: "swarm_drone", capacity: 6, rebuild: 7, leash: 450),
         salvage: (family: "swarm", data: 6, fragment: {"resin": 2}),
-        recipe: (materials: {"copper": 2, "nerve_core": 2, "resin": 6, "steel": 2}),
+        recipe: (materials: {"copper": 2, "nerve_core": 2, "resin": 6, "steel": 2}, needs: "hive_cradle"),
     ),
     // The player's hangar (GDR-0117), learned from the brood hangar: three drones, slower to rebuild, a shorter leash.
     (
@@ -114,6 +115,6 @@
         heat: (output: 1, limit: 4),
         hangar: (drone: "bay_drone", capacity: 3, rebuild: 10, leash: 300),
         salvage: (family: "swarm", data: 4),
-        recipe: (materials: {"copper": 2, "nerve_core": 2, "resin": 4, "steel": 4}),
+        recipe: (materials: {"copper": 2, "nerve_core": 2, "resin": 4, "steel": 4}, needs: "hive_cradle"),
     ),
 ]

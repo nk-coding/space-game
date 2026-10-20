@@ -38,6 +38,25 @@
         locked: true,
         within: "workshop",
     ),
+    // The munitions bay and the hive cradle (lead defaults, 20 Oct 2026; GDR-0031's hub upgrades, GDR-0108's list
+    // that waited for parts): the bay fills the launchers' missiles and flares, the cradle grows the Swarm's parts.
+    // The research that unlocks the first such part installs it, so no new node and no new cost.
+    (
+        id: "munitions_bay",
+        name: "Munitions bay",
+        summary: "A workshop upgrade that fabricates missile launchers and flare launchers with their warheads and decoys.",
+        description: "Researching the [[research:rocket_pod]] or [[research:flares]] installs it in the [[facility:workshop]]. Until then the launchers come only from intact salvage.",
+        locked: true,
+        within: "workshop",
+    ),
+    (
+        id: "hive_cradle",
+        name: "Hive cradle",
+        summary: "A workshop upgrade that grows the Swarm's parts from hive resin and nerve cores.",
+        description: "Researching [[research:stingers]] installs it in the [[facility:workshop]]. Until then the Swarm's parts come only from intact salvage.",
+        locked: true,
+        within: "workshop",
+    ),
     // The smelter (GDR-0114, GDR-0031's hub upgrade): refines the ores the mining laser cuts. The workshop pays a
     // material the store is short of from it (`refine`: `take` units of `from` give `give` of `to`; PLACEHOLDER, lead,
     // 19 Oct 2026), for parts and research alike.

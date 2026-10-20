@@ -889,3 +889,48 @@ fn a_careers_steps_change_its_stat_lines() {
     let p = c.parts.get("radiator").unwrap();
     assert_eq!(c.part_stats_upgraded(p, None, &data::Upgrades::NONE), c.part_stats(p, None));
 }
+
+/// A part research unlocks is fabricated once the node is researched (GDR-0108's upgrades): the node, or one it
+/// requires, installs the workshop upgrade its recipe needs. Two wait for another node, as GDR-0108 has it: the
+/// automatons' core and cannon for the forge (it takes a gate shard, GDR-0031), the torch drive for the fusion reactor's.
+#[test]
+fn researched_parts_can_be_fabricated() {
+    let c = content();
+    let installs = |id: &str, f: &str| -> bool {
+        let mut open = vec![id];
+        while let Some(n) = open.pop() {
+            let n = c.research.get(n).unwrap();
+            if n.unlocks.contains(&Unlock::Facility(f.into())) {
+                return true;
+            }
+            open.extend(n.requires.iter().map(String::as_str));
+        }
+        false
+    };
+    let mut gated = Vec::new();
+    for n in c.research.iter() {
+        for u in &n.unlocks {
+            let Unlock::Part(p) = u else { continue };
+            let Some(f) = c.parts.get(p).unwrap().recipe.as_ref().and_then(|r| r.needs.as_deref()) else { continue };
+            if let Some(by) = [("tamed_core", "automaton_forge"), ("automaton_cannon", "automaton_forge"), ("torch_drive", "fusion_reactor")]
+                .iter()
+                .find_map(|&(x, by)| (x == n.id).then_some(by))
+            {
+                assert!(installs(by, f), "{}: {p} needs {f}", n.id);
+                continue;
+            }
+            assert!(installs(&n.id, f), "{}: {p} needs {f}", n.id);
+            gated.push((p.as_str(), f));
+        }
+    }
+    for (p, f) in [
+        ("rocket_pod", "munitions_bay"),
+        ("torpedo_launcher", "munitions_bay"),
+        ("flare_launcher", "munitions_bay"),
+        ("stinger", "hive_cradle"),
+        ("drone_bay", "hive_cradle"),
+    ] {
+        assert!(gated.contains(&(p, f)), "{p} needs {f}");
+    }
+    assert!(c.parts.get("point_defence").unwrap().recipe.as_ref().unwrap().needs.is_none(), "it fires pulses");
+}
