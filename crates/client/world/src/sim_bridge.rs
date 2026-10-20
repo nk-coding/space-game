@@ -375,7 +375,8 @@ fn apply_events(
             SimEvent::Explosion { ship, piece, part, at, radius, damage } => {
                 Act::Blast(*ship, *piece, *part, v2(*at), *radius, *damage)
             }
-            SimEvent::ShotFired { ship, kind, from, to, .. } => Act::Shot(*ship, *kind, v2(*from), v2(*to)),
+            SimEvent::ShotFired { ship, gun, kind, from, to, .. } => Act::Shot(*ship, *gun, *kind, v2(*from), v2(*to)),
+            SimEvent::Blinded { ship, .. } => Act::Blinded(*ship),
             SimEvent::Hit { point, normal, family, damage, .. } => Act::Hit(v2(*point), v2(*normal), *family, *damage),
             SimEvent::Ricochet { point, vel, .. } => Act::Ricochet(v2(*point), v2(*vel)),
             SimEvent::Warhead { by, at, radius, damage, .. } => Act::Warhead(*by, v2(*at), *radius, *damage),
@@ -487,8 +488,12 @@ fn apply_events(
                 }
             }
             Act::DroneGone(at) => fx.burst(at, style.system_color("swarm"), 0.6),
-            Act::Shot(ship, kind, from, to) => {
-                let color = weapon_color(world, ship, &style);
+            Act::Shot(ship, gun, kind, from, to) => {
+                // Disruption fires in the logic colour, the cores it goes for (GDR-0125); every other gun in its
+                // ship's weapon colour.
+                let ion = world.sim.ship(ship).and_then(|s| s.design().parts.get(gun as usize).and_then(|p| p.weapon))
+                    == Some(data::WeaponFamily::Disruption);
+                let color = if ion { style.system_color("logic") } else { weapon_color(world, ship, &style) };
                 fx.muzzle(from, color);
                 if kind == sim::ShotKind::Pulse {
                     fx.pulse(from, to, color);
@@ -497,11 +502,19 @@ fn apply_events(
             Act::Hit(point, normal, family, damage) => {
                 let color = match family {
                     data::WeaponFamily::Kinetic => Color::srgb(1.0, 0.78, 0.5),
+                    data::WeaponFamily::Disruption => style.system_color("logic"),
                     _ => Color::srgb(0.75, 0.97, 1.0),
                 };
                 fx.hit(point, normal, color, damage);
             }
             Act::Ricochet(point, vel) => fx.ricochet(point, vel),
+            // Static blinded a mind (GDR-0125): a violet flash over the vessel (the crackle that lasts is drawn
+            // in `fx`).
+            Act::Blinded(ship) => {
+                if let Some(at) = world.sim.ship(ship).and_then(|s| s.piece(s.control_piece()?)).map(|p| v2(p.com_world())) {
+                    fx.flash(at, style.system_color("logic"), 3.0, 0.4);
+                }
+            }
             Act::Collected(ship, at) => {
                 // Salvage scooped into a hold: a short teal streak from where it was into the ship.
                 let to = world.sim.ship(ship).and_then(|s| s.piece(s.control_piece()?)).map(|p| v2(p.com_world()));
@@ -555,7 +568,10 @@ enum Act {
     Launched(ShipId),
     /// A drone died here (with its hangar, or its core).
     DroneGone(Vec2),
-    Shot(ShipId, sim::ShotKind, Vec2, Vec2),
+    /// A gun (ship, part) fired: its kind, from, to.
+    Shot(ShipId, sim::PartIdx, sim::ShotKind, Vec2, Vec2),
+    /// Static blinded this vessel's mind (GDR-0125).
+    Blinded(ShipId),
     Hit(Vec2, Vec2, data::WeaponFamily, f32),
     Ricochet(Vec2, Vec2),
     /// A vessel collected salvage that was at this point.

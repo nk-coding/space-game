@@ -514,6 +514,47 @@ fn draw_ships_fx(
         }
     }
 
+    // A mind blinded by static (disruption, GDR-0125): violet sparks crackle around each live core of the vessel and
+    // a faint, broken ring of static flickers around its hull, fading out over the blinding's last half second.
+    let ion = style.system_color("logic");
+    for ship in world.sim.ships().iter().filter(|s| s.blinded()) {
+        let Some(piece) = ship.control_piece().and_then(|c| ship.piece(c)) else { continue };
+        let (pos, angle) = piece.render_pose(alpha);
+        let fade = (ship.jam().blind / 0.5).clamp(0.0, 1.0);
+        let flicker = 0.6 + 0.4 * (t * 41.0 + ship.id().0 as f32 * 1.3).sin().abs();
+        for &c in piece.cores() {
+            if !ship.parts()[c as usize].alive {
+                continue;
+            }
+            let [cx, cy] = ship.design().parts[c as usize].centroid;
+            let at = world_of(pos, angle, Vec2::new(cx - piece.origin[0], piece.origin[1] - cy));
+            queue.dot(&regions.soft, at, 2.4 * flicker, ion.with_alpha(0.45 * fade), Z_SPARKS);
+            // Two short zigzag arcs from the core, redrawn every frame at random angles.
+            for _ in 0..2 {
+                let mut from = at;
+                let mut a = fx.rng.range(-std::f32::consts::PI, std::f32::consts::PI);
+                for _ in 0..3 {
+                    a += fx.rng.range(-0.9, 0.9);
+                    let to = from + Vec2::new(a.cos(), a.sin()) * fx.rng.range(0.25, 0.5);
+                    queue.line(&regions.white, from, to, 0.05, core_tint(ion).with_alpha(0.9 * fade), Z_SPARKS + 0.1);
+                    from = to;
+                }
+            }
+        }
+        let r = piece.radius + 0.6;
+        let spin = t * 1.7 + ship.id().0 as f32;
+        for k in 0..12 {
+            if fx.rng.range(0.0, 1.0) < 0.35 {
+                continue;
+            }
+            let a0 = spin + k as f32 * (std::f32::consts::TAU / 12.0);
+            let a1 = a0 + 0.3;
+            let p0 = v2(piece.com_world()) + Vec2::new(a0.cos(), a0.sin()) * r;
+            let p1 = v2(piece.com_world()) + Vec2::new(a1.cos(), a1.sin()) * r;
+            queue.line(&regions.halo, p0, p1, 0.3, ion.with_alpha(0.35 * fade * flicker), Z_SPARKS);
+        }
+    }
+
     // Loose fragments (salvage, GDR-0063): a small diamond in the logic colour, turning slowly in a soft
     // breathing glow, interpolated like the projectiles.
     let frag = style.system_color("logic");

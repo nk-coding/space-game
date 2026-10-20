@@ -460,6 +460,7 @@ mod tests {
         assert_eq!(at(&tree, "mind_expansion_1"), ("logic".into(), 0, 1));
         assert_eq!(at(&tree, "mind_expansion_2"), ("logic".into(), 0, 2));
         assert_eq!(at(&tree, "simulation_vault"), ("logic".into(), 1, 0));
+        assert_eq!(at(&tree, "ion_cannon"), ("logic".into(), 2, 0));
         assert_eq!(at(&tree, "jump_calibration_1"), ("propulsion".into(), 1, 0));
         assert_eq!(at(&tree, "jump_calibration_2"), ("propulsion".into(), 0, 1));
         assert_eq!(at(&tree, "grown_heart"), ("grown".into(), 0, 2));
@@ -504,7 +505,7 @@ mod tests {
         assert_eq!(at(&tree, "thruster_speed_3"), ("propulsion".into(), 0, 2));
         let rows = |f: &str| match f {
             "kinetic" | "swarm" => 1,
-            "energy" | "propulsion" => 3,
+            "energy" | "propulsion" | "logic" => 3,
             _ => 2,
         };
         assert!(tree.lanes.iter().all(|l| l.rows == rows(&l.family)), "{:?}", tree.lanes.iter().map(|l| (&l.family, l.rows)).collect::<Vec<_>>());
@@ -574,7 +575,7 @@ mod tests {
         assert_eq!(state(&content, &c, "mind_expansion_1"), CardState::Short(vec![Shortfall::Material { material: "programmable_matter".into(), have: 1, cost: 3 }]));
         assert_eq!(cost_chips(content.research.get("mind_expansion_1").unwrap()), [Chip { material: false, text: "LOGIC 10".into(), payable: true }, Chip { material: true, text: "3".into(), payable: true }]);
         let ready: Vec<&str> = ready(&content, &c).iter().map(|n| n.id.as_str()).collect();
-        assert_eq!(ready, ["beam_laser", "simulation_vault", "burst_laser"]);
+        assert_eq!(ready, ["beam_laser", "simulation_vault", "ion_cannon", "burst_laser"]);
         let chips_of = |n: &str| chips(&content, &c, content.research.get(n).unwrap());
         assert_eq!(chips_of("composite_plating"), [Chip { material: false, text: "HULL 6 / 8".into(), payable: false }]);
         assert_eq!(chips_of("beam_laser"), [Chip { material: false, text: "ENERGY 10".into(), payable: true }]);
