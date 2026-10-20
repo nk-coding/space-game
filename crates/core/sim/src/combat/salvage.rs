@@ -293,7 +293,7 @@ pub enum Salvaged {
 #[derive(Clone, Debug, Default)]
 pub(crate) struct SalvageState {
     /// Ascending id.
-    loose: Vec<Loose>,
+    pub(crate) loose: Vec<Loose>,
     next_loose: u32,
     /// Salvage pieces within reach of one collector: `(hull distance, ship index, piece index)`.
     near: Vec<(f32, usize, usize)>,
@@ -352,6 +352,13 @@ impl Ship {
             false => (Item::Part { part, material }, spec.cargo_units, value),
             true => (Item::Broken { part, material }, spec.cargo_units, value * 0.5),
         }
+    }
+
+    /// Whether collecting could take something into `free` units through piece `q` (`q` a salvage piece): the
+    /// wreck's own cargo (a ship that is no vessel) or an alive salvageable part of the piece. The behaviors'
+    /// `salvage` and `wreck_in_range` read it.
+    pub(crate) fn has_salvage(&self, q: usize, free: u32) -> bool {
+        (!self.is_vessel() && self.cargo.best(free).is_some()) || self.best_part(q, free).is_some()
     }
 
     /// The best alive salvageable part of piece `q` that fits into `free` units: highest value per unit, ties the

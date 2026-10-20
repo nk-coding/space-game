@@ -133,11 +133,11 @@ fn design_runs_keep_the_limits() {
 fn a_tiny_run_improves_on_an_easy_target() {
     // The skiff starts by running away from one raider: a fight it cannot win. A few generations of behavior
     // evolution find one that fights.
-    // (Seed 4 since the `ram` action joined the vocabulary, 18 Oct 2026, seed 8 since `flare` did, 19 Oct 2026: the
-    // mutations draw from it, and on most seeds a first child already swaps `flee` for a rule that stays and fights.)
+    // (Seed 4 since the `ram` action joined the vocabulary, 18 Oct 2026, seed 8 since `flare` did, 19 Oct 2026, seed 2
+    // since the salvage words did, 20 Oct 2026: the mutations draw from it, and on most seeds a first child already swaps `flee` for a rule that stays and fights.)
     let c = data::base_content();
     let text = r#"(
-        seed: 8,
+        seed: 2,
         evolve: Behavior,
         generations: 5,
         population: 8,

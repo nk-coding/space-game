@@ -50,6 +50,7 @@ use super::compile::{AssistAction, Station};
 use super::eval::{Ctx, Lazy, Pilot, snapshot};
 use super::{Assists, AssistsId, BehaviorLibrary, Scratch, tuning};
 use crate::DT;
+use crate::combat::salvage::Loose;
 use crate::config::FlightTuning;
 use crate::flight::maneuver::Maneuver;
 use crate::flight::{
@@ -362,7 +363,7 @@ fn lock_there(ships: &[Ship], t: &Target) -> bool {
 /// The assist pass, every tick after the behaviors' think: each piloted ship with assists notes which controls its
 /// pilot uses and whether the pilot dropped a lock (auto-lock's pause); on think ticks (or right after a switch) its
 /// rules decide the channels, all from one snapshot; then the stations are kept.
-pub(crate) fn assist_all(ships: &mut [Ship], rocks: &[Rock], lib: &BehaviorLibrary, scratch: &mut Scratch, tick: u64, flight: &FlightTuning) {
+pub(crate) fn assist_all(ships: &mut [Ship], rocks: &[Rock], loose: &[Loose], lib: &BehaviorLibrary, scratch: &mut Scratch, tick: u64, flight: &FlightTuning) {
     let mut any_due = false;
     for k in 0..ships.len() {
         let Some(&input) = piloted(&ships[k]) else {
@@ -398,13 +399,13 @@ pub(crate) fn assist_all(ships: &mut [Ship], rocks: &[Rock], lib: &BehaviorLibra
         any_due |= st.thought.is_none() || tick.is_multiple_of(tuning::THINK_PERIOD);
     }
     if any_due {
-        think_all(ships, rocks, lib, scratch, tick);
+        think_all(ships, rocks, loose, lib, scratch, tick);
     }
     keep_stations(ships, flight);
 }
 
 /// The think part of [`assist_all`]: every due piloted ship's rules, from one snapshot.
-fn think_all(ships: &mut [Ship], rocks: &[Rock], lib: &BehaviorLibrary, scratch: &mut Scratch, tick: u64) {
+fn think_all(ships: &mut [Ship], rocks: &[Rock], loose: &[Loose], lib: &BehaviorLibrary, scratch: &mut Scratch, tick: u64) {
     let n = ships.len();
     if scratch.assist_outs.len() < n {
         scratch.assist_outs.resize_with(n, AssistOut::default);
@@ -456,6 +457,7 @@ fn think_all(ships: &mut [Ship], rocks: &[Rock], lib: &BehaviorLibrary, scratch:
             script_error: None,
             pilot: Some(pilot),
             incoming: incoming.as_slice(),
+            loose,
         };
         think(&mut cx, rocks, st, input, out);
     }

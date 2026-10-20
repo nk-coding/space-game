@@ -110,4 +110,13 @@
         tags: ["defence"],
         role: Action,
     ),
+    // Salvage (GDR-0123); like `mine` it needs no target ship. No tractor: the hull strips what it passes over slowly.
+    (
+        id: "salvage",
+        name: "Salvage nearest wreck",
+        summary: "Fly slowly over the nearest wreck or loose fragment with something your hold can take, so the ship strips it.",
+        description: "Needs no target: it picks the nearest salvage within sensor range that drifts slowly and holds a part, fragment or cargo that fits your free hold, and settles over it; the ship collects as it does whenever it passes slowly over salvage. Guns still fire at will at the target. With a full hold, or nothing that fits in sight, it skips, and the next rule gets its turn. Put it below the rules that fight: `when enemies_near(300m) < 1 -> salvage`. Only the player's ships collect; another side's ship flies there and takes nothing.",
+        tags: ["move", "salvage"],
+        role: Action,
+    ),
 ]

@@ -1,0 +1,19 @@
+// A salvager (GDR-0123): the escort template with salvage between fights. It fights what the leader has locked as
+// the escort does (backing off when badly hurt); with nothing locked it strips the nearest wreck within 250 m while
+// its hold has room ([[behavior_node:salvage]]), and keeps near the leader once there is none or the hold is full.
+// Four rules, so it fits a logic core; a tamed automaton core (two rule slots) runs only the fighting ones.
+// PLACEHOLDER.
+(
+    id: "salvager",
+    name: "Salvager",
+    summary: "Fight whatever your leader has locked; between fights, strip the wrecks near by and stay near the leader when the hold is full.",
+    description: "Fights like the [[behavior:escort]]: only the [[behavior_node:locked|leader's lock]], so it never wakes a sleeping pack on its own. Without a lock it [[behavior_node:salvage|flies slowly over the nearest wreck]] [[behavior_node:wreck_in_range|within range]] while its [[behavior_node:cargo_full|hold has room]], and [[behavior_node:escort|keeps near its leader]] otherwise. Give it cargo bays.",
+    tags: ["escort", "salvage"],
+    target: "locked(core)",
+    rules: [
+        "when hull < 30% and target_on_me -> kite(150%) # badly hurt and under its guns: open the gap",
+        "always -> approach(70%) # nose on the leader's target, inside every gun's reach",
+        "when wreck_in_range(250m) and not cargo_full -> salvage # nothing locked: strip a wreck near by",
+        "always -> escort(30m) # hold full or nothing near: keep near the leader",
+    ],
+)

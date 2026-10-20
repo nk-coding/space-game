@@ -811,3 +811,51 @@ fn stripped_parts_break_by_the_intact_chance() {
     assert_eq!(rolled, haul(SimConfig::default().salvage.intact_chance, 7));
     assert_eq!(Item::Broken { part: "gyro".into(), material: None }.haul(), data::career::HaulItem::Broken { part: "gyro".into(), material: None });
 }
+
+/// A sim with the content's behaviors, a rim skiff (a hold of 4) at the origin and an automaton raider's wreck
+/// at `wreck_at`.
+fn salvage_world(wreck_at: Vec2) -> (Sim, ShipId) {
+    let c = common::content();
+    let mut w = whole(1);
+    w.set_behaviors(sim::BehaviorLibrary::new(&c).unwrap());
+    let me = w.spawn_ship(design(&c, "rim_skiff"), Owner::PLAYER, Body::default());
+    w.spawn_wreck(design(&c, "automaton_raider"), Owner(1), Body::at(wreck_at, 0.0), 0.0, 0);
+    (w, me)
+}
+
+#[test]
+fn wreck_in_range_measures_to_salvage_and_cargo_full_reads_the_hold() {
+    let c = common::content();
+    let (mut w, me) = salvage_world(Vec2::new(0.0, 100.0));
+    let text = "when cargo_full -> hold\nwhen wreck_in_range(50m) -> hold\nwhen wreck_in_range(150m) -> hold\nalways -> hold";
+    let b = w.behaviors_mut().add_text("probe", text).unwrap();
+    // A ship without a hold: always full.
+    let bare = w.spawn_ship(
+        custom(&c, &[("logic_core", 0, 0, 0, false, None), ("fission_reactor", 1, 0, 0, false, None)]),
+        Owner::PLAYER,
+        Body::at(Vec2::new(-200.0, 0.0), 0.0),
+    );
+    w.command(me, sim::ShipCommand::Behavior(Some(b)));
+    w.command(bare, sim::ShipCommand::Behavior(Some(b)));
+    w.step(&TickInputs::default());
+    let s = w.ship(me).unwrap().behavior().unwrap();
+    assert_eq!(s.active_rule(), Some(2), "the wreck is about 100 m off: {:?}", s.rules());
+    assert_eq!(w.ship(bare).unwrap().behavior().unwrap().active_rule(), Some(0), "no hold: full");
+}
+
+#[test]
+fn the_salvager_strips_the_nearest_wreck_until_its_hold_is_full_the_same_every_run() {
+    let go = || {
+        let (mut w, me) = salvage_world(Vec2::new(60.0, 120.0));
+        let b = w.behaviors().id("salvager").unwrap();
+        w.command(me, sim::ShipCommand::Behavior(Some(b)));
+        let got = run(&mut w, 60 * 30);
+        let s = w.ship(me).unwrap();
+        (got.len(), s.cargo().used(), s.cargo_capacity(), s.behavior().unwrap().active_rule(), w.state_hash())
+    };
+    let (a, b) = (go(), go());
+    assert!(a.0 > 0, "flew there and stripped it");
+    assert_eq!(a.1, a.2, "until the hold is full");
+    assert_eq!(a.3, Some(3), "then the salvage rule steps aside for `escort`");
+    assert_eq!(a, b, "deterministic");
+}

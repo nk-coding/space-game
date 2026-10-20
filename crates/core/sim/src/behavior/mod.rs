@@ -58,6 +58,9 @@ pub mod tuning {
     /// `mine` (GDR-0114): a miner stands this share of its shortest mining reach off the aim point on the rock's
     /// circle (the rock's outline lies inside it, so the beam reaches it with room to spare).
     pub const MINE_STANDOFF: f32 = 0.5;
+    /// `salvage` and `wreck_in_range`: salvage drifting faster than this (m/s) is not worth the chase (the voyage
+    /// runner's pilot strips by the same number).
+    pub const SALVAGE_DRIFT: f32 = 6.0;
     /// The current target keeps its place unless another one's cost is lower than `STICKY` × its own.
     pub const STICKY: f32 = 0.8;
     /// `threat` cost = (distance + THREAT_DISTANCE) / (firepower × aiming).
@@ -163,6 +166,8 @@ pub const BUILTIN_NODES: &[NodeSig] = {
         node("target_time", Condition, Some(Seconds), &[]),
         node("speed", Condition, Some(Percent), &[]),
         node("can_stop_straight", Condition, None, &[]),
+        node("wreck_in_range", Condition, None, DIST),
+        node("cargo_full", Condition, None, &[]),
         pilot("lock_held", Condition, None, &[]),
         pilot(
             "idle",
@@ -188,6 +193,7 @@ pub const BUILTIN_NODES: &[NodeSig] = {
         node("escort", Action, None, DIST),
         node("scan", Action, None, &[]),
         node("mine", Action, None, &[]),
+        node("salvage", Action, None, &[]),
         node("flare", Action, None, &[]),
         pilot(
             "auto_lock",

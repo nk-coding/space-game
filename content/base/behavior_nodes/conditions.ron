@@ -144,6 +144,26 @@
         tags: ["self", "flight"],
         role: Condition,
     ),
+    // Salvage (GDR-0123): what the `salvage` action looks for, and the hold.
+    (
+        id: "wreck_in_range",
+        name: "Wreck in range",
+        summary: "Salvage with something left to take is within the given distance: a wreck, a broken-off piece or a loose fragment.",
+        description: "Measures to the nearest such salvage within sensor range that drifts slowly enough to strip, whether or not it fits your hold (ask [[behavior_node:cargo_full]] for that). A stripped hulk with nothing salvageable left does not count. Pair it with the [[behavior_node:salvage]] action: `when wreck_in_range(200m) and not cargo_full -> salvage`.",
+        tags: ["surroundings", "salvage"],
+        role: Condition,
+        params: [
+            (id: "range", name: "Range", summary: "Metres, or a share of your weapon reach.", type: Distance, default: "250m", min: 0, max: 5000),
+        ],
+    ),
+    (
+        id: "cargo_full",
+        name: "Cargo full",
+        summary: "Your hold has no free unit left.",
+        description: "A ship without a working [[part:cargo_bay|cargo bay]] has no hold, so its cargo is always full.",
+        tags: ["self", "salvage"],
+        role: Condition,
+    ),
     // The pilot's own conditions (`pilot: true`): only in a design's PILOT ASSISTS (GDR-0088).
     (
         id: "lock_held",

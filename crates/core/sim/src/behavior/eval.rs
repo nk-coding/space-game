@@ -21,6 +21,7 @@ use crate::flight::{
     resolve_target,
 };
 use crate::hash::{StateHash, StateHasher};
+use crate::combat::salvage::Loose;
 use crate::ids::ShipId;
 use crate::flight::maneuver::Maneuver;
 use crate::ship::mass::to_piece;
@@ -329,10 +330,12 @@ pub(super) fn snapshot(ships: &[Ship], hull: &mut Vec<f32>, centres: &mut Vec<Op
 }
 
 /// The think pass: every ship with a behavior whose turn it is (or every one, with `all`) decides, from one
-/// snapshot of the world and the voyage's rocks (`mine`, GDR-0114); then the decisions are applied.
+/// snapshot of the world, the voyage's rocks (`mine`, GDR-0114) and the loose items (`salvage`, GDR-0123); then the
+/// decisions are applied.
 pub(crate) fn think_all(
     ships: &mut [Ship],
     rocks: &[Rock],
+    loose: &[Loose],
     lib: &BehaviorLibrary,
     scratch: &mut Scratch,
     tick: u64,
@@ -391,6 +394,7 @@ pub(crate) fn think_all(
                 script_error: None,
                 pilot: None,
                 incoming: incoming.as_slice(),
+                loose,
             };
             cx.think(st, out, rocks);
             out.script_error = cx.script_error.take();
@@ -460,6 +464,8 @@ pub(super) struct Ctx<'a> {
     pub pilot: Option<Pilot>,
     /// Live missiles homing on each ship, by index (`missiles_incoming`).
     pub incoming: &'a [u32],
+    /// Loose items (fragments, spilled cargo): salvage for `salvage` and `wreck_in_range` (GDR-0123).
+    pub loose: &'a [Loose],
 }
 
 /// The pilot as the assists' conditions see it.
@@ -642,7 +648,10 @@ pub(crate) fn fly(
     }
     let ts = st.focus.and_then(|f| aim_state(ships, f, st.aim_part));
     let goal = match st.maneuver {
-        m @ Maneuver::Escort { .. } => m.goal(kin, ships, tuning_f),
+        // `escort` flies relative to the leader, `salvage` to a salvage piece (GDR-0123), not to the target.
+        m @ (Maneuver::Escort { .. } | Maneuver::Approach { target: Target::Piece(..), .. }) => {
+            m.goal(kin, ships, tuning_f)
+        }
         m => m.goal_for(kin, ts, tuning_f),
     };
     (goal, ts.map_or(Fire::Hold, Fire::AtWill))
@@ -778,6 +787,7 @@ impl Ctx<'_> {
         out.status.resize(code.rules.len(), RuleStatus::Skipped);
         let mut active: Option<usize> = None;
         out.mine = None;
+        let mut salvage = None;
         for (i, rule) in code.rules.iter().enumerate() {
             if i as u32 >= slots {
                 out.status[i] = RuleStatus::NoSlot;
@@ -821,6 +831,17 @@ impl Ctx<'_> {
                     }
                     None => RuleStatus::NoTarget,
                 },
+                None if rule.action == Action::Salvage => {
+                    let free = me.cargo_capacity().saturating_sub(me.cargo().used());
+                    match self.salvage_near(free) {
+                        Some((_, m)) => {
+                            salvage = Some(m);
+                            active = Some(i);
+                            RuleStatus::Active
+                        }
+                        None => RuleStatus::NoTarget,
+                    }
+                }
                 None if rule.needs_target && focus.is_none() => RuleStatus::NoTarget,
                 None => {
                     active = Some(i);
@@ -831,14 +852,16 @@ impl Ctx<'_> {
         let maneuver = match (active, focus_id, st.rally) {
             // Called with no one in sight: to the rally point (GDR-0111).
             (_, None, Some(at)) => Maneuver::Hold { at },
-            (Some(i), focus, _) => match out.mine {
+            (Some(i), focus, _) => match (out.mine, salvage) {
                 // Mining: close to the stand-off from the aim point on the rock and face it (GDR-0114).
-                Some((_, at)) => Maneuver::Approach {
+                (Some((_, at)), _) => Maneuver::Approach {
                     target: Target::Point(at),
                     range: self.mine_standoff(),
                     aim: AimMode::Target,
                 },
-                None => self.maneuver(code.rules[i].action, focus),
+                // Salvage: over the piece or the loose item (GDR-0123).
+                (None, Some(m)) => m,
+                (None, None) => self.maneuver(code.rules[i].action, focus),
             },
             (None, _, _) => Maneuver::Brake,
         };
@@ -874,6 +897,37 @@ impl Ctx<'_> {
         let (_, k) = best?;
         let (r, away) = (&rocks[k], from - rocks[k].pos);
         Some((k as u32, r.pos + away * (r.radius / away.length().max(1e-3))))
+    }
+
+    /// The salvage a `salvage` rule flies to and `wreck_in_range` measures (GDR-0123): the nearest within sensor
+    /// range (from the ship's centre to the piece's centre of mass or the loose item) that drifts no faster than
+    /// [`tuning::SALVAGE_DRIFT`] and holds something that fits into `free` units (a loose item, a wreck's own
+    /// cargo or an alive salvageable part; ties: loose items first, then ship and piece order). Its distance and
+    /// the maneuver over it: onto the piece (range 0, so the hull passes over it slowly) or to the loose item.
+    fn salvage_near(&self, free: u32) -> Option<(f32, Maneuver)> {
+        if free == 0 {
+            return None;
+        }
+        let from = self.kin().pos;
+        let slow = |v: Vec2| v.length_squared() <= tuning::SALVAGE_DRIFT * tuning::SALVAGE_DRIFT;
+        let mut best: Option<(f32, Maneuver)> = None;
+        let mut consider = |d: f32, m: Maneuver| {
+            if d <= self.sensor && best.is_none_or(|b| d < b.0) {
+                best = Some((d, m));
+            }
+        };
+        for l in self.loose.iter().filter(|l| l.units <= free && slow(l.vel)) {
+            consider((l.pos - from).length(), Maneuver::Hold { at: l.pos });
+        }
+        for s in self.world {
+            for (q, p) in s.pieces().iter().enumerate() {
+                if p.salvage() && slow(p.body.linvel) && s.has_salvage(q, free) {
+                    let target = Target::Piece(s.id(), p.id);
+                    consider((p.com_world() - from).length(), Maneuver::Approach { target, range: 0.0, aim: AimMode::Auto });
+                }
+            }
+        }
+        best
     }
 
     /// How far from the aim point on a rock a miner stands (GDR-0114): [`tuning::MINE_STANDOFF`] of its shortest
@@ -930,7 +984,9 @@ impl Ctx<'_> {
             },
             Action::Flee => Maneuver::Flee { from: target },
             Action::Ram => Maneuver::Ram { target },
-            Action::Hold | Action::Escort(_) | Action::Scan | Action::Flare | Action::Mine => Maneuver::Brake,
+            Action::Hold | Action::Escort(_) | Action::Scan | Action::Flare | Action::Mine | Action::Salvage => {
+                Maneuver::Brake
+            }
         }
     }
 
@@ -1057,6 +1113,11 @@ impl Ctx<'_> {
             }
             Test::Flag(Flag::UnderAttack) => Ok((self.under_attack(), None)),
             Test::Flag(Flag::OffLeash) => Ok((self.off_leash(), None)),
+            Test::Flag(Flag::CargoFull) => Ok((self.me.cargo().used() >= self.me.cargo_capacity(), None)),
+            Test::WreckInRange(d) => match self.salvage_near(u32::MAX) {
+                Some((dist, _)) => Ok((dist <= d.metres(self.reach), Some(dist))),
+                None => Ok((false, None)),
+            },
             Test::Flag(Flag::CanStopStraight) => Ok((can_stop_straight(self.kin()), None)),
             Test::Flag(Flag::LockHeld) => Ok((self.pilot.ok_or(Why::NoValue)?.lock, None)),
             Test::Flag(Flag::TargetOnMe) => {

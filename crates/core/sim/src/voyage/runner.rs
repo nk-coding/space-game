@@ -68,8 +68,8 @@ const SALVAGE_RANGE: f32 = 250.0;
 const GIVE_UP: u64 = 600;
 /// A point of value per cargo unit is worth this many metres of the way to the salvage.
 const WORTH_PER_M: f32 = 50.0;
-/// Salvage drifting faster than this (m/s) is not worth the chase.
-const CATCHABLE: f32 = 6.0;
+/// Salvage drifting faster than this (m/s) is not worth the chase (as for the behaviors' `salvage`).
+const CATCHABLE: f32 = crate::behavior::tuning::SALVAGE_DRIFT;
 /// A wreck site counts as done once it came this close.
 const VISITED: f32 = 60.0;
 /// It closes to this share of its shortest clear gun's reach (so every gun can fire).
@@ -289,7 +289,8 @@ impl VoyageRunner {
                     .ok_or("the behaviors have no `escort` for the escorts")?,
             ),
         };
-        // Mining (GDR-0114): escorts with a mining laser fly `miner`, which mines between fights.
+        // Mining (GDR-0114): escorts with a mining laser fly `miner`, which mines between fights. (Not `salvager`
+        // for escorts with a hold, GDR-0123: it costs goals, as no part says a design is meant to strip.)
         let cuts = |d: &ShipDesign| d.parts.iter().any(|p| p.cut > 0.0);
         let miner = behaviors.id("miner");
         let mut sim = Sim::with_config(seed, SimConfig::default());

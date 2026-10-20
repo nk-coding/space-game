@@ -271,6 +271,7 @@ impl Sim {
         behavior::think_all(
             &mut self.ships,
             rocks,
+            &self.salvage.loose,
             &self.behaviors,
             &mut self.behavior_scratch,
             self.tick,
@@ -749,6 +750,7 @@ impl Sim {
         behavior::think_all(
             &mut self.ships,
             rocks,
+            &self.salvage.loose,
             &self.behaviors,
             &mut self.behavior_scratch,
             self.tick,
@@ -758,6 +760,7 @@ impl Sim {
         behavior::assist_all(
             &mut self.ships,
             rocks,
+            &self.salvage.loose,
             &self.behaviors,
             &mut self.behavior_scratch,
             self.tick,

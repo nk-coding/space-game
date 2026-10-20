@@ -71,6 +71,8 @@ pub enum Flag {
     LockHeld,
     /// A drone beyond its hangar's leash (GDR-0117).
     OffLeash,
+    /// No free unit in the hold (GDR-0123).
+    CargoFull,
 }
 
 /// What the pilot's `idle` condition times (pilot assists only).
@@ -105,6 +107,8 @@ pub enum Sensor {
 pub enum Test {
     Flag(Flag),
     InRange(Dist),
+    /// Salvage with something left to take within this distance (GDR-0123).
+    WreckInRange(Dist),
     Value {
         sensor: Sensor,
         op: CmpOp,
@@ -148,16 +152,18 @@ pub enum Action {
     Scan,
     /// Cut the nearest asteroid rock with ore left with the mining guns (GDR-0114).
     Mine,
+    /// Fly over the nearest salvage with something that fits the hold, slowly, so collecting strips it (GDR-0123).
+    Salvage,
     /// Release flares, then step aside for the next rule (`RuleStatus::Flare`, GDR-0115).
     Flare,
 }
 
 /// Whether the behavior action `id` needs a target to fly: all but `hold`, `escort` (it flies relative to the
-/// leader), `scan`, `flare` and `mine` (it flies to a rock, GDR-0114). Without a target such a rule steps aside and the next rule gets its turn
+/// leader), `scan`, `flare`, `mine` (it flies to a rock, GDR-0114) and `salvage` (to a wreck, GDR-0123). Without a target such a rule steps aside and the next rule gets its turn
 /// (`RuleStatus::NoTarget`), so only an `always` rule whose action needs none and decides ([`action_decides`]) ends
 /// the list; the BEHAVIOR screen marks the rules below that one.
 pub fn action_needs_target(id: &str) -> bool {
-    !matches!(id, "hold" | "escort" | "scan" | "flare" | "mine")
+    !matches!(id, "hold" | "escort" | "scan" | "flare" | "mine" | "salvage")
 }
 
 /// Whether the behavior action `id` decides the maneuver when its rule holds: all but `scan` and `flare`, which start
@@ -375,6 +381,8 @@ fn conditions(rule: &data::behavior::Rule, line: LineRef, vocab: &Vocab, conds: 
                 "target_on_me" => Test::Flag(Flag::TargetOnMe),
                 "under_attack" => Test::Flag(Flag::UnderAttack),
                 "off_leash" => Test::Flag(Flag::OffLeash),
+                "cargo_full" => Test::Flag(Flag::CargoFull),
+                "wreck_in_range" => Test::WreckInRange(dist(args[0])),
                 "can_stop_straight" => Test::Flag(Flag::CanStopStraight),
                 "lock_held" => Test::Flag(Flag::LockHeld),
                 "target_in_range" => Test::InRange(dist(args[0])),
@@ -382,7 +390,7 @@ fn conditions(rule: &data::behavior::Rule, line: LineRef, vocab: &Vocab, conds: 
             }
         };
         let measure = match test {
-            Test::InRange(_) => Some(Quantity::Distance),
+            Test::InRange(_) | Test::WreckInRange(_) => Some(Quantity::Distance),
             Test::Value { .. } => node.value,
             _ => None,
         };
@@ -429,6 +437,7 @@ pub(crate) fn compile(program: &Program, vocab: &Vocab) -> Result<Code, Vec<Line
             "scan" => Action::Scan,
             "flare" => Action::Flare,
             "mine" => Action::Mine,
+            "salvage" => Action::Salvage,
             _ => return Err(fail(line, &r.action, "no implementation in the sim")),
         };
         code.rules.push(Rule {
