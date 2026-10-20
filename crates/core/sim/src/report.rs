@@ -185,9 +185,23 @@ pub struct PowerReport {
     /// What the consumers whose draw comes in bursts ask for at full activity, summed per their words (content
     /// `power.intermittent`, "while scanning"), in part order; `Off` left out. Not part of `demand`: the drydock
     /// shows it beside it.
-    pub intermittent: Vec<(String, f32)>,
+    pub intermittent: Vec<Burst>,
     /// The consumers in allocation order (tier, weight descending, part), with what they get.
     pub consumers: Vec<ConsumerReport>,
+}
+
+/// Draws in bursts under one set of words (a scan charging, a blink charging), beside full use.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Burst {
+    /// When it draws ("while scanning"; content `power.intermittent`).
+    pub words: String,
+    /// What it asks for at full activity.
+    pub draw: f32,
+    /// Does it cut what full use runs while it lasts: full use and the burst together over the supply, and a part
+    /// of it served before or beside a part full use runs (a blink drive's High tier over a lance's Low,
+    /// GDR-0127; a scanner's Normal over the lasers' Low)? Then those parts run lower or go off for the burst;
+    /// otherwise only the burst runs slower.
+    pub cuts: bool,
 }
 
 /// One consumer row at full use.
@@ -580,20 +594,29 @@ pub fn design_report_upgraded(
             true,
             |p| d.parts[p as usize].intermittent.is_none(),
         );
-        let mut bursts: Vec<(PartIdx, f32)> = piece
+        let mut bursts: Vec<(PartIdx, f32, PowerTier)> = piece
             .consumers()
             .iter()
             .filter(|c| d.parts[c.part as usize].intermittent.is_some() && c.tier != PowerTier::Off)
-            .map(|c| (c.part, c.draw))
+            .map(|c| (c.part, c.draw, c.tier))
             .collect();
         bursts.sort_by_key(|b| b.0);
-        let mut intermittent: Vec<(String, f32)> = Vec::new();
-        for (part, draw) in bursts {
+        // The last tier full use asks power of: a burst served before it, or beside it, takes power from it.
+        let last = piece.consumers().iter().zip(&want).filter(|(_, w)| **w > 0.0).map(|(c, _)| c.tier).max();
+        let mut intermittent: Vec<Burst> = Vec::new();
+        for (part, draw, tier) in bursts {
             let words = d.parts[part as usize].intermittent.as_deref().unwrap_or_default();
-            match intermittent.iter_mut().find(|(w, _)| w == words) {
-                Some((_, x)) => *x += draw,
-                None => intermittent.push((words.to_string(), draw)),
+            let first = last.is_some_and(|t| tier <= t);
+            match intermittent.iter_mut().find(|b| b.words == words) {
+                Some(b) => {
+                    b.draw += draw;
+                    b.cuts |= first;
+                }
+                None => intermittent.push(Burst { words: words.to_string(), draw, cuts: first }),
             }
+        }
+        for b in &mut intermittent {
+            b.cuts &= demand + b.draw > supply;
         }
         power = PowerReport {
             supply,

@@ -16,7 +16,8 @@
 //! The grid holds [`MAIN_CELLS`] cells in the mockup's two columns (POWER, PEAK HEAT, THRUST/MASS, YAW,
 //! FIREPOWER, CARGO, CONTROL, DEVICE LOAD), then [`DETAIL_CELLS`] smaller ones under them (TOP SPEED, TURN 90°,
 //! MASS, BUILD POINTS). POWER's note under its bar lists the draws in bursts full use leaves out ("+3 WHILE
-//! SCANNING", content `power.intermittent`).
+//! SCANNING", content `power.intermittent`), with the pool while one lasts when it takes power from the parts full
+//! use runs ("+3 WHILE SCANNING (29 / 28)").
 
 use bevy::prelude::*;
 use data::Content;
@@ -138,9 +139,18 @@ pub fn stat_cells(content: &Content, report: Option<&DesignReport>) -> Vec<StatC
         if short_power { Tone::Coral } else { Tone::Teal },
         Some((share(p.demand, p.supply), if short_power { Tone::Coral } else { Tone::Gold })),
     );
-    // Draws in bursts stand apart from full use, in the label's tone: a scanner short of power only charges slower.
+    // Draws in bursts stand apart from full use, in the label's tone; one that takes power from what full use runs
+    // (`Burst::cuts`) says what the pool holds while it lasts ("+6 WHILE CHARGING (13 / 8)"): those parts run lower
+    // or go off meanwhile.
     if !p.intermittent.is_empty() {
-        let words: Vec<String> = p.intermittent.iter().map(|(w, x)| format!("+{} {}", val("power_use", *x, false), w.to_uppercase())).collect();
+        let words: Vec<String> = p
+            .intermittent
+            .iter()
+            .map(|b| {
+                let burst = format!("+{} {}", val("power_use", b.draw, false), b.words.to_uppercase());
+                if b.cuts { format!("{burst} ({})", pair("power_use", p.demand + b.draw, p.supply)) } else { burst }
+            })
+            .collect();
         power.note = Some(words.join(SEP));
     }
     let peak = r.heat.peak;
@@ -363,7 +373,8 @@ mod tests {
         let power = value(&cells, "POWER");
         assert_eq!(power.tone, Tone::Teal, "{}", power.value);
         assert_eq!(power.value, "26 / 28");
-        assert_eq!(power.note.as_deref(), Some("+3 WHILE SCANNING"));
+        // While a scan charges the lasers get a little less: the note says what the pool holds then.
+        assert_eq!(power.note.as_deref(), Some("+3 WHILE SCANNING (29 / 28)"));
     }
 
     #[test]

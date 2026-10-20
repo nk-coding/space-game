@@ -287,7 +287,9 @@ fn draws_in_bursts_stand_apart_from_full_use() {
     // so the skiff is not short of power, and the report sums it apart under its words.
     let c = content();
     let r = base_report(&c, "rim_skiff");
-    assert_eq!(r.power.intermittent, vec![("while scanning".to_string(), 3.0)]);
+    // The scanner (Normal) is served before the lasers (Low): while it charges, they get a little less.
+    let scan = sim::report::Burst { words: "while scanning".to_string(), draw: 3.0, cuts: true };
+    assert_eq!(r.power.intermittent, vec![scan]);
     assert!(r.power.demand <= r.power.supply, "{} / {}", r.power.demand, r.power.supply);
     assert!(r.power.demand + 3.0 > r.power.supply, "the test needs the skiff close to its supply");
     assert!(!has(&r, |i| matches!(i, Issue::PowerDeficit { .. })), "{:?}", r.issues);

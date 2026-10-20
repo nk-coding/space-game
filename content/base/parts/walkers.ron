@@ -31,7 +31,9 @@
         recipe: (materials: {"copper": 1, "crystal": 1, "rift_silt": 2}, needs: "phase_chamber"),
     ),
     // The blink drive (GDR-0127): a jump of up to 150 m after a short, shimmering charge, then a long cooldown. One
-    // carries a walker skirmisher; a heavier ship needs several, and a blink takes them all.
+    // carries a walker skirmisher; a heavier ship needs several, and a blink takes them all. 1 MW while charging (6
+    // until 20 Oct 2026: High tier, it browned the walkers' Low-tier lances out on every charge, the skirmisher at
+    // 13 / 8; now each walker's charge fits its cores, the skirmisher's and the striker's exactly).
     (
         id: "blink_drive",
         name: "Blink drive",
@@ -47,7 +49,7 @@
         build_points: 4,
         mass: 1.5,
         hp: 1,
-        power: (draw: 6, tier: High, intermittent: "while charging"),
+        power: (draw: 1, tier: High, intermittent: "while charging"),
         heat: (output: 2, limit: 4),
         blink: (range: 150, charge: 0.6, cooldown: 4, mass: 22),
         salvage: (family: "walkers", data: 3, fragment: {"phase_residue": 1}),
