@@ -419,6 +419,8 @@ pub fn sim_values() -> Vec<(&'static str, String)> {
         ("blind_time", num(sim::combat::disruption::tuning::BLIND, 0, "s")),
         ("blind_immune", num(sim::combat::disruption::tuning::IMMUNE, 0, "s")),
         ("max_drones", sim::ship::drones::tuning::MAX_DRONES.to_string()),
+        ("max_prisms", data::design::geometry::MAX_PRISMS.to_string()),
+        ("max_refractions", sim::combat::weapons::tuning::MAX_REFRACTIONS.to_string()),
         ("drone_launch_interval", num(sim::ship::drones::tuning::LAUNCH_TICKS as f32 / sim::TICK_HZ as f32, 1, "s")),
         ("target_sticky", pct(bt::STICKY)),
         ("assist_turn_dv", num(bt::ASSIST_TURN_DV, 1, "m/s")),
