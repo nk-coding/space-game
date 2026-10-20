@@ -449,9 +449,14 @@ pub fn seconds_left(at: u64, tick: u64) -> u64 {
 /// A site event as a banner: its title, the line under it and its tone.
 pub fn site_banner(content: &Content, voyage: &sim::Voyage, event: &SimEvent) -> Option<(String, String, Tone)> {
     let (site, cleared, goal) = match *event {
-        SimEvent::SiteCalled { .. } => {
+        SimEvent::SiteCalled { site } => {
+            // Named after the encounter that calls this group (GDR-0113; a picket post, a scout patrol, a watched
+            // grove, GDR-0128).
+            let group = voyage.sites().get(site as usize).and_then(|s| s.encounter());
+            let caller = content.encounters.iter().find(|e| group.is_some() && e.calls.as_deref() == group);
+            let title = format!("{} CALLED  ·  REINFORCEMENTS INBOUND", caller.map_or("A SCOUT".into(), |e| e.name.to_uppercase()));
             let s = format!("THEY WARP IN IN {} S  ·  WHERE IT SAW YOU", sim::CALL_SECONDS);
-            return Some(("PICKET CALLED  ·  REINFORCEMENTS INBOUND".into(), s, Tone::Coral));
+            return Some((title, s, Tone::Coral));
         }
         SimEvent::SiteWoke { site } => (site, false, false),
         SimEvent::SiteCleared { site, goal } => (site, true, goal),
