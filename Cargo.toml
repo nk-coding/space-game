@@ -2,7 +2,7 @@
 resolver = "3"
 # Every crate under crates/<group>/ is a member (ADR-0038): core/ (data, sim, arena: engine-free), client/ (art, kit,
 # world, game, and lab-worker: the evolution lab's web worker, ADR-0043), tools/ (arena-cli, content-tool; ADR-0040). Experiments and benchmarks live in separate local repos (ADR-0025), e.g.
-# ../space-game-physics-bench.
+# ../space-game-physics-bench (local-only, not published).
 members = ["crates/*/*"]
 
 # The Bevy client's dependencies (ADR-0038: kit, world and game use them with `workspace = true`, so all three build
@@ -56,7 +56,7 @@ arboard = { version = "=3.6.1", default-features = false }
 
 [workspace.package]
 edition = "2024"
-license = "UNLICENSED"
+license = "MIT OR Apache-2.0"
 publish = false
 
 # Bevy recommendation: optimise dependencies even in dev builds, keep our code quick to compile.

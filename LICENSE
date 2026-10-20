@@ -1,0 +1,33 @@
+Licences of this repository (ADR-0047, decided by Niklas on 20 Oct 2026)
+
+Copyright (c) 2026 Niklas
+
+The repository holds code and content under different licences.
+
+CODE: MIT OR Apache-2.0
+  You may use the code under either the MIT License (LICENSE-MIT) or the Apache License, Version 2.0
+  (LICENSE-APACHE), at your option. Code is:
+  - crates/        the Rust crates (the simulation, the client, the tools), including their tests and fixtures
+  - scripts/       the build, check and helper scripts
+  - .github/, .claude/settings.json, Cargo.toml, Cargo.lock and the other build files
+  - wiki/.vitepress/ (except theme/overrides/, see below), wiki/scripts/, wiki/package.json,
+    wiki/package-lock.json
+  Code examples in the docs and the wiki may also be used under these licences.
+
+CONTENT AND ART: Creative Commons Attribution 4.0 International (CC BY 4.0)
+  The notice and the full legal code are in content/LICENSE. Content and art are:
+  - content/       the game's content packs: data, names and text, lore, the SVG icons
+  - art/tokens.json the style tokens (the palette and the look's constants: art direction)
+  - docs/          the documentation and decision records, including the screenshots in docs/results/
+  - README.md, CLAUDE.md
+  - the wiki's prose: its Markdown pages (wiki/index.md, wiki/guide/, wiki/mechanics/, wiki/behavior/),
+    wiki/nav.json and wiki/public/
+  Attribution: "Space Game by Niklas, CC BY 4.0" with a link to the licence (the title is a working title).
+
+THIRD-PARTY MATERIAL keeps its own licence:
+  - crates/client/kit/assets/fonts/   the Barlow font, SIL Open Font License 1.1 (OFL.txt there)
+  - wiki/.vitepress/theme/overrides/  modified copies of VitePress components, MIT
+                                      (LICENSE-vitepress there)
+  - the dependencies and the fonts they embed: THIRD_PARTY_NOTICES.md
+
+How it is made: by Niklas with substantial AI assistance (see README.md, "How this is made").

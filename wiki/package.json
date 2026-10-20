@@ -1,6 +1,7 @@
 {
   "name": "space-game-wiki",
   "private": true,
+  "license": "MIT OR Apache-2.0",
   "type": "module",
   "description": "The Space Game wiki: VitePress with the game's own theme; the content pages come from `content-tool wiki-data` (docs/wiki.md).",
   "scripts": {
