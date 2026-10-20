@@ -1,8 +1,11 @@
 # GDR-0125: Disruption: ion pulses fill a vessel's cores with static, and a full charge blinds its mind for a while
 
-- Status: Accepted (provisional, lead), 20 Oct 2026, for Niklas to review
+- Status: Accepted (Niklas, 20 Oct 2026: shields absorb static, the flown ship keeps its lock); numbers provisional, lead.
+  2026-10-20 (Niklas): every shield emitter absorbs static whole (kinetic breaks the bubbles, then ion blinds), and the
+  flown ship keeps its stick, lock and trigger when blinded; only its assists go blind.
 - Date: 2026-10-20
-- Decided by: lead (disruption agent; Niklas was away, defaults where GDR-0018 leaves things open)
+- Decided by: lead (disruption agent; Niklas was away, defaults where GDR-0018 leaves things open); Niklas confirmed
+  the shield and lock rules (20 Oct 2026, interactive Q&A)
 - Related: [GDR-0018](0018-weapon-families.md) (the families: disruption against logic cores and sensors, blinds
   enemy behaviors), [GDR-0021](0021-shields.md) (shields' per-family shares), [GDR-0013](0013-vessels-and-piloting.md),
   [GDR-0038](0038-logic-cores-control-parts.md), [GDR-0044](0044-control-cost-priority-idle-dormant-newest.md) (cores and
@@ -68,5 +71,5 @@ what blinding means, how it builds up, how shields and armour take it, or how lo
   decide first, pulses miss a turning target, and bubbles take them. The balance check's seven fights are unchanged fight for fight (only the rules fingerprint moved).
 - The state hash takes a ship's `Jam` only while it holds static or runs a blinding, so worlds without disruption keep
   their hashes; the flight and assists determinism scenarios fly an ion ship beside a raider (native = wasm).
-- Open: an EMP burst (area, maybe a short dark spell for engines), enemies that carry disruption, whether the player's
-  own flown ship should lose its lock when blinded, a `blinded` behavior condition, and every number above.
+- Open: an EMP burst (area, maybe a short dark spell for engines), enemies that carry disruption, a `blinded` behavior
+  condition, and every number above.

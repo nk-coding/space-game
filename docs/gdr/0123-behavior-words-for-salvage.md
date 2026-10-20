@@ -1,6 +1,8 @@
 # GDR-0123: Behavior words for salvage: a `salvage` action, `wreck_in_range` and `cargo_full`, and a `salvager` escort template
 
-- Status: Accepted (provisional, lead), 20 Oct 2026, for Niklas to review.
+- Status: Accepted (provisional, lead), 20 Oct 2026; the escort choice confirmed by Niklas, 20 Oct 2026.
+  2026-10-20 (Niklas): the voyage runner's escorts keep `escort`; `salvager` stays the player's choice until a tractor
+  exists.
 - Date: 2026-10-20
 - Decided by: lead session (`docs/plans/first-playable-loop.md` §7 "Behavior words for salvage"; every number a lead
   default)
