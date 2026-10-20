@@ -59,7 +59,7 @@ There is no `end`, no `or` and no nesting. For "this **or** that", write two rul
 ### Actions
 
 `approach(range)`, `orbit(radius, dir)`, `kite(range)`, `face`, `flee`, `ram`, `hold`, `escort(distance)`, `scan`,
-`flare`, `mine`, `salvage`. See
+`flare`, `blink(to)`, `mine`, `salvage`. See
 the vocabulary in the wiki (or `content/base/behavior_nodes/actions.ron`) for what each does.
 
 `ram` (added 18 Oct 2026, GDR-0103, the Grown's charge) flies straight at the target at top speed, nose first, and
@@ -77,6 +77,14 @@ launcher is ready (charged and cooled down), then steps aside like `scan` (the d
 `no flare launcher is ready`). A launcher has a few releases per fight, so give it a condition:
 `when missiles_incoming >= 1 -> flare` at the top of the list. The flown ship's pilot assists have `auto_flare` for the
 same (below).
+
+`blink(behind|away)` (added 20 Oct 2026, GDR-0127, the Phase walkers) starts a blink with the ship's blink drives when
+its conditions hold, a target is picked and enough drives are cool to carry the ship, then steps aside like `flare`
+while the drives charge (the debug view says `started a blink` or `no blink drive is ready`): `behind` jumps towards a
+spot past the target's tail, `away` the drives' full reach straight away from it. It needs a target. Pair it with the
+flag `blink_ready` (a blink could start now), as the walkers do:
+`when blink_ready and target_in_range(70m) -> blink(away)` above `when blink_ready and target_in_range(180m) ->
+blink(behind)`.
 
 `salvage` (added 20 Oct 2026, GDR-0123) flies slowly over the nearest salvage within sensor range that drifts slower
 than 6 m/s and holds something the free hold can take, so the ship strips it as it does whenever it passes slowly

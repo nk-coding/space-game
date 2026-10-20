@@ -14,6 +14,9 @@
   refractive crystal armour and a crystal resonator station as boss; the Phase walkers wary hit-and-run with a blink
   drive and a piercing lance, a giant phase ship as boss; the player can research all of it (crystal annealer, phase
   chamber). Details in GDR-0126 (the Lattice) and GDR-0127 (the Phase walkers).
+  2026-10-20: the Phase walkers in play (lead, [GDR-0127](0127-the-phase-walkers-blink-drives-and-piercing-lances.md)):
+  blink drives, piercing lances, skirmishers, strikers and the phase colossus; phase rifts in the inner band; phase
+  residue and rift silt; their research family (phase lances, the blink drive) and the phase chamber.
 - Date: 2026-10-10
 - Decided by: Niklas (interactive Q&A)
 - Related: [GDR-0024](0024-tech-trees-no-mk-levels.md), [GDR-0026](0026-procedural-galaxy-and-bands.md), [GDR-0031](0031-materials-and-fabrication.md), [GDR-0032](0032-balancing-arena-evolution.md)

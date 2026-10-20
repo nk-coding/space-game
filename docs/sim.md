@@ -82,6 +82,8 @@ the runner, the scenarios); at the root what everything uses.
 | `ship::living` | living parts (GDR-0099, GDR-0102): `Ship::heal`, the hearts' timers (`Ship::regrowth`), the regrowth candidates and `Ship::regrow` (the reverse of `remove_part`), `Sim::living` (the pass, asking the physics for overlaps) |
 | `ship::breakage` | `Ship::apply_damage`, `Ship::remove_part` (the destroy path without the destruction), `Ship::resolve_breakage`, `DamageTarget`, `DamageOutcome` |
 | `combat::disruption` | disruption (GDR-0125): `Jam` (static, blinded, immune), `Sim::disrupt`, `Sim::jam_step`, `Ship::blinded`, `tuning` |
+| `combat::lance` | lances (GDR-0127): `Sim::lance` (a lance's hit through its piece), `tuning` |
+| `flight::blink` | blink drives (GDR-0127): `Blink`, `BlinkAim`, `Ship::can_blink` / `blink_charge` / `blink_cooldown`, `Sim::blinks_step`, `tuning` |
 | `combat::chain` | chain reactions (GDR-0084, GDR-0085): the world's blast queue, the reach scan of other pieces and ships, armour cover (`cover`, `in_reach`, shared with the design's compiled lists), shields (`BLAST_FAMILY`) |
 | `combat::salvage` | `Item`, `Cargo`, `Stack`, `Loose`, `LooseId`, `Salvaged`; the collect pass, fragments, `Sim::spawn_wreck`, `Sim::loose` (see [Salvage](#salvage)) |
 | `voyage` | `VoyagePlan` (`roll`), `SitePlan`, `Spawn`, `Voyage`, `Site`, `SiteState`, `VoyageTuning`, `PLAN_STREAM`; `Sim::start_voyage`, `voyage`, `can_recall`, `fleet_disarmed`, `awake_enemy`, `armed_enemy` and the director's pass (see [Voyages](#voyages)) |
@@ -148,7 +150,8 @@ the origin, spawn hitches: [Bigger clusters](#bigger-clusters)).
    tick, ADR-0037; projectiles spawn, recoil adds to the wrench), then every firing engine's plume burns the
    first part in its path ([Engine plumes](#engine-plumes)); breakage is resolved again. Every
    `SalvageTuning::interval` ticks collecting vessels take salvage, and what they stripped breaks up
-   ([Salvage](#salvage)).
+   ([Salvage](#salvage)). Then blink drives cool, charge and jump ([Blink drives](#blink-drives-gdr-0127)), so the
+   physics step starts from the new poses.
 8. **Physics**: expired ghosts are cleared, this tick's wrenches replace the last ones (force rotated to world,
    at the centre of mass), Rapier steps `DT` (4 substeps); loose fragments drift.
 9. **Impacts**: contacts of the step become `SimEvent::Impact` (closing speed from the velocities before the
@@ -1742,6 +1745,9 @@ Events (in `Sim::events()`, for visuals and sound):
 | `Explosion { ship, piece, part, at, radius, damage }` | a destroyed part exploded (a chain reaction, after its `PartDestroyed`; [Damage and breakage](#damage-and-breakage)) |
 | `Warhead { by, id, at, radius, damage }` | a missile's warhead went off where it struck (its `Hit`s right before, its `ProjectileGone` after; [Missiles](#missiles-and-point-defence-gdr-0115)) |
 | `Blinded { by, ship, seconds }` | static from `by`'s disruption guns blinded `ship`'s mind ([Disruption](#disruption-gdr-0125)) |
+| `Lanced { by, ship, from, to, parts }` | a lance went through `ship` from where it entered to where it left, striking `parts` parts (each its own `Hit` first; [Lances](#lances-gdr-0127)) |
+| `Blinked { ship, piece, from, to }` | a blink jumped `ship`'s controlling piece, its centre of mass from `from` to `to` ([Blink drives](#blink-drives-gdr-0127)) |
+| `BlinkBlocked { ship, at, to }` | a blink found no clear landing spot towards `to` and fizzled at `at` |
 
 ### Missiles and point defence (GDR-0115)
 
@@ -1869,6 +1875,53 @@ Numbers (`content/base/parts/disruption.ron`, `combat::disruption::tuning`, plac
   Runner and two skiffs (relays, glances, gaps).
 
 Numbers (`content/base/parts/lattice.ron`, `materials/lattice.ron`, `factions/lattice.ron`, placeholders): see GDR-0126.
+
+### Lances (GDR-0127)
+
+`combat/lance.rs`, 20 Oct 2026 (the Phase walkers' weapon). A pulse gun's `weapon.lance: (keep, armor)` compiles to
+`PartSpec::lance` / `GunMount::lance` and rides on its `GunHit`. Applied with the other hits once every gun has fired
+(fire stays mutual): the shot strikes the part it hit with what passed the shields, then walks the piece's blueprint
+grid along the shot (`weapons::GridWalk`, the walk of penetrating shells and ram crush) and strikes every alive part
+of that piece it meets, once each, with what is left: after each cell of a machine part the strength keeps `keep`,
+after each hull cell `armor` (a part spanning several cells on the line slows it once per cell). Cells of parts
+destroyed earlier that are still the piece's pass without loss; an empty cell or another piece's part ends the walk
+(it never goes on to another body), and so does a strength below `tuning::SPENT` (2 %) of the shot. Every struck
+part is a `Hit` (the first with the shields' share as `absorbed`), then one `SimEvent::Lanced` (entry, exit, parts).
+Validation: pulse guns only, `keep` and `armor` in (0, 1], no static, cut or point defence with it. Cost: one grid walk
+per lance hit (at most `MAX_WALK` cells). Tests: `tests/walkers.rs`.
+
+### Blink drives (GDR-0127)
+
+`flight/blink.rs`, 20 Oct 2026 (the Phase walkers' drive; a part's `blink: (range, charge, cooldown, mass)`,
+`ShipDesign::blinks`). Per ship `Ship::blink_cool` (each drive's cooldown), `Ship::blink` (`Ready` or
+`Charging { drives, charged, charge, aim }`, the drives a bit each) and the tick's ask.
+
+- **Asking**: `ShipCommand::Blink(dir)` (the BLINK key: a world direction) or a behavior's `blink(behind|away)`
+  (`BlinkAim::Behind(target)`, `Away(target)`); `Ship::ask_blink` keeps the ask while `Ship::can_blink`.
+- **Drives**: those on the active controlling piece that are alive, not overheated, not idle and cool, in part order,
+  until their `mass` covers the piece's mass (`Ship::blink_drives`); too few: no blink (`blink_ready` false). The
+  design report warns `Issue::BlinkTooHeavy` when the main piece's drives together carry less than it weighs.
+- **Charge**: `Sim::blinks_step`, once per tick after the weapons and salvage: cooldowns tick down; a charging blink
+  adds the lowest work of its drives × DT (their power rows draw only now: `ConsumerKind::Blink`) and jumps at the
+  longest `charge` of them; a drive dead or off the controlling piece, or a vessel that stops running, breaks the charge
+  off (no cooldown); an asked blink starts charging.
+- **Jump**: `Dir` the shortest `range` of the drives along the direction (the nose if zero); `Behind` to a spot
+  `tuning::BEHIND` (12 m) past the target's tail beyond its bounding radius, at most the range; `Away` the full range
+  away from the target; a target gone breaks the charge off. A landing spot is clear when no body of another ship and
+  no rock meets a circle of the piece's bounding radius + `CLEARANCE` (2 m) round the new frame origin
+  (`Physics::circle_clear`, Rapier's shape query) and no spot another blink took this tick is that close; the full jump,
+  then `TRIES` 3/4, 1/2, 1/4 of it. The frame moves (`Sim::teleport`: velocity, heading and spin kept; `prev_pos` too,
+  so nothing streaks), every drive taken cools its `cooldown` (`SimEvent::Blinked`); none clear: `SimEvent::BlinkBlocked`
+  and `FIZZLE` (half) the cooldown. The path is not checked.
+- **Splits**: a vessel split off keeps the drives' cooldowns (the parts are the same) and starts with no charge.
+- **Hash**: `blink_cool` for ships with drives, the blink only while it charges; worlds without drives keep their
+  hashes. Deterministic: ship order, no randomness.
+- **Behaviors**: the action `blink` steps aside like `flare` (`RuleStatus::Blink { started }`), needs a target; the
+  condition `blink_ready` is `Ship::can_blink`.
+
+Numbers (`content/base/parts/walkers.ron`, `flight::blink::tuning`, placeholders): see GDR-0127. Cost: one shape query
+per landing spot tried, a few comparisons per ship with drives a tick. Determinism: `scripts/determinism-check.sh
+--fight walker_strike` (blinks, fizzles and lances; native = wasm).
 
 ### Aiming and leading
 

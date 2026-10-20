@@ -781,6 +781,20 @@ Next session:
   `--pack dir`.
 - Open: standing with the Lattice, a resonator that rebuilds its prisms, refraction off shields.
 
+### 20 Oct 2026: the Phase walkers
+
+- ([GDR-0127](gdr/0127-the-phase-walkers-blink-drives-and-piercing-lances.md), Niklas's design, lead numbers;
+  `results/walkers-balance-2026-10-20.md`) The blink drive (a part's `blink`: drives on the controlling piece charge
+  together, carry so many tonnes each, jump the piece up to their reach keeping speed and heading, land only where it
+  is clear; `ShipCommand::Blink`, the BLINK key, the behavior words `blink(behind|away)` and `blink_ready`) and the
+  lance (a pulse gun's `weapon.lance`: every part on its line through the struck piece, weaker after each cell).
+  The walkers' skirmisher, striker and the phase colossus (four sections on cores and drives of their own), their
+  wary hit-and-run behaviors, the `phase_rift` cluster type in the inner band's list, the colossus trail (a trail's
+  `ends_in`), their research family with the phase chamber, the client's shimmer, blink flashes and lance lines, the
+  drydock's TOO HEAVY TO BLINK. Keeper-capable fleets clear a walker pack 60 %, a strike 50–53 %, the colossus
+  30–35 %. The arena fight `walker_strike` is in the determinism check.
+- Open: a blink that turns onto its target, a BLINK touch button and assist, an armour of their own.
+
 ## Phase 4: measurement
 
 Status 12 Oct 2026 (new VM): `results/spike-summary.md` written. Determinism native vs wasm IDENTICAL on the new VM
