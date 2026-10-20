@@ -47,7 +47,7 @@ There is no `end`, no `or` and no nesting. For "this **or** that", write two rul
   `enemies_near(150m) >= 3`, `missiles_incoming >= 2` (enemy missiles homing on the ship, GDR-0115), `cycle(9s) >= 5s`.
 - **Salvage** (added 20 Oct 2026, GDR-0123): `wreck_in_range(250m)` holds while salvage with anything left to take (a
   wreck, a broken-off piece, a loose fragment, drifting slower than 6 m/s) lies within the distance, whatever the
-  hold; `cargo_full` while the hold has no free unit (a ship without a hold is always full). Added 21 Oct 2026
+  hold; `cargo_full` while the hold has no free unit (a ship without a hold is always full). Added 20 Oct 2026
   (GDR-0129): the value `cargo` (the hold's used share, `cargo < 80%`; a ship without a hold reads 100%) and the flag
   `leader_near(300m)` (the leader within the distance, centre to centre; **true without a leader**, so `not
   leader_near` never holds for a flagship), so a salvager stops stripping before it falls behind:
@@ -55,7 +55,7 @@ There is no `end`, no `or` and no nesting. For "this **or** that", write two rul
 - **Blinded** (disruption, GDR-0125): while static from an enemy's ion guns blinds a ship (3 s), its target line picks
   nothing, `enemies_near` reads 0, `under_attack` is false, `missiles_incoming` 0, and conditions about the target fail
   with no target; the first rule that needs no target decides (often `always -> hold` or an `escort`). The flag
-  `blinded` (added 21 Oct 2026, GDR-0129) holds meanwhile, to fly something on purpose: `when blinded -> escort(30m)`.
+  `blinded` (added 20 Oct 2026, GDR-0129) holds meanwhile, to fly something on purpose: `when blinded -> escort(30m)`.
 - `not` in front turns a condition around: `not target_in_range(100%)`.
 - A condition about the target (`target_in_range`, `target_hull`, `target_on_me`, `cycle`, `target_time`, ...) is
   **false while there is no target**, with or without `not`. An action that needs a target does not run without

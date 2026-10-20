@@ -1,7 +1,7 @@
 // A salvager (GDR-0123): the escort template with salvage between fights. It fights what the leader has locked as
 // the escort does (backing off when badly hurt); with nothing locked it strips the nearest wreck within 250 m while
 // its hold has room ([[behavior_node:salvage]]), and keeps near the leader once there is none or the hold is full.
-// 21 Oct 2026 (GDR-0129): it strips only while its leader is within 80 m and no enemy within 300 m, so it keeps up with
+// 20 Oct 2026 (GDR-0129): it strips only while its leader is within 80 m and no enemy within 300 m, so it keeps up with
 // the fleet: over 320 seeds of the voyage runner (rim skiff with two rim skiff escorts) `yard_approach` cleared 229
 // against 216 without the two checks (232 with plain escorts), `halvex_drift` 137 against 131 (162); it hauls a little
 // less (median 8 against 12 items; 5 with plain escorts).
