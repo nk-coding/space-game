@@ -199,7 +199,7 @@ mod tests {
         // defence (GDR-0115); the logic research the ion cannon (GDR-0125); the Swarm's research the stinger and the
         // drone bay (GDR-0117; the brood hangar stays theirs); the Lattice's the prism (GDR-0126; the focus emitter
         // stays theirs); the Phase walkers' research the lance (GDR-0127).
-        let locked = ["beam_laser", "reverse_engineered_cannon", "ram_prow", "thorn_gun", "rocket_pod", "torpedo_launcher", "point_defence", "ion_cannon", "prism", "stinger", "drone_bay", "phase_lance", "burst_laser", "long_cannon", "ammo_feeder"];
+        let locked = ["beam_laser", "reverse_engineered_cannon", "ram_prow", "thorn_gun", "rocket_pod", "torpedo_launcher", "point_defence", "ion_cannon", "prism", "stinger", "drone_bay", "phase_lance", "burst_laser", "long_cannon", "ammo_feeder", "railgun"];
         assert_eq!(weapons.parts, [in_order(&["mining_laser", "pulse_laser"]), in_order(&locked)].concat());
         assert_eq!(weapons.locked, locked.len());
         let all_sections: Vec<String> = palette_sections(&content, &new_game).into_iter().map(|s| s.category).collect();
@@ -207,7 +207,7 @@ mod tests {
         // Research moves a part up among the unlocked ones.
         let cannon = career(&["automaton_cannon"]);
         let weapons = section(&content, &cannon.unlocks(&content), "weapons").unwrap();
-        let locked = ["beam_laser", "ram_prow", "thorn_gun", "rocket_pod", "torpedo_launcher", "point_defence", "ion_cannon", "prism", "stinger", "drone_bay", "phase_lance", "burst_laser", "long_cannon", "ammo_feeder"];
+        let locked = ["beam_laser", "ram_prow", "thorn_gun", "rocket_pod", "torpedo_launcher", "point_defence", "ion_cannon", "prism", "stinger", "drone_bay", "phase_lance", "burst_laser", "long_cannon", "ammo_feeder", "railgun"];
         assert_eq!(weapons.parts, [in_order(&["mining_laser", "pulse_laser", "reverse_engineered_cannon"]), in_order(&locked)].concat());
         assert_eq!(weapons.locked, locked.len());
         assert!(cannon.fresh_parts(&content).contains("reverse_engineered_cannon"));

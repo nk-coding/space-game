@@ -471,6 +471,7 @@ mod tests {
         assert_eq!(at(&tree, "capital_drydock"), ("hull".into(), 1, 2)); // under precursor alloy (GDR-0130)
         assert_eq!(at(&tree, "automaton_forge"), ("logic".into(), 1, 1));
         assert_eq!(at(&tree, "long_cannon"), ("kinetic".into(), 0, 1));
+        assert_eq!(at(&tree, "railgun"), ("kinetic".into(), 0, 2));
         assert_eq!(at(&tree, "burst_laser"), ("energy".into(), 1, 0));
         // The core's two nodes (GDR-0130), beside the nodes they follow.
         assert_eq!(at(&tree, "precursor_alloy"), ("hull".into(), 0, 2));
@@ -482,6 +483,7 @@ mod tests {
                 link("regrowing_tissue", "living_weapons"),
                 link("living_weapons", "grown_heart"),
                 link("living_weapons", "spore_lining"),
+                link("long_cannon", "railgun"),
                 link("crystal_plating", "prism_relay"),
                 link("prism_relay", "crystal_ward"),
                 link("rocket_pod", "torpedo"),

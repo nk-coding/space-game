@@ -701,7 +701,8 @@ fn base_locks_follow_the_early_game_kit() {
             "reverse_engineered_cannon",
             "burst_laser",
             "long_cannon",
-            "ammo_feeder"
+            "ammo_feeder",
+            "railgun" // the kinetic research's heavy gun (GDR-0129)
         ]
     );
     let locked_materials: Vec<&str> = c
@@ -734,6 +735,7 @@ fn base_research_nodes() {
             "living_weapons",
             "grown_heart",
             "spore_lining",
+            "railgun", // the kinetic family's own (GDR-0129)
             "crystal_plating", // the Lattice family (GDR-0126)
             "prism_relay",
             "crystal_ward",
