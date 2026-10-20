@@ -1,0 +1,10 @@
+// The mid-size sample ship against the Warden, the rim's gate guardian (shields, cannons, chain reactions), 100 m
+// apart, both under their own behaviors: one of the balance check's fights (`scripts/arena-check.sh`,
+// `docs/arena.md` "The balance check").
+(
+    seed: 1,
+    sides: [
+        (entries: [(design: Ship("sample_mid"))]),
+        (entries: [(design: Ship("automaton_warden"))]),
+    ],
+)

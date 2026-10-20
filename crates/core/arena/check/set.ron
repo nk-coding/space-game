@@ -1,0 +1,21 @@
+// The balance check's fight set (GDR-0032, `docs/arena.md` "The balance check"; defaults GDR-0122): every fight runs
+// its spec's seed and the `seeds` − 1 after it, and is compared with `baseline.ron` beside this file. Seeds per fight
+// are chosen so that a reshuffle alone (any data change re-rolls the fights) stays about 3 standard deviations inside
+// the tolerance (measured 20 Oct 2026 over 1000 seeds per fight in blocks). After an intended change:
+// `scripts/arena-check.sh --update`. Placeholder numbers.
+(
+    tolerance: (
+        wins: 0.15,  // each side's win rate, absolute (15 points)
+        score: 0.12, // side 0's mean arena score, absolute
+        time: 0.15,  // the mean fight length, a share of the baseline's
+    ),
+    fights: [
+        (fight: "../fights/runner_vs_raiders.ron", seeds: 300),
+        (fight: "../fights/skiff_mirror.ron", seeds: 100),
+        (fight: "../fights/skiff_vs_lancer.ron", seeds: 400),
+        (fight: "../fights/mid_vs_warden.ron", seeds: 200),
+        (fight: "../fights/runner_vs_rammers.ron", seeds: 300),
+        (fight: "../fights/runner_gauntlet.ron", seeds: 300),
+        (fight: "../fights/hive_flood.ron", seeds: 96),
+    ],
+)

@@ -1,0 +1,9 @@
+// The Halvex Runner against two Grown rammers (GDR-0103), 100 m apart: rams and the Grown's regrowth against guns;
+// one of the balance check's fights (`scripts/arena-check.sh`, `docs/arena.md` "The balance check").
+(
+    seed: 1,
+    sides: [
+        (entries: [(design: Ship("halvex_runner"))]),
+        (entries: [(design: Ship("grown_rammer"), count: 2)]),
+    ],
+)

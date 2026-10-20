@@ -11,6 +11,7 @@
 //! arena rescore <run file> --save FILE [--until GEN] [--threads N]
 //! arena replay <run file> <generation> <child> <job>
 //! arena lineage <run file> [<genome>]
+//! arena check [<set.ron>] [--baseline FILE] [--update] [--threads N]
 //! ```
 //!
 //! `fight` runs a fight spec once per seed (the spec's seed and the N − 1 after it) and prints a row per seed, a
@@ -31,7 +32,9 @@
 //! has an enemy population evolve against the run's (its starts `--enemy SHIP`, default the first enemy faction's
 //! ships but its bosses): `evolve` then prints its numbers beside yours, its best, the PAST CHAMPIONS line, and
 //! `--out` writes its best as content ships `enemy_NN.ron` (EXPORT TO CONTENT). `replay` prints the fight
-//! code of any fight of a saved run, `lineage` a genome's line from its start. The results do not depend on the thread count, nor on where a run was
+//! code of any fight of a saved run, `lineage` a genome's line from its start. `check` is the balance check
+//! (GDR-0032, `docs/arena.md` "The balance check"): the set's fights against the stored baseline, a row per fight,
+//! failing when one leaves its tolerance; `--update` writes the baseline anew. The results do not depend on the thread count, nor on where a run was
 //! interrupted. The fights run on `available_parallelism` threads (`--threads` to change); only the wall clock line
 //! depends on the machine.
 
@@ -55,6 +58,7 @@ const USAGE: &str = "usage:
   arena rescore <run file> --save FILE [--until GEN] [--threads N]
   arena replay <run file> <generation> <child> <job>
   arena lineage <run file> [<genome>]
+  arena check [<set.ron>] [--baseline FILE] [--update] [--threads N]
 designs: a content ship id, or a blueprint file (*.ron; a behavior file of the same name with .txt beside it is its
 behavior, as --out writes them)
 evolve's trials and goals (they replace the run file's): --trial PRESET[:WEIGHT[:SEEDS]] (repeatable; a lab.ron
@@ -103,6 +107,9 @@ struct Opts {
     enemy: Vec<String>,
     /// `validate`: the genomes (default: the best `--best`) and the new seeds.
     genomes: Vec<u32>,
+    /// `check`: the baseline file (default: `baseline.ron` beside the set) and whether to write it anew.
+    baseline: Option<String>,
+    update: bool,
 }
 
 /// The value of option `a`, as a number.
@@ -139,11 +146,17 @@ fn parse(args: &[String]) -> Result<Opts, String> {
         flown_by: None,
         enemy: Vec::new(),
         genomes: Vec::new(),
+        baseline: None,
+        update: false,
     };
     let mut it = args.iter();
     while let Some(a) = it.next() {
         if !a.starts_with("--") {
             o.args.push(a.clone());
+            continue;
+        }
+        if a == "--update" {
+            o.update = true;
             continue;
         }
         let v = it.next().ok_or_else(|| format!("{a} needs a value"))?;
@@ -173,6 +186,7 @@ fn parse(args: &[String]) -> Result<Opts, String> {
             "--flown-by" => o.flown_by = Some(v.clone()),
             "--enemy" => o.enemy.push(v.clone()),
             "--genome" => o.genomes.push(num(a, v)?),
+            "--baseline" => o.baseline = Some(v.clone()),
             _ => return Err(format!("unknown option {a}")),
         }
     }
@@ -193,6 +207,11 @@ fn main() -> ExitCode {
         Some((cmd, rest)) if cmd == "trials" => parse(rest).and_then(|_| trials()),
         Some((cmd, rest)) if cmd == "validate" => parse(rest).and_then(|o| validate(&o)),
         Some((cmd, rest)) if cmd == "rescore" => parse(rest).and_then(|o| rescore(&o)),
+        Some((cmd, rest)) if cmd == "check" => match parse(rest).and_then(|o| check(&o)) {
+            Ok(true) => Ok(()),
+            Ok(false) => return ExitCode::from(1),
+            Err(e) => Err(e),
+        },
         _ => Err(USAGE.into()),
     };
     match result {
@@ -1072,4 +1091,92 @@ fn lineage(o: &Opts) -> Result<(), String> {
         );
     }
     Ok(())
+}
+
+/// The balance check's set when none is given (run from the repository's root, as `scripts/arena-check.sh` does).
+const CHECK_SET: &str = "crates/core/arena/check/set.ron";
+
+/// `arena check`: runs the set's fights, prints a row per fight against the baseline; `Ok(false)` when one is out of
+/// its tolerance (or has no baseline row), unless `--update` writes the baseline anew.
+fn check(o: &Opts) -> Result<bool, String> {
+    use arena::check::{Baseline, CheckRow, CheckSet};
+    let set_path = match o.args.as_slice() {
+        [] => CHECK_SET,
+        [p] => p.as_str(),
+        _ => return Err(USAGE.into()),
+    };
+    let dir = std::path::Path::new(set_path).parent().unwrap_or(std::path::Path::new("."));
+    let text = std::fs::read_to_string(set_path).map_err(|e| format!("{set_path}: {e}"))?;
+    let set = CheckSet::from_ron(&text).map_err(|e| format!("{set_path}: {e}"))?;
+    let base_path = o
+        .baseline
+        .clone()
+        .unwrap_or_else(|| dir.join("baseline.ron").to_string_lossy().into_owned());
+    let base = match std::fs::read_to_string(&base_path) {
+        Ok(text) => Baseline::from_ron(&text).map_err(|e| format!("{base_path}: {e}"))?,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound && o.update => Baseline::default(),
+        Err(e) => return Err(format!("{base_path}: {e} (write one with --update)")),
+    };
+    // Every fight's specs, one per seed, in set order.
+    let mut names = Vec::new();
+    let mut specs = Vec::new();
+    for f in &set.fights {
+        let path = dir.join(&f.fight);
+        let text = std::fs::read_to_string(&path).map_err(|e| format!("{}: {e}", path.display()))?;
+        let spec = FightSpec::from_ron(&text).map_err(|e| format!("{}: {e}", path.display()))?;
+        let name = path.file_stem().map_or_else(|| f.fight.clone(), |s| s.to_string_lossy().into_owned());
+        names.push(name);
+        specs.extend((0..f.seeds.max(1)).map(|k| FightSpec { seed: spec.seed.wrapping_add(k), ..spec.clone() }));
+    }
+    let content = data::base_content();
+    let results = run_all(&content, &specs, o.threads)?;
+    let rules = format!("{:016x}", arena::rules_fingerprint(&content));
+    println!("# {set_path} against {base_path} (rules {rules}; baseline's {})", base.rules);
+    println!("| fight | seeds | won 0 / 1 / undecided | score 0 | time | fights | check |");
+    println!("|---|---|---|---|---|---|---|");
+    let mut rows = Vec::new();
+    let mut out_count = 0;
+    let mut at = 0;
+    for (f, name) in set.fights.iter().zip(&names) {
+        let n = f.seeds.max(1) as usize;
+        let row = CheckRow::of(name, &results[at..at + n]);
+        at += n;
+        let b = base.row(name);
+        let out = row.out_of(b, f.tolerance.as_ref().unwrap_or(&set.tolerance));
+        let was = |now: String, then: Option<String>| match then {
+            Some(t) if t != now => format!("{now} (was {t})"),
+            _ => now,
+        };
+        let undecided = |r: &CheckRow| r.seeds as u32 - r.won[0] - r.won[1];
+        println!(
+            "| {name} | {} | {} | {} | {} | {} | {} |",
+            row.seeds,
+            was(
+                format!("{} / {} / {}", row.won[0], row.won[1], undecided(&row)),
+                b.map(|b| format!("{} / {} / {}", b.won[0], b.won[1], undecided(b)))
+            ),
+            was(format!("{:.3}", row.score), b.map(|b| format!("{:.3}", b.score))),
+            was(format!("{:.1} s", row.time), b.map(|b| format!("{:.1} s", b.time))),
+            if b.is_some_and(|b| b.hashes == row.hashes) { "same" } else { "changed" },
+            if out.is_empty() { "ok".to_string() } else { format!("**OUT**: {}", out.join(", ")) },
+        );
+        out_count += usize::from(!out.is_empty());
+        rows.push(row);
+    }
+    if o.update {
+        let new = Baseline { rules, fights: rows };
+        std::fs::write(&base_path, new.to_ron()).map_err(|e| format!("{base_path}: {e}"))?;
+        println!("# baseline written: {base_path}");
+        return Ok(true);
+    }
+    if out_count == 0 {
+        println!("# all {} fights within tolerance", set.fights.len());
+        Ok(true)
+    } else {
+        println!(
+            "# {out_count} of {} fights out of tolerance; if the change is intended: scripts/arena-check.sh --update",
+            set.fights.len()
+        );
+        Ok(false)
+    }
 }

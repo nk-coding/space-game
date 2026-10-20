@@ -17,6 +17,8 @@
 //! itself builds it with [`FightSetup::build`] and asks its [`Referee`] after every tick. A voyage job is re-watched
 //! the same way from a [`VoyageCode`] ([`VoyageSetup::build`]); [`Code`] reads either.
 //!
+//! [`check`] is the balance check: a fixed fight set against a stored baseline with tolerances.
+//!
 //! [`worker`] is the message form of jobs and results for the lab's web workers (ADR-0043).
 //!
 //! No Bevy, no I/O, no threads, no wall clock; builds for wasm32. The same spec gives the same result and hash
@@ -37,6 +39,7 @@
 
 #![forbid(unsafe_code)]
 
+pub mod check;
 mod code;
 mod error;
 pub mod evolve;
