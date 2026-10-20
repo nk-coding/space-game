@@ -81,9 +81,11 @@ drifts at that speed, so cargo dropped at full speed is easy to catch.
 
 Your escorts collect the same way when their behavior takes them there: the [[behavior_node:salvage]] action flies a
 ship slowly over the nearest wreck or loose fragment its hold can take, [[behavior_node:wreck_in_range]] tells whether
-there is one near, and [[behavior_node:cargo_full]] whether the hold has room. The [[behavior:salvager]] behavior
-strips wrecks between fights this way and keeps near its leader once its hold is full. An escort busy with a wreck
-falls behind, so it may reach the next fight late.
+there is one near, [[behavior_node:cargo_full]] whether the hold has room and [[behavior_node:cargo]] how full it
+is, and [[behavior_node:leader_near]] whether its leader is still close. The [[behavior:salvager]] behavior strips
+wrecks between fights this way, only while its leader is near and no enemy is, and keeps near its leader otherwise.
+An escort busy with a wreck still helps a little less in the next fight than one that only escorts, so salvaging
+escorts bring home more salvage and clear a voyage's goal a little less often.
 
 ## Cargo holds
 

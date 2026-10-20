@@ -121,7 +121,8 @@ A vessel holds [[sim:static_per_core]] static for each logic or automaton core o
 longer to fill; it sheds [[sim:static_bleed]]. When it is full, the vessel's mind is **blinded** for
 [[sim:blind_time]]: its sensors see nothing, its behavior drops its target and holds its fire, and its conditions
 see no enemies (`enemies_near` is 0, `under_attack` false, `missiles_incoming` 0; rules that need a target fail).
-It flies on by the rules that need none, so a blinded raider brakes or drifts. Then it shakes the static off and
+It flies on by the rules that need none, so a blinded raider brakes or drifts; a rule with
+[[behavior_node:blinded]] can pick what it does meanwhile, such as keeping near its leader. Then it shakes the static off and
 takes none for [[sim:blind_immune]], so it cannot be held blind for good. The ship you fly yourself keeps its stick,
 lock and trigger while blinded; only its assists lose sight.
 
