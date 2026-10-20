@@ -12,6 +12,7 @@
 //! arena replay <run file> <generation> <child> <job>
 //! arena lineage <run file> [<genome>]
 //! arena check [<set.ron>] [--baseline FILE] [--update] [--threads N]
+//! arena report [<design>...] [--pool FILE] [--run FILE [--best N]] [--seeds N] [--seed S] [--distance M] [--time S] [--markdown FILE] [--ron FILE] [--threads N]
 //! ```
 //!
 //! `fight` runs a fight spec once per seed (the spec's seed and the N − 1 after it) and prints a row per seed, a
@@ -34,7 +35,10 @@
 //! `--out` writes its best as content ships `enemy_NN.ron` (EXPORT TO CONTENT). `replay` prints the fight
 //! code of any fight of a saved run, `lineage` a genome's line from its start. `check` is the balance check
 //! (GDR-0032, `docs/arena.md` "The balance check"): the set's fights against the stored baseline, a row per fight,
-//! failing when one leaves its tolerance; `--update` writes the baseline anew. The results do not depend on the thread count, nor on where a run was
+//! failing when one leaves its tolerance; `--update` writes the baseline anew. `report` rates a pool of designs (the
+//! designs given, the top `--best` elites of a run file's archive under their evolved behaviors, or the pool file,
+//! default `crates/core/arena/report/pool.ron`) by a round robin and prints the ratings and the part report (pick rate,
+//! win rate when used, flags; GDR-0124, `arena::report`). The results do not depend on the thread count, nor on where a run was
 //! interrupted. The fights run on `available_parallelism` threads (`--threads` to change); only the wall clock line
 //! depends on the machine.
 
@@ -59,6 +63,7 @@ const USAGE: &str = "usage:
   arena replay <run file> <generation> <child> <job>
   arena lineage <run file> [<genome>]
   arena check [<set.ron>] [--baseline FILE] [--update] [--threads N]
+  arena report [<design>...] [--pool FILE] [--run FILE [--best N]] [--seeds N] [--seed S] [--distance M] [--time S] [--markdown FILE] [--ron FILE] [--threads N]
 designs: a content ship id, or a blueprint file (*.ron; a behavior file of the same name with .txt beside it is its
 behavior, as --out writes them)
 evolve's trials and goals (they replace the run file's): --trial PRESET[:WEIGHT[:SEEDS]] (repeatable; a lab.ron
@@ -110,6 +115,11 @@ struct Opts {
     /// `check`: the baseline file (default: `baseline.ron` beside the set) and whether to write it anew.
     baseline: Option<String>,
     update: bool,
+    /// `report`: the pool file, a run file whose elites join, and the files to write.
+    pool: Option<String>,
+    run: Option<String>,
+    markdown: Option<String>,
+    ron: Option<String>,
 }
 
 /// The value of option `a`, as a number.
@@ -148,6 +158,10 @@ fn parse(args: &[String]) -> Result<Opts, String> {
         genomes: Vec::new(),
         baseline: None,
         update: false,
+        pool: None,
+        run: None,
+        markdown: None,
+        ron: None,
     };
     let mut it = args.iter();
     while let Some(a) = it.next() {
@@ -187,6 +201,10 @@ fn parse(args: &[String]) -> Result<Opts, String> {
             "--enemy" => o.enemy.push(v.clone()),
             "--genome" => o.genomes.push(num(a, v)?),
             "--baseline" => o.baseline = Some(v.clone()),
+            "--pool" => o.pool = Some(v.clone()),
+            "--run" => o.run = Some(v.clone()),
+            "--markdown" => o.markdown = Some(v.clone()),
+            "--ron" => o.ron = Some(v.clone()),
             _ => return Err(format!("unknown option {a}")),
         }
     }
@@ -207,6 +225,7 @@ fn main() -> ExitCode {
         Some((cmd, rest)) if cmd == "trials" => parse(rest).and_then(|_| trials()),
         Some((cmd, rest)) if cmd == "validate" => parse(rest).and_then(|o| validate(&o)),
         Some((cmd, rest)) if cmd == "rescore" => parse(rest).and_then(|o| rescore(&o)),
+        Some((cmd, rest)) if cmd == "report" => parse(rest).and_then(|o| report(&o)),
         Some((cmd, rest)) if cmd == "check" => match parse(rest).and_then(|o| check(&o)) {
             Ok(true) => Ok(()),
             Ok(false) => return ExitCode::from(1),
@@ -1179,4 +1198,110 @@ fn check(o: &Opts) -> Result<bool, String> {
         );
         Ok(false)
     }
+}
+
+/// The default pool of `arena report`.
+const POOL: &str = "crates/core/arena/report/pool.ron";
+
+/// `arena report`: a round robin of the pool (one against one, both starting positions, no mirror matches), its
+/// ratings and part report (`arena::report`), printed and written to `--markdown` / `--ron`.
+fn report(o: &Opts) -> Result<(), String> {
+    use arena::report::{Entrant, Tally, THRESHOLDS, round_robin};
+    let content = data::base_content();
+    // (name, design, behavior) of every entrant, in order.
+    let mut pool: Vec<(String, DesignRef, Option<BehaviorRef>)> = Vec::new();
+    let mut seeds = o.seeds;
+    let mut source = Vec::new();
+    let pool_file = o.pool.clone().or_else(|| (o.args.is_empty() && o.run.is_none()).then(|| POOL.to_string()));
+    if let Some(path) = &pool_file {
+        let text = std::fs::read_to_string(path).map_err(|e| format!("{path}: {e}"))?;
+        let p = arena::report::Pool::from_ron(&text).map_err(|e| format!("{path}: {e}"))?;
+        let dir = std::path::Path::new(path).parent().unwrap_or(std::path::Path::new("."));
+        for d in &p.designs {
+            let arg = if d.ends_with(".ron") { dir.join(d).to_string_lossy().into_owned() } else { d.clone() };
+            let Start::Design { design, behavior, .. } = start_of(&arg, &Locks::default())? else { unreachable!() };
+            pool.push((d.clone(), design, behavior));
+        }
+        if !o.seeds_set {
+            seeds = p.seeds;
+        }
+        source.push(format!("pool {path}"));
+    }
+    for a in &o.args {
+        let Start::Design { design, behavior, .. } = start_of(a, &Locks::default())? else { unreachable!() };
+        pool.push((a.clone(), design, behavior));
+    }
+    if !o.args.is_empty() {
+        source.push(format!("{} designs given", o.args.len()));
+    }
+    if let Some(path) = &o.run {
+        let run = restored(&content, path)?;
+        let top = run.archive().top(o.best);
+        for e in &top {
+            pool.push((
+                format!("g{}", e.id),
+                DesignRef::Blueprint(e.genome.blueprint_text()),
+                Some(BehaviorRef::Text(e.genome.behavior.clone())),
+            ));
+        }
+        source.push(format!("the best {} elites of {path}", top.len()));
+    }
+    if pool.len() < 2 {
+        return Err("report: at least two designs".into());
+    }
+    let entrants = pool
+        .iter()
+        .map(|(name, design, _)| {
+            let bp = match design {
+                DesignRef::Ship(id) => content.ships.get(id).cloned().ok_or_else(|| format!("unknown ship {id}"))?,
+                DesignRef::Blueprint(text) => data::parse_blueprint(text)
+                    .map_err(|p| format!("{name}: {}", p.iter().map(|p| p.to_string()).collect::<Vec<_>>().join("; ")))?,
+            };
+            Ok(Entrant::new(&content, name, &bp))
+        })
+        .collect::<Result<Vec<_>, String>>()?;
+    let base = o.seed.unwrap_or(1);
+    let seed_list: Vec<u64> = (0..seeds).map(|k| base.wrapping_add(k)).collect();
+    let jobs = round_robin(pool.len(), &seed_list);
+    let specs: Vec<FightSpec> = jobs
+        .iter()
+        .map(|&(a, b, seed)| {
+            let entry = |k: usize| Entry {
+                design: pool[k].1.clone(),
+                behavior: pool[k].2.clone(),
+                count: 1,
+                formation: Formation::Line,
+                pilot: None,
+            };
+            let mut s = FightSpec::new(seed, vec![entry(a)], vec![entry(b)]);
+            s.start_distance = o.distance.unwrap_or(s.start_distance);
+            s.time_limit = o.time.unwrap_or(s.time_limit);
+            s
+        })
+        .collect();
+    let head = format!(
+        "# report of {} designs ({}), seeds {base}..={} in each starting position",
+        pool.len(),
+        source.join(", "),
+        base.wrapping_add(seeds - 1)
+    );
+    println!("{head}");
+    let results = run_all(&content, &specs, o.threads)?;
+    let mut tally = Tally::new(pool.len());
+    for (&(a, b, _), r) in jobs.iter().zip(&results) {
+        tally.add(a, b, r);
+    }
+    let r = arena::report::report(&content, &entrants, &tally, &THRESHOLDS);
+    let md = r.to_markdown();
+    println!("{md}");
+    if let Some(path) = &o.markdown {
+        std::fs::write(path, format!("{head}; rules {:016x}\n\n{md}", arena::rules_fingerprint(&content)))
+            .map_err(|e| format!("{path}: {e}"))?;
+        println!("# written to {path}");
+    }
+    if let Some(path) = &o.ron {
+        std::fs::write(path, r.to_ron()).map_err(|e| format!("{path}: {e}"))?;
+        println!("# written to {path}");
+    }
+    Ok(())
 }

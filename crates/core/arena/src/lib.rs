@@ -17,7 +17,8 @@
 //! itself builds it with [`FightSetup::build`] and asks its [`Referee`] after every tick. A voyage job is re-watched
 //! the same way from a [`VoyageCode`] ([`VoyageSetup::build`]); [`Code`] reads either.
 //!
-//! [`check`] is the balance check: a fixed fight set against a stored baseline with tolerances.
+//! [`check`] is the balance check: a fixed fight set against a stored baseline with tolerances. [`report`] rates a
+//! pool of designs from their fights (Bradley–Terry) and reports its parts: pick rate, win rate when used, flags.
 //!
 //! [`worker`] is the message form of jobs and results for the lab's web workers (ADR-0043).
 //!
@@ -44,6 +45,7 @@ mod code;
 mod error;
 pub mod evolve;
 mod fight;
+pub mod report;
 mod rules;
 mod score;
 mod spec;

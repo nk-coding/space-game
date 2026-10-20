@@ -1,0 +1,23 @@
+// The pool `arena report` rates when given no designs (`docs/arena.md` "Ratings and part reports", GDR-0124): the
+// content's ships that fly one against one (no bosses, stations or drones), each pair on `seeds` seeds in each
+// starting position under the ships' own behaviors. Designs: content ship ids, or blueprint files relative to this file.
+(
+    designs: [
+        "rim_skiff",
+        "sample_early",
+        "sample_mid",
+        "halvex_runner",
+        "automaton_raider",
+        "automaton_hunter",
+        "automaton_lancer",
+        "automaton_gunner",
+        "automaton_picket",
+        "grown_seedling",
+        "grown_rammer",
+        "grown_thornback",
+        "grown_guardian",
+        "swarm_spitter",
+        "swarm_carrier",
+    ],
+    seeds: 16,
+)
