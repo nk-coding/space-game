@@ -264,6 +264,16 @@ reaches far with a heavy, piercing shell but fires slowly. Elsewhere: the [[part
 bubble that refills slowly), the [[part:heat_sink]] (a 1×2 radiator), the [[part:compact_reactor]] (less power, less heat)
 and the [[part:spore_radiator]] (vents better, feeds no reactor).
 
+### Railguns
+
+The [[part:railgun]] is the kinetic research's heavy gun after the long-barrel cannon: a 1×3 machine that throws a
+slug at [[part:railgun.shot_speed]] out to [[part:railgun.range]]. A slug that breaks a block carries what is left on
+into the next, through up to [[part:railgun.penetration]] blocks, so it reaches machines behind thin armour; like
+every shot it stops where the struck ship's hull ends. It fires slowly, draws [[part:railgun.power_draw]] of power and
+kicks the ship back by [[part:railgun.recoil]] a shot, so mount it on the centre line, and give it the reactors to
+match. Its slug draws as a white-hot needle with a thin wake, and the gun throws sparks back past its rails as it
+fires.
+
 ## Firepower in the drydock
 
 The drydock's [[stat:firepower]] cell adds up the damage per second of every gun on the main piece that can fire: a
@@ -278,7 +288,8 @@ own damage and shots per second after its bonuses, boosted numbers in gold. For 
 - **Beam lasers** are strong but hungry and hot: plan the power and radiators for them, and keep their tier high
   enough that they don't drop below their minimum in a fight.
 - **Cannons** throw shots that must be led, and slopes can turn them away, but shields take only part of their
-  damage. A cannon whose penetration is above 1 also carries on through the blocks it breaks.
+  damage. A cannon whose penetration is above 1 also carries on through the blocks it breaks; a railgun's slug
+  through three, which tells against thinly plated machines more than against thick armour.
 - **Missiles** need no aim and hit big, slow ships hard, but shields absorb them whole and point defence shoots
   them down. Rockets hit everything around where they strike, so they strip machines off a lightly plated hull.
 - **Ion cannons** do almost no damage, but a few seconds of a blinded enemy are a few seconds it does not shoot

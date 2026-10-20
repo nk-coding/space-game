@@ -793,7 +793,19 @@ Next session:
   `ends_in`), their research family with the phase chamber, the client's shimmer, blink flashes and lance lines, the
   drydock's TOO HEAVY TO BLINK. Keeper-capable fleets clear a walker pack 60 %, a strike 50–53 %, the colossus
   30–35 %. The arena fight `walker_strike` is in the determinism check.
-- Open: a blink that turns onto its target, a BLINK touch button and assist, an armour of their own.
+- Open: a blink that turns onto its target, a BLINK assist (the touch button since GDR-0129), an armour of their own.
+
+### 20 Oct 2026: behavior words, a BLINK button and the railgun
+
+- ([GDR-0129](gdr/0129-blinded-cargo-leader-near-blink-button-and-the-railgun.md), lead defaults;
+  `results/railgun-2026-10-20.md`) The behavior words `blinded`, `cargo` and `leader_near(range)`; the `salvager`
+  strips only with its leader within 80 m and no enemy within 300 m (320 seeds: `yard_approach` 229 cleared against
+  216 before and 232 with plain escorts; the runner's escorts keep `escort`). A BLINK touch button above FIRE; the
+  FLARE and BLINK rings now show in a test flight launched from the drydock. The railgun (1×3, a 2.5 slug through
+  up to three blocks, 110 m, 9 kN·s of recoil; node `railgun` after `long_cannon`; a needle-and-wake slug and a
+  kick in the client), a sidegrade: the starter with two clears the hunter den 58 % against the long cannon's 44 %,
+  the Warden 13 % against 36 %; the Runner with two is about level with its beams. web-drive's `viewport` step.
+- Open: a BLINK assist, an enemy that carries a railgun, the tractor (GDR-0123).
 
 ### 20 Oct 2026: the deeper bands' lore, caches, graveyards and callers
 
