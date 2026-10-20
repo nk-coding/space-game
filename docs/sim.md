@@ -1209,7 +1209,7 @@ handles keep working. `default_for(&design)` = the blueprint's or faction's beha
   with `AimMode::Target`, never braking for it; the Grown's rammers fly it in a cycle). All others aim with
   `AimMode::Auto` (lead for projectile ships).
 - **`escort(d)`** (GDR-0065, 13 Oct 2026; default 30 m): keep within `d` of the leader (`ShipCommand::Leader`, the
-  vessel whose lock `locked` follows: for the sandbox's `?fleet=` wingmen and TEST IN RANGE's wingman the
+  vessel whose lock `locked` follows: for FLEET's escorts the flagship, for TEST IN RANGE's wingman the
   player's ship). It needs no target (a rule with it never fails with `NoTarget`), so it goes last, below the
   rules that fight, and runs between fights. `Maneuver::Escort { leader, distance }`: farther than `d` it closes
   in like an approach (`seek` to `d` off the leader, plus the leader's velocity, `HeadingGoal::Auto`), within
@@ -1559,7 +1559,7 @@ Base content (placeholders): logic core N 16, automaton core N 4; fusion reactor
 ### Mind capacity and dormant vessels (GDR-0013, GDR-0044)
 
 - `SimConfig::mind_capacity[owner]`: how many logic cores of the owner's vessels run at once (owners beyond the
-  table: no limit). Placeholders: player 24 cores (twelve Halvex Runners; the sandbox's `?fleet=8` uses 18), AI
+  table: no limit). Placeholders: player 24 cores (twelve Halvex Runners), AI
   owners 1000. A vessel takes its alive cores (dark ones included).
 - **Claim order** (*lead default* for the details the decision left open): the focus first; then vessels with a
   fresh claim (`ShipCommand::Wake`, or the vessel the focus just left), the most recent first; then the others by

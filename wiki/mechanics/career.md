@@ -47,8 +47,8 @@ Until the game is released, a save from an older version is not carried over: a 
 and the notes say so (A NEW GAME).
 
 ::: details Starting over
-The launch option `?newgame=1` starts a new career in place of the old one. Your last design is saved to
-BLUEPRINTS first, and the drydock starts again with a copy of the start's ship.
+A new career begins when there is no save, or in place of a save from an older version. Your last design is saved
+to BLUEPRINTS first, and the drydock starts again with a copy of the start's ship.
 :::
 
 ## Research data

@@ -753,6 +753,19 @@ Next session:
   `results/ion-blinded-raider-2026-10-20.png`.
 - Open: the EMP, enemies with disruption, a `blinded` condition, all numbers.
 
+### 20 Oct 2026: one dev mode replaces the URL flags (ADR-0046)
+
+- Niklas's decision of the same day, built: `?dev=1` plays its own save (`saves/dev`) with everything open
+  (`Career::open_everything` at every load: all research, full stores, every cluster charted and every gate open),
+  the drydock and the lab offering every part, unlimited launch stock; the voyage map marks each cluster's guardian,
+  boss and station and its panel lists the cluster's encounters with counts (`map::known::Sites`); the debug keys
+  (F8, F5–F7, Shift+R, C) act only in the dev mode (`world::settings::DEV_KEYS`); `newgame=1` resets the dev save only.
+- Tool flags for scripts stay (`scene`, `behavior`, `fight`, `load`, `seed`, `hashlog`/`hashticks`, `hud`,
+  `slowmo`); dropped: `twin`, `fire`, `voyage`/`scene=voyage`, `cluster`, `galaxy`, `save`, `unlock=all`, `bands`
+  (with `content/base/playtest.ron` and its loader), `debrief`, `lab_workers`, `fleet`, `debug`/`bloom`/`glow`/`stats`,
+  `zoom`, `planet`, `touch`, and with them the practice runs. Touch is auto-detected only; `web-drive.mjs` is a
+  mouse unless `--touch` or `--dpr=N`, `tools/headless/shot.mjs` got `--touch` and `--phone`.
+
 ## Phase 4: measurement
 
 Status 12 Oct 2026 (new VM): `results/spike-summary.md` written. Determinism native vs wasm IDENTICAL on the new VM

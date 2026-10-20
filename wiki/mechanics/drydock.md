@@ -81,11 +81,6 @@ that unlocks it. Parts and armour that no research unlocks yet are not shown at 
 A design that already uses locked parts (an imported design, or a template such as one of the sample ships) still
 opens, shows its stats and test-flies. It is only not voyage-ready.
 
-::: details Free drydock
-The development launch option `?unlock=all` opens a free drydock: every part, armour and frame is offered, nothing
-is locked and nothing is NEW. It never writes anything into your career: the save keeps your real progress.
-:::
-
 ## Turning and flipping
 
 [[control:rotate_right.keys]] turns the brush a quarter turn clockwise, [[control:rotate_left.keys]] turns it back.

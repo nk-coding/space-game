@@ -54,6 +54,7 @@ is the overview and links to both series. Format and status rules: `CLAUDE.md`, 
 | [0043](0043-lab-web-workers.md) | The web build runs the evolution lab's jobs in web workers: a second wasm binary `lab-worker`, jobs and results as RON messages, only the main thread breeds and writes | Accepted (provisional, lead) | 2026-10-17 |
 | [0044](0044-no-save-compatibility-before-release.md) | No save compatibility before release: the game reads only the current formats and starts a new career in place of an older save | Accepted | 2026-10-18 |
 | [0045](0045-compact-layout-class-and-touch-in-the-kit.md) | The layout class follows the window (compact under 500 dp high, phone layouts scaled 0.9–1.3); touch hover, 48 dp hit slop and list drags live in the UI kit | Proposed | 2026-10-19 |
+| [0046](0046-one-dev-mode-replaces-the-url-flags.md) | One `dev=1` mode (its own save, everything open, the whole galaxy with each cluster's sites, the debug keys) replaces the URL flags; a few tool flags stay for scripts | Accepted | 2026-10-20 |
 <!-- index:end -->
 
 ## How to add, supersede and deprecate

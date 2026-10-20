@@ -404,7 +404,8 @@ by the 0/2-step rule.
 - `tuning.rs`: host-only in a session. `Config` changes go out as world commands. Content-rewriting scales and
   `SimWorld::others` are disabled in co-op.
 - Friendly checks (clicks, Tab targets, markers) use teams. Teammates get a tint and a name tag.
-- UI: HOST / JOIN (URL first: `?host=1`, `?join=CODE`, `?relay=ws://10.77.9.2:<port>`), code display and copy,
+- UI: HOST / JOIN (URL first: `?host=1`, `?join=CODE`, `?relay=ws://10.77.9.2:<port>`; planned, never built: new
+  development switches go under the dev mode or the tool flags, [ADR-0046](../adr/0046-one-dev-mode-replaces-the-url-flags.md)), code display and copy,
   lobby list, banners (`LAG`, `DESYNC`, `HOST LEFT`).
 - `?inputdelay=N` (P1): delays the local pilot input by N ticks in single player, to judge the feel of guest
   latency before any network exists.

@@ -37,7 +37,7 @@ escort a behavior, and fly further. Four voyages end at the Warden, an automaton
 | Materials | Armour materials only (`materials/armor.ron`); the kind allows materials without an `armor` block | One or two non-armour materials (programmable matter) |
 | Voyages and world | Decided (GDR-0026, 0028, ADR-0022); no code, no content | A handful of small rim clusters with seeded sites |
 | Death | The sandbox re-forms the ship in place; a test flight returns to the drydock | Mild death per GDR-0029: recalled home, the haul stays with the wreck |
-| Fleet and mind capacity | Vessels, focus, dormant vessels, fleet bar (`fleet_bar.rs`, GDR-0050); `SimConfig::mind_capacity` (player 24, `?mind=N`); wingmen via `?fleet=N` | Mind capacity as a progression number; escorts chosen at home |
+| Fleet and mind capacity | Vessels, focus, dormant vessels, fleet bar (`fleet_bar.rs`, GDR-0050); `SimConfig::mind_capacity` (player 24; then `?mind=N`, and wingmen via `?fleet=N`, both gone) | Mind capacity as a progression number; escorts chosen at home |
 | Storage | `game::storage` (ADR-0031): named, versioned RON documents; `designs/`, `drydock/`, `behaviors/` in use, `saves/` and `settings/` planned | The player's save (progress, unlocks, research data, fleet) |
 | HUD | Hull, speed, target panel, warnings, fleet bar (`flight_hud/`) | Cargo, site markers, voyage title, recall |
 | Determinism | Native vs wasm IDENTICAL on `core`, `flight`, `load`, `behavior` scenarios (`sim::scenario`) | A `voyage` scenario covering salvage and the encounter logic |
@@ -326,8 +326,9 @@ Recommendation: A (not asked; a lead default).
 | Drydock (exists) | Palette and frames from the unlock set; a NEW tag on freshly unlocked parts; locked parts in content order shown dimmed as `LOCKED · <node>` (the mockup's locked rows); the status line adds `NOT VOYAGE-READY · USES BEAM LASER` / `3 CORES, YOUR MIND RUNS 2` | `drydock::state::palette_parts(content)` becomes `palette_parts(content, unlocks)` |
 | Sandbox (exists) | TEST RANGE from Home; `?scene=sandbox` | Unchanged; test flights and TEST IN RANGE unchanged |
 
-URL parameters (for development): `scene=home|research|map|sandbox`, `scene=voyage&voyage=<id>` (launch at once),
-`save=<slot>`, `newgame=1`, `unlock=all` (every part, frame and material in the drydock, the save untouched).
+URL parameters (for development, as planned then): `scene=home|research|map|sandbox`, `scene=voyage&voyage=<id>`
+(launch at once), `save=<slot>`, `newgame=1`, `unlock=all`. Since 20 Oct 2026 one dev mode, `dev=1`, replaces them
+([ADR-0046](../adr/0046-one-dev-mode-replaces-the-url-flags.md)); `scene` stays a tool flag.
 
 All new screens use `ui_kit` widgets and its hand-made hit testing, which already takes touch; the phone layouts
 come with `android.md`.

@@ -421,7 +421,7 @@ headers and a lens.
 Track 7F, 13 Oct 2026 ([GDR-0063](gdr/0063-salvage-and-research-v1.md), [GDR-0065](gdr/0065-phase-7-screens-and-escort-action.md),
 mockup `../space-game-archive/mockups/drydock-locked.png`). What the player may build with is the career's
 (`career::Granted::unlocks`, `docs/career.md`): the content's entries that are not `locked`, plus what research
-unlocked; with `?unlock=all` (free mode) everything, and nothing below is locked or NEW. Screenshots:
+unlocked; in the dev mode (`?dev=1`, ADR-0046) everything, and nothing below is locked or NEW. Screenshots:
 `docs/results/career-drydock*.png`.
 
 - **Locked parts are shown, not hidden** (GDR-0065 replaces GDR-0054's hiding for the career's drydock): each
@@ -629,7 +629,7 @@ saved template copy moved to the cruiser frame).
   change still waiting is written when the page goes away or is hidden: a reload, a closed tab); it comes
   back at the next start, before the first frame, so a plain sandbox start flies it too (if it can't fly, the
   sandbox starts without the player's ship; T opens the drydock). The first start, and every new game
-  (`?newgame=1`, a new save slot), is a copy of the career's start ship (`PlayerDesign::starter` with
+  (and `?dev=1&newgame=1`), is a copy of the career's start ship (`PlayerDesign::starter` with
   `PlayerCareer::start_ship`) named "Rim skiff copy"; a new game saves the last design's unsaved changes to
   BLUEPRINTS first (if that fails, the last design stays). Opening centres the parts in the frame
   (`data::design::edit::Drydock::open`), so an off-centre design comes back centred; the undo history is not kept. The
@@ -814,8 +814,7 @@ watch: the live panel, the last rule deciding, why the five above don't match).
   `sim::BehaviorLibrary::new` compiles them with handles in a fixed order (behaviors are inputs of the deterministic
   sim, and a ship's behavior handle is part of the state hash; a test builds the library from storages filled in
   different orders and checks the handles and 300 ticks of state hashes are equal) and a design naming one compiles
-  with it (`ShipDesign::behavior`). The player's ship when unpiloted, its `?fleet=` wingmen (their leader is the
-  player's ship, so `target locked` follows the player's lock), re-forms and test ships fly it. A design naming a
+  with it (`ShipDesign::behavior`). The player's ship when unpiloted, re-forms and test ships fly it. A design naming a
   behavior that can't fly (it has errors, or was deleted) flies its faction's instead, with a banner
   (`behaviors::fallback`: "BEHAVIOR CAREFUL HAS 1 ERROR: …; FLIES SKIRMISHER").
 
@@ -890,8 +889,8 @@ Written 13 Oct 2026 (GDR-0057; the screen itself: `docs/client.md` "Behavior scr
 - **Fly alongside**: the player flies the design as usual (it runs the design's own behavior when unpiloted); a
   second copy starts 22 m to the left and 12 m behind as a wingman on the tested behavior, its leader the player's
   ship. Title `FLY ALONGSIDE · <BEHAVIOR> · WAVE n`. Losing every vessel ends the test like a test flight.
-- In both: no `?fleet=` wingmen; T returns to where the test started (`mode::FlightExit`, back to the drydock
-  whenever flight ends); Shift+R starts the test over; C turns the waves off and on.
+- In both: T returns to where the test started (`mode::FlightExit`, back to the drydock
+  whenever flight ends); Shift+R starts the test over and C turns the waves off and on (the dev mode's keys, ADR-0046).
 - URL (for testing, no screen needed): `?scene=watch&behavior=<id>`, `?scene=alongside&behavior=<id>` (a content or
   saved behavior; without `behavior` the design's own). A behavior that can't fly leaves the design's own, with a
   banner. T returns to the drydock.

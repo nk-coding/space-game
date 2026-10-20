@@ -55,11 +55,11 @@ per sim tick with `sim::flight::turn_ramp_step` (like the lock's nudge with `nud
 | Recall home from a voyage (when no armed awake enemy is within 200 m, or the fleet has no working gun left: the emergency recall; a 3 s warp-out) | R, or the RECALL pill | the RECALL pill |
 | The cluster map on a voyage: the whole cluster laid over the view (galaxy plan E6); held, it shows until the key is let go; a click on the minimap opens it until Esc, a click anywhere or the key (18 Oct 2026; N toggled it before) | hold Tab, or click the minimap | — |
 | The minimap on a voyage ([GDR-0106](gdr/0106-flight-minimap.md)): steps its range 1 km → 2.5 km → hidden → 1 km | B | – (always 1 km) |
-| Raider waves off / on (sandbox; off removes the raiders) | C | WAVES OFF / ON in the flight menu |
+| Raider waves off / on (sandbox; off removes the raiders; the dev mode only, [ADR-0046](adr/0046-one-dev-mode-replaces-the-url-flags.md)) | C | WAVES OFF / ON in the flight menu (the dev mode) |
 | The controls (18 Oct 2026, in place of the help line along the bottom): lays this scene's controls over the view, a column per SETTINGS group with the bound inputs and a line for the mouse (`flight_hud/help.rs`); the flight goes on under it; again or Esc closes it | / (also ? with Shift), or CONTROLS in the flight menu (Esc) | CONTROLS in the flight menu (the touch controls) |
-| Debug overlay (fps, frame and sim times, the focus ship's heading, turn rate, speed and whether the last resort turns it, the locked ship's active behavior rule; in TEST IN RANGE every rule of the tested behavior with why) | F8 (F3 until 15 Oct 2026: the assist toggles took F1–F4) | – |
-| Render toggles | F5 debug shapes, F6 glow sprites, F7 bloom (1, 2 and 3 until GDR-0090: they are the fire groups' keys now) | – |
-| Hide HUD / pause (`PAUSED · P` shows) / reset scene (not in a voyage) | H / P / Shift+R | – / the flight menu (the ring) / RESTART in the flight menu |
+| Debug overlay (fps, frame and sim times, the focus ship's heading, turn rate, speed and whether the last resort turns it, the locked ship's active behavior rule; in TEST IN RANGE every rule of the tested behavior with why; the dev mode only) | F8 (F3 until 15 Oct 2026: the assist toggles took F1–F4) | – |
+| Render toggles (the dev mode only) | F5 debug shapes, F6 glow sprites, F7 bloom | – |
+| Hide HUD / pause (`PAUSED · P` shows) / reset scene (not in a voyage; the dev mode only) | H / P / Shift+R | – / the flight menu (the ring) / RESTART in the flight menu (the dev mode) |
 
 Ships with engines only at the back can't brake or strafe while locked (GDR-0011); S does nothing on them.
 
@@ -76,48 +76,58 @@ section with two input chips: click one, then press a key or mouse button (with 
 combination; a modifier alone binds on release); Esc cancels, CLEAR empties it, an input another action on a shared
 screen had moves over (the status line names it), RESET TO DEFAULTS. DISPLAY: GLOW, BLOOM, UI SIZE (100 / 90 / 80 % of
 what fits the window, `kit::ui_kit::UiSize`, applied by every screen's UI scale). Both save at once on this device
-(`settings/controls`, `settings/display`); URL `glow=` / `bloom=` still win for one run.
+(`settings/controls`, `settings/display`). The debug keys (F8, F5–F7, Shift+R, C) are listed only in the dev mode.
 
-## URL parameters
+## Launch parameters
 
-| Parameter | Meaning |
+Since 20 Oct 2026 ([ADR-0046](adr/0046-one-dev-mode-replaces-the-url-flags.md)) the game has one switch for
+development, `dev=1`, and a few tool flags for scripts. On the web they are the page URL's query
+(`http://10.77.9.2:8080/?dev=1`); natively the same `key=value&…` string comes from the `GAME_PARAMS` environment
+variable (`kit::params`). A bare key means 1; `0`, `false`, `off` and `no` turn a flag off.
+
+**The dev mode, `dev=1`** (`world::career`, `Params::dev`):
+
+- **Its own save**, `saves/dev`: the career (`saves/career`) is never touched. `newgame=1` with it starts the dev save
+  over (without `dev=1`, `newgame=1` is ignored and home's notes say so).
+- **Everything open** (`Career::open_everything`, at every load): every research node researched, every material and
+  research family in store up to the store's bound, the drydock offering every part, material and frame of the content
+  (`data::career::Unlocks::all`), launch stock unlimited, the lab unlocked with every part. Home's notes say `DEV MODE
+  · ?DEV=1`.
+- **The whole galaxy**: every cluster charted and every gate open, so every band is open and a jump reaches any
+  cluster. On the [voyage map](#voyage-map) every cluster shows its notable sites as small marks above its ring (a
+  gate's guardian a coral diamond, a boss a coral triangle, a station a gold square; `map::known::Notable`, from the
+  encounters' `boss` tag, the bands' gate trails and anchored ships), and a cluster's panel lists every encounter its
+  interior holds with its count (`ENCOUNTERS · 7`; the interior from the cluster's own seed,
+  `world::voyage::cluster_encounters`). Screenshot: `docs/results/dev-mode-map-2026-10-20.png`.
+- **The debug keys** work only here (`world::settings::DEV_KEYS`): F8 the debug overlay, F5–F7 the render toggles,
+  Shift+R and C the test range's restart and waves; the controls overlay, SETTINGS and the flight menu leave them out
+  elsewhere. P (pause) and H (hide the HUD) are player keys.
+
+**Tool flags (scripts and agents)**: no player feature; they work without `dev=1`.
+
+| Flag | What it does |
 |---|---|
-| `scene=home` | start at home, the shipyard (the default) |
-| `scene=sandbox` | start in the sandbox (home's TEST RANGE) |
-| `scene=drydock` | start in the drydock |
-| `scene=behavior` | start on the BEHAVIOR screen (the design's behavior) |
-| `scene=research` | start on the research screen, over the lab ([Research](#research)) |
-| `scene=map` | start on the voyage map ([Voyage map](#voyage-map)) |
-| `behavior=<id>` | the BEHAVIOR screen opens this content or saved behavior (e.g. `raider_basic`) instead of the design's |
-| `scene=showcase` | the player's design holding position, three raiders orbiting it, no combat |
-| `scene=showcase&twin=1` | the same with a second copy holding just under the design, its bubbles reaching the design's hull: for looking at whose shield bubbles show over whose hull ([Shield bubbles](#shield-bubbles)) |
-| `scene=showcase&fire=1` | the same, but the three raiders attack the design under their behavior: for looking at shield hits (add `zoom=70` for a close-up) |
-| `scene=watch&behavior=<id>` | TEST IN RANGE, watch: the player's design flies unpiloted on the behavior (a content or saved one; without `behavior` the design's own) against raider waves, the camera follows it; T returns to the drydock |
-| `scene=alongside&behavior=<id>` | TEST IN RANGE, fly alongside: you fly the design, a second copy is a wingman on the behavior |
-| `scene=voyage&voyage=<id>` | launch that voyage at once (without `voyage`: the one the voyage map selects when it opens), for development: recorded in the career when it may launch, else a practice run that is never saved ([Voyages](#voyages)) |
-| `scene=fight&fight=<code>` | the fight viewer: an arena fight replayed from its fight code (`SGF1:…`, printed by `arena fight` and `arena evolve`; [Fight viewer](#fight-viewer)) |
-| `save=<slot>` | play the career save `saves/<slot>` instead of `saves/career` (a new game if it doesn't exist; [Career](#career)) |
-| `newgame=1` | start over: a new career replaces the save (no confirm: a development switch; every load with it starts over again), and the drydock docks the start's ship |
-| `unlock=all` | free mode: every part, material and frame in the drydock, nothing locked or NEW; no unlock is written into the save |
-| `debrief=sample` / `debrief=short` (with `newgame=1`; add `save=<slot>` to keep the main save) | at home, the report of a cleared Shipyard approach from a sample haul (`debrief.rs`, a development fixture): `sample` several research families and materials, intact parts to sort and five kinds dismantled; `short` six core fragments (one material, no research data) |
-| `bands=<band>` (with `newgame=1` and `save=<slot>` other than `career`; else ignored, with a note) | a play-test career for the deep bands, e.g. `?newgame=1&save=deeptest&bands=middle`: the bands up to `<band>` open as if their gates were beaten (every gate of each band outside it opened and charted, so jumps start there), and the kit of every band from `outer` up to `<band>` in `content/base/playtest.ron` is given: its research researched (unpaid), its materials and research data in store (`data::Career::playtest`). `outer` has the rim's research, `middle` adds the Grown's and the second jump calibration (reach 4 S), `inner` the Swarm's (all research). Home's notes say `PLAY-TEST · ?BANDS=MIDDLE` (coral: a band the galaxy lacks, or the rim). Screenshots (1280 × 720, `bands=middle`): `docs/results/galaxy-map-playtest-middle-2026-10-19.png` (zoomed out: `MIDDLE · UNCHARTED · OPEN`, the inner band sealed), `voyage-map-middle-blind-jump-2026-10-19.png` (a blind jump into the middle band from the Warden's gate) and `middle-band-flight-2026-10-19.png` (its flight) |
-| `lab_workers=0` | the evolution lab computes in the frame's slices, without its web workers (ADR-0043; to compare, or to find a worker's fault) |
-| `load=1\|5\|20` | browser load test: `sim::voyage::scenario::load_test(n, seed)`, camera frames the fight, stats overlay on |
-| `seed=N` | sim seed (default 42; a whole number, exact up to 2^64) |
-| `hashlog=1`, `hashticks=N` | log the per-tick state hash of the load scenario (20 ships unless `load=` is given) to the console, `N` ticks (default 600, at least 1) |
-| `fleet=N` | N extra copies (at most 8; none in TEST IN RANGE) of the player's design fly with you under the behavior the design names (default its faction's, `skirmisher`), following your lock (`target locked`); switch with V or the fleet bar |
-| `debug=1`, `glow=0`, `bloom=1`, `hud=0`, `stats=1` | render toggles, HUD, debug overlay |
-| `zoom=N` | start zoom in px per metre (3–160) |
-| `touch=1` / `touch=0` | a touch screen or not (`kit::ui_kit::TouchScreen`), whatever the browser's pointer says: `1` shows the touch widgets and words at once, `0` keeps the mouse's even after a touch (e.g. a desktop check in `web-drive.mjs`, which always emulates touch) |
-| `slowmo=N` | the game's clock runs N times slower (1–50; the sim steps the same ticks, only later): for looking at animations such as the voyage's warp in headless screenshots. Real-time parts (screen transitions, the lift after a voyage) keep their speed |
+| `scene=home\|sandbox\|drydock\|behavior\|research\|map\|showcase\|watch\|alongside\|fight` | where the game starts (`mode::AppMode::at_start`; an unknown one, or none, starts at home): the sandbox is home's TEST RANGE; `showcase` the design holding position with three raiders orbiting it, no combat; `watch` and `alongside` TEST IN RANGE ([Behavior screen](#behavior-screen)); `fight` the fight viewer |
+| `behavior=<id>` | the behavior for `scene=watch\|alongside` and the one the BEHAVIOR screen opens (a content or saved one) |
+| `fight=<code>` | with `scene=fight`: the arena fight to replay (`SGF1:…`, printed by `arena fight` and `arena evolve`; [Fight viewer](#fight-viewer)) |
+| `load=1\|5\|20` | with `scene=sandbox`: browser load test (`sim::voyage::scenario::load_test(n, seed)`), the camera frames the fight, the stats overlay on |
+| `seed=N` | the sim seed (default 42; a whole number, exact up to 2^64) |
+| `hashlog=1`, `hashticks=N` | with `scene=sandbox`: log the per-tick state hash of the load scenario (20 ships unless `load=` is given) to the console, `N` ticks (default 600, at least 1) |
+| `hud=0` | no HUD (screenshots) |
+| `slowmo=N` | the game's clock runs N times slower (1–50; the sim steps the same ticks, only later): for animations such as the voyage's warp in headless screenshots. Real-time parts (screen transitions, the lift after a voyage) keep their speed |
 
-Natively the same `key=value&…` string comes from the `GAME_PARAMS` environment variable (`params.rs`). A bare
-key means 1; `0`, `false`, `off` and `no` turn a flag off.
+The flight flags (`load`, `hashlog`, `hashticks`, `seed`) need their scene: `?scene=sandbox&load=20`.
 
-Where the game starts (`mode::AppMode::at_start`, since 13 Oct 2026, GDR-0062): `scene` decides (an unknown one, or
-none, starts at home). The flight parameters (`load`, `hashlog`, `hashticks`, `fleet`, `seed`, `zoom`, `fire`,
-`touch`) need their scene: `?scene=sandbox&load=20`, `?scene=sandbox&fleet=3` (since 18 Oct 2026 they no longer start
-the sandbox on their own).
+**Touch** is detected, never set: a browser whose primary pointer is coarse (a phone, or Chrome DevTools' device
+mode with a touch device: its media query `(pointer: coarse)` matches) starts with the touch widgets, and any touch
+turns them on (`kit::ui_kit::TouchScreen`). Headless, `scripts/web-drive.mjs --touch` (a touch screen at the given
+size) or `--dpr=N` (a phone) and `tools/headless/shot.mjs --touch` / `--phone[=N]` emulate it; without them both are
+a mouse.
+
+**Dropped on 20 Oct 2026** (ADR-0046; older notes and records below name them as they were then): `twin`, `fire`,
+`voyage` and `scene=voyage`, `cluster`, `galaxy`, `save`, `unlock=all`, `bands` (and `content/base/playtest.ron`),
+`debrief`, `lab_workers`, `fleet`, `debug`, `bloom`, `glow`, `stats`, `zoom`, `planet`, `touch`. Earlier still:
+`lab=1`, `mind=`, `damage=`, `raiders=` and the co-op spike's `host`, `join`, `relay` and `inputdelay`.
 
 ## Scenes (`scene.rs`)
 
@@ -157,11 +167,9 @@ the sandbox on their own).
   `behavior_ui/live.rs`), the debug overlay (F8) every rule with why.
 - Every sandbox flight flies the **player's saved behaviors**: they join the player's content, so the library has
   them and a design naming one flies it (`player::behaviors`).
-- **Showcase**: no combat, free camera; for looking at the renderer. With `fire=1` three raiders start 46 m out and attack the design, which holds still and doesn't fire back:
-  its bubbles take hits at once. Cannon shots pass half their damage to the hull, so the Runner breaks up after
-  about half a minute (Shift+R starts over), and with the base numbers (regen 1.5/s against about 0.4 per
-  hit) the bubbles rarely empty; collapses need concentrated fire.
-- **Voyage** (`?scene=voyage&voyage=<id>`, home's V): see [Voyages](#voyages).
+- **Showcase**: no combat, free camera; for looking at the renderer (until 20 Oct 2026 `fire=1` made the raiders
+  attack for looking at shield hits, ADR-0046).
+- **Voyage** (from the voyage map, home's V): see [Voyages](#voyages).
 - **Fight viewer** (`?scene=fight&fight=<code>`): see [Fight viewer](#fight-viewer).
 - **Load test**: see below.
 
@@ -242,8 +250,8 @@ generation (its best child's hardest fight); paste one after `fight=`, e.g.
 ## Load test and determinism in the browser
 
 1. Open `http://10.77.9.2:8081/?scene=sandbox&load=20` (or 1, 5). The overlay shows frame and sim step times (mean, median,
-   p95 over the last 600 frames / 900 ticks), ships, pieces and shots. Toggles 1/2/3 switch debug shapes, glow
-   sprites and bloom; F frees the camera.
+   p95 over the last 600 frames / 900 ticks), ships, pieces and shots. With `dev=1`, F5 / F6 / F7 switch
+   debug shapes, glow sprites and bloom; F frees the camera.
 2. After 60 s of wall time the console gets one line:
    `LOADTEST ships=20 seconds=60 ticks=... frame_ms mean=... median=... p95=... max=... sim_ms mean=... median=... p95=... max=... style=2a glow=true bloom=false window=WxH`.
 3. Determinism: `?scene=sandbox&hashlog=1&load=20&hashticks=600` prints `# ...` header, then `<tick> <hash>` lines (30 per
@@ -258,7 +266,7 @@ generation (its best child's hardest fight); paste one after `fight=`, e.g.
    60945ae): `load` 20 ships, seed 42, 600 ticks: **IDENTICAL** (final `86eb72a03591bff2`; also identical on the
    commit before the merge, final `9ea129f5b628badc`); seed 7, 1800 ticks (`&seed=7&hashticks=1800`):
    **IDENTICAL** (final `34fccbaae2c4e339`). Headless capture: `node scripts/web-drive.mjs
-   "<url>/?scene=sandbox&hashlog=1&load=20&debug=1&hud=0" <dir> "wait 120000" 480 270`, then keep the lines matching
+   "<url>/?scene=sandbox&hashlog=1&load=20&hud=0" <dir> "wait 120000" 480 270`, then keep the lines matching
    `^[0-9]+ [0-9a-f]{16}$` and `^# ` (the console prints 30 lines per call).
 
 ## The web's storage
@@ -625,7 +633,7 @@ scene after `../space-game-archive/mockups/shipyard-long-u.png`, drawn by the ga
   `3 VOYAGES` (grey), `WORKSHOP` / `FLEET SHORT OF 3` (coral) or `STOCK · 21 PARTS` (grey). Top left, at the frame's corner, `THE SHIPYARD · RIM` and the working design's name;
   bottom right the career's notes (a head and a line each; the two most serious, coral before gold, and how many
   more the console has): a new game and its start's summary, a save kept as it is, content that changed under the
-  save, `?save=`, `?unlock=all`, an escort whose design is gone, a refused launch ([Career](#career)). After a voyage
+  save, the dev mode (`DEV MODE · ?DEV=1`), an escort whose design is gone, a refused launch ([Career](#career)). After a voyage
   the debrief covers the right side until dismissed ([Voyages](#voyages)); the LOG keeps the result (its tooltip is
   the last voyage in one line). The place names are UI chrome in code until content has places.
 - **The camera**: on the yard it shows the station's overview (from the near moorings to past the gate, 80 × 45 m
@@ -659,7 +667,7 @@ game keeps the save".
   galaxy track E4: home charted). Every problem is a note (`PlayerCareer::notes`: home's
   note block and the console), never a panic.
 - **Resources**: `PlayerCareer` (the `Career`, the slot, the switches, the notes; `update(storage, f)` changes and
-  writes it), `Granted` (the unlocks the drydock offers: the career's, or everything with `?unlock=all`; the fresh
+  writes it), `Granted` (the unlocks the drydock offers: the career's, or everything in the dev mode; the fresh
   parts for the NEW tags; the mind capacity; recomputed in `PreUpdate` whenever the career changes) and
   `EscortDesigns` (the escorts' saved designs, re-read when home or the drydock opens; a gone one leaves the fleet
   with a note).
@@ -668,8 +676,9 @@ game keeps the save".
   FLEET's lines (`VOYAGE-READY · CORES 2 / 2`, `NOT VOYAGE-READY · USES BEAM LASER · +2`, `3 CORES, YOUR MIND RUNS
   2`, `NO CARGO · YOU CAN'T BRING SALVAGE HOME` as a gold warning); `unlocked_by` names the research node that
   unlocks a locked part.
-- **Switches** (URL parameters): `?save=<slot>`, `?newgame=1`, `?unlock=all`. Test flights, the test range and TEST
-  IN RANGE never touch the save; a voyage writes it at launch and at its end, a practice run never
+- **Switches** ([Launch parameters](#launch-parameters), ADR-0046): `?dev=1` plays the dev save `saves/dev` with
+  everything open (`Career::open_everything` at every load), `?dev=1&newgame=1` starts it over. Test flights, the
+  test range and TEST IN RANGE never touch the save; a voyage writes it at launch and at its end
   ([Voyages](#voyages)).
 
 ## Voyages
@@ -691,13 +700,12 @@ off, the flash and its ring where it left), `voyage-warp-emergency.png` (the eme
   materials and frame, cores within the mind) and every ship flight-ready (the design report); a refusal is a coral
   note on home (`CAN'T LAUNCH`) and a `voyage::LaunchRefused(why)` the map shows. The career records the launch (`Career::voyage_launched`: the seed, `underway`)
   and the save is written at once, so closing or reloading mid-voyage loses the voyage (GDR-0062).
-  `?scene=voyage&voyage=<id>` launches at once for development; what the career refuses (a voyage not open yet, a
-  fleet not ready by the career's own unlocks, so also anything `?unlock=all` alone allows) flies as a **practice
-  run**: rolled from the seed the next launch would get, `PRACTICE, NOT SAVED` in the subtitle, never written.
+  (Until 20 Oct 2026 `?scene=voyage&voyage=<id>` launched at once and flew what the career refused as a practice
+  run, never saved; the dev mode replaced it, ADR-0046.)
 - **The world** (`scene::build_voyage`): `SimConfig::mind_capacity` of the player is the career's mind capacity
   (the rest of `SimConfig` its defaults), the sim is seeded with the voyage's seed, the plan is
   rolled from the content the enemies fly with (`VoyagePlan::roll(others, voyage, seed)`: the packs' content without the player's behaviors) and started (`Sim::start_voyage(plan, PLAYER, ENEMY)`). The flagship (the drydock's working
-  design) enters at the plan's entry as the focus; the FLEET escorts take `?fleet=` wingman slots behind it (turned
+  design) enters at the plan's entry as the focus; the FLEET escorts take wingman slots behind it (turned
   with the entry), fly the behavior their design names and follow the flagship (`Leader`). No raider waves (C does
   nothing), no re-form, no wreck clean-up; Shift+R and T do nothing, M asks in a panel whether to abandon the voyage.
 - **The HUD** (after `../space-game-archive/mockups/voyage-hud-b.png`): the title `SHIPYARD APPROACH · RIM` (name and band),
@@ -723,14 +731,9 @@ off, the flash and its ring where it left), `voyage-warp-emergency.png` (the eme
   nearest 12, a signal's site labelled `· SIGNAL`, a beacon alone `BEACON`. A sweep makes a banner:
   `SCAN · 3 SITES FOUND` / `2 BEARINGS TOWARDS A SIGNAL · SCAN AGAIN ELSEWHERE TO CROSS IT` (gold with bearings,
   else teal with `SWEPT 1.2 KM AROUND`).
-- **A generated cluster** (for testing E3, E4): `?scene=voyage&cluster=<id>|signal|hot|<type>[&galaxy=<seed>]` takes the cluster
-  (`signal`: the first that holds a trail's place; `hot`: the first beside a hot star, GDR-0102; a cluster type's id
-  such as `grove_reach`: the first of that type, GDR-0103) of the career's galaxy and flies its interior
-  (`VoyagePlan::roll_interior`) as a practice run, named after the cluster, never saved: rolled from the seed the
-  career's next launch there would get, carrying what the career knows (`Career::leads`: signals' sites only of heard
-  signals, data cores at the logs it has not got). With `galaxy=<seed>` the base galaxy generated from that seed
-  instead, rolled from the cluster's own seed, every trail place a signal's site and every log's core in place
-  (`voyage::every_lead`).
+- **A generated cluster** (for testing E3, E4): until 20 Oct 2026 `?scene=voyage&cluster=…[&galaxy=<seed>]` flew a
+  cluster's interior as a practice run; the dev mode's map (every cluster charted and in reach) replaced it
+  (ADR-0046).
 - **Scenery** (17 Oct 2026, [GDR-0104](gdr/0104-scenery-rocks-filler-landmarks.md); `scenery/`, one plugin): what
   fills a cluster between its sites, from the voyage's or (a generated cluster) its type's `scenery`, rebuilt when the
   voyage (id and seed) changes and gone when flight ends. All vector meshes from the atlas's white texel and dots,
@@ -871,8 +874,7 @@ off, the flash and its ring where it left), `voyage-warp-emergency.png` (the eme
     planet). Each piece's size also goes with the zoom to the power of its parallax (GDR-0107: hardly).
     The log line `sky: …` names the planets (radius, parallax) and moons and counts vertices (a large planet 21–33 k
     with rings, a small one 7–10 k, moons 0.5–3 k; three or four planets and their moons 28 k on average, 44 k at most; nebula
-    about 2.9 k, galaxy about 18 k for a spiral, 3.5–6 k for the others, with its kind) and the build time. `?planet=<kind>` shows that
-    planet kind as the first planet (for looking at kinds). Screenshots (1280 × 720): `docs/results/sky-rim.png`,
+    about 2.9 k, galaxy about 18 k for a spiral, 3.5–6 k for the others, with its kind) and the build time (until 20 Oct 2026 `?planet=<kind>` forced the first planet's kind, ADR-0046). Screenshots (1280 × 720): `docs/results/sky-rim.png`,
     `sky-grove.png`, `sky-scorched.png`, `sky-uncharted.png`, `sky-clouds.png` (a cloudy world close up); with two or
     three planets, two camera places in one cluster: `sky-planets-a.png`, `sky-planets-b.png`; spread a view apart: Corran Reach at the start and after
     500 m, `sky-spread-corran-start.png`, `sky-spread-corran-500m.png`, a 2.9 km cluster at two places,
@@ -886,8 +888,8 @@ off, the flash and its ring where it left), `voyage-warp-emergency.png` (the eme
   the edge, its strength `0.4 + 0.6 × √(heat here / peak)`), and the voyage's subtitle adds `STAR HEAT x A SIDE` (the
   star's heat a second per open side at the flown ship); the parts it pushes towards their limit show in the HUD's
   heat warnings as before. A heart's re-grown part (`SimEvent::PartRegrown`) swells softly in its hull's glow before
-  the piece's view is rebuilt (`sim_bridge.rs`). Screenshots: `?scene=voyage&cluster=hot&galaxy=1&unlock=all` at
-  1280 × 720, 1600 × 900 and 2560 × 1440 (the glow above the ship, the subtitle legible over it).
+  the piece's view is rebuilt (`sim_bridge.rs`). Screenshots (taken 17 Oct 2026 with the
+  flags of then, `?scene=voyage&cluster=hot&galaxy=1&unlock=all`) at 1280 × 720, 1600 × 900 and 2560 × 1440 (the glow above the ship, the subtitle legible over it).
 - **Finds** (a recorded cluster voyage, galaxy plan E6, [GDR-0097](gdr/0097-galaxy-map-and-voyage-flow.md); `voyage::note_finds`): the run keeps a copy of the
   career (`VoyageRun::knows`) and the finds (`Find`): a player's scan narrows every heard signal whose area holds the
   cluster (`Career::scanned`, once per signal per voyage) and hears the beacon of every trail place its sweep reaches
@@ -1108,8 +1110,10 @@ says `OPEN` or `SEALED`. The look is `map.bands.*` in `art/tokens.json` (`kit::s
   why (in order: another voyage still underway, `LOCKED · CLEAR HALVEX DRIFT FIRST` (a guard: a voyage not open
   can't be selected), `NOT VOYAGE-READY · <the fleet's
   first blocker>`, `voyage::fleet_blocker`); a click then repeats it. Else it sends `voyage::StartVoyage { to:
-  Destination::Voyage(id) }` (a jump: the warp first); a launch `voyage/mod.rs` still refuses shows its reason. With `?unlock=all` a fleet the career's own unlocks
-  don't allow flies as a practice run (`PRACTICE RUN, NOT SAVED · …` in gold). Entering the map selects the first
+  Destination::Voyage(id) }` (a jump: the warp first); a launch `voyage/mod.rs` still refuses shows its reason. In the dev mode (ADR-0046) every cluster is known and in
+  reach: each shows its notable sites as small marks above its ring (a gate's guardian a coral diamond, a boss a
+  coral triangle, a station a gold square; `known::Notable`), and its panel lists every encounter its interior holds
+  with the count (`ENCOUNTERS · 7`, `known::Sites`, the rows as a voyage's sites), then its signals. Entering the map selects the first
   open voyage whose goal is not cleared (after a first clear: the signal it found).
 - **Zoom and pan** (`map::view`, Niklas 14 Oct 2026: "zoom in/out (even see the whole galaxy)"): the wheel or a
   trackpad pinch zooms around the cursor, + / − around the map's centre, 0 or a double click on empty space resets;
@@ -1251,7 +1255,7 @@ player's designs against enemies and keep the best of each kind, every fight to 
 design. The runs are `world::evolution` (computed in the background, stored in `lab/`), the screens `game::evolution`,
 the building `shipyard`. Since step 8 (16 Oct 2026; `?lab=1` is gone) it is locked until the career has the facility
 `evolution` (`content/base/facilities.ron`): the research node Simulation vault (logic, 3 logic data) opens it, and
-`?unlock=all` does (`world::evolution::Lab::enabled` follows `Granted`, system `unlock`). Locked, the building is dark
+the dev mode does (`world::evolution::Lab::enabled` follows `Granted`, system `unlock`). Locked, the building is dark
 and says `LOCKED` (its tooltip `LOCKED · RESEARCH SIMULATION VAULT`, `home::evolution_tip`), a click on it or E flies to
 the research lab and opens RESEARCH on that node (`home::unless_locked`, as the drydock's LOCKED rows do), the
 drydock has no EVOLVE THIS DESIGN, BLUEPRINTS no ORIGIN link, and no run computes (runs in `lab/` are shared by every
@@ -1297,7 +1301,7 @@ save slot, so a slot without the node has its runs but the lab locked). The lab'
   listed beside it, a lock each (a part kept with its category shows so); RULES and ASSISTS tabs, each rule of the
   behavior or of the pilot assists a lock (`No pilot assists yet` when it has none), ALL of the list, the target line
   (rules) and LOCK ORDER; under MIRROR the arena locks a lock's mirror image too. LIMITS (its head says only the
-  career's parts and materials, or every part with `?unlock=all`): BUILD POINTS at most the start's (the
+  career's parts and materials, or every part in the dev mode, `LIMITS · EVERY PART · DEV MODE`): BUILD POINTS at most the start's (the
   default), a number (steps of 5) or NO CAP, HOLD at least the start's or any, VOYAGE-READY (logic cores within the
   mind capacity less FLEET's escorts'), MIRROR (on when the first start looks symmetric; the arena checks); MAY CHANGE
   (step 6): `lab.ron`'s gene presets (EVERYTHING, the default, DESIGN ONLY, BEHAVIOR ONLY, ASSISTS ONLY, NUMBERS ONLY;
@@ -1440,15 +1444,15 @@ save slot, so a slot without the node has its runs but the lab locked). The lab'
   binary `lab-worker` (`crates/client/lab-worker`), started the first time the lab has work, each holding at most two
   chunks; jobs and results go as RON text (`arena::worker`, `docs/arena.md` "Jobs as messages"). A worker says it is
   ready with its content's key and is let go if the key isn't the game's; one that fails hands its chunks back. Only
-  the main thread breeds, closes generations and writes the storage. Without a worker (none loads, or
-  `?lab_workers=0`) `arena::Run::step` breeds and fights within the budget on the main thread as before
+  the main thread breeds, closes generations and writes the storage. Without a worker (none loads)
+  `arena::Run::step` breeds and fights within the budget on the main thread as before
   (`Lab::compute`; every slicing gives the same run); if every worker goes mid-generation the slices do that
   generation again from its start. In flight no job goes out and the generation waits to close. VALIDATE and RATE ON
   THE LADDER compute the same way in the run's place. Each closed generation logs its time and how much of it the
   frames paid (`lab: <id> generation 3 of 20 in 3.5 s (…; 40 ms of it in the frames)`). **Measured** (17 Oct 2026,
   web-dev build in headless Chromium, SwiftShader at about 4 frames a second, 4 cores): a QUICK generation of the
   starter in 3.3–3.9 s with 30–50 ms of it in the frames, against 48 s and 1.8 s in the frame's slices; an imported
-  CLI run (`two_starts_locked`) computed in the workers and with `?lab_workers=0` wrote identical generation parts.
+  CLI run (`two_starts_locked`) computed in the workers and in the frame's slices (then `?lab_workers=0`, gone since ADR-0046) wrote identical generation parts.
   (16 Oct 2026, slices only: a tick of work costs 4.7–7.9 µs in wasm, natively 5–6 µs, `docs/arena.md`.) Writing the
   run after a generation took 2–11 ms for 3–32 kB (it grows with the run: a STANDARD run of 50 generations is about
   0.7 MB, so its last writes may take some tens of ms, GDR-0092's "cost of the snapshot").
@@ -1729,8 +1733,8 @@ the sides, a taller one above and below (`ui_kit::ui_scale`, tested for every pl
   (`library::restore_working`, in `BlueprintsPlugin`'s build), else (and at every new game) the starter: a copy of
   the career's start ship (`PlayerCareer::start_ship`: `rim_skiff` for `rim_awakening`) centred in the first content
   frame it fits (`frames.ron`: the 24 × 24 frigate), mirror on, named "Rim skiff copy"; a new game saves the last
-  design's unsaved changes first. It flies under the id `player:design` (content ids are snake_case, so it never clashes). The player, the
-  `?fleet=` wingmen, re-forms and test flights fly it; raiders stay content ships.
+  design's unsaved changes first. It flies under the id `player:design` (content ids are snake_case, so it never clashes). The player, re-forms
+  and test flights fly it; raiders stay content ships.
 - **Report** (`report.rs`): `DrydockReport`, the design's `sim::report`, recomputed once per revision or content
   change (during a paint or erase drag at most every 0.1 s, and once when it ends: a full 64 × 64 frame takes about
   5 ms). The BEHAVIOR screen reads the same report (the weapon reach, whether TEST IN RANGE can fly the design). **Panels** (`panels/`): the screen's nodes, spawned once and updated in place from the resources (the
@@ -2441,7 +2445,7 @@ but the type is too small to read). Numbers are placeholders.
   between 185 px columns (`TEST RANGE · WAVE 1` in one line, a fight's title in two), the banner between the same
   columns; in a voyage SALVAGE and RECALL at the bottom centre and the minimap (radius 40) over FIRE.
   **Touch** (`controls.rs`): the widgets show from the start on a touch screen (`kit::ui_kit::TouchScreen`: Android,
-  `(pointer: coarse)` in the browser, `?touch=1`, or after any touch; `?touch=0` off): a floating stick (where the
+  `(pointer: coarse)` in the browser, or after any touch; `?touch=` until 20 Oct 2026, ADR-0046): a floating stick (where the
   left thumb lands in the left 45 % under the speed block; ring 124 dp, knob 44 dp, dead zone 6 %), FIRE 76 dp (hit
   96 dp), FLARE 44 dp beside it for a ship with a flare launcher; a tap (0.3 s, 10 dp) on a ship locks it (2 m + 24
   dp), on the target panel locks the next; the ring top left opens the flight menu, whose second row on touch holds

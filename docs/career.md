@@ -191,7 +191,7 @@ below) is never written over: the game keeps it as it is ("How the game uses it"
 
 - **Unlocks** (`Career::unlocks(&content) -> Unlocks`): every part, material and frame that is not `locked` in the
   content, plus every `Part`, `Material` and `Frame` unlock of the researched nodes. `Unlocks::all(&content)` is
-  everything (the development switch `?unlock=all`).
+  everything (the dev mode, `?dev=1`, ADR-0046).
 - **Mind capacity** (`mind_capacity`): the start's `mind_capacity` plus every `MindCapacity(n)` of the researched
   nodes (2, then 3 and 4 with the two mind expansions of the base pack).
 - **Jump range** (`jump_range`, S; GDR-0093): the career's galaxy's `jump_range` plus every `JumpRange(s)` of the
@@ -337,7 +337,7 @@ hand-made skeleton, and the `galaxy` crate's `tests/career.rs` for a new game's 
   `UnknownCluster`, `OutOfReach`, `BandClosed`) charts it, counts the launch and marks it underway; `cluster_ended(&content, k, end)`
   ends it like `voyage_ended` (recalled: unloaded, every data core of the haul a log unless its signal is heard or
   logged already; lost: the haul, cores included, stays behind) and adds a history entry with the cluster's name and id.
-  The voyage map launches them after their warp (E6, GDR-0097); `?scene=voyage&cluster=` flies one as a practice run.
+  The voyage map launches them after their warp (E6, GDR-0097).
 - **What a launch carries** (`leads(&content, k) -> Leads`, for `sim::VoyagePlan::roll_interior`): the trail places in
   the cluster that a heard signal not done leads to (signals' sites: hidden until close, bearings from a scan), and the
   log places (a source of form `Log`) whose core is neither decoded, logged nor heard (their site's first wreck holds
@@ -444,7 +444,7 @@ save, each a head and one part per generation since ADR-0041, `docs/client.md` "
 unlocked parts and materials, the mind capacity less FLEET's escorts; no part counts since GDR-0108). The lab is locked until its
 research node, the Simulation vault (`simulation_vault`, logic 3, `Unlock::Facility("evolution")`, GDR-0092 step 8, 16
 Oct 2026), is researched: `Unlocks::facilities` holds the open facilities (`content/base/facilities.ron`), derived like
-the parts, so a save simply lacks it until the node is paid; `?unlock=all` opens it. A design
+the parts, so a save simply lacks it until the node is paid; the dev mode opens it. A design
 the lab saves is an ordinary saved design with an `origin` (designs format 2, `docs/drydock.md`): FLEET flies it and
 voyages launch it like any other.
 
@@ -456,30 +456,30 @@ Track 7F, 13 Oct 2026: `game::career` (`crates/client/world/src/career.rs`; test
   2026, ADR-0041, key `saves/career` in the database `space-game`, read into memory before the game starts and
   written behind it; `<data dir>/saves/career.ron` on desktop; memory where the platform has none, with a
   note). The text is `Career::to_ron()` after the storage's header line `// space-game: saves, format 5, saved
-  <unix seconds>` (`CareerDoc`, format `career::FORMAT`, the oldest it reads too). The slot is `career`; `?save=<slot>` plays another one
-  (a storage name: `a-z 0-9 _ -`; another name falls back to `career` with a note).
+  <unix seconds>` (`CareerDoc`, format `career::FORMAT`, the oldest it reads too). The slot is `career`; the dev mode
+  (`?dev=1`, ADR-0046) plays its own, `dev`, and never touches `career`.
 - **Loading** (`career::load`, in the plugin's build before the first frame): read → `Career::from_ron` →
   `reconcile` (the first change and how many more become a note on home) → a career without a galaxy gets the
   content's first one (`career::chart`: `galaxy::generate` from the game seed, `begin_galaxy`; content without a
   galaxy leaves it without, one that doesn't generate says NO GALAXY). No save, a save of an older format (the
-  storage's `Older`: a log line and the note A NEW GAME, ADR-0044), or `?newgame=1`: a new game from
+  storage's `Older`: a log line and the note A NEW GAME, ADR-0044), or `?dev=1&newgame=1` (the dev save only): a new game from
   the content's first start, seeded with the clock (Unix seconds), written at once; the drydock then docks a copy
   of the start's ship (`rim_skiff`), saving the last design's unsaved changes first so BLUEPRINTS keeps them.
 - **A save that doesn't read** (broken RON, unknown fields, a header from a newer build, a newer voyage roller) is
   **kept as it is**: the
   game runs a new career in memory as a stand-in, never writes it, keeps the drydock's design and says so on home
-  ("THE SAVE IS KEPT AS IT IS"). `?newgame=1` starts over in its place. Content without any start gets the same
+  ("THE SAVE IS KEPT AS IT IS"). Content without any start gets the same
   treatment (a stand-in career that unlocks what the content doesn't lock, mind capacity 0).
 - **Writes**: at a new game, after every FLEET change, when the drydock first shows a fresh part (`seen`); the
   research screen (7G) writes after UNLOCK and the voyage (7H) at launch and end. Never during a voyage. A failed
   write leaves the change in the running game and says why (home's notes, FLEET's status line).
-- **Voyages** (track 7H, `client.md` "Voyages"): a launch needs a voyage-ready fleet by what the career grants. The
-  development launch `?scene=voyage&voyage=<id>` flies what the career would refuse (a voyage not open, a fleet that
-  isn't ready by the career's own unlocks, so also a fleet only `?unlock=all` allows) as a practice run: rolled
-  from `voyage_seed` (the seed the next launch would get), never recorded or written.
-- **`?unlock=all`** (free mode): the drydock offers every part, material and frame (`Unlocks::all`), shows nothing
-  locked and no NEW tags, and checks voyage-readiness against everything. No unlock is ever written: the save keeps
-  the career's own progress (FLEET still saves its escorts).
+- **Voyages** (track 7H, `client.md` "Voyages"): a launch needs a voyage-ready fleet by what the career grants;
+  every launch is recorded (no practice runs since ADR-0046).
+- **The dev mode** (`?dev=1`, ADR-0046, 20 Oct 2026; it replaced `?save=`, `?unlock=all` and `?bands=`): its own save
+  `saves/dev`; at every load `Career::open_everything` researches every node (unpaid, content order), fills every
+  material and research family to the store's bound (`MAX_MATERIALS`, `MAX_DATA`), charts every cluster and opens
+  every gate (so every band is open and a jump reaches any cluster). The drydock offers every part, material and frame
+  (`Unlocks::all`), shows no NEW tags and launches with unlimited stock. `?dev=1&newgame=1` starts the dev save over.
 - **Escorts**: their saved designs are read at start and whenever home or the drydock opens (`EscortDesigns`); an
   escort whose design is gone or doesn't read leaves the fleet, the save is written and home notes it.
 

@@ -48,7 +48,6 @@ content/base/
   controls.ron             the action map: every player action, its section, screens and default inputs (GDR-0090)
   facilities.ron           the home shipyard's buildings research opens (the evolution lab; GDR-0092)
   lab.ron                  the evolution lab's words and numbers: goals, trials, genes, pilots, sizes, measures (GDR-0092)
-  playtest.ron             play-test kits by band: research, materials and data a `?bands=` test career gets (development)
   behavior_nodes/*.ron     the behavior vocabulary: conditions, actions, target selectors (+ Rhai conditions)
   behaviors/<id>.ron       behavior programs (a target line and rules in the text format)
   icons/<key>.svg          part, material and category icons as SVG (the glyph without its tile)
@@ -63,9 +62,8 @@ File rules:
   `categories`, `factions`, `materials`, `parts`, `frames`, `ships`, `behavior_nodes`, `behaviors`, `families`,
   `research`, `facilities`, `starts`, `voyages`, `encounters`, `galaxy`, `bands`, `cluster_types`, `rocks`,
   `landmarks`, `planets`, `trails`, `signal_sources`, `lore`, `controls`. File names are free; group however reads
-  best. `lab.ron` is one file of its own (one `( ... )`, not an entry kind), and so is `playtest.ron` (a list of kits
-  by `band`, not an entry kind either; a later pack's kit for a band replaces an earlier one's; `docs/client.md`
-  "Launch parameters").
+  best. `lab.ron` is one file of its own (one `( ... )`, not an entry kind). (`playtest.ron`, the play-test kits of
+  `?bands=`, went with the dev mode on 20 Oct 2026, ADR-0046.)
 - A file holds **one entry** `( ... )` or **a list** `[ ( ... ), ... ]`. Comments (`//`, `/* */`) are fine.
 - `Some(...)` may be omitted (`power: (output: 10)`); RON's `implicit_some` is always on.
 - Unknown fields are errors (typos fail loudly). Unknown `.ron` files are errors; `.svg` files belong in
@@ -189,7 +187,7 @@ reactor, the beam laser, the torch drive, and the cruiser and capital frames (Ni
 has everything else (the early-game kit: steel, fission reactor,
 capacitor, radiator, pulse laser, shield emitter, thruster, gyro, RCS pod, logic core, cargo bay and hold, the
 frigate frame). Until the career drydock reads the player's unlocks, the free drydock and the sandbox simply hide
-what is locked; a development switch (`?unlock=all`) is planned.
+what is locked; the dev mode (`?dev=1`, ADR-0046) unlocks everything.
 
 ### Parts (`parts/*.ron`)
 
@@ -808,7 +806,7 @@ the id kept for saved bindings): the nearest enemy, then the next by distance (`
 
 The home shipyard's buildings that the player opens (GDR-0071: "each area needs states from content"). Common header
 plus `locked` (default false): a locked facility is dark until a research node's `Facility(id)` opens it
-(`Career::unlocks`'s `facilities`; `?unlock=all` opens every one). `name` is the label over the building at home. The
+(`Career::unlocks`'s `facilities`; the dev mode opens every one). `name` is the label over the building at home. The
 shipyard places and draws the buildings: `workshop` (open from the start) and `evolution` (the evolution lab, locked,
 opened by `simulation_vault`). Since GDR-0108 (18 Oct 2026) a facility may be:
 
