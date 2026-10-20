@@ -114,7 +114,7 @@ impl Plugin for ResearchPlugin {
             .add_systems(OnExit(AppMode::Research), exit)
             .add_systems(Update, screen::show.run_if(state_changed::<AppMode>))
             // A phone's layout and a wide one's are built apart: built again when the window changes class.
-            .add_systems(Update, (screen::relayout.run_if(resource_changed::<LayoutClass>), screen::reopen, screen::fit_materials).chain().after(UiInputSet).before(ResearchSet::Input))
+            .add_systems(Update, (screen::relayout.run_if(resource_changed::<LayoutClass>), screen::reopen, screen::fit_materials, screen::clear_of_materials).chain().after(UiInputSet).before(ResearchSet::Input))
             .add_systems(
                 Update,
                 (

@@ -219,6 +219,39 @@ pub(super) fn fit_materials(mut bars: Query<(&MaterialsBar, &mut Node)>, heads: 
     }
 }
 
+/// The detail panel, and its rows (with their height as laid out), which keep below the materials' bar
+/// ([`clear_of_materials`]).
+#[derive(Component)]
+pub(super) struct DetailPanel;
+#[derive(Component)]
+pub(super) struct DetailRows(f32);
+
+/// The detail's rows start below the materials' bar whatever its rows (21 Oct 2026: in the dev mode, every material in
+/// store, the bar's fourth row touched the detail's first line at 1280 × 720), shorter by as much, so they still end
+/// over UNLOCK.
+pub(super) fn clear_of_materials(
+    bars: Query<(&ComputedNode, &UiGlobalTransform), With<MaterialsBar>>,
+    panels: Query<(&ComputedNode, &UiGlobalTransform), With<DetailPanel>>,
+    mut rows: Query<(&DetailRows, &mut Node)>,
+) {
+    let (Ok((bar, bar_tf)), Ok((panel, panel_tf))) = (bars.single(), panels.single()) else { return };
+    if bar.size.y <= 0.0 || panel.size.y <= 0.0 {
+        return;
+    }
+    // Physical px → UI px.
+    let k = bar.inverse_scale_factor;
+    let bar_bottom = (bar_tf.translation.y + bar.size.y / 2.0) * k;
+    let panel_top = (panel_tf.translation.y - panel.size.y / 2.0) * k;
+    let push = (bar_bottom + 6.0 - panel_top).max(0.0).round();
+    for (made, mut node) in &mut rows {
+        let (top, height) = (px(push), px(made.0 - push));
+        if node.top != top || node.height != height {
+            node.top = top;
+            node.height = height;
+        }
+    }
+}
+
 /// The UNLOCK button.
 #[derive(Component)]
 pub(super) struct UnlockButton;
@@ -256,24 +289,41 @@ fn under_room(m: &Metrics, lay: &Lay, columns: usize, column: usize) -> f32 {
     if column + 1 < columns { m.column_pitch - 10.0 } else { lay.tree_right - (m.origin.x + column as f32 * m.column_pitch) - UNDER_INSET }
 }
 
-/// The widest the line under a node's card gets: its kind and every cost chip at its longest (held just short of
-/// the cost: `GROWN 23.9 / 24`, `1 / 2`). From the characters at a wide average glyph (0.6 em plus the tracking),
-/// so it errs long: a line it calls too long for its room wraps to a second one, which its row makes room for.
-fn under_width(node: &ResearchNode) -> f32 {
+/// The widths of the line under a node's card: its kind (with its margin), then every cost chip at its longest
+/// (held just short of the cost: `GROWN 23.9 / 24`, `1 / 2`). From the characters at a wide average glyph (0.6 em
+/// plus the tracking), so they err long: a line wraps sooner here than on the screen, never later.
+fn under_items(node: &ResearchNode) -> Vec<f32> {
     const EM: f32 = 0.6;
     let text = |s: &str, tracking: f32| s.chars().count() as f32 * 7.5 * (EM + tracking);
     let chip = |s: &str, material: bool| 14.0 + 2.0 + text(s, 0.2) + if material { 7.0 + 4.0 } else { 0.0 };
     let datas = node.cost.data.iter().map(|(f, x)| {
         let cost = tree::amount(*x);
-        6.0 + chip(&format!("{} {cost}.9 / {cost}", tree::family_label(f)), false)
+        chip(&format!("{} {cost}.9 / {cost}", tree::family_label(f)), false)
     });
-    let materials = node.cost.materials.values().map(|n| 6.0 + chip(&format!("{} / {n}", n.saturating_sub(1)), true));
-    text(kind_words(node.kind), 0.25) + 4.0 + datas.chain(materials).sum::<f32>()
+    let materials = node.cost.materials.values().map(|n| chip(&format!("{} / {n}", n.saturating_sub(1)), true));
+    std::iter::once(text(kind_words(node.kind), 0.25) + 4.0).chain(datas).chain(materials).collect()
 }
 
-/// Which cards' lines under them take two lines (too long for their room): their rows are taller.
-fn two_lines(content: &Content, tree: &Tree, m: &Metrics, lay: &Lay) -> Vec<bool> {
-    tree.cards.iter().map(|c| content.research.get(&c.node).is_some_and(|n| under_width(n) > under_room(m, lay, tree.columns, c.column))).collect()
+/// How many lines `items` take wrapped into `room` px with the line's 6 px gaps, as the line's flex wrap lays them.
+fn wrapped_lines(items: &[f32], room: f32) -> usize {
+    let mut lines = 1;
+    let mut used = 0.0;
+    for (k, w) in items.iter().enumerate() {
+        if k > 0 && used + 6.0 + w > room {
+            lines += 1;
+            used = *w;
+        } else {
+            used += if k > 0 { 6.0 } else { 0.0 } + w;
+        }
+    }
+    lines
+}
+
+/// How many lines each card's line under it takes in its room (19 Oct 2026 one or two; 21 Oct 2026 as many as it
+/// wraps to: Precursor alloy's four chips took three lines on a phone and ran into the card under it): its row is
+/// taller by a chip line for each more line.
+fn under_lines(content: &Content, tree: &Tree, m: &Metrics, lay: &Lay) -> Vec<usize> {
+    tree.cards.iter().map(|c| content.research.get(&c.node).map_or(1, |n| wrapped_lines(&under_items(n), under_room(m, lay, tree.columns, c.column)))).collect()
 }
 
 /// Roman numerals for the tier heads (1 to 39 is plenty).
@@ -397,7 +447,7 @@ fn build(mut commands: Commands, lay: &Lay, fonts: &HudFonts, style: &Style, con
     let ui = style.ui;
     let c = |tone: Tone, a: f32| ui_color(tone.color(&ui), a);
     let m = metrics(tree, lay);
-    let placed = tree.place(&m, &two_lines(content, tree, &m, lay));
+    let placed = tree.place(&m, &under_lines(content, tree, &m, lay));
     let inner_h = placed.lanes.last().map_or(0.0, |l| l.0 + l.1);
     commands
         .spawn((
@@ -571,7 +621,7 @@ fn spawn_lanes(lanes: &mut ChildSpawnerCommands, lay: &Lay, fonts: &HudFonts, st
                 b.spawn((RText::CardDone(k), label(fonts, "DONE", 7.5, c(Tone::Teal, 1.0)), Node { display: Display::None, flex_shrink: 0.0, ..default() }));
                 b.spawn((RIcon::Mark(k), UiIcon::Glyph { glyph: Glyph::Diamond, color: ui.gold }, Node { display: Display::None, width: px(9), height: px(9), flex_shrink: 0.0, ..default() }));
             });
-        // Under the card: its kind and its cost, wrapping to a second line past its room.
+        // Under the card: its kind and its cost, wrapping to more lines past its room (`under_lines`).
         let room = under_room(m, lay, tree.columns, tree.cards[k].column);
         lanes
             .spawn(Node {
@@ -599,18 +649,19 @@ fn spawn_detail(stage: &mut ChildSpawnerCommands, lay: &Lay, fonts: &HudFonts, s
     let ui = style.ui;
     let c = |tone: Tone, a: f32| ui_color(tone.color(&ui), a);
     let (tier_y, panel_w, unlock_y) = (lay.tier_y, lay.panel_w, lay.unlock_y);
-    stage.spawn((UiBlock, ScreenPart::new(Edge::Right, 1), abs(Vec2::new(lay.panel_x, tier_y), Some(Vec2::new(panel_w, unlock_y + 44.0 - tier_y))))).with_children(|panel| {
+    stage.spawn((DetailPanel, UiBlock, ScreenPart::new(Edge::Right, 1), abs(Vec2::new(lay.panel_x, tier_y), Some(Vec2::new(panel_w, unlock_y + 44.0 - tier_y))))).with_children(|panel| {
         // The divider between the tree and the detail.
         let gap = (lay.panel_x - lay.tree_right) / 2.0 - 4.0;
         panel.spawn((abs(Vec2::new(-gap.min(20.0), 8.0), Some(Vec2::new(1.0, lay.tree_bottom - tier_y - 8.0))), BackgroundColor(c(Tone::Label, 0.12))));
         // The rows: on a phone they scroll (over the line and UNLOCK).
+        let rows_h = if lay.compact { unlock_y - 28.0 - tier_y } else { 500.0 };
         let rows = Node {
             flex_direction: FlexDirection::Column,
             row_gap: px(8),
             overflow: if lay.compact { Overflow::scroll_y() } else { Overflow::DEFAULT },
-            ..abs(Vec2::ZERO, Some(Vec2::new(panel_w, if lay.compact { unlock_y - 28.0 - tier_y } else { 500.0 })))
+            ..abs(Vec2::ZERO, Some(Vec2::new(panel_w, rows_h)))
         };
-        let mut rows = panel.spawn(rows);
+        let mut rows = panel.spawn((DetailRows(rows_h), rows));
         if lay.compact {
             // No glow room past its bottom: the rows would show under the line and UNLOCK.
             rows.insert((ScrollPosition::default(), Scrollbar::vertical().room(0)));
@@ -1086,6 +1137,17 @@ pub(super) fn style_cards(
 mod tests {
     use super::*;
 
+    /// A card's line under it (however many lines of chips) ends before the next row's card starts, in every lane
+    /// and across lanes.
+    fn lines_clear_the_next_row(placed: &tree::Placed, lines: &[usize]) {
+        let mut rows: Vec<(f32, usize)> = placed.cards.iter().zip(lines).map(|(r, &n)| (r.min.y, n)).collect();
+        rows.sort_by(|a, b| a.0.total_cmp(&b.0).then(a.1.cmp(&b.1)));
+        for w in rows.windows(2).filter(|w| w[1].0 > w[0].0) {
+            let end = w[0].0 + CARD_H + UNDER_GAP + CHIP_H + (w[0].1 - 1) as f32 * (CHIP_ROW_GAP + CHIP_H);
+            assert!(end < w[1].0, "a cost line ending at {end} runs into the card at {}", w[1].0);
+        }
+    }
+
     /// The base pack's tree fits the 1280 × 720 layout: three columns of full-width cards end before the detail
     /// panel; its sixteen rows (ten lanes) are more than fit, so they keep the smallest row pitch and the lanes scroll.
     #[test]
@@ -1095,23 +1157,16 @@ mod tests {
         let lay = Lay::WIDE;
         let m = metrics(&tree, &lay);
         assert_eq!(m.card.x, lay.card_max_w);
-        let two = two_lines(&content, &tree, &m, &lay);
-        let placed = tree.place(&m, &two);
+        let lines = under_lines(&content, &tree, &m, &lay);
+        let placed = tree.place(&m, &lines);
         let right = placed.cards.iter().map(|r| r.max.x).fold(0.0, f32::max);
         assert!(lay.tree_right < lay.panel_x - 20.0);
         assert!(right <= lay.tree_right, "{right}");
         let bottom = placed.lanes.last().map(|l| l.0 + l.1).unwrap();
         assert!(bottom > lay.tree_bottom - lay.tree_top && m.row_pitch == ROW_PITCH.0, "{bottom}");
-        // A card's line under it (one or two lines of chips) ends before the next row's card starts, in every lane
-        // and across lanes; the gate's and the Grown's long lines wrap.
-        let mut rows: Vec<(f32, bool)> = placed.cards.iter().zip(&two).map(|(r, &t)| (r.min.y, t)).collect();
-        rows.sort_by(|a, b| a.0.total_cmp(&b.0).then(a.1.cmp(&b.1)));
-        for w in rows.windows(2).filter(|w| w[1].0 > w[0].0) {
-            let end = w[0].0 + CARD_H + UNDER_GAP + CHIP_H + if w[0].1 { CHIP_ROW_GAP + CHIP_H } else { 0.0 };
-            assert!(end < w[1].0, "a cost line ending at {end} runs into the card at {}", w[1].0);
-        }
-        assert!(two[tree.card_of("grown_heart").unwrap()]);
-        assert!(!two[tree.card_of("beam_laser").unwrap()]);
+        lines_clear_the_next_row(&placed, &lines);
+        assert!(lines[tree.card_of("grown_heart").unwrap()] >= 2);
+        assert_eq!(lines[tree.card_of("beam_laser").unwrap()], 1);
         // More columns: narrower cards, still inside.
         let wide = Tree { columns: 5, ..tree.clone() };
         let m = metrics(&wide, &lay);
@@ -1129,7 +1184,10 @@ mod tests {
         let lay = Lay::COMPACT;
         let m = metrics(&tree, &lay);
         assert!(m.card.x >= 150.0, "{}", m.card.x);
-        let placed = tree.place(&m, &two_lines(&content, &tree, &m, &lay));
+        let lines = under_lines(&content, &tree, &m, &lay);
+        let placed = tree.place(&m, &lines);
+        lines_clear_the_next_row(&placed, &lines);
+        assert!(lines[tree.card_of("precursor_alloy").unwrap()] >= 3, "{lines:?}");
         let right = placed.cards.iter().map(|r| r.max.x).fold(0.0, f32::max);
         assert!(right <= lay.tree_right && lay.tree_right + 16.0 <= lay.panel_x, "{right}");
         assert!(lay.panel_x + lay.panel_w <= lay.stage.x - 12.0);

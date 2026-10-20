@@ -61,7 +61,7 @@ pub struct Metrics {
     pub column_pitch: f32,
     /// One lane row's height (the card, the line under it and the gap).
     pub row_pitch: f32,
-    /// What a row is taller when the line under one of its cards takes two lines (its chips wrap).
+    /// What a row is taller for each more line the line under one of its cards takes (its chips wrap).
     pub second_line: f32,
     /// Room at the top of each lane for its head (on a phone the lane's name and data sit over its cards; 0 where
     /// they sit beside them).
@@ -166,10 +166,10 @@ impl Tree {
             .map(|(k, _)| k)
     }
 
-    /// Where the cards, lanes and connectors go with these sizes. A card sits at the top of its row; a row holding a
-    /// card whose line under it takes two lines (`two_lines`, by card; a card past its end takes one) is
-    /// [`Metrics::second_line`] taller.
-    pub fn place(&self, m: &Metrics, two_lines: &[bool]) -> Placed {
+    /// Where the cards, lanes and connectors go with these sizes. A card sits at the top of its row; a row is
+    /// [`Metrics::second_line`] taller for each more line the longest line under one of its cards takes
+    /// (`under_lines`, by card; a card past its end takes one).
+    pub fn place(&self, m: &Metrics, under_lines: &[usize]) -> Placed {
         let mut lanes = Vec::with_capacity(self.lanes.len());
         // Each lane's rows' tops, from the lane's top.
         let mut rows: Vec<Vec<f32>> = Vec::with_capacity(self.lanes.len());
@@ -179,8 +179,8 @@ impl Tree {
             let mut h = m.lane_head;
             for row in 0..l.rows {
                 tops.push(h);
-                let tall = self.cards.iter().enumerate().any(|(j, c)| c.lane == k && c.row == row && two_lines.get(j).copied().unwrap_or(false));
-                h += m.row_pitch + if tall { m.second_line } else { 0.0 };
+                let lines = self.cards.iter().enumerate().filter(|(_, c)| c.lane == k && c.row == row).map(|(j, _)| under_lines.get(j).copied().unwrap_or(1)).max().unwrap_or(1);
+                h += m.row_pitch + lines.saturating_sub(1) as f32 * m.second_line;
             }
             lanes.push((top, h));
             rows.push(tops);
@@ -571,12 +571,15 @@ mod tests {
         // Power (lane 1) to energy (lane 2, under pulse cycling II): across, down halfway in the gap, across.
         let elbow = link("fusion_reactor", "beam_focus");
         assert_eq!(elbow, [Vec2::new(350.0, 300.0), Vec2::new(375.0, 300.0), Vec2::new(375.0, 570.0), Vec2::new(400.0, 570.0)]);
-        // A card whose line under it wraps makes its row taller: the rows and lanes under it move down.
-        let mut two = vec![false; tree.cards.len()];
-        two[tree.card_of("composite_plating").unwrap()] = true;
-        let taller = tree.place(&m, &two);
+        // A card whose line under it wraps makes its row taller by a line for each more line: the rows and lanes
+        // under it move down.
+        let mut lines = vec![1; tree.cards.len()];
+        lines[tree.card_of("composite_plating").unwrap()] = 2;
+        let taller = tree.place(&m, &lines);
         assert_eq!(taller.lanes[0], (100.0, placed.lanes[0].1 + 20.0));
         assert_eq!(taller.cards[tree.card_of("fusion_reactor").unwrap()].min.y, rect("fusion_reactor").min.y + 20.0);
+        lines[tree.card_of("composite_plating").unwrap()] = 3;
+        assert_eq!(tree.place(&m, &lines).lanes[0], (100.0, placed.lanes[0].1 + 40.0));
     }
 
     /// Card states follow the model: done, ready, locked by requirements, short of data (with what is held).
