@@ -214,6 +214,7 @@ cargo run --release -p arena-cli -- matrix halvex_runner automaton_raider rim_sk
 - All three run on `std::thread::available_parallelism` threads (`std::thread::scope`, each thread takes the next fight)
   and print fights per second and million ticks per second. Only that line depends on the machine.
 - `arena check`: the balance check (below, [The balance check](#the-balance-check)).
+- `arena report`: ratings and the part report (below, [Ratings and part reports](#ratings-and-part-reports)).
 
 ```text
 | vs | halvex_runner | automaton_raider | rim_skiff | sample_mid | automaton_hunter |
@@ -274,6 +275,49 @@ stronger passed (it moved the hive fight's score by 0.08), the beam laser 30 % s
 `tests/check.rs` checks that the committed set reads, every fight file reads as a spec and has a baseline row with
 the same seeds (so a set changed without `--update` fails `cargo test`), the baseline's round trip, a row's sums on
 short fights and the tolerance rules; the set itself runs only in release.
+
+## Ratings and part reports
+
+GDR-0032's "ratings; reports on pick rates, win rates and unused parts" (coop-arena track A4; defaults
+[GDR-0124](gdr/0124-ratings-and-part-reports.md), 20 Oct 2026). A pool of designs fights a round robin, one against
+one (every pair on N seeds in each starting position, no mirror matches, 100 m, 90 s, their own behaviors); the
+report rates the designs and sums the parts up:
+
+```sh
+cargo run --release -p arena-cli -- report                                   # the default pool, about 5 s
+cargo run --release -p arena-cli -- report rim_skiff my_design.ron --seeds 32 --markdown r.md --ron r.ron
+cargo run --release -p arena-cli -- report --run run_file.ron --best 12 rim_skiff halvex_runner
+```
+
+`arena report [<design>...] [--pool FILE] [--run FILE [--best N]] [--seeds N] [--seed S] [--distance M] [--time S]
+[--markdown FILE] [--ron FILE] [--threads N]`: the pool is the designs given (a content ship id, or a blueprint file
+with its `.txt` behavior beside it), the best `--best` (default 8) elites of a run file's archive under their evolved
+behaviors (named `g<genome>`), and a pool file (`arena::report::Pool`: designs and seeds); with none of them, the
+default pool `crates/core/arena/report/pool.ron` (the 15 content ships that fly one against one: no bosses, stations
+or drones; 16 seeds, 3360 fights). It prints the designs best first and the parts, and writes the same tables as
+Markdown (`--markdown`, headed by the command's line and the rules fingerprint) or the report as RON (`--ron`).
+
+- **Ratings** (`arena::report::bradley_terry`): Bradley–Terry fitted to the whole tally by Hunter's MM iteration, each
+  fight's arena score counting as that share of a win; on the Elo scale (400 points = odds of 10 to 1, the pool's mean
+  1500), with one virtual drawn fight per pairing (*placeholder*) so nothing rates at infinity. Chosen over Elo
+  because the fights come as one batch from fixed seeds: Elo's online updates would depend on their order and a K
+  factor; the fit is the same model without either. `expected(a, b)` is the Elo curve.
+- **Top designs**: the best half by rating, rounded up (*placeholder*).
+- **Per part** (every part of the content): designs carrying it, **pick rate** (share of the top designs carrying it),
+  **win rate** and **score when used** (all fights of the designs that carry it; the pool's mean score is 0.5).
+- **Flags** (*placeholders*, `arena::report::THRESHOLDS`): DOMINANT picked by ≥ 50 % of the top designs and scoring
+  ≥ 0.60 when used; UNDERUSED carried but picked by < 20 % of the top designs; NEVER PICKED carried by no design. A part
+  every design carries scores 0.5 and never flags DOMINANT.
+
+The library part (`arena::report`: `Entrant`, `round_robin`, `Tally`, `bradley_terry`, `report`, `Report`) has no
+I/O and gives the same report bit for bit (ordered sums; its `ln` and `10^x` from `+ − × ÷`). The first report and
+what it shows: `docs/results/arena-report-2026-10-20.md` (the content ships rate mostly by faction, since their parts
+are faction-bound; the Swarm carrier first at 59 build points; no part DOMINANT; 15 parts NEVER PICKED). Reports
+about parts rather than factions need pools from one palette: an evolution run's elites (`--run`).
+
+`tests/report.rs`: the round robin, the tally, the fit against known odds (two designs at 3 : 1, a line of three, a
+design that won everything), a report's ranks, pick rates and every flag on a made-up pool, the Markdown and RON forms,
+the committed pool, and a tiny pool of three content ships fought for real.
 
 ## Determinism
 

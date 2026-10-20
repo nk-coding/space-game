@@ -40,7 +40,7 @@ overview and links to both series. Format and status rules: `CLAUDE.md`, section
 | [0029](0029-mild-death-bonded-matter.md) | Death is mild: bonded matter re-forms your ship at home; the unbonded haul stays as a wreck | Accepted | 2026-10-10 |
 | [0030](0030-no-economy.md) | No economy: no credits, no trading; parts keep build-point costs for balance | Accepted | concept phase |
 | [0031](0031-materials-and-fabrication.md) | No generic scrap: materials come from places, and the fabricator resolves recipe chains without factory logistics | Accepted | 2026-10-10 |
-| [0032](0032-balancing-arena-evolution.md) | Balance with an AI-vs-AI arena and evolutionary search; enemies are handcrafted plus evolved (the balance check's defaults: GDR-0122) | Accepted | concept phase |
+| [0032](0032-balancing-arena-evolution.md) | Balance with an AI-vs-AI arena and evolutionary search; enemies are handcrafted plus evolved (the balance check's defaults: GDR-0122; ratings and part reports: GDR-0124) | Accepted | concept phase |
 | [0033](0033-multiplayer-coop-and-arena.md) | Multiplayer later: co-op voyages in the host's galaxy and arena PvP with your own ships | Accepted | 2026-10-10 |
 | [0034](0034-behavior-first-match-fire-at-will.md) | Behaviors pick the first matching rule about ten times a second; each gun fires at will along its facing; no match means hold | Accepted; think stagger replaced by [ADR-0037](../adr/0037-simultaneous-fire-within-a-tick.md) | 2026-10-11; 2026-10-12 |
 | [0035](0035-rule-slots-per-core.md) | Rule slots: six per logic core, two per automaton core; the lowest rules switch off first | Accepted | 2026-10-11; 2026-10-12 |
@@ -132,6 +132,7 @@ overview and links to both series. Format and status rules: `CLAUDE.md`, section
 | [0121](0121-tooltips-and-flings-by-touch.md) | Tooltips and flings by touch: a long press (0.35 s, 10 dp) shows a control's name and never clicks, a list lifted while it moves flings on (the wheel's glide over 0.9 s) | Proposed | 2026-10-20 |
 | [0122](0122-the-balance-check.md) | The balance check: seven fixed fights (1696 seeded runs, about 6 s) against a stored baseline, flagged past ±0.15 win rate, ±0.12 score or ±15 % time | Accepted (provisional, lead) | 2026-10-20 |
 | [0123](0123-behavior-words-for-salvage.md) | Behavior words for salvage: a `salvage` action (fly slowly over the nearest wreck that fits the hold), `wreck_in_range` and `cargo_full`, a `salvager` escort template; the voyage runner's escorts keep `escort` | Accepted (provisional, lead) | 2026-10-20 |
+| [0124](0124-ratings-and-part-reports.md) | Ratings and part reports: a round robin rated by Bradley–Terry on the Elo scale; per part its pick rate among the top half, win rate and score when used; DOMINANT, UNDERUSED, NEVER PICKED by placeholder thresholds | Accepted (provisional, lead) | 2026-10-20 |
 <!-- index:end -->
 
 ## How to add, supersede and deprecate

@@ -678,6 +678,18 @@ Next session:
   (47 against 61 of 80 on `yard_approach`).
 - Open: the tractor (GDR-0031), a leader-distance word, salvage in the lab's trials.
 
+### 20 Oct 2026: ratings and part reports (coop-arena A4)
+
+- ([GDR-0124](gdr/0124-ratings-and-part-reports.md), lead defaults) GDR-0032's ratings and reports: `arena report`
+  (`arena::report`; `docs/arena.md` "Ratings and part reports") fights a pool one against one in a round robin and
+  rates it by a Bradley–Terry fit on the Elo scale; per part its pick rate among the top half, win rate and score when
+  used, and the flags DOMINANT, UNDERUSED, NEVER PICKED (placeholder thresholds). The pool: designs given, a run
+  file's best elites (`--run`) or `crates/core/arena/report/pool.ron` (15 content ships, 3360 fights, about 5 s).
+  The first report (`results/arena-report-2026-10-20.md`): no part DOMINANT, the ratings follow the factions (the
+  automatons' parts UNDERUSED with their ships), the Swarm carrier first at 59 build points, 15 researched parts
+  carried by no content ship. No balance change.
+- Open: a report over evolved designs from one palette (the thresholds revisited then); TrueSkill for team fights.
+
 ## Phase 4: measurement
 
 Status 12 Oct 2026 (new VM): `results/spike-summary.md` written. Determinism native vs wasm IDENTICAL on the new VM

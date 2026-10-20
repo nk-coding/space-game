@@ -465,7 +465,7 @@ fight tables into a command.
 | A1 Minimal headless arena | `arena` lib (`FightSpec`, `build_world`, `run_fight`, `FightResult`, score) + native runner over all cores + Markdown/CSV report. First sets: the `docs/sim.md` sandbox fight (Runner vs 3 raiders, seeds 1–12, passive/closing stand-ins), `skirmisher` vs raiders, a sweep of `raider_basic`'s stand-off and orbit | – | S | S1, P1, P2 |
 | A2 Fight replays in the client | `?scene=fight&fight=<code>`, final hash check, codes in report rows | A1 | S | A3, S1, N1 |
 | A3 Balance check | `scripts/arena-check.sh`, stored baseline, tolerances (built 20 Oct 2026, GDR-0122) | A1 | S | A2, A4 |
-| A4 Ratings and part reports | Bradley–Terry/Elo, pick rate, win rate when used, flags; a pool of archetype designs in `crates/tools/arena/sets/` | A1 | M | A2, A3, N-tracks |
+| A4 Ratings and part reports | Bradley–Terry/Elo, pick rate, win rate when used, flags; a pool of archetype designs in `crates/tools/arena/sets/` (built 20 Oct 2026, GDR-0124: `arena report`, Bradley–Terry on the Elo scale, the pool `crates/core/arena/report/pool.ron`; first report `docs/results/arena-report-2026-10-20.md`) | A1 | M | A2, A3, N-tracks |
 | A5 Behavior evolution | MAP-Elites over rule programs on fixed hulls (`BehaviorEditor` operators); first target `raider_basic` / `skirmisher` | A1, A4 | M | N-tracks |
 | A6 Design evolution | `data::edit` operators, mirror lock, build-point budget, report pre-filter; then joint genome | A5 | L | N-tracks |
 | A7 Number tuning and exploit hunts | Outer-loop proposals as RON diffs for review; hunts → check-set fights | A6, A3 | L | – |
