@@ -151,7 +151,7 @@ pub(super) fn spawn_tip(mut commands: Commands, fonts: Res<HudFonts>, style: Res
                 border_radius: BorderRadius::all(px(4)),
                 ..default()
             },
-            BackgroundColor(ui_color(style.background.outer(), 0.94)),
+            BackgroundColor(ui_color(style.background.outer(), 1.0)),
             BorderColor::all(ui_color(ui.label, 0.28)),
             GlobalZIndex(i32::MAX - 8),
             UiTransform::default(),
