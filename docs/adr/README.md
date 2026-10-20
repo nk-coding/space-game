@@ -57,6 +57,7 @@ is the overview and links to both series. Format and status rules: `CLAUDE.md`, 
 | [0046](0046-one-dev-mode-replaces-the-url-flags.md) | One `dev=1` mode (its own save, everything open, the whole galaxy with each cluster's sites, the debug keys) replaces the URL flags; a few tool flags stay for scripts | Accepted | 2026-10-20 |
 | [0047](0047-licences-code-mit-or-apache-content-cc-by.md) | Licences: code MIT OR Apache-2.0, content and art CC BY 4.0; a third-party notices file, an AI disclosure | Accepted | 2026-10-20 |
 | [0048](0048-the-web-build-is-a-player-platform.md) | The web build is a player platform beside native and Android, published on GitHub Pages by a GitHub Actions workflow | Accepted | 2026-10-20 |
+| [0049](0049-web-release-profile-client-for-size-sim-for-speed.md) | The published web build compiles the client for size and the simulation for speed (profile `web-release`) | Accepted (provisional, lead) | 2026-10-20 |
 <!-- index:end -->
 
 ## How to add, supersede and deprecate

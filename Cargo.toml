@@ -81,3 +81,26 @@ codegen-units = 16
 lto = false
 incremental = true
 
+
+# The published web build (`scripts/web-build.sh --full`, GitHub Pages; ADR-0049): the client compiled for size,
+# the simulation for speed. Size is download time for players; opt-level "z" with fat LTO took the game's wasm
+# from 57.8 to 31.3 MiB (gzip 15.3 to 9.9 MiB, 20 Oct 2026) and the bench sim step 12–78 % slower, Rapier ~50 %.
+# So the sim and what it runs on (physics, maths, Rhai, the arena the lab's workers drive) stay at opt-level 3;
+# opt-level is a per-function attribute, so it survives LTO.
+[profile.web-release]
+inherits = "release"
+opt-level = "z"
+lto = "fat"
+
+[profile.web-release.package]
+sim = { opt-level = 3 }
+arena = { opt-level = 3 }
+galaxy = { opt-level = 3 }
+rapier2d = { opt-level = 3 }
+parry2d = { opt-level = 3 }
+nalgebra = { opt-level = 3 }
+simba = { opt-level = 3 }
+glamx = { opt-level = 3 }
+wide = { opt-level = 3 }
+libm = { opt-level = 3 }
+rhai = { opt-level = 3 }

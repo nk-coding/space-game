@@ -12,7 +12,7 @@ natively). Written 11–13 Oct 2026; split into three crates on 14 Oct 2026
 |---|---|
 | Dev build with live reload | `scripts/web-serve.sh` → http://10.77.9.2:8081 (port via `PORT=`) |
 | Optimised build, served | `scripts/web-serve.sh --release` |
-| Optimised build into `crates/client/game/dist` + sizes | `scripts/web-build.sh --full` (cargo `release`, opt-level 3, wasm-opt -O3; what GitHub Pages gets), then `scripts/web-serve-dist.sh` |
+| Optimised build into `crates/client/game/dist` + sizes | `scripts/web-build.sh --full` (cargo `web-release`: the client for size, the sim for speed, ADR-0049; wasm-opt -O3; what GitHub Pages gets), then `scripts/web-serve-dist.sh` |
 | Atlas preview / timing | `cargo run --release -p art --example preview [-- <tier> <scratch.png>]` (the game rasterises its atlas at runtime; nothing raster is committed); the longest step and frame of a job as the game spends it: `... --example profile -- <tier> [runs]` |
 | Headless check | `node /home/devbox/workspace/tools/headless/shot.mjs <url> <png> <waitMs>` |
 | One bounded check (build, serve on a free port, headless shot, console, stop) | `scripts/web-check.sh [--release] [--params '?scene=sandbox&load=5'] [--wait MS] [--size WxH] [--out FILE]` |
@@ -36,7 +36,7 @@ published, and were written without a run.
 - **`.github/workflows/pages.yml`** (pushes to `dev`, the published main branch, and by hand: `workflow_dispatch`): Rust stable with
   `wasm32-unknown-unknown`, trunk 0.21.14 (its release binary; trunk fetches the wasm-bindgen CLI matching
   `Cargo.lock` and binaryen's wasm-opt itself), `Swatinem/rust-cache` for cargo and `target/`, then the optimised
-  build as `scripts/web-build.sh --full` makes it (`trunk build --release --cargo-profile release`, wasm-opt -O3 from
+  build as `scripts/web-build.sh --full` makes it (`trunk build --release --cargo-profile web-release`, wasm-opt -O3 from
   `index.html`) with `--public-url "/<repo>/"`, since a project page lives under `https://<user>.github.io/<repo>/`.
   A step checks that `dist` holds both binaries (the game and the lab's worker with its loader), then
   the wiki is built with `WIKI_BASE=/<repo>/docs/` (`npm ci`, `npm run build`, `npm run check`) and copied into
@@ -52,8 +52,12 @@ published, and were written without a run.
   needs an absolute `/` path. A local build without `--public-url` keeps `/` and is served from the root as before.
 - **IndexedDB on github.io**: every project page of one user shares the origin `<user>.github.io` and so its
   IndexedDB; the game's database is `space-game` (`world::storage`).
-- Not built yet (ADR-0048): checking the `/<repo>/` subpath locally, wasm size and a loading screen, a browser
-  performance pass, save export and import, a mobile browser check.
+- Size (ADR-0049): the cargo profile `web-release` compiles the client with opt-level `z` and fat LTO, and the
+  simulation and what it runs on (`sim`, `arena`, `galaxy`, rapier2d, parry2d, nalgebra, simba, glamx, wide, libm,
+  rhai) with opt-level 3, so the sim and the lab's workers keep their speed. `scripts/web-build.sh --full` prints raw,
+  gzip and brotli sizes.
+- Not built yet (ADR-0048): checking the `/<repo>/` subpath locally, a loading screen, a browser performance pass,
+  save export and import, a mobile browser check.
 
 ## Licences and third-party notices
 

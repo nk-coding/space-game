@@ -51,11 +51,11 @@ jobs:
       - name: Configure Pages
         uses: actions/configure-pages@v5
 
-      # As scripts/web-build.sh --full: profile `release` (thin LTO, one codegen unit) and wasm-opt -O3 from
-      # index.html, for both binaries (the game and the lab's worker).
+      # As scripts/web-build.sh --full: profile `web-release` (the client for size, the sim for speed, fat LTO;
+      # ADR-0049) and wasm-opt -O3 from index.html, for both binaries (the game and the lab's worker).
       - name: Build the web game
         working-directory: crates/client/game
-        run: trunk build --release --cargo-profile release --public-url "/${{ github.event.repository.name }}/"
+        run: trunk build --release --cargo-profile web-release --public-url "/${{ github.event.repository.name }}/"
 
       - name: Check the build holds both binaries
         working-directory: crates/client/game/dist

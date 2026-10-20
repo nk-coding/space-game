@@ -863,6 +863,9 @@ Next session:
 - Open (Niklas): the author identity in the copyright lines and the git history, the final title and its trademark
   search, a `license` field for content packs (a schema change). Next (decided, not built): the `/<repo>/` subpath
   locally, wasm size and a loading screen, a browser performance pass, save export and import, a mobile browser check.
+- Wasm size ([ADR-0049](adr/0049-web-release-profile-client-for-size-sim-for-speed.md), same evening): the profile
+  `web-release` (client opt-level `z`, fat LTO, the sim's crates at 3) for `--full` and Pages: the game's wasm 57.8 to
+  33.1 MiB raw, 15.3 to 10.5 MiB gzip, sim speed unchanged. Still open: the loading screen.
 
 ## Phase 4: measurement
 

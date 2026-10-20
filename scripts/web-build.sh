@@ -2,8 +2,9 @@
 # Web build into crates/client/game/dist, then report its size (compressed sizes only with --full). Serve it with `scripts/web-serve-dist.sh`.
 # The web build is a player platform too (ADR-0048; `--full` is what GitHub Pages gets). By default it is the everyday build (ADR-0034):
 # cargo profile `web-dev` (opt-level 3, no LTO, 16 codegen units, incremental) and no wasm-opt, about 30 s
-# after a change in `game`. `--full` is the optimised build for performance checks: profile `release` (thin LTO,
-# one codegen unit) + wasm-opt -O3, about five minutes (`WASM_PROFILE=<profile>` picks another cargo profile for it).
+# after a change in `game`. `--full` is the published build: profile `web-release` (the client compiled for size, the
+# sim for speed, fat LTO; ADR-0049) + wasm-opt -O3, about ten minutes cold (`WASM_PROFILE=<profile>` picks another
+# cargo profile for it, e.g. `release` for the all-speed build).
 # Other arguments go to trunk.
 set -euo pipefail
 source "$HOME/.cargo/env" 2>/dev/null || true
@@ -13,7 +14,7 @@ full=0
 if [[ "${1:-}" == "--full" ]]; then
   shift
   full=1
-  trunk build --release --cargo-profile "${WASM_PROFILE:-release}" "$@"
+  trunk build --release --cargo-profile "${WASM_PROFILE:-web-release}" "$@"
 else
   # Without --release trunk runs no wasm-opt (index.html's data-wasm-opt applies to release builds only).
   trunk build --cargo-profile web-dev "$@"
