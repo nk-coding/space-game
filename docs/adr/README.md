@@ -70,5 +70,5 @@ is the overview and links to both series. Format and status rules: `CLAUDE.md`, 
 Technical questions without a decision yet (no record until decided):
 
 - **Glow method**: glow sprites vs full-screen bloom, measured in the browser load test ([ADR-0020](0020-style-2a-renderer.md)).
-- **Co-op transport on native** now that the browser is not an end-user platform ([ADR-0023](0023-host-authoritative-netcode.md), [ADR-0006](0006-web-as-development-platform.md)).
+- **Co-op transport**: native first, and since the browser is a player platform again ([ADR-0048](0048-the-web-build-is-a-player-platform.md)), whether browsers need a transport of their own (a WebSocket relay or WebRTC) ([ADR-0023](0023-host-authoritative-netcode.md), [ADR-0006](0006-web-as-development-platform.md)).
 - **Phone measurements** (spike questions 2, 4–7 on the phone): deferred until Android work starts ([ADR-0006](0006-web-as-development-platform.md), [ADR-0009](0009-spike-first-systems-before-content.md)).
