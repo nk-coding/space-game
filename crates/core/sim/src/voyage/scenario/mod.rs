@@ -26,7 +26,8 @@
 //!   [`BEHAVIOR_MIND_CAPACITY`] cores, so the newest ship-mind vessels start dormant and wake as others fall.
 //! * [`ScenarioKind::Salvage`]: salvage (`salvage.rs`): a wreck of every blueprint spawned as a wreck
 //!   (`Sim::spawn_wreck`, part of it already gone), the player's ship-mind ships with a hold flying to the
-//!   nearest salvage (pieces and loose fragments) and collecting it, two raiders under their content behavior
+//!   nearest salvage (pieces and loose fragments) and collecting it, one more under the `salvager` behavior
+//!   (GDR-0123), two raiders under their content behavior
 //!   whose cores are shot out (fragments), a cargo part of one collector destroyed (its hold sheds) and one
 //!   collector lost with its cargo (its wreck keeps it; the others strip it), plus random hits.
 //! * [`ScenarioKind::Grown`]: the Grown's mechanics (`grown.rs`, GDR-0102): a wary grove of thornbacks (hearts, ram

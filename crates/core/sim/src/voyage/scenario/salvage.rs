@@ -14,7 +14,8 @@ pub(super) const SALVAGE_LOST: u64 = 540;
 
 /// The salvage scenario: a wreck of every blueprint ([`scenario_blueprints`]) in a ring (radius 30 m, drifting a
 /// little, 20–50 % of their parts gone), one collector per ship-mind blueprint with a hold in a ring outside it
-/// (45 m), two raiders 100 m out under their content behavior.
+/// (45 m), one more of the first such blueprint 70 m out under the content's `salvager` behavior (the `salvage`
+/// action and its conditions, GDR-0123), two raiders 100 m out under their content behavior.
 pub(super) fn salvage_scenario(content: &Content, seed: u64) -> Result<Scenario, String> {
     let mut sim = Sim::new(seed);
     sim.set_behaviors(library(content)?);
@@ -45,6 +46,10 @@ pub(super) fn salvage_scenario(content: &Content, seed: u64) -> Result<Scenario,
     for (k, d) in holds.iter().enumerate() {
         let (pos, a) = ring(k, holds.len(), 45.0);
         collectors.push(sim.spawn_ship(Arc::clone(d), Owner::PLAYER, Body::at(pos, a)));
+    }
+    if let (Some(d), Some(b)) = (holds.first(), sim.behaviors().id("salvager")) {
+        let id = sim.spawn_ship(Arc::clone(d), Owner::PLAYER, Body::at(Vec2::new(0.0, -70.0), 0.0));
+        sim.command(id, ShipCommand::Behavior(Some(b)));
     }
     if let Some(raider) = designs.iter().find(|d| scenario_owner(d) != Owner::PLAYER) {
         for k in 0..2 {
