@@ -545,7 +545,7 @@ fn area_under(at: Vec2, over: Option<Entity>, stacks: &Query<&ComputedStackIndex
 pub const FINGER_SLOP: f32 = 10.0;
 
 /// A finger's drag that may scroll an area: the finger, the area, where the finger was and the area's scroll then
-/// (UI px), and whether it scrolls yet.
+/// (UI px), whether it scrolls yet, and the scroll's track for the fling's speed.
 #[derive(Clone, Copy, Debug)]
 struct FingerScroll {
     finger: u64,
@@ -553,18 +553,24 @@ struct FingerScroll {
     from: Vec2,
     start: f32,
     engaged: bool,
-    /// The scroll over the last [`FLING_WINDOW`] seconds and the one note before (seconds, UI px; slow frames
-    /// still give two), for the fling's speed.
-    track: [(f32, f32); 8],
-    tracked: usize,
+    fling: FlingTrack,
 }
 
 /// A fling's speed is the scroll's over this many seconds before the finger lifts.
 const FLING_WINDOW: f32 = 0.1;
 
-impl FingerScroll {
-    /// Notes the scroll `at` at `now` (seconds).
-    fn note(&mut self, now: f32, at: f32) {
+/// Where a dragged thing was over the last [`FLING_WINDOW`] seconds and the one note before (seconds, UI or logical
+/// px; slow frames still give two), for a fling's speed ([`Glide::fling`]): a list's scroll here, the drydock's grid
+/// pan, BEHAVIOR's sideways pan.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct FlingTrack {
+    track: [(f32, Vec2); 8],
+    tracked: usize,
+}
+
+impl FlingTrack {
+    /// Notes the place `at` at `now` (seconds).
+    pub fn note(&mut self, now: f32, at: Vec2) {
         let n = self.tracked.min(self.track.len());
         let keep = (self.track[..n].iter().filter(|(t, _)| now - t <= FLING_WINDOW).count() + 1).min(n).min(self.track.len() - 1);
         self.track.copy_within(n - keep..n, 0);
@@ -572,12 +578,12 @@ impl FingerScroll {
         self.tracked = keep + 1;
     }
 
-    /// The scroll's speed over the last [`FLING_WINDOW`] (UI px a second; 0 when the finger stood still).
-    fn velocity(&self) -> f32 {
+    /// The speed over the last [`FLING_WINDOW`] (px a second; zero when it stood still).
+    pub fn velocity(&self) -> Vec2 {
         let seen = &self.track[..self.tracked];
         match (seen.first(), seen.last()) {
             (Some(a), Some(b)) if b.0 - a.0 > 0.01 => (b.1 - a.1) / (b.0 - a.0),
-            _ => 0.0,
+            _ => Vec2::ZERO,
         }
     }
 }
@@ -610,7 +616,7 @@ fn finger_scroll(
             && let Ok((_, bar, mut smooth, node, _, _, _, _, pos, rows)) = areas.get_mut(d.area)
         {
             let (view, content, at) = extent(bar.axis, node, &pos, rows.as_deref());
-            smooth.glide = Glide::fling(at, d.velocity(), content - view);
+            smooth.glide = Glide::fling(at, d.fling.velocity().x, content - view);
             smooth.wrote = Some(at);
         }
         return;
@@ -621,7 +627,7 @@ fn finger_scroll(
             .then(|| area_under(at, pointer.over, &stacks, &parents, &areas))
             .flatten()
             .and_then(|area| areas.get(area).ok().map(|(_, bar, _, node, _, _, _, _, pos, rows)| (area, extent(bar.axis, node, pos, rows).2)))
-            .map(|(area, start)| FingerScroll { finger: id, area, from: at, start, engaged: false, track: [(0.0, 0.0); 8], tracked: 0 });
+            .map(|(area, start)| FingerScroll { finger: id, area, from: at, start, engaged: false, fling: FlingTrack::default() });
         // A finger on a moving list stops it; that press is no click.
         if let Some(Ok((_, _, mut smooth, ..))) = drag.map(|d| areas.get_mut(d.area))
             && smooth.glide.is_some()
@@ -650,13 +656,13 @@ fn finger_scroll(
         d.engaged = true;
         d.from = at;
         d.start = extent(axis, node, &pos, rows.as_deref()).2;
-        d.note(now, d.start);
+        d.fling.note(now, Vec2::new(d.start, 0.0));
         pointer.cancel_press();
         return;
     }
     let (view, content, at_now) = extent(axis, node, &pos, rows.as_deref());
     let to = (d.start - axis.of(moved) * node.inverse_scale_factor).clamp(0.0, (content - view).max(0.0));
-    d.note(now, to);
+    d.fling.note(now, Vec2::new(to, 0.0));
     if to != at_now {
         set_scroll(axis, &mut pos, rows.as_mut(), to);
     }
@@ -1001,23 +1007,24 @@ mod tests {
     /// finger that stood still flings nothing.
     #[test]
     fn the_fling_speed_is_the_finger_s_last() {
-        let mut d = FingerScroll { finger: 0, area: Entity::PLACEHOLDER, from: Vec2::ZERO, start: 0.0, engaged: true, track: [(0.0, 0.0); 8], tracked: 0 };
+        let mut d = FlingTrack::default();
+        let at = |x: f32| Vec2::new(x, -x / 2.0);
         for k in 0..30 {
             let t = k as f32 / 60.0;
-            d.note(t, 500.0 * t);
+            d.note(t, at(500.0 * t));
         }
-        assert!((d.velocity() - 500.0).abs() < 1e-2);
+        assert!((d.velocity() - Vec2::new(500.0, -250.0)).length() < 1e-2);
         // Held still for a while: no speed left.
         for k in 30..50 {
-            d.note(k as f32 / 60.0, 500.0 * 29.0 / 60.0);
+            d.note(k as f32 / 60.0, at(500.0 * 29.0 / 60.0));
         }
-        assert_eq!(d.velocity(), 0.0);
+        assert_eq!(d.velocity(), Vec2::ZERO);
         // Slow frames (5 a second): still two notes.
-        let mut d = FingerScroll { tracked: 0, ..d };
+        let mut d = FlingTrack::default();
         for k in 0..5 {
-            d.note(k as f32 * 0.2, -300.0 * k as f32 * 0.2);
+            d.note(k as f32 * 0.2, at(-300.0 * k as f32 * 0.2));
         }
-        assert!((d.velocity() + 300.0).abs() < 1e-2);
+        assert!((d.velocity().x + 300.0).abs() < 1e-2);
     }
 
     #[test]

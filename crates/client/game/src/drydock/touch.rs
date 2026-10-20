@@ -7,8 +7,9 @@
 //!   erase strokes and the fill rectangle follow the finger; SELECT grabs the part under it and moves it on release.
 //!   A machine or a slope is not put down where the finger lands: its ghost hangs [`LIFT`] dp above the finger and
 //!   lands there when the finger lifts ("hold, drop to place"), so the thumb doesn't hide it; a tap puts it under the
-//!   finger. One finger that starts off the frame, or in SELECT on an empty cell, pans (a tap there deselects); two
-//!   fingers pan and pinch.
+//!   finger. One finger that starts off the frame, or in SELECT on an empty cell, pans (a tap there deselects), and
+//!   lifted while it moves flings the view on (the kit's `Glide::fling`, as a list's; a finger that lands on the
+//!   moving view stops it and pans); two fingers pan and pinch.
 //! * **From the palette** ([`palette`]): a part's row dragged sideways onto the grid picks it and carries its ghost
 //!   [`LIFT`] dp above the finger; lifting the finger over the grid drops it there. Dragged up or down the list
 //!   scrolls (the kit's finger scroll), a tap picks the part (the row's click).
@@ -17,7 +18,7 @@ use bevy::prelude::*;
 use bevy::ui::{ComputedNode, UiGlobalTransform};
 use bevy::window::PrimaryWindow;
 use data::Cell;
-use kit::ui_kit::{Pill, UiPointer};
+use kit::ui_kit::{FLING_MIN, FlingTrack, Glide, Pill, UiPointer};
 use world::camera::CameraRig;
 use world::player::PlayerDesign;
 use world::sim_bridge::GameContent;
@@ -63,6 +64,8 @@ pub enum PadOut {
     Tap(Vec2),
     /// Pan and zoom: the world point under `from` goes under `to`, the zoom times `factor`.
     View { factor: f32, from: Vec2, to: Vec2 },
+    /// A one-finger pan lifted while it moved, at this speed (logical px a second): the view glides on.
+    Fling(Vec2),
 }
 
 /// Where a finger's touch started and how far it has gone from there.
@@ -73,11 +76,15 @@ struct Track {
     at: f32,
     far: f32,
     last: Vec2,
+    /// A pan's finger over its last moments, for the fling.
+    fling: FlingTrack,
 }
 
 impl Track {
     fn new(id: u64, p: Vec2, now: f32) -> Self {
-        Self { id, start: p, at: now, far: 0.0, last: p }
+        let mut fling = FlingTrack::default();
+        fling.note(now, p);
+        Self { id, start: p, at: now, far: 0.0, last: p, fling }
     }
 
     fn moved(&mut self, p: Vec2) {
@@ -177,8 +184,12 @@ impl Pad {
             State::Pan(mut t) => match (fingers, find(t.id)) {
                 ([(a, pa), (b, pb), ..], _) => pinch(*a, *pa, *b, *pb),
                 (_, None) => {
+                    // Lifted where it was last seen (a finger that stood still before it lifts flings nothing).
+                    t.fling.note(now, t.last);
                     if t.tap(now) {
                         out.push(PadOut::Tap(t.start));
+                    } else if t.fling.velocity().length() >= FLING_MIN {
+                        out.push(PadOut::Fling(t.fling.velocity()));
                     }
                     rest(fingers)
                 }
@@ -187,6 +198,7 @@ impl Pad {
                         out.push(PadOut::View { factor: 1.0, from: t.last, to: p });
                     }
                     t.moved(p);
+                    t.fling.note(now, p);
                     State::Pan(t)
                 }
             },
@@ -254,13 +266,32 @@ pub(super) fn grid(
     mut rig: ResMut<CameraRig>,
     mut pad: ResMut<Pad>,
     mut edit: EditParams,
+    mut fling: Local<Option<Fling>>,
 ) {
     let now = time.elapsed_secs();
     let fingers = fingers(&touches, pointer.finger());
+    // A flung view glides on until it stops or a finger lands (on the grid that finger pans: it stops the view and
+    // never runs the tool).
+    let gliding = fling.is_some();
+    if !fingers.is_empty() {
+        *fling = None;
+    } else if let Some(f) = fling.as_mut() {
+        let (along, done) = f.glide.step(time.delta_secs(), f32::MAX);
+        let centre = rig.view_center();
+        let (pos, _) = pinch_view(rig.pos, rig.zoom, centre, 1.0, centre, centre + f.dir * (along - f.along), cam.zoom_limits());
+        rig.pos = pos;
+        f.along = along;
+        if done {
+            *fling = None;
+        }
+    }
     let design = &edit.design;
     let start = |p: Vec2| {
         if pointer.blocked || !cam.viewport.contains(p) || edit.g.by.is_some_and(|d| d != Driver::Finger && d != Driver::Lift) {
             return Start::Ignore;
+        }
+        if gliding {
+            return Start::Pan;
         }
         match cell_at(&rig, design, p) {
             None => Start::Pan,
@@ -338,9 +369,20 @@ pub(super) fn grid(
                 rig.zoom_target = zoom;
                 cam.touched = true;
             }
+            PadOut::Fling(v) => {
+                *fling = Glide::fling(0.0, v.length(), f32::MAX).map(|glide| Fling { glide, dir: v.normalize_or_zero(), along: 0.0 });
+            }
         }
         run_ops(ops, content, &ui, &mut edit.design, &mut edit.sel, &mut edit.note, now);
     }
+}
+
+/// A flung grid view gliding on: along `dir` (logical px), `along` of it so far.
+#[derive(Debug)]
+pub(super) struct Fling {
+    glide: Glide,
+    dir: Vec2,
+    along: f32,
 }
 
 /// What the touch systems edit.
@@ -511,6 +553,21 @@ mod tests {
         // One finger lifts: the other pans on, and its lift is no tap.
         let outs = run(&mut pad, &[(1.5, &[(B, v(230.0, 120.0))]), (1.55, &[(B, v(240.0, 120.0))]), (1.6, &[])], Start::Tool);
         assert_eq!(outs, [PadOut::View { factor: 1.0, from: v(230.0, 120.0), to: v(240.0, 120.0) }]);
+    }
+
+    /// A pan lifted while it moves flings the view on at the finger's speed; one that stood still, or went slower
+    /// than the kit's least fling, does not.
+    #[test]
+    fn a_flick_flings_the_view() {
+        let mut pad = Pad::default();
+        let frames: Vec<(f32, Vec<(u64, Vec2)>)> = (0..6).map(|k| (k as f32 / 60.0, vec![(A, v(10.0 * k as f32, 0.0))])).collect();
+        let mut outs: Vec<PadOut> = frames.iter().flat_map(|(t, f)| pad.update(f, *t, |_| Start::Pan)).collect();
+        outs.extend(pad.update(&[], 6.0 / 60.0, |_| Start::Pan));
+        let Some(PadOut::Fling(speed)) = outs.last() else { panic!("{outs:?}") };
+        // 600 px a second while it moved; the lift's frame stood still.
+        assert!(speed.y == 0.0 && speed.x > 450.0 && speed.x <= 600.0, "{speed}");
+        let outs = run(&mut pad, &[(1.0, &[(A, v(0.0, 0.0))]), (1.1, &[(A, v(40.0, 0.0))]), (1.5, &[(A, v(40.0, 0.0))]), (1.52, &[])], Start::Pan);
+        assert!(!outs.iter().any(|o| matches!(o, PadOut::Fling(_))), "{outs:?}");
     }
 
     /// A panning start moves the view at once; a tap there is a tap; an ignored start stays ignored until every

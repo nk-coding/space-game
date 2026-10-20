@@ -56,7 +56,7 @@ pub use fonts::{BARLOW_REGULAR, HudFonts, load_fonts};
 pub use frame::{CardLook, Frame, HudType, PanelLook, StatsLook, crumb, frame, panel_colors, panel_node, panel_title, spawn_back, spawn_close, spawn_head, title, top_pill};
 pub use phone::{ByClass, CompactSize, SafeArea, TouchScreen, by_class};
 pub use list::{GroupedList, ListRow, ListSpec, fill_list, head_count, lit_group, row_shown, spawn_grouped_list};
-pub use scrollbar::{BAR_HIT, ScrollClipSet, ScrollRows, Scrollbar, SmoothScroll};
+pub use scrollbar::{BAR_HIT, FLING_MIN, FlingTrack, Glide, ScrollClipSet, ScrollRows, Scrollbar, SmoothScroll};
 pub use transition::{
     EXIT_SECONDS, Edge, IconMaterials, ScreenFx, ScreenPart, WorldCover, show_screen, snap_screen,
 };

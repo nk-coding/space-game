@@ -1933,7 +1933,7 @@ content or saved behavior instead of the design's). Screenshots: `docs/results/b
 | Rename the behavior | click the name top left; Enter (or a click elsewhere) renames, Esc keeps the old name |
 | BEHAVIORS list | the button; Esc or CLOSE closes it (Esc first leaves a rename or a delete question) |
 | Search the palette | / (Esc or Enter leaves the field) |
-| Scroll the graph, the palette or a list | wheel, or a finger's drag (on a phone a sideways drag pans the graph) |
+| Scroll the graph, the palette or a list | wheel, or a finger's drag (on a phone a sideways drag pans the graph, and flings it on when lifted while moving) |
 | Select a node / a rule / nothing | click it / click its `always` chip or its row's empty space / click the graph's empty space |
 | Add a rule | `+ RULE` |
 | Add a condition to the selected rule; replace its action; set the target | click a condition / an action / a target selector in ADD NODE |
@@ -2363,7 +2363,8 @@ but the type is too small to read). Numbers are placeholders.
   scrolls it under the finger and the row's press ends without a click; lifted while it moves, the list **flings**
   on (`Glide::fling`: as fast as the finger went over its last 0.1 s, slowing to a stop over 0.9 s on the wheel's
   ease-out; none under 120 dp/s), and a finger that lands on a moving list stops it (that press is no click; 20 Oct
-  2026, *placeholders*, [GDR-0121](gdr/0121-tooltips-and-flings-by-touch.md) Proposed). **Tooltips by touch** (20 Oct 2026): a finger held 0.35 s on a control with a `Tip`
+  2026; the drydock's one-finger grid pan and BEHAVIOR's sideways graph pan fling the same way on the kit's
+  `FlingTrack`, *placeholders*, [GDR-0121](gdr/0121-tooltips-and-flings-by-touch.md) Proposed). **Tooltips by touch** (20 Oct 2026): a finger held 0.35 s on a control with a `Tip`
   without moving 10 dp (the thresholds of BEHAVIOR's rule hold) shows its name (no key) above the finger until it
   lifts or moves on, and the press then ends without a click: a long press asks what a control is, as on Android,
   and never presses it. A press a scroll took first shows none. The holds the screens use (BEHAVIOR's rule rows,
@@ -2468,11 +2469,21 @@ but the type is too small to read). Numbers are placeholders.
   the map, the test range, the pause menu, a voyage's flight, the fight viewer, SETTINGS. Note: a `shot` at DPR 3
   is the page scaled down to CSS px, which drops thin strokes of small letters (a label looks cut at its top); look
   at a `crop` before calling text cut.
+- **Leftovers of the sweep** (20 Oct 2026, checked at 844 × 390 DPR 3 and at 1280 × 720 with `touch=0`):
+  - *Words for the pointer*: on a touch screen (`TouchScreen`) the hints name taps and holds, not the mouse
+    (`TouchScreen::says(mouse, touch)`): the workshop's `HOLD A PART FOR WHAT IT NEEDS`, BEHAVIOR's `TAP A NODE OR A
+    RULE`, SETTINGS' `TAP AN INPUT, THEN PRESS A KEY ON A KEYBOARD` (a tap on the chip again cancels), FLEET's `TAP A
+    DESIGN` and `A TAP AGAIN ADDS IT` (no Enter, no arrow keys), BLUEPRINTS' copy and paste lines (no Ctrl), the
+    evolution's `A TAP` in its tips and lines, the pinned cluster map's `A TAP CLOSES`; the workshop's − and + name
+    SHIFT in their tip's key line, which a finger's tip leaves out. The words are the UI's own, in code like every
+    hint (none lives in the content; its descriptions such as `controls.ron`'s still say click).
+  - *Home*: a place's words (title and line) are its target too, as the building (a tap or click there goes there;
+    the mouse over them brackets the building); on a phone the career notes sit inside `SafeArea` (32 dp from the
+    right, 16 dp from the bottom), 212 px wide with 10 px words, clear of TEST RANGE's line.
+  - *Tooltips*: the plate is opaque (it was 94 %: the drydock's stats showed through a long-pressed TEST-FLY's tip).
 - **Still not built for phones** (open, 20 Oct 2026):
-  - Home: a tap on a place's words does nothing (only the building is a target); the career notes (dev notes such
-    as `SAVE SLOT`) reach the window's bottom edge beside TEST RANGE's label.
-  - Words that name the mouse on a touch screen: the workshop's `POINT AT A PART`, BEHAVIOR's `CLICK A NODE`,
-    SETTINGS' `CLICK AN INPUT, THEN PRESS A KEY` (rebinding keys means little on a phone).
+  - Keys named where a phone has none: the voyage map's `ESC ENDS IT` while warping, the content's descriptions
+    (`controls.ron`, the assists') that say click; the soft keyboard is the bigger gap (below).
   - The soft keyboard (every text field: names, search, paste boxes, notes), the pinch everywhere (checked by unit
     tests and reading only: headless has one finger), `SafeArea` from Android's insets.
   - Package leftovers below (A: FIRE's heat ring, more ability slots, single assist toggles, the fleet bar with
@@ -2486,8 +2497,8 @@ What still breaks at 844 × 390 (audit of 19 Oct 2026, DPR 3), grouped into work
 | Package | Screens and files | What breaks | Size |
 |---|---|---|---|
 | A. Flight and viewer | flight HUD, pause menu, fleet bar, fight viewer: `world/src/flight_hud/`, `hud.rs`, `controls.rs`, `fleet_bar.rs`, `replay.rs`, `camera.rs` | **done 20 Oct 2026** (above, GDR-0120). Left: FIRE's ring showing the guns' heat, more ability slots round FIRE as features come, single assist toggles on touch (ALL ASSISTS is in the menu), the fleet bar unchanged (its 68 × 50 chips fit; not seen with many vessels on a phone), the debug overlay's phone numbers (thermal headroom, atlas tier: Android), the pinch and the two-finger pan checked by reading only (headless has one finger), `SafeArea` from Android's insets | L |
-| B. Drydock | `game/src/drydock/**`, `world/src/part_card.rs` | **done 19 Oct 2026** (above). Left: double tap to fit, a fling of the grid's pan (lists fling since 20 Oct 2026), the plan's palette with headers and a lens; the pinch checked by unit tests only (headless has one finger); the hover card on a held palette row and the soft keyboard (name, paste box) not checked on a phone | L |
-| C. BEHAVIOR | `game/src/behavior_ui/**` | **done 19 Oct 2026** (above; "Behavior screen", GDR-0119). Left: the ring menu (DRYDOCK, BEHAVIORS and SAVE stay in a bottom bar), zoom of the graph, a fling of its sideways pan (its scroll up and down flings since 20 Oct 2026), the soft keyboard (name, notes, palette search, the list's rename, an editable TEXT view); the hold's 350 ms only checked headless (one finger, slow frames: a frame that comes 350 ms after the press arms the hold) | L |
+| B. Drydock | `game/src/drydock/**`, `world/src/part_card.rs` | **done 19 Oct 2026** (above). Left: double tap to fit, the plan's palette with headers and a lens; the pinch checked by unit tests only (headless has one finger); the hover card on a held palette row and the soft keyboard (name, paste box) not checked on a phone | L |
+| C. BEHAVIOR | `game/src/behavior_ui/**` | **done 19 Oct 2026** (above; "Behavior screen", GDR-0119). Left: the ring menu (DRYDOCK, BEHAVIORS and SAVE stay in a bottom bar), zoom of the graph, the soft keyboard (name, notes, palette search, the list's rename, an editable TEXT view); the hold's 350 ms only checked headless (one finger, slow frames: a frame that comes 350 ms after the press arms the hold) | L |
 | D1. Shipyard screens | home `home.rs`, `shipyard/`, FLEET `fleet.rs`, workshop `workshop.rs`, LOG `voyage_log.rs`, debrief `debrief.rs`, settings `settings.rs` | **done 19 Oct 2026** (above). Left: FLEET's card row and the LOG's rows not seen on a phone with saved designs or voyages (laid out for them: a card 262 px, a row's haul gets about 320 px and may take two lines); home's camera flies into the drydock's opening view, measured at home's scale, which on a phone is the drydock's too since B (19 Oct 2026), so the flight ends where the drydock opens; the flight menu (pause) is package A's | L (M each) |
 | D2. Research, voyage map, evolution | `research/`, `map/`, `evolution/` | **done 19 Oct 2026** (above: phone layouts at `compact_scale`, the map area measured from the chrome). Left: text cut by the map area's edge is cut through its letters; the evolution pages are the wide columns stacked (not a phone design of their own), THE RUN page not checked with a run on a phone; no pinch check (headless has one finger) | M |
 

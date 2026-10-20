@@ -37,7 +37,8 @@ The chosen options above. All numbers are *placeholders* (0.35 s, 10 dp, 0.9 s, 
 
 - Every tipped control names itself on a phone without any screen's code; icon-only buttons are usable.
 - A long press on a button is safe: it never presses it.
-- Every kit list (`Scrollbar` areas, pooled `ScrollRows` lists too) flings; the screens' own pans (the drydock's
-  grid, BEHAVIOR's sideways graph) do not yet.
+- Every kit list (`Scrollbar` areas, pooled `ScrollRows` lists too) flings; since 20 Oct 2026 the screens' own pans
+  too (the drydock's one-finger grid pan, BEHAVIOR's sideways graph pan), on the kit's `FlingTrack` and
+  `Glide::fling`.
 - Checked: unit tests (`tip.rs`, `scrollbar.rs`) and a long press headless; a flick cannot be sampled headless
   (about 8 frames a second), so the fling's feel waits for a real phone.

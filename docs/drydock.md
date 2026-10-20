@@ -411,7 +411,10 @@ Touch (`touch.rs`; the mouse is unchanged, every gesture goes through `tools::Ge
 
 `touch::Pad` turns the fingers down each frame into presses, drags, releases, cancels, taps and view changes, without
 the ECS (tested: the hold, taps, the cancel, the pinch's anchor); headless Chromium has one finger, so the pinch is
-checked by those tests only. Not yet: double tap to fit, a fling of the grid's pan (its lists fling, the kit's, since 20 Oct 2026), the plan's palette with headers and a lens.
+checked by those tests only. A one-finger pan lifted while it moves flings the view on (`PadOut::Fling`, the kit's
+`Glide::fling` along the finger's direction; a finger that lands on the moving view stops it and pans; 20 Oct 2026,
+unit-tested only: headless frames are too slow for a flick). Not yet: double tap to fit, the plan's palette with
+headers and a lens.
 
 ### Locked parts, NEW and voyage-ready
 
