@@ -104,5 +104,28 @@ fn run() {
             (world::hud::HudPlugin, world::part_card::PartCardPlugin),
         ))
         .add_systems(Startup, world::camera::spawn_camera);
+    #[cfg(target_arch = "wasm32")]
+    app.add_systems(Last, tell_page_ready.run_if(run_once_after_frames));
     app.run();
+}
+
+/// Web: true once the game has drawn its first frames (on wasm the frame renders within the update, no pipelining).
+#[cfg(target_arch = "wasm32")]
+fn run_once_after_frames(frames: Res<bevy::diagnostic::FrameCount>, mut told: Local<bool>) -> bool {
+    if *told || frames.0 < 3 {
+        return false;
+    }
+    *told = true;
+    true
+}
+
+/// Web: tells the page that the game shows itself (`game-ready` on window), so its loading screen (`index.html`,
+/// `loader.js`) makes way.
+#[cfg(target_arch = "wasm32")]
+fn tell_page_ready() {
+    if let Some(window) = web_sys::window()
+        && let Ok(event) = web_sys::Event::new("game-ready")
+    {
+        let _ = window.dispatch_event(&event);
+    }
 }

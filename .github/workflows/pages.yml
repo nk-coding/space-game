@@ -61,7 +61,7 @@ jobs:
         working-directory: crates/client/game/dist
         run: |
           ls -l
-          ls game-*_bg.wasm game-*.js lab-worker_bg.wasm lab-worker.js lab-worker_loader.js index.html
+          ls game-*_bg.wasm game-*.js *-loader.js lab-worker_bg.wasm lab-worker.js lab-worker_loader.js index.html
       # The wiki lives under the game's site at /<repo>/docs/ (Niklas, 20 Oct 2026: nk-coding.github.io/space-game/docs/).
       - name: Node (for the wiki)
         uses: actions/setup-node@v4

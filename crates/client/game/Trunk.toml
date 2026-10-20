@@ -15,3 +15,11 @@ open = false
 # Everything that goes into the wasm, not only this crate.
 watch = [".", "../kit", "../world", "../art", "../lab-worker", "../../core/sim", "../../core/data", "../../core/arena", "../../core/galaxy", "../../../content/base", "../../../art/tokens.json"]
 ignore = ["dist", "../../../content/base/wiki"]
+
+# The loading screen's total (index.html, loader.js): trunk 0.21.14 hands its initializer the wasm's size from before
+# wasm-opt (70 MB for the 33 MB that is served), so the bar would stop half way. This writes the size of the file
+# that ships into the page.
+[[hooks]]
+stage = "post_build"
+command = "sh"
+command_arguments = ["-c", "for w in \"$TRUNK_STAGING_DIR\"/game-*_bg.wasm; do f=$(basename \"$w\"); n=$(wc -c < \"$w\"); sed -i \"s|$f', [0-9]*,|$f', $n,|\" \"$TRUNK_STAGING_DIR/index.html\"; done"]
