@@ -133,4 +133,69 @@
         wrecks: [(ship: "grown_guardian", count: (1, 2), damage: 0.4)],
         wake_radius: 350,
     ),
+    // The outer reach's cache and graveyard (GDR-0128, lead defaults 20 Oct 2026): the rim's sealed cache and deep
+    // graveyard grown over by the Grown, wary like every grove.
+    (
+        id: "overgrown_cache",
+        name: "Overgrown cache",
+        summary: "A sealed precursor cache the Grown have grown round, a guardian and a rammer at rest beside it.",
+        description: "The cache's hulls lie inside the growth: strip one, or open fire, and the [[ship:grown_guardian]] and its rammer wake. Beat them and the cache opens: what it holds goes straight into store, and the hulls round it are rich salvage.",
+        lore: "The seals still answer to a mind like yours. The growth round them took longer to persuade.",
+        tags: ["cache", "grown", "wrecks"],
+        ships: [
+            (ship: "grown_guardian", count: (1, 1)),
+            (ship: "grown_rammer", count: (1, 1)),
+        ],
+        wrecks: [
+            (ship: "sample_mid", count: (2, 2), damage: 0.2),
+            (ship: "grown_thornback", count: (1, 1), damage: 0.4),
+        ],
+        wake_radius: 300,
+    ),
+    (
+        id: "overgrown_fleet",
+        name: "Overgrown fleet",
+        summary: "Rows of old precursor hulls with the Grown's growth wound through them and the Grown's dead among them, a rammer and a thornback keeping them.",
+        description: "Far more to salvage than an ordinary graveyard, in precursor parts and Grown tissue alike. The two that keep it are calm until you strip a hull or open fire.",
+        lore: "The hulls were parked in rows long before the groves reached them. The groves were patient.",
+        tags: ["grown", "wrecks"],
+        ships: [
+            (ship: "grown_rammer", count: (1, 1)),
+            (ship: "grown_thornback", count: (1, 1)),
+        ],
+        wrecks: [
+            (ship: "sample_early", count: (2, 3), damage: 0.3),
+            (ship: "sample_mid", count: (1, 1), damage: 0.3),
+            (ship: "grown_rammer", count: (2, 3), damage: 0.3),
+            (ship: "grown_guardian", count: (0, 1), damage: 0.4),
+        ],
+        wake_radius: 300,
+    ),
+    // A grove with a lookout (GDR-0128, after GDR-0111 and GDR-0113; lead defaults 20 Oct 2026): calm until provoked,
+    // then its sentinel runs and calls. PLACEHOLDER counts (docs/results/deeper-bands-2026-10-20.md).
+    (
+        id: "watched_grove",
+        name: "Watched grove",
+        summary: "A rammer and a thornback at rest with a sentinel, an unarmed lookout that runs and calls the groves.",
+        description: "Provoke the grove and the [[ship:grown_sentinel]] runs; once clear of your guns its scan wakes every Grown site within the scanner's range, and its first scan calls a [[encounter:grove_call|rammer]] in from the cluster's edge. Shoot it first, or keep on its tail.",
+        lore: "One of every grove keeps its eyes open.",
+        tags: ["grown", "picket"],
+        ships: [
+            (ship: "grown_sentinel", count: (1, 1)),
+            (ship: "grown_rammer", count: (1, 1)),
+            (ship: "grown_thornback", count: (1, 1)),
+        ],
+        wake_radius: 250,
+        calls: "grove_call",
+    ),
+    (
+        // Never placed in a cluster; it comes in on the edge `sim::CALL_SECONDS` after a watched grove's first call.
+        id: "grove_call",
+        name: "Answering rammer",
+        summary: "A Grown rammer a sentinel called: it comes in at the cluster's edge and heads where the sentinel saw you.",
+        description: "When a [[encounter:watched_grove]]'s [[ship:grown_sentinel]] gets its first scan off, a rammer comes in at the cluster's edge half a minute later and flies to where the sentinel saw you. Its wreck is salvage like any other.",
+        tags: ["grown", "called"],
+        ships: [(ship: "grown_rammer", count: (1, 1))], // a thornback beside it until 20 Oct 2026 (a call cost 22-28 points)
+        wake_radius: 250,
+    ),
 ]

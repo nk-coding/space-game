@@ -66,4 +66,62 @@
         ],
         wake_radius: 400,
     ),
+    // The middle band's cache and graveyard (GDR-0128, lead defaults 20 Oct 2026): a cache the Swarm buried in resin and
+    // a battlefield they are picking clean. Not wary: both wake when a ship comes near.
+    (
+        id: "resin_cache",
+        name: "Resin-sealed cache",
+        summary: "A sealed precursor cache the Swarm have buried in resin, three or four spitters circling it.",
+        description: "The spitters wake as soon as a ship comes near. Beat them and the cache's seals answer you through the resin: what it holds goes straight into store, and the hulls round it are rich salvage.",
+        lore: "The Swarm could not open it, so they buried it. They were still guarding it when you came.",
+        tags: ["cache", "swarm", "wrecks"],
+        ships: [(ship: "swarm_spitter", count: (3, 4))],
+        wrecks: [
+            (ship: "sample_mid", count: (2, 2), damage: 0.3),
+            (ship: "swarm_spitter", count: (1, 2), damage: 0.4),
+        ],
+        wake_radius: 260,
+    ),
+    (
+        id: "picked_graveyard",
+        name: "Picked graveyard",
+        summary: "An old battlefield of precursor hulls and automatons that Swarm spitters are picking clean.",
+        description: "Far more to salvage than an ordinary graveyard: precursor hulls, automatons, and the spitters' own dead. The spitters picking at it wake together.",
+        lore: "Whatever fought here, the Swarm came afterwards. They always do.",
+        tags: ["swarm", "wrecks", "cores"],
+        ships: [(ship: "swarm_spitter", count: (2, 3))],
+        wrecks: [
+            (ship: "sample_mid", count: (1, 2), damage: 0.3),
+            (ship: "automaton_hunter", count: (2, 3), damage: 0.35),
+            (ship: "automaton_raider", count: (3, 5), damage: 0.3),
+            (ship: "swarm_spitter", count: (2, 3), damage: 0.3),
+        ],
+        wake_radius: 300,
+    ),
+    // A patrol with a scout (GDR-0128, after GDR-0111 and GDR-0113; lead defaults 20 Oct 2026). PLACEHOLDER counts
+    // (docs/results/deeper-bands-2026-10-20.md).
+    (
+        id: "scout_patrol",
+        name: "Scout patrol",
+        summary: "Two or three spitters with a scout, an unarmed Swarm ship that runs and calls the brood.",
+        description: "When the patrol wakes, the [[ship:swarm_scout]] runs, and once clear of your guns its scan wakes every Swarm site within the scanner's range, and its first scan calls a [[encounter:swarm_call|spitter]] in from the cluster's edge. Shoot it first, or keep on its tail.",
+        lore: "The spitters fight. The scout only watches, and tells.",
+        tags: ["swarm", "picket"],
+        ships: [
+            (ship: "swarm_scout", count: (1, 1)),
+            (ship: "swarm_spitter", count: (2, 3)),
+        ],
+        wake_radius: 220,
+        calls: "swarm_call",
+    ),
+    (
+        // Never placed in a cluster; it warps in on the edge `sim::CALL_SECONDS` after a scout patrol's first call.
+        id: "swarm_call",
+        name: "Answering spitter",
+        summary: "A Swarm spitter a scout called: it comes in at the cluster's edge and heads where the scout saw you.",
+        description: "When a [[encounter:scout_patrol]]'s [[ship:swarm_scout]] gets its first scan off, a spitter comes in at the cluster's edge half a minute later and flies to where the scout saw you. Its wreck is salvage like any other.",
+        tags: ["swarm", "called"],
+        ships: [(ship: "swarm_spitter", count: (1, 1))], // 2-3 until 20 Oct 2026 (a call cost 22-26 points; 1-2: 15-19)
+        wake_radius: 220,
+    ),
 ]

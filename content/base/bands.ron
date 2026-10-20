@@ -1,7 +1,8 @@
 // The galaxy's bands from the rim inwards (GDR-0026), each a ring around the centre out to its `edge` (S). A band's
 // clusters fill its ring at the galaxy's spacing; its `gates` lie near its inner edge, each at the end of a trail (the
 // rim's first is the Warden's, a set piece whose trail is the slice's voyages, GDR-0098);
-// `trails` adds caches, graveyards and the outer reach's elder groves (lore trails come from `lore/`). The rim and
+// `trails` adds caches, graveyards and the bosses' sites (lore trails come from `lore/`; a `spare` trail comes after
+// them, in the clusters they leave free, GDR-0128). The rim and
 // the outer reach are real (the outer reach's Grown, guardians and elders 18 Oct 2026, GDR-0103), and so is the
 // middle band (the Swarm, 19 Oct 2026, GDR-0117) and the inner band (the Lattice, 20 Oct 2026, GDR-0126; the Phase
 // walkers, GDR-0127); the core is a stub (tag `stub`) until its race and guardians exist. PLACEHOLDER NUMBERS (lead,
@@ -42,7 +43,8 @@
             (id: "border_drift", weight: 4, border: 0.45),
         ],
         gates: (count: 3, trail: "outer_gate"),
-        trails: [(trail: "elder_grove", count: 2)],
+        // A cache and a graveyard of the band's own after its lore (`spare`, GDR-0128).
+        trails: [(trail: "elder_grove", count: 2), (trail: "overgrown_cache", count: 1, spare: true), (trail: "overgrown_fleet", count: 1, spare: true)],
         sky: (
             planets: [
                 (kind: "garden", weight: 5), (kind: "living", weight: 2), (kind: "ocean", weight: 2), (kind: "eyeball", weight: 2),
@@ -67,7 +69,7 @@
             (id: "raided_border", weight: 4, border: 0.4),
         ],
         gates: (count: 3, trail: "deep_gate"),
-        trails: [(trail: "swarm_hive", count: 2)],
+        trails: [(trail: "swarm_hive", count: 2), (trail: "resin_cache", count: 1, spare: true), (trail: "picked_graveyard", count: 1, spare: true)],
         sky: (
             planets: [
                 (kind: "jovian", weight: 3), (kind: "ice_giant", weight: 3), (kind: "ringed", weight: 2), (kind: "rock", weight: 2),
@@ -94,7 +96,15 @@
             (id: "phase_rift", weight: 2), // the Phase walkers' (GDR-0127)
         ],
         gates: (count: 3, trail: "inner_gate"), // the Spire (GDR-0116)
-        trails: [(trail: "lattice_resonator", count: 2), (trail: "phase_colossus", count: 1)],
+        // The band is small (6 to 12 clusters): its bosses first, then its lore, then a spare cache and graveyards in
+        // the clusters left (GDR-0128).
+        trails: [
+            (trail: "lattice_resonator", count: 2),
+            (trail: "phase_colossus", count: 1),
+            (trail: "crystal_cache", count: 1, spare: true),
+            (trail: "rift_graveyard", count: 1, spare: true),
+            (trail: "crystal_wreck_field", count: 1, spare: true),
+        ],
         sky: (
             planets: [
                 (kind: "ice_giant", weight: 3), (kind: "ice_world", weight: 3), (kind: "ringed", weight: 2), (kind: "rock", weight: 2),

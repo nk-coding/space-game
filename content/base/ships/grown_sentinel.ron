@@ -1,0 +1,28 @@
+// Grown sentinel: the groves' unarmed lookout (GDR-0128), the automaton picket's counterpart (GDR-0111). A scanner
+// grown into a tissue nose, the ganglion behind it and one thruster. Calm until its grove is provoked, like every
+// Grown; then it flies `picket`: it runs from whatever hunts it and, once clear of the guns, scans; its sweep calls the
+// Grown's sleeping groves within the scanner's range, and its grove's first call brings a rammer in from the
+// cluster's edge (GDR-0113). Unarmed, it never keeps its site from clearing. Not tagged `enemy` (no place in the test
+// range's waves, like the picket). PLACEHOLDER layout (lead default, 20 Oct 2026).
+(
+    id: "grown_sentinel",
+    name: "Grown sentinel",
+    summary: "A small 3×3 unarmed living ship with a scanner in its nose that runs and calls the groves.",
+    description: "It has no guns and no prow. It drifts with its grove until something provokes it, then runs, and once it is clear of your guns its [[part:scanner|scanner]] sweeps: every Grown site within the scanner's range wakes, and its grove's first sweep calls a [[encounter:grove_call|rammer]] in from the cluster's edge. Its [[part:grown_ganglion|ganglion]] heals like all Grown tissue, so finish it.",
+    lore: "The groves never seem surprised. Now you know why.",
+    tags: ["scout", "grown", "outer"],
+    faction: "grown",
+    behavior: "picket",
+    size: (3, 3),
+    parts: [
+        (part: "slope_1x1", x: 0, y: 0, flip: true, material: "grown_tissue"),
+        (part: "scanner", x: 1, y: 0),
+        (part: "slope_1x1", x: 2, y: 0, material: "grown_tissue"),
+        (part: "armor_block", x: 0, y: 1, material: "grown_tissue"),
+        (part: "grown_ganglion", x: 1, y: 1),
+        (part: "armor_block", x: 2, y: 1, material: "grown_tissue"),
+        (part: "slope_1x1", x: 0, y: 2, rot: 2, material: "grown_tissue"),
+        (part: "thruster", x: 1, y: 2),
+        (part: "slope_1x1", x: 2, y: 2, rot: 2, flip: true, material: "grown_tissue"),
+    ],
+)

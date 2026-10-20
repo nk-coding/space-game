@@ -13,6 +13,7 @@
         words: ["Hum", "Brood"],
         sites: [
             (encounter: "swarm_patrol", count: (1, 2)),
+            (encounter: "scout_patrol", count: (0, 1)), // its scout calls (GDR-0128)
             (encounter: "hive_carrier", count: (1, 1)),
             (encounter: "swarm_dead", count: (0, 1)),
         ],

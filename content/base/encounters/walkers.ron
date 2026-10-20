@@ -49,4 +49,20 @@
         ],
         wake_radius: 400,
     ),
+    // The walkers' graveyard (GDR-0128, lead defaults 20 Oct 2026), in their own rifts (its trail's `ends_in`).
+    (
+        id: "rift_graveyard",
+        name: "Rift graveyard",
+        summary: "Hulls that blinked into the rift and never came out whole: walker wrecks among precursor hulls cut clean through, a skirmisher or two at rest among them.",
+        description: "Far more to salvage than an ordinary graveyard, walker drives and lances among the precursor parts. The skirmishers are wary: they wake when you strip a hull or open fire.",
+        lore: "Some of the hulls are cut so cleanly that the two halves still drift side by side.",
+        tags: ["walkers", "wrecks"],
+        ships: [(ship: "walker_skirmisher", count: (1, 2))],
+        wrecks: [
+            (ship: "walker_skirmisher", count: (2, 3), damage: 0.3),
+            (ship: "walker_striker", count: (1, 1), damage: 0.4),
+            (ship: "sample_mid", count: (1, 2), damage: 0.3),
+        ],
+        wake_radius: 250,
+    ),
 ]

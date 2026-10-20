@@ -1,0 +1,28 @@
+// Swarm scout: the Swarm's unarmed scout (GDR-0128), the automaton picket's counterpart (GDR-0111). A scanner in a
+// chitin nose, a nerve node behind it and one jet: the fastest rated engine in the galaxy on the lightest hull. It
+// flies `picket`: it runs from whatever hunts it and, once clear of the guns, scans; its sweep calls the Swarm's
+// sleeping sites within the scanner's range, and its post's first call brings a spitter in from the cluster's edge
+// (GDR-0113). Unarmed, it never keeps its site from clearing. Not tagged `enemy` (no place in the test range's waves,
+// like the picket). PLACEHOLDER layout (lead default, 20 Oct 2026).
+(
+    id: "swarm_scout",
+    name: "Swarm scout",
+    summary: "A small 3×3 unarmed Swarm ship with a scanner in its nose that runs and calls the brood.",
+    description: "It has no stingers. It runs from you on its one [[part:swarm_jet|jet]], and once it is clear of your guns its [[part:scanner|scanner]] sweeps: every Swarm site within the scanner's range wakes, and its post's first sweep calls a [[encounter:swarm_call|spitter]] in from the cluster's edge. Shoot it before it gets clear, or keep on its tail.",
+    lore: "It never comes close, and it never stops listening.",
+    tags: ["scout", "swarm", "middle"],
+    faction: "swarm",
+    behavior: "picket",
+    size: (3, 3),
+    parts: [
+        (part: "slope_1x1", x: 0, y: 0, flip: true, material: "chitin"),
+        (part: "scanner", x: 1, y: 0),
+        (part: "slope_1x1", x: 2, y: 0, material: "chitin"),
+        (part: "armor_block", x: 0, y: 1, material: "chitin"),
+        (part: "swarm_node", x: 1, y: 1),
+        (part: "armor_block", x: 2, y: 1, material: "chitin"),
+        (part: "slope_1x1", x: 0, y: 2, rot: 2, material: "chitin"),
+        (part: "swarm_jet", x: 1, y: 2),
+        (part: "slope_1x1", x: 2, y: 2, rot: 2, flip: true, material: "chitin"),
+    ],
+)

@@ -1,0 +1,29 @@
+// Lore fragments of the middle band (GDR-0080, GDR-0128): found at the ends of the band's lore trails, kept in the
+// memory log. Light, as GDR-0002 asks, and in the rim's voice: what the precursors left and what the ship-mind half
+// remembers, never why. Lead defaults (20 Oct 2026, GDR-0128).
+[
+    (
+        id: "the_second_chart",
+        name: "The second chart",
+        summary: "Two precursor charts of the middle band, drawn years apart.",
+        band: "middle",
+        trail: "memory",
+        text: "The precursors charted the middle band twice. The first chart shows quiet clusters and a road between them. The second, drawn years later, marks the same clusters only as noise, and adds one line: do not answer it.",
+    ),
+    (
+        id: "not_the_cargo",
+        name: "Not the cargo",
+        summary: "A hauler's last log, written in a drone flood.",
+        band: "middle",
+        trail: "memory",
+        text: "A hauler's last log, short and calm: drones on every side, the hull holding, the cargo cut loose to buy time. The drones let the cargo drift past. The last line says they never wanted it. They wanted the core.",
+    ),
+    (
+        id: "only_loud",
+        name: "Only loud",
+        summary: "Something the ship-mind was told about this band, long ago.",
+        band: "middle",
+        trail: "memory",
+        text: "A memory, and it is yours: a voice telling you the middle band is not lost, only loud, and that you will know the difference when you hear it. Out here, with the hum in every channel, you are not sure you do.",
+    ),
+]

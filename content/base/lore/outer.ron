@@ -1,0 +1,29 @@
+// Lore fragments of the outer reach (GDR-0080, GDR-0128): found at the ends of the band's lore trails, kept in the
+// memory log. Light, as GDR-0002 asks, and in the rim's voice: what the precursors left and what the ship-mind half
+// remembers, never why. Lead defaults (20 Oct 2026, GDR-0128).
+[
+    (
+        id: "older_than_the_yard",
+        name: "Older than the yard",
+        summary: "A survey of the outer reach from before the shipyard was built.",
+        band: "outer",
+        trail: "memory",
+        text: "A survey from before the shipyard was built: the groves were here already, smaller then, and the surveyors were told to leave them be. Under it, in another hand, a line added later: they remember us.",
+    ),
+    (
+        id: "facing_inwards",
+        name: "Facing inwards",
+        summary: "A work order for the gates and the guardians that keep them.",
+        band: "outer",
+        trail: "memory",
+        text: "A work order for the gates, signed by forty precursor minds. Every gate gets a guardian, and every guardian faces inwards. No reason is given, only a line at the bottom: until we are sure.",
+    ),
+    (
+        id: "a_hollow_core",
+        name: "A hollow core",
+        summary: "A precursor hull whose core still holds the shape of a mind like yours.",
+        band: "outer",
+        trail: "memory",
+        text: "The core of this hull still holds the shape of a mind like yours, the way a seat holds the shape of whoever sat in it. Its last order was to wait here by the star. You know the order. The voice that gave it was yours.",
+    ),
+]

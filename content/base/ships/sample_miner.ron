@@ -1,0 +1,44 @@
+// A mining fit (GDR-0114's open item, GDR-0128): `sample_early`'s hull with two mining lasers in the nose for its
+// pulse lasers, the pulse lasers moved out to the shoulders for defence, armour for its shield emitters (the two
+// reactors' 20 MW run exactly the guns, lasers, engines and cores) and a cargo hold in the rear for its armour, so a
+// run brings home 28 units of ore and salvage. It flies `miner`: it fights its leader's lock and mines between
+// fights. PLACEHOLDER design (lead default, 20 Oct 2026).
+(
+    id: "sample_miner",
+    name: "Sample miner",
+    summary: "A mining drydock sample: two mining lasers in the nose, a pulse laser on each shoulder and a cargo hold.",
+    description: "Fly it as an escort with a [[behavior:miner]] mind: it fights what its leader has locked and, between fights, cuts the nearest rock's ore into its hold with its [[part:mining_laser|mining lasers]]. Its two [[part:pulse_laser|pulse lasers]] are for keeping raiders off, not for winning fights.",
+    tags: ["sample", "mining"],
+    faction: "ship_mind",
+    behavior: "miner",
+    size: (16, 12),
+    parts: [
+        (part: "slope_1x1", x: 6, y: 1, flip: true, material: "steel"),
+        (part: "slope_1x1", x: 9, y: 1, material: "steel"),
+        (part: "mining_laser", x: 7, y: 1),
+        (part: "mining_laser", x: 8, y: 1, flip: true),
+        (part: "pulse_laser", x: 5, y: 2),
+        (part: "pulse_laser", x: 10, y: 2, flip: true),
+        (part: "armor_block", x: 6, y: 2, material: "steel"),
+        (part: "armor_block", x: 9, y: 2, flip: true, material: "steel"),
+        (part: "capacitor", x: 7, y: 2),
+        (part: "capacitor", x: 8, y: 2, flip: true),
+        (part: "radiator", x: 4, y: 3),
+        (part: "radiator", x: 11, y: 3, flip: true),
+        (part: "fission_reactor", x: 5, y: 3),
+        (part: "fission_reactor", x: 10, y: 3, flip: true),
+        (part: "cargo_bay", x: 6, y: 3),
+        (part: "cargo_bay", x: 9, y: 3, flip: true),
+        (part: "logic_core", x: 7, y: 3),
+        (part: "logic_core", x: 8, y: 3, flip: true),
+        (part: "slope_1x1", x: 4, y: 4, rot: 2, material: "steel"),
+        (part: "slope_1x1", x: 11, y: 4, rot: 2, flip: true, material: "steel"),
+        (part: "thruster", x: 5, y: 4),
+        (part: "thruster", x: 10, y: 4, flip: true),
+        (part: "armor_block", x: 6, y: 4, material: "steel"),
+        (part: "armor_block", x: 9, y: 4, flip: true, material: "steel"),
+        (part: "cargo_hold", x: 7, y: 4),
+        (part: "slope_1x1", x: 6, y: 5, rot: 2, material: "steel"),
+        (part: "slope_1x1", x: 9, y: 5, rot: 2, flip: true, material: "steel"),
+    ],
+)

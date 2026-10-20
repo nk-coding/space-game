@@ -1,0 +1,22 @@
+// Lore fragments of the inner band (GDR-0080, GDR-0128): found at the ends of the band's lore trails, kept in the
+// memory log. Light, as GDR-0002 asks, and in the rim's voice: what the precursors left and what the ship-mind half
+// remembers, never why. The band is small: its lore trails come before its spare caches and graveyards, after its
+// gates and bosses. Lead defaults (20 Oct 2026, GDR-0128).
+[
+    (
+        id: "forty_names",
+        name: "Forty names",
+        summary: "A precursor route to the core, corrected until it was something else.",
+        band: "inner",
+        trail: "memory",
+        text: "A route to the core, drawn by precursor hands and corrected many times over. The last correction is not a route at all. It is a list of forty names, and the last of them is yours.",
+    ),
+    (
+        id: "logged_twice",
+        name: "Logged twice",
+        summary: "A precursor ship's log from the rifts, every line of it written twice.",
+        band: "inner",
+        trail: "memory",
+        text: "A precursor ship's log from the rifts. For one second every line is written twice, the same words a heartbeat apart, as if the ship were in two places. Then one of the two stops, and the other goes on alone, a little quieter.",
+    ),
+]
