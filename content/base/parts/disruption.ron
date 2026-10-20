@@ -1,0 +1,28 @@
+// Disruption (GDR-0018: ion and EMP, against logic cores and sensors, blinds enemy behaviors; the details GDR-0125).
+// PLACEHOLDER NUMBERS (lead defaults of 20 Oct 2026). `damage` is the little the pulses burn per second; `disrupt` the
+// static per second they carry into the struck vessel's cores past its shields (twice on a hit on a core). A vessel
+// holds 2 static per alive core on its controlling piece (sim's disruption tuning); at that it is blinded for 3 s, then
+// immune for 4 s. Shields absorb disruption whole, so the static gets through only once a bubble is down or missed.
+// Only the player builds it so far (no faction carries one).
+[
+    // The ion cannon: slow violet pulses that barely scratch the hull and fill the enemy's cores with static.
+    (
+        id: "ion_cannon",
+        name: "Ion cannon",
+        summary: "Fires slow ion pulses that fill an enemy's logic cores with static until its mind goes blind.",
+        description: "Its pulses do little damage, but each one that reaches an enemy vessel's hull charges its logic cores with static (twice as much on a hit on a core); armour does not stop it, a shield bubble does. Once the static is full the enemy's mind is blinded for a few seconds: it loses its target, sees no enemies and holds its fire. Then it shakes the static off and cannot be blinded again for a while. Ships with more cores take more static. Needs a clear line of fire.",
+        tags: ["disruption"],
+        locked: true, // the logic research's `ion_cannon` unlocks it
+        category: "weapons",
+        icon: "ion-cannon",
+        size: (1, 1),
+        build_points: 3,
+        mass: 1.5,
+        hp: 1,
+        power: (draw: 3, tier: Low),
+        heat: (output: 1, limit: 3),
+        weapon: (family: Disruption, damage: 0.3, range: 50, delivery: Pulse(rate: 1.5), disrupt: 1.2),
+        salvage: (family: "logic", data: 3),
+        recipe: (materials: {"copper": 2, "crystal": 3, "steel": 1}), // pulses: no workshop upgrade, like point defence
+    ),
+]

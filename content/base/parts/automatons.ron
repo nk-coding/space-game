@@ -74,7 +74,7 @@
         hp: 2,
         power: (draw: 4, tier: High, min_level: 0.25),
         heat: (output: 0.5, limit: 3),
-        shield: (radius: 2.6, capacity: 20, regen: 1.5, absorb: {Energy: 1.0, Kinetic: 0.2, Missile: 0.25}),
+        shield: (radius: 2.6, capacity: 20, regen: 1.5, absorb: {Energy: 1.0, Kinetic: 0.2, Missile: 0.25, Disruption: 1.0}),
         explosion: (damage: 1, radius: 0.6),
         salvage: (family: "shields", data: 6),
         recipe: (materials: {"automaton_plate": 2, "copper": 2, "crystal": 8}, needs: "automaton_forge"),

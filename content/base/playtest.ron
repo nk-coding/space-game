@@ -12,7 +12,7 @@
             "automaton_cannon", "composite_plating", "beam_laser", "fusion_reactor", "torch_drive", "jump_calibration_1",
             "tamed_core", "mind_expansion_1", "simulation_vault", "smelter",
             "wide_bubble", "heat_sink", "ammo_feeder", "burst_laser", "long_cannon", "compact_reactor",
-            "rocket_pod", "point_defence",
+            "rocket_pod", "point_defence", "ion_cannon",
             "shield_regen_1", "radiator_vent_1", "thruster_speed_1", "pulse_rate_1",
         ],
         materials: {"steel": 40, "copper": 30, "ceramic": 20, "crystal": 20, "composite": 20, "coolant": 8, "programmable_matter": 6},

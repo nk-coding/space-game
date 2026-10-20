@@ -663,6 +663,7 @@ fn base_locks_follow_the_early_game_kit() {
             "automaton_cannon",
             "prism_ward", // the Spire's (GDR-0116): enemy only, no research unlocks it
             "wide_shield_emitter",
+            "ion_cannon", // the logic research's (GDR-0125)
             "grown_heart",
             "ram_prow",
             "thorn_gun",
@@ -714,6 +715,7 @@ fn base_research_nodes() {
     assert_eq!(
         ids,
         [
+            "ion_cannon",
             "regrowing_tissue",
             "living_weapons",
             "grown_heart",
@@ -933,4 +935,5 @@ fn researched_parts_can_be_fabricated() {
         assert!(gated.contains(&(p, f)), "{p} needs {f}");
     }
     assert!(c.parts.get("point_defence").unwrap().recipe.as_ref().unwrap().needs.is_none(), "it fires pulses");
+    assert!(c.parts.get("ion_cannon").unwrap().recipe.as_ref().unwrap().needs.is_none(), "it fires pulses");
 }
