@@ -25,8 +25,9 @@ use super::{ResearchAction, ResearchTree, ResearchView};
 /// Where the screen's parts go (stage px). [`Lay::WIDE`]: a 1280 × 720 stage (the UI scale grows it with the
 /// window), as always. [`Lay::COMPACT`]: a phone's 844 × 390 (scaled by `compact_scale`, docs/client.md "Phones"):
 /// each lane's name and data over its cards instead of beside them, so three columns of cards fit beside a narrower
-/// detail whose rows scroll over UNLOCK (no preview picture there), the materials in up to two rows right of the
-/// header (ALSO IN STORE left out), the type at least `COMPACT_TEXT` px.
+/// detail whose rows scroll over UNLOCK (no preview picture there), right of the header only the materials the
+/// selected node costs and those in store ([`shown_on_phone`]; ALSO IN STORE left out), the type at least
+/// `COMPACT_TEXT` px.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Lay {
     pub compact: bool,
@@ -184,6 +185,17 @@ pub(super) enum RIcon {
     Card(usize),
     Mark(usize),
     Preview,
+}
+
+/// One material in the bar on top, on a phone (shown or not by [`shown_on_phone`]).
+#[derive(Component)]
+pub(super) struct PhoneMaterial(usize);
+
+/// On a phone the materials' bar shows only the materials the selected node costs and those in store, in content
+/// order (Niklas, 21 Oct 2026: every material research costs, 18 in the base pack, wrapped into four or five rows over
+/// the tree and the detail); the wide layouts show them all.
+pub(super) fn shown_on_phone(mats: &[String], selected: Option<&ResearchNode>, store: &std::collections::BTreeMap<String, u32>) -> Vec<bool> {
+    mats.iter().map(|m| selected.is_some_and(|n| n.cost.materials.contains_key(m)) || store.get(m).is_some_and(|n| *n > 0)).collect()
 }
 
 /// The materials' bar on top, and the header it keeps clear of on a phone ([`fit_materials`]).
@@ -464,7 +476,11 @@ fn build(mut commands: Commands, lay: &Lay, fonts: &HudFonts, style: &Style, con
                     for (k, mat) in cost_materials(content).iter().enumerate() {
                         let name = content.materials.get(mat).map_or(mat.to_uppercase(), |m| m.name.to_uppercase());
                         let gap = if lay.compact { 5.0 } else { f.pill_gap };
-                        tr.spawn(Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(gap), ..default() }).with_children(|one| {
+                        let mut one = tr.spawn(Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(gap), ..default() });
+                        if lay.compact {
+                            one.insert(PhoneMaterial(k));
+                        }
+                        one.with_children(|one| {
                             one.spawn((UiIcon::Glyph { glyph: Glyph::Diamond, color: ui.gold }, Node { width: px(9), height: px(9), ..default() }));
                             one.spawn(label(fonts, &name, 9.0, c(Tone::Label, 1.0)));
                             one.spawn((RText::Material(k), number(fonts, "", lay.material, c(Tone::Gold, 1.0)), Node { margin: UiRect::right(px(if lay.compact { 0.0 } else { 6.0 })), ..default() }));
@@ -816,6 +832,7 @@ pub(super) fn sync(
     mut icons: Query<(&RIcon, &mut UiIcon)>,
     mut unlock: Single<&mut Pill, With<UnlockButton>>,
     mut unlock_texts: Query<(&UnlockText, &mut Text), Without<RText>>,
+    mut phone_materials: Query<(&PhoneMaterial, &mut Node), Without<RNode>>,
 ) {
     if !(mode.is_changed() || view.is_changed() || career.is_changed() || granted.is_changed() || states.0.is_empty()) {
         return;
@@ -839,6 +856,13 @@ pub(super) fn sync(
     let ready = tree::ready(content, c);
     let lane_families: Vec<&str> = tree.lanes.iter().map(|l| l.family.as_str()).collect();
     let mats = cost_materials(content);
+    let on_phone = shown_on_phone(&mats, selected, c.materials());
+    for (m, mut node) in &mut phone_materials {
+        let display = if on_phone.get(m.0).copied().unwrap_or(false) { Display::Flex } else { Display::None };
+        if node.display != display {
+            node.display = display;
+        }
+    }
 
     for (t, mut text, mut color) in &mut texts {
         let (s, tone) = match *t {
@@ -1116,6 +1140,22 @@ mod tests {
         }
         assert!(lay.tree_bottom <= lay.bottom_y && lay.bottom_y + 32.0 <= lay.stage.y);
         assert!(lay.unlock_y + 44.0 <= lay.stage.y && lay.top_h <= lay.tier_y);
+    }
+
+    /// On a phone the bar shows the selected node's materials and those in store, nothing else.
+    #[test]
+    fn a_phone_shows_the_materials_that_matter() {
+        let content = data::base_content();
+        let mats = cost_materials(&content);
+        let node = content.research.iter().find(|n| !n.cost.materials.is_empty()).unwrap();
+        let in_store = mats.iter().find(|m| !node.cost.materials.contains_key(*m)).unwrap().clone();
+        let store = std::collections::BTreeMap::from([(in_store.clone(), 3), (mats.last().unwrap().clone(), 0)]);
+        let shown = shown_on_phone(&mats, Some(node), &store);
+        for (m, on) in mats.iter().zip(&shown) {
+            assert_eq!(*on, node.cost.materials.contains_key(m) || *m == in_store, "{m}");
+        }
+        assert!(shown.iter().filter(|s| **s).count() < mats.len());
+        assert!(shown_on_phone(&mats, None, &Default::default()).iter().all(|s| !s));
     }
 
     /// UNLOCK names the cost: the data in words, the materials after a diamond.
