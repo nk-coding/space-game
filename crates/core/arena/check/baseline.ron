@@ -1,7 +1,7 @@
 // The balance check's baseline (`docs/arena.md` "The balance check"): written by
 // `scripts/arena-check.sh --update` after an intended change. Do not edit by hand.
 (
-    rules: "796d18739bf987cb",
+    rules: "d7f18879f62d7120",
     fights: [
         (
             fight: "runner_vs_raiders",
