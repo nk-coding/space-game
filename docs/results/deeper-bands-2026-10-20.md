@@ -103,7 +103,7 @@ fights only its leader's lock.
 
 `cargo test -p data -p galaxy -p content-tool -p sim`: all pass (galaxy pin re-pinned; the content-tool export test
 counts the new encounters). `scripts/arena-check.sh`: all seven fights the same, fight for fight; the rules
-fingerprint moved with the new content (baseline refreshed). `scripts/determinism-check.sh --galaxy 200`: see GDR-0128.
+fingerprint moved with the new content (baseline refreshed). `scripts/determinism-check.sh --galaxy 200`: native and wasm identical (last hash `6f401dd7cde9a39254a4709ee23f09c0`).
 Wiki: `npm run build` and `npm run check`.
 
 ## Reproduce
