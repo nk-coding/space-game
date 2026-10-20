@@ -80,9 +80,11 @@ landscape only).
 - At 667 × 375 SETTINGS, FLEET and research leave 40 to 60 dp empty at the bottom: the layouts keep 390 dp of
   height and the window is 474 dp at that scale. Their bottom lines could hang from the window's bottom.
 - The voyage map's labels overlap where clusters crowd (`BRASA FOGNANDEEP`), on every size; not phone-specific.
-- Research's tree: a card with three chip lines (Precursor alloy: HULL, LOGIC, a material and the second material
-  on a third line) runs into the card under it (Capital drydock), on a phone and likely wide too; in the dev mode the
-  wide top bar's fourth row of materials touches the detail's kind line at 1280 × 720.
+- Research (fixed 21 Oct 2026, `research::screen::under_lines`, `clear_of_materials`): a row is as tall as its
+  longest cost line needs, any number of chip lines (Precursor alloy's three ran into Capital drydock); the detail's
+  rows start below the materials' bar whatever its rows (the dev mode's fourth row touched them at 1280 × 720).
+  Checked at 844 × 390 @3, 667 × 375 @2 and the three desktop sizes, dev mode and a fresh career. Still: in the dev
+  mode on a phone the bar's rows cover the tier heads.
 - `SafeArea` stays the plan's placeholders (no web insets are read; with `viewport-fit=cover` gone, none are needed).
 - Not checkable headless: real browser toolbars (simulated by the 844 × 340 size), iOS Safari itself, the pinch.
 - **Headless note**: at DPR 3 SwiftShader draws about 1.7 frames a second, so a `tap` on a control with a tooltip
