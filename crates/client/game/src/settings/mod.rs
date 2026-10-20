@@ -66,7 +66,7 @@ impl Lay {
     const COMPACT: Lay = Lay { stage: Vec2::new(844.0, 390.0), list: (Vec2::new(16.0, 64.0), Vec2::new(812.0, 276.0)), bottom: 10.0, name_w: 150.0, about_w: 300.0, chip_w: 96.0 };
 }
 
-/// A row's height in the controls list.
+/// A row's least height in the controls list.
 const ROW: f32 = 34.0;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -497,7 +497,8 @@ fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>, conten
                                 list.spawn((label(fonts, &section.title().to_uppercase(), 10.0, c(Tone::Gold, 1.0)), Node { margin: UiRect::new(px(0), px(0), px(14), px(6)), flex_shrink: 0.0, ..default() }));
                                 for e in entries {
                                     let Some(action) = Action::from_id(&e.id) else { continue };
-                                    list.spawn(Node { height: px(ROW), flex_shrink: 0.0, ..row(16.0) }).with_children(|r| {
+                                    // At least ROW high; a summary of three lines grows its row (21 Oct 2026: BLINK's ran into the next row).
+                                    list.spawn(Node { min_height: px(ROW), padding: UiRect::vertical(px(3)), flex_shrink: 0.0, ..row(16.0) }).with_children(|r| {
                                         r.spawn((label(fonts, &e.name.to_uppercase(), 10.0, c(Tone::Number, 1.0)), by_class(width(wl.name_w), width(cl.name_w))));
                                         r.spawn((prose(fonts, &e.summary, 11.0, c(Tone::Label, 1.0)), Node { flex_grow: 1.0, flex_shrink: 1.0, ..default() }));
                                         for slot in 0..MAX_INPUTS {
