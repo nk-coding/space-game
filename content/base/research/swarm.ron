@@ -24,7 +24,7 @@
         kind: Alien,
         cost: (data: {"swarm": 16, "energy": 4}),
         requires: ["chitin_plating"],
-        unlocks: [Part("stinger"), Facility("hive_cradle")], // the workshop upgrade that grows the Swarm's parts,
+        unlocks: [Part("stinger"), Facility("hive_press")], // the workshop upgrade that makes the Swarm's parts
     ),
     (
         id: "drone_bay",

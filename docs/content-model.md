@@ -814,7 +814,8 @@ opened by `simulation_vault`). Since GDR-0108 (18 Oct 2026) a facility may be:
 
 - an **upgrade** `within` another facility (no building of its own): recipes that `need` it are fabricated once it is
   open (base: `fusion_workshop`, opened with the fusion reactor's node; `grown_vat`, with Living weapons;
-  `automaton_forge`, opened by nothing yet). `within` names a facility that is no upgrade itself.
+  `automaton_forge`, with its own node (a gate shard); `munitions_bay`, with the Rocket pod or Flares;
+  `hive_press`, with Stingers; `smelter`, with its own node). `within` names a facility that is no upgrade itself.
 - **the workshop**, with `workshop: (dismantle, broken, keep)`: the share of a recipe dismantling an intact part
   gives back (0 to 1; base 0.4), the share a broken part and a hull cell give (base 0.25), and how many of a part the
   suggested sort keeps in stock at least (base 2). At most one facility has these rules (`Content::workshop`).

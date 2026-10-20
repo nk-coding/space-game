@@ -927,8 +927,8 @@ fn researched_parts_can_be_fabricated() {
         ("rocket_pod", "munitions_bay"),
         ("torpedo_launcher", "munitions_bay"),
         ("flare_launcher", "munitions_bay"),
-        ("stinger", "hive_cradle"),
-        ("drone_bay", "hive_cradle"),
+        ("stinger", "hive_press"),
+        ("drone_bay", "hive_press"),
     ] {
         assert!(gated.contains(&(p, f)), "{p} needs {f}");
     }

@@ -173,9 +173,11 @@ carry (hull plating is not counted). The workshop lists its parts like the drydo
 (the parts your fleet is short of first) and a part's card when you rest the pointer on its row. The drydock shows each part's stock and what the design is short of. The
 workshop fabricates parts from materials: an unlocked part with a recipe, such as a [[part:pulse_laser]] from
 [[part:pulse_laser.recipe]]. Some recipes need a workshop upgrade: the [[facility:fusion_workshop]] for the
-[[part:fusion_reactor]] and the [[part:torch_drive]], the [[facility:grown_vat]] for the Grown's parts. The
-automatons' own parts need the [[facility:automaton_forge]], which nothing installs yet, so they come only from
-intact salvage.
+[[part:fusion_reactor]] and the [[part:torch_drive]], the [[facility:grown_vat]] for the Grown's parts, the
+[[facility:munitions_bay]] for the missile and flare launchers, the [[facility:hive_press]] for the Swarm's parts.
+The research that unlocks such a part installs its upgrade, except the automatons' own parts: they need the
+[[facility:automaton_forge]], which its own research installs (it takes a gate shard), so until then they come only
+from intact salvage.
 
 Fitting takes nothing from the stock: the parts come back when a ship comes home, and when a ship is lost its
 bonded parts re-form at home with it. Only the haul is at stake.

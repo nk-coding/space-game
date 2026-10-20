@@ -38,8 +38,8 @@
         locked: true,
         within: "workshop",
     ),
-    // The munitions bay and the hive cradle (lead defaults, 20 Oct 2026; GDR-0031's hub upgrades, GDR-0108's list
-    // that waited for parts): the bay fills the launchers' missiles and flares, the cradle grows the Swarm's parts.
+    // The munitions bay and the hive press (lead defaults, 20 Oct 2026; GDR-0031's hub upgrades, GDR-0108's list
+    // that waited for parts): the bay fills the launchers' missiles and flares, the press makes the Swarm's parts.
     // The research that unlocks the first such part installs it, so no new node and no new cost.
     (
         id: "munitions_bay",
@@ -50,9 +50,9 @@
         within: "workshop",
     ),
     (
-        id: "hive_cradle",
-        name: "Hive cradle",
-        summary: "A workshop upgrade that grows the Swarm's parts from hive resin and nerve cores.",
+        id: "hive_press",
+        name: "Hive press",
+        summary: "A workshop upgrade that presses the Swarm's parts from hive resin and nerve cores.",
         description: "Researching [[research:stingers]] installs it in the [[facility:workshop]]. Until then the Swarm's parts come only from intact salvage.",
         locked: true,
         within: "workshop",

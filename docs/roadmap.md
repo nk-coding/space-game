@@ -659,6 +659,15 @@ Next session:
   rate moves more than 0.15, side 0's score more than 0.12 or its mean time more than 15 %; `--update` writes the
   baseline after an intended change. Run it after every content or sim change.
 
+### 20 Oct 2026: workshop upgrades for missiles and the Swarm
+
+- ([GDR-0108](gdr/0108-materials-economy-workshop.md)'s status, lead defaults) two upgrades from GDR-0031's list,
+  facilities within the workshop: the **munitions bay** (the rocket pod's, torpedo launcher's and flare launcher's
+  recipes; installed by the Rocket pod research or Flares) and the **hive press** (every Swarm part's recipe;
+  installed by Stingers). No new nodes or costs. The automaton forge already had its node (a gate shard). A content
+  test: every researched part can be fabricated once its node, or one it requires, is researched (the recorded
+  exceptions: the automatons' parts wait for the forge, the torch drive for the fusion reactor's node).
+
 ## Phase 4: measurement
 
 Status 12 Oct 2026 (new VM): `results/spike-summary.md` written. Determinism native vs wasm IDENTICAL on the new VM
