@@ -1,7 +1,7 @@
 // The balance check's baseline (`docs/arena.md` "The balance check"): written by
 // `scripts/arena-check.sh --update` after an intended change. Do not edit by hand.
 (
-    rules: "d7f18879f62d7120",
+    rules: "1977fb19fe7b8876",
     fights: [
         (
             fight: "runner_vs_raiders",
@@ -9,7 +9,7 @@
             won: (143, 76),
             score: 0.625,
             time: 59.6,
-            hashes: "c023bc5194ec1cd7",
+            hashes: "30bedc5fa5af8ced",
         ),
         (
             fight: "skiff_mirror",
@@ -17,7 +17,7 @@
             won: (1, 0),
             score: 0.505,
             time: 89.5,
-            hashes: "05c125fedbc0465c",
+            hashes: "5beead98e8133d26",
         ),
         (
             fight: "skiff_vs_lancer",
@@ -25,7 +25,7 @@
             won: (241, 151),
             score: 0.615,
             time: 25.6,
-            hashes: "4a5e57f89ebab7fd",
+            hashes: "05f215d16d9e9237",
         ),
         (
             fight: "mid_vs_warden",
@@ -33,7 +33,7 @@
             won: (17, 159),
             score: 0.149,
             time: 42.1,
-            hashes: "18e5e1077fe17537",
+            hashes: "c9ef618b972662d1",
         ),
         (
             fight: "runner_vs_rammers",
@@ -41,7 +41,7 @@
             won: (28, 156),
             score: 0.261,
             time: 54.1,
-            hashes: "a668abcbf05db10a",
+            hashes: "8300fb887ee78f26",
         ),
         (
             fight: "runner_gauntlet",
@@ -49,7 +49,7 @@
             won: (13, 178),
             score: 0.309,
             time: 126.7,
-            hashes: "79e097990e4dace8",
+            hashes: "7c6b0313139dcd06",
         ),
         (
             fight: "hive_flood",
@@ -57,7 +57,7 @@
             won: (12, 2),
             score: 0.345,
             time: 113.1,
-            hashes: "0079e340da4ddda4",
+            hashes: "9797bda5eb09661b",
         ),
     ],
 )
