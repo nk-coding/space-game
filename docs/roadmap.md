@@ -590,6 +590,56 @@ Next session:
   `target` and `face_target`, the evolution runs' old `fitness`, `start` and plain-number forms, and the flight
   parameters that started the sandbox without `scene` are gone. An older save starts a new game (a log line, a note).
 
+### 18 Oct 2026: the seedling shoal, a ram prow arms a ship
+
+- ([GDR-0109](gdr/0109-a-ram-prow-and-an-engine-arm-a-ship.md), lead defaults; `results/encounters-balance-2026-10-18.md`)
+  The `grown_seedling` (2×2: a ram prow, a ganglion, a thruster) in shoals of five or six in the grove reach, under
+  its own `grown_seedling` behavior (charges from 30 m, 4 s of every 6). A ship is armed when its controlling piece
+  has a power source and a gun, or a ram prow and a working engine (not an RCS pod): `Ship::is_armed`,
+  `Content::ship_armed`, so a rammer without guns keeps its site from clearing and blocks the recall. The grove run
+  hardly moved (Runner and a cannon skiff 55 → 52 %).
+
+### 18 Oct 2026: stations and the precursor outpost
+
+- ([GDR-0110](gdr/0110-anchored-stations.md), lead defaults; `results/encounters-balance-2026-10-18.md`) A blueprint's
+  `anchored: true` makes a station: its pieces, split-off ones and wrecks keep their place and only turn. The
+  `automaton_outpost` (13×9: a gunless shielded hub, a scanner mast and two cannon spokes on cores of their own) under
+  the `outpost` behavior; the sites `precursor_outpost` (rim wreck drifts) and `outpost_garrison` (outer border
+  drifts), both with docked wrecks. A rim voyage ending at the outpost clears 64 % with a Runner and a skiff (a hunter
+  den 72 %), an outer one at the garrison 53–54 %.
+- Open: a station's own salvage reward; more stations (race stations, the Swarm's hive since 19 Oct).
+
+### 18 Oct 2026: the automaton picket
+
+- ([GDR-0111](gdr/0111-an-enemy-scan-calls-its-factions-sites.md), lead defaults;
+  `results/picket-keeper-balance-2026-10-18.md`) An enemy's scan wakes its own faction's sleeping sites within the
+  scanner's range and shows the player nothing. The `automaton_picket` (an unarmed 3×3 scout: a scanner, two RCS
+  pods, a thruster, one core; tagged `scout`, so the test range's waves leave it out) flies `picket` (flees, scans once
+  300 m clear); its site `picket_post` (the picket and a raider pair) in the wreck drifts and hunting reaches. On 19 Oct
+  the called ships rally where the scanner saw its target. The voyage runner cleared picket voyages *more* often when
+  the picket called (42 against 38 %, with a skiff 62 against 48 %), so the call got a cost the next night (below).
+
+### 18 Oct 2026: the Keeper
+
+- ([GDR-0112](gdr/0112-the-keeper-guards-the-middle-bands-gates.md), lead defaults;
+  `results/picket-keeper-balance-2026-10-18.md`) The middle band's gate guardian `automaton_keeper` (11×9): a ring of
+  four shielded cannon pods round a heart with two beam lasers, a fusion reactor and a torch drive, each pod on a core
+  of its own. `keeper_gate` (the Keeper and three hunters) ends the `deep_gate` trail, which gives a gate shard and is
+  no longer a stub; ships tagged `middle` stay out of the every-blueprint scenarios. Tuned to half the bastion gate's
+  clears (alone 38 against 82 %, behind two packs 10 against 22 %, a Runner and a skiff). The inner band had the
+  Keeper too until the Spire (19 Oct, GDR-0116).
+- Open: the Keeper's numbers re-measured with a fleet of the middle band's strength.
+
+### 19 Oct 2026: a call brings reinforcements
+
+- ([GDR-0113](gdr/0113-a-call-brings-reinforcements.md), Niklas: the call hurts through reinforcements; details lead
+  defaults) An encounter's `calls` names a group, rolled with the site on its own generator as a site on the
+  cluster's edge; the calling site's first enemy scan warps it in 30 s later (`sim::CALL_SECONDS`), awake, rallying
+  where the picket saw the player; once per site. `SimEvent::SiteCalled`, the banner `PICKET CALLED · REINFORCEMENTS
+  INBOUND` and the arrival warp in the group's glow. `picket_post` calls `picket_call` (two or three raiders): a call
+  costs the voyage runner 9–13 points of clear % (240 seeds; the Runner 23 against 36 % at raider sites).
+- Open: other callers (a Grown scout, a station's alarm) need only content.
+
 ### 19 Oct 2026: mining and ore refining
 
 - ([GDR-0114](gdr/0114-mining-and-ore-refining.md), lead defaults; `results/mining-2026-10-19.md`) The mining
