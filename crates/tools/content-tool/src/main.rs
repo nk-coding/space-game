@@ -963,7 +963,7 @@ mod tests {
         );
         assert_eq!(
             logic["research"],
-            json!(["ion_cannon", "tamed_core", "mind_expansion_1", "mind_expansion_2", "simulation_vault", "automaton_forge"])
+            json!(["tamed_core", "mind_expansion_1", "mind_expansion_2", "simulation_vault", "ion_cannon", "automaton_forge"])
         );
         assert_eq!(
             find("families", "hull")["salvaged_from_materials"],

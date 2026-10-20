@@ -112,6 +112,19 @@
         cost: (data: {"logic": 3}),
         unlocks: [Facility("evolution")],
     ),
+    // Disruption (GDR-0018, GDR-0125): what the ship-mind knows of minds, turned against the enemy's; in the logic
+    // family, its cores being what the weapon attacks. PLACEHOLDER COST (lead default, 20 Oct 2026): about a pulse
+    // laser's worth of logic data with some energy data; nothing else needed.
+    (
+        id: "ion_cannon",
+        name: "Ion cannon",
+        summary: "Pulses that fill an enemy's logic cores with static and blind its mind.",
+        description: "Unlocks the [[part:ion_cannon]]: slow pulses that barely scratch the hull but blind an enemy's behavior for a few seconds once enough of them get past its shields.",
+        family: "logic",
+        kind: NewPart,
+        cost: (data: {"logic": 5, "energy": 3}),
+        unlocks: [Part("ion_cannon")],
+    ),
     (
         id: "cruiser_drydock",
         name: "Cruiser drydock",

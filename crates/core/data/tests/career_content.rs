@@ -715,7 +715,6 @@ fn base_research_nodes() {
     assert_eq!(
         ids,
         [
-            "ion_cannon",
             "regrowing_tissue",
             "living_weapons",
             "grown_heart",
@@ -736,6 +735,7 @@ fn base_research_nodes() {
             "mind_expansion_1",
             "mind_expansion_2",
             "simulation_vault",
+            "ion_cannon",
             "cruiser_drydock",
             "reactive_plating",
             "automaton_forge",
