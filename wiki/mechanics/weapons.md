@@ -125,6 +125,16 @@ It flies on by the rules that need none, so a blinded raider brakes or drifts. T
 takes none for [[sim:blind_immune]], so it cannot be held blind for good. The ship you fly yourself keeps its stick,
 lock and trigger while blinded; only its assists lose sight.
 
+## Lances
+
+The [[part:phase_lance]] of the [[faction:walkers]] is a short pulse gun whose shot does not stop at the first block:
+it strikes every part on its line through the hull it hits, each with what is left of the shot. After each cell of a
+machine it keeps [[part:phase_lance.lance_keep]] of its strength, after each cell of armour
+[[part:phase_lance.lance_armor]], and it stops where the line leaves the hull or once it is down to
+[[sim:lance_spent]]. So it finds the reactors and cores behind thin plating; thick plating still helps. Shield bubbles
+take it whole, unless it is fired from inside one. More on the walkers' blinks and lances:
+[Phase walkers](./phase-walkers).
+
 ## The line of fire
 
 A gun fires through the side it faces, and **its own piece must not be in the way**: no part of the same piece may
