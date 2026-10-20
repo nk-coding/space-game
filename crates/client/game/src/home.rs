@@ -47,7 +47,7 @@ use bevy::state::state::StateTransitionEvent;
 use bevy::ui::{ComputedNode, UiGlobalTransform, UiScale, UiTransform, Val2};
 use bevy::window::PrimaryWindow;
 use kit::style::{Style, ui_color};
-use kit::ui_kit::{CompactText, LayoutClass, HudFonts, EXIT_SECONDS, Hot, ScreenFx, Tip, Tone, UiClick, show_screen, UiInputSet, UiPointer, UiSize, UiStyleSet, crumb, frame, label, prose, title, set_color, set_text, ui_scale_for};
+use kit::ui_kit::{CompactSize, CompactText, LayoutClass, HudFonts, EXIT_SECONDS, Hot, SafeArea, ScreenFx, Tip, Tone, UiClick, show_screen, UiInputSet, UiPointer, UiSize, UiStyleSet, crumb, frame, label, prose, title, set_color, set_text, ui_scale_for};
 use data::input::Action;
 use world::camera::{CamMode, CameraRig, CameraSet};
 use world::settings::{Act, ActionTip};
@@ -217,7 +217,7 @@ struct LabelTitle(Place);
 #[derive(Component)]
 struct LabelSub(Place);
 
-/// The click area over a working place.
+/// The click area over a working place, and its label's words.
 #[derive(Component)]
 struct Spot(Place);
 
@@ -321,13 +321,15 @@ fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>) {
             crate::settings::spawn_ring(tr);
         });
         // Bottom right: the career's notes.
-        // On a phone narrower, so they stay right of the test range's label, under the gate's.
-        let notes = |width: f32| Node { position_type: PositionType::Absolute, right: px(f.edge), bottom: px(f.top), width: px(width), flex_direction: FlexDirection::Column, row_gap: px(5), ..default() };
-        root.spawn(by_class(notes(300.0), notes(230.0)))
+        // On a phone narrower (their words smaller), so they stay right of the test range's label, under the gate's,
+        // and inside the safe area (the window's corner may be rounded there).
+        let notes = |right: f32, bottom: f32, width: f32| Node { position_type: PositionType::Absolute, right: px(right), bottom: px(bottom), width: px(width), flex_direction: FlexDirection::Column, row_gap: px(5), ..default() };
+        let safe = SafeArea::PHONE;
+        root.spawn(by_class(notes(f.edge, f.top, 300.0), notes(safe.right, safe.bottom, 212.0)))
         .with_children(|notes| {
             for k in 0..NOTES {
                 notes.spawn((NoteText::Head(k), label(fonts, "", 9.0, c(Tone::Teal, 1.0)), Node { margin: UiRect::top(px(if k == 0 { 0.0 } else { 6.0 })), ..default() }));
-                notes.spawn((NoteText::Body(k), prose(fonts, "", 11.0, c(Tone::Label, 1.0))));
+                notes.spawn((NoteText::Body(k), prose(fonts, "", 11.0, c(Tone::Label, 1.0)), CompactSize(10.0)));
             }
         });
     });
@@ -350,8 +352,14 @@ fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>) {
             // The plate's letters follow the zoom, so the least size on a phone goes on each label.
             root.spawn((PlaceLabel(place), CompactText(COMPACT_TEXT), at))
                 .with_children(|l| {
-                    l.spawn((LabelTitle(place), label(fonts, "", TITLE, c(Tone::Dim, 1.0)), words));
-                    l.spawn((LabelSub(place), label(fonts, "", SUB, c(Tone::Label, 1.0)), words));
+                    // The words are the place's too: a click (a tap) on them goes there, as on the building.
+                    let title = l.spawn((LabelTitle(place), label(fonts, "", TITLE, c(Tone::Dim, 1.0)), words)).id();
+                    let sub = l.spawn((LabelSub(place), label(fonts, "", SUB, c(Tone::Label, 1.0)), words)).id();
+                    if action_of(place).is_some() {
+                        for e in [title, sub] {
+                            l.commands().entity(e).insert((Spot(place), Hot::default()));
+                        }
+                    }
                 });
         }
         root.spawn((
@@ -747,7 +755,7 @@ fn place_labels(
     visit: Res<Visit>,
     mut labels: Query<(&PlaceLabel, &mut Node, &mut UiTransform), Without<PlateAnchor>>,
     mut anchor: Single<&mut UiTransform, (With<PlateAnchor>, Without<PlaceLabel>)>,
-    mut spots: Query<(&Spot, &mut Node), Without<PlaceLabel>>,
+    mut spots: Query<(&Spot, &mut Node), (Without<PlaceLabel>, Without<LabelTitle>, Without<LabelSub>)>,
     mut plate: Single<&mut TextFont, With<PlateName>>,
 ) {
     let k = ui_scale.0.max(1e-3);
