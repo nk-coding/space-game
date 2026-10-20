@@ -310,6 +310,14 @@ fn keyboard(
     {
         world.inputs.commands.push((me, ShipCommand::Flare));
     }
+    // BLINK: the flown ship's blink drives (the sim ignores it while none can blink, GDR-0127).
+    if act.just_pressed(Action::Blink)
+        && let Some(me) = focus.0
+        && let Some(ship) = world.sim.ship(me)
+    {
+        let dir = blink_dir(&input, ship);
+        world.inputs.commands.push((me, ShipCommand::Blink(dir)));
+    }
     // Cycle the focus through the player's vessels (a focus command for the sim).
     let step = if act.just_pressed(Action::FocusNext) {
         1
@@ -565,6 +573,18 @@ fn spawn_touch_ui(mut commands: Commands, style: Res<Style>, fonts: Res<HudFonts
         .with_children(|p| {
             p.spawn((FlareButton, HudButton, HudZone, Visibility::Hidden, ring_node(SLOT))).with_child(label(&fonts, "FLARE", 8.0, ui_color(style.ui.label, 1.0)));
         });
+}
+
+/// Where BLINK jumps (GDR-0127): along the touch stick while it is pushed, else along the thrust and strafe keys held
+/// (turned with the ship), else straight ahead along the nose. A world direction (the sim scales it to the reach).
+fn blink_dir(input: &PlayerInput, ship: &sim::Ship) -> sim::Vec2 {
+    if input.stick_mode && input.stick.length() > 0.2 {
+        return sv(input.stick);
+    }
+    let angle = ship.control_piece().and_then(|c| ship.piece(c)).map_or(0.0, |p| p.body.angle);
+    let local = sim::Vec2::new(input.axes.z, input.axes.y);
+    let local = if local.length_squared() > 0.01 { local } else { sim::Vec2::new(0.0, 1.0) };
+    sim::Rot::from_angle(angle).apply(local)
 }
 
 /// A tap on FLARE: the flown ship's flare launcher (the FLARES action).

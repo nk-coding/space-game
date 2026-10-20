@@ -451,7 +451,7 @@ mod tests {
         let content = data::base_content();
         let tree = Tree::new(&content);
         let lanes: Vec<&str> = tree.lanes.iter().map(|l| l.family.as_str()).collect();
-        assert_eq!(lanes, ["hull", "power", "energy", "kinetic", "missiles", "shields", "thermal", "propulsion", "logic", "utility", "grown", "swarm"]);
+        assert_eq!(lanes, ["hull", "power", "energy", "kinetic", "missiles", "shields", "thermal", "propulsion", "logic", "utility", "grown", "swarm", "walkers"]);
         assert_eq!(tree.columns, 3);
         assert_eq!(tree.cards.len(), content.research.len());
         assert_eq!(at(&tree, "composite_plating"), ("hull".into(), 0, 0));
@@ -497,14 +497,15 @@ mod tests {
                 link("thruster_speed_1", "thruster_speed_2"),
                 link("thruster_speed_2", "thruster_speed_3"),
                 link("pulse_rate_1", "pulse_rate_2"),
-                link("pulse_rate_2", "pulse_rate_3")
+                link("pulse_rate_2", "pulse_rate_3"),
+                link("phase_lances", "blink_drive")
             ]
         );
         // The refinement chains (GDR-0024) run under the parts and sidegrades of their lanes.
         assert_eq!(at(&tree, "pulse_rate_1"), ("energy".into(), 2, 0));
         assert_eq!(at(&tree, "thruster_speed_3"), ("propulsion".into(), 0, 2));
         let rows = |f: &str| match f {
-            "kinetic" | "swarm" => 1,
+            "kinetic" | "swarm" | "walkers" => 1,
             "energy" | "propulsion" | "logic" => 3,
             _ => 2,
         };

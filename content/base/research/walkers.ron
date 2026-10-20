@@ -1,0 +1,30 @@
+// The Phase walkers' research family (GDR-0027: each race teaches its own tech branch; GDR-0127, decided by Niklas
+// 20 Oct 2026: the player can research the blink drive and the lance; the phase chamber comes with the first walker
+// part, like the hive press). Paid with the data their salvage gives (every walker part gives `walkers` data) and their
+// materials. One chain of two, so the research screen keeps a single row for it: the lance first, the blink drive
+// last and dearest (it takes phase residue). The phase core stays theirs. PLACEHOLDER NUMBERS (lead defaults,
+// 20 Oct 2026): a walker strike's wrecks give about 15-25 walker data, so the lance comes after the first fight or two
+// and the drive after three or four.
+[
+    (
+        id: "phase_lances",
+        name: "Phase lances",
+        summary: "The walkers' short lance that runs through a hull.",
+        description: "Unlocks the [[part:phase_lance]]: a short-range pulse that strikes every part on its line through the struck hull, weaker after each cell. Tuning a part out of step takes [[material:rift_silt]], and the [[facility:phase_chamber]] this installs.",
+        family: "walkers",
+        kind: Alien,
+        cost: (data: {"walkers": 14, "energy": 4}, materials: {"rift_silt": 2}),
+        unlocks: [Part("phase_lance"), Facility("phase_chamber")], // the workshop upgrade that makes the walkers' parts
+    ),
+    (
+        id: "blink_drive",
+        name: "Blink drive",
+        summary: "Jump your ships a short way: in behind an enemy, or out of a fight.",
+        description: "Unlocks the [[part:blink_drive]]: it charges for a moment, then jumps the ship up to 150 m, keeping its speed and heading, and cools down. Fly it with the BLINK key or a behavior's [[behavior_node:blink]] rule; a heavier ship needs several drives. Its research takes [[material:phase_residue]].",
+        family: "walkers",
+        kind: Alien,
+        cost: (data: {"walkers": 26, "propulsion": 4}, materials: {"phase_residue": 3}),
+        requires: ["phase_lances"],
+        unlocks: [Part("blink_drive")],
+    ),
+]

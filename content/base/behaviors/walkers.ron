@@ -1,0 +1,47 @@
+// The Phase walkers' tactics (GDR-0027: "blink strikes with armour-piercing lances"; GDR-0127, Niklas 20 Oct 2026: wary
+// hit-and-run: calm until provoked, then they blink in, strike with lances, blink out, and come back when the drive is
+// ready again; they avoid long fights). Every rule list fits the phase core's four slots. A blink drive cools 7 s, so a
+// walker fights about that long after it blinked in, then leaves, and waits about as long before the next strike.
+// PLACEHOLDER (lead defaults, 20 Oct 2026; docs/results/walkers-balance-2026-10-20.md).
+[
+    (
+        id: "walker_skirmisher",
+        name: "Walker skirmisher",
+        summary: "Blink in behind the target, lance it until the drive is ready again, blink out, wait, and strike again.",
+        description: "Picks the nearest enemy. Within 180 m with its drive ready it blinks to a spot behind the target and closes to 25 m, lancing; once the drive is ready again it blinks straight away, keeps about 160 m off while the drive cools, and strikes again. Whatever comes within 100 m it fights, drive or not.",
+        tags: ["walkers", "attack"],
+        target: "nearest",
+        rules: [
+            "when blink_ready and target_in_range(70m) -> blink(away)",
+            "when blink_ready and target_in_range(180m) -> blink(behind)",
+            "when target_in_range(100m) -> approach(25m)",
+            "always -> kite(160m)",
+        ],
+    ),
+    (
+        id: "walker_striker",
+        name: "Walker striker",
+        summary: "Blink in behind the target and hold the lances on it; blink out once the drive is ready and the hull hurts.",
+        description: "Picks the nearest enemy and aims at its guns. Within 180 m with its drives ready it blinks in behind the target and closes to 22 m, lancing; it blinks out only when the drives are ready again and its hull is below 70 %, then keeps about 160 m off until it can strike again, unless something comes within 100 m.",
+        tags: ["walkers", "attack"],
+        target: "nearest(weapons)",
+        rules: [
+            "when blink_ready and hull < 70% and target_in_range(70m) -> blink(away)",
+            "when blink_ready and not target_in_range(70m) and target_in_range(180m) -> blink(behind)",
+            "when target_in_range(100m) -> approach(22m)",
+            "always -> kite(160m)",
+        ],
+    ),
+    (
+        id: "walker_colossus",
+        name: "Phase colossus",
+        summary: "Blink in behind the target and close in, lances first; every section shot off does the same on its own.",
+        description: "Picks the nearest enemy. Whenever its drives are ready and the target is between 60 and 200 m off, it blinks in behind it; otherwise it closes to 25 m with its lances on it. A section shot off keeps these rules, so the pieces blink in from every side.",
+        tags: ["walkers", "attack", "boss"],
+        target: "nearest",
+        rules: [
+            "when blink_ready and not target_in_range(60m) and target_in_range(200m) -> blink(behind)",
+            "always -> approach(25m)",
+        ],
+    ),
+]

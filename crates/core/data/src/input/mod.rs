@@ -105,6 +105,7 @@ actions! {
     LockNext = "lock_next",
     Scan = "scan",
     Flare = "flare",
+    Blink = "blink",
     Drift = "drift",
     FocusNext = "focus_next",
     FocusPrevious = "focus_previous",

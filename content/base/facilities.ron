@@ -57,6 +57,16 @@
         locked: true,
         within: "workshop",
     ),
+    // The phase chamber (GDR-0031's race upgrade; GDR-0127, lead default 20 Oct 2026): it makes the Phase walkers'
+    // parts. The research that unlocks the first of them installs it, as the hive press.
+    (
+        id: "phase_chamber",
+        name: "Phase chamber",
+        summary: "A workshop upgrade that tunes the Phase walkers' parts out of step with the world, from rift silt and phase residue.",
+        description: "Researching [[research:phase_lances]] installs it in the [[facility:workshop]]. Until then the walkers' parts come only from intact salvage.",
+        locked: true,
+        within: "workshop",
+    ),
     // The smelter (GDR-0114, GDR-0031's hub upgrade): refines the ores the mining laser cuts. The workshop pays a
     // material the store is short of from it (`refine`: `take` units of `from` give `give` of `to`; PLACEHOLDER, lead,
     // 19 Oct 2026), for parts and research alike.

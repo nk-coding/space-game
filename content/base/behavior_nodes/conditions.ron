@@ -157,6 +157,14 @@
         ],
     ),
     (
+        id: "blink_ready",
+        name: "Blink ready",
+        summary: "Your blink drives could jump the ship now: enough of them working and cool to carry it, none charging.",
+        description: "False on a ship without a working [[part:blink_drive]], while a blink charges, and while too few drives have cooled down to carry the ship's mass. Pair it with the [[behavior_node:blink]] action.",
+        tags: ["self", "phase"],
+        role: Condition,
+    ),
+    (
         id: "cargo_full",
         name: "Cargo full",
         summary: "Your hold has no free unit left.",

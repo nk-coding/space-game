@@ -110,6 +110,21 @@
         tags: ["defence"],
         role: Action,
     ),
+    // Blink (GDR-0127); like `flare` it never decides the maneuver, but it needs a target to jump by.
+    (
+        id: "blink",
+        name: "Blink",
+        summary: "Start a blink with the ship's blink drives, behind the target or away from it, then let the next rule fly the ship.",
+        description: "Never decides the maneuver: while its conditions hold and a target is picked it starts a blink whenever the ship's [[part:blink_drive|blink drives]] are ready (enough of them cool to carry the ship), and the next rule that holds flies the ship while the drives charge. Then the ship jumps, keeping its speed and heading: `behind` to a spot behind the target's tail (as far as the drives reach), `away` the full reach straight away from it. Where rocks or ships fill the spot it lands short, or not at all. Pair it with [[behavior_node:blink_ready]] so the rule only holds when it can act: `when blink_ready and target_in_range(70m) -> blink(away)`. A ship without a working drive skips it.",
+        tags: ["move", "phase"],
+        role: Action,
+        params: [
+            (id: "to", name: "Where", type: Choice([
+                (id: "behind", name: "Behind the target", summary: "To a spot behind the target's tail, as far as the drives reach."),
+                (id: "away", name: "Away from the target", summary: "The drives' full reach straight away from the target."),
+            ]), default: "behind"),
+        ],
+    ),
     // Salvage (GDR-0123); like `mine` it needs no target ship. No tractor: the hull strips what it passes over slowly.
     (
         id: "salvage",

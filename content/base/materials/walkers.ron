@@ -1,0 +1,22 @@
+// The Phase walkers' materials (GDR-0027, GDR-0031's "Phase residue / rift silt"; GDR-0127). PLACEHOLDER NUMBERS (lead
+// defaults, 20 Oct 2026). What gives them lives in the salvage blocks, recipes and trails that name them: a destroyed
+// blink drive leaves phase residue, a destroyed phase core rift silt, and a phase colossus beaten at the end of its
+// trail both. The walkers have no armour of their own: their hulls are composite plate.
+[
+    (
+        id: "phase_residue",
+        name: "Phase residue",
+        summary: "A shimmering film left where a blink drive came apart, never quite where you look.",
+        description: "A destroyed [[part:blink_drive]] leaves a fragment of it to scoop, and a beaten phase colossus gives more. The blink drive's research and recipe take it.",
+        tags: ["walkers"],
+        icon: "phase-residue",
+    ),
+    (
+        id: "rift_silt",
+        name: "Rift silt",
+        summary: "Fine grey grit from the walkers' phase cores, which settles a moment before it falls.",
+        description: "A destroyed [[part:phase_core]] leaves a fragment of it to scoop, and a beaten phase colossus gives more. Researching the [[part:phase_lance]] takes it, and so does its recipe.",
+        tags: ["walkers"],
+        icon: "rift-silt",
+    ),
+]

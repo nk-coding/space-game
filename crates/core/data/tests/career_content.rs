@@ -576,6 +576,7 @@ fn base_families() {
             ("utility", Some("cargo")),
             ("grown", Some("enemy")),
             ("swarm", Some("swarm")),
+            ("walkers", Some("phase")),
         ]
     );
 }
@@ -621,11 +622,13 @@ fn base_salvage_blocks() {
         .iter()
         .filter_map(|p| p.salvage.as_ref().map(|s| (p, s)))
     {
-        let race = p.0.tags.iter().any(|t| t == "grown" || t == "swarm");
+        let race = p.0.tags.iter().any(|t| t == "grown" || t == "swarm" || t == "walkers");
         let core = p.0.logic.is_some() && !race;
         let heart = p.0.heart.is_some();
         let swarm = matches!(p.0.id.as_str(), "swarm_node" | "brood_hangar");
-        assert_eq!(!p.1.fragment.is_empty(), core || heart || swarm, "{}", p.0.id);
+        // The Phase walkers' core leaves rift silt, a blink drive phase residue (GDR-0127).
+        let walkers = matches!(p.0.id.as_str(), "phase_core" | "blink_drive");
+        assert_eq!(!p.1.fragment.is_empty(), core || heart || swarm || walkers, "{}", p.0.id);
         let pm = p.0.recipe.as_ref().is_some_and(|r| r.materials.contains_key("programmable_matter"));
         assert!(!core || pm, "{}", p.0.id);
         // Every part but hull has a recipe (GDR-0108).
@@ -682,6 +685,9 @@ fn base_locks_follow_the_early_game_kit() {
             "stinger", // the Swarm family unlocks it and the drone bay (GDR-0117)
             "brood_hangar",
             "drone_bay",
+            "phase_core", // the walkers' own (GDR-0127); their family unlocks the drive and the lance
+            "blink_drive",
+            "phase_lance",
             "beam_laser",
             "reverse_engineered_cannon",
             "burst_laser",
@@ -761,6 +767,8 @@ fn base_research_nodes() {
             "pulse_rate_1",
             "pulse_rate_2",
             "pulse_rate_3",
+            "phase_lances", // the Phase walkers' family (GDR-0127)
+            "blink_drive",
         ]
     );
     // The gate shards open the rim's three dead ends (GDR-0031): only the automaton plate stays the automatons' own.

@@ -3,7 +3,7 @@
 // `color` is a system colour key from art/tokens.json (ship.system_colors); hull has none and shows neutral, like the
 // hull category. PLACEHOLDER (lead defaults for the first playable loop, 13 Oct 2026): missiles came with missiles
 // (19 Oct 2026, GDR-0115). The Grown's family (18 Oct 2026, GDR-0103): their salvage feeds it (GDR-0099 A4), in their coral;
-// the Swarm's, last (19 Oct 2026, GDR-0117), in their own colour.
+// the Swarm's (19 Oct 2026, GDR-0117), in their own colour; the Phase walkers' (20 Oct 2026, GDR-0127), in theirs.
 [
     (id: "hull", name: "Hull and armour", summary: "Plating, slopes and bigger drydock frames."),
     (id: "power", name: "Power", summary: "Reactors and capacitors.", color: "power"),
@@ -17,4 +17,5 @@
     (id: "utility", name: "Utility and drones", summary: "Cargo, salvage gear and drones.", color: "cargo"),
     (id: "grown", name: "The Grown", summary: "Living tissue, ram prows and thorn guns, learned from the outer reach's Grown.", color: "enemy"),
     (id: "swarm", name: "The Swarm", summary: "Chitin, stingers and drone bays, learned from the middle band's Swarm.", color: "swarm"),
+    (id: "walkers", name: "The Phase walkers", summary: "Piercing lances and blink drives, learned from the inner band's Phase walkers.", color: "phase"),
 ]

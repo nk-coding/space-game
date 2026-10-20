@@ -1,0 +1,78 @@
+// Parts of the Phase walkers, the inner band's wary second race (GDR-0027: "blink strikes with armour-piercing
+// lances"; GDR-0127, decided by Niklas 20 Oct 2026). PLACEHOLDER NUMBERS (lead defaults, 20 Oct 2026,
+// docs/results/walkers-balance-2026-10-20.md). They use the walkers' own system colour (`phase`, art/tokens.json).
+// Locked: a new game starts without them; the walkers' research family (`research/walkers.ron`) unlocks the lance and
+// the blink drive, the phase core stays theirs. `salvage`: data to the walkers' family; a destroyed blink drive leaves
+// phase residue, a destroyed phase core rift silt. `recipe`: what the workshop fabricates it from (GDR-0108;
+// PLACEHOLDER amounts), all in the phase chamber, which the first walker research installs.
+[
+    // The walkers' mind and power: four rules (strike, leave, fight, wait) and enough power for a lance and a drive's
+    // charge.
+    (
+        id: "phase_core",
+        name: "Phase core",
+        summary: "The Phase walkers' mind and power plant, a knot of light half out of step with the world.",
+        description: "A walker ship is a vessel while one of its phase cores runs. It thinks four rules and feeds the lances and the blink drive beside it. Destroyed, it leaves [[material:rift_silt]] to scoop; salvaged, it gives the walkers' research data, but no programmable matter.",
+        tags: ["walkers", "core"],
+        locked: true, // the walkers' own: no research unlocks it
+        category: "logic",
+        icon: "phase-core",
+        color: "phase",
+        size: (1, 1),
+        build_points: 5,
+        mass: 2,
+        hp: 1.6,
+        power: (output: 8),
+        heat: (output: 0.8, limit: 4),
+        logic: (rule_slots: 4, control_capacity: 5),
+        sensor: (range: 750),
+        gyro: (torque: 220),
+        salvage: (family: "walkers", data: 3, fragment: {"rift_silt": 1}),
+        recipe: (materials: {"copper": 1, "crystal": 1, "rift_silt": 2}, needs: "phase_chamber"),
+    ),
+    // The blink drive (GDR-0127): a jump of up to 150 m after a short, shimmering charge, then a long cooldown. One
+    // carries a walker skirmisher; a heavier ship needs several, and a blink takes them all.
+    (
+        id: "blink_drive",
+        name: "Blink drive",
+        summary: "Charges for a moment, shimmering, then jumps the ship up to 150 m and cools down for a while.",
+        description: "A blink keeps the ship's speed and heading and passes through anything on the way, but it lands only where nothing is: with rocks or ships at the spot it lands short, or not at all. Each drive carries so many tonnes; a heavier ship needs several, and a blink takes them all. It draws its power only while it charges. Fly it with the BLINK key (along your stick or thrust, else straight ahead) or a behavior's [[behavior_node:blink]] rule. Destroyed, it leaves [[material:phase_residue]].",
+        lore: "The walkers do not fly between two points. They are at one, and then they have always been at the other.",
+        tags: ["walkers", "drive"],
+        locked: true, // the walkers' research family unlocks it (`blink_drive`)
+        category: "propulsion",
+        icon: "blink-drive",
+        color: "phase",
+        size: (1, 1),
+        build_points: 4,
+        mass: 1.5,
+        hp: 1,
+        power: (draw: 6, tier: High, intermittent: "while charging"),
+        heat: (output: 2, limit: 4),
+        blink: (range: 150, charge: 0.8, cooldown: 7, mass: 22),
+        salvage: (family: "walkers", data: 3, fragment: {"phase_residue": 1}),
+        recipe: (materials: {"copper": 2, "crystal": 1, "phase_residue": 2}, needs: "phase_chamber"),
+    ),
+    // The piercing lance (GDR-0127): a short hit-scan pulse that strikes every part on its line through the piece,
+    // weaker after each cell, more so after armour.
+    (
+        id: "phase_lance",
+        name: "Phase lance",
+        summary: "A short-range pulse that runs through a hull, striking every part on its line, weaker with each cell.",
+        description: "The first part it hits takes the full shot; every part behind it on the same line takes what is left, which drops a little after each machine and more after each cell of armour, so thick plating still helps. It stops where the line leaves the hull. Shield bubbles take it whole, unless it is fired from inside one. Short reach: the walkers blink in close to use it.",
+        tags: ["walkers"],
+        locked: true, // the walkers' research family unlocks it (`phase_lances`)
+        category: "weapons",
+        icon: "phase-lance",
+        color: "phase",
+        size: (1, 1),
+        build_points: 4,
+        mass: 2,
+        hp: 1,
+        power: (draw: 5, tier: Low),
+        heat: (output: 1.8, limit: 3.5),
+        weapon: (family: Energy, damage: 1, range: 40, delivery: Pulse(rate: 0.8), lance: (keep: 0.8, armor: 0.5)),
+        salvage: (family: "walkers", data: 2),
+        recipe: (materials: {"copper": 1, "crystal": 2, "rift_silt": 1}, needs: "phase_chamber"),
+    ),
+]

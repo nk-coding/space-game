@@ -13,6 +13,8 @@ pub const SYSTEM_COLORS: &[&str] = &[
     "enemy",
     // The Swarm's accent (GDR-0117): their parts' icons.
     "swarm",
+    // The Phase walkers' accent (GDR-0127): their parts, their blinks and lances.
+    "phase",
 ];
 
 /// `ship.armor` in `art/tokens.json`: armour tile tones.

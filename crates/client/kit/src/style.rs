@@ -116,7 +116,7 @@ impl Style {
             armor: group("ship.armor", &["steel", "composite", "reactive", "enemy", "tissue", "chitin"]),
             system: group(
                 "ship.system_colors",
-                &["power", "weapons", "shields", "heat", "propulsion", "logic", "cargo", "enemy", "swarm"],
+                &["power", "weapons", "shields", "heat", "propulsion", "logic", "cargo", "enemy", "swarm", "phase"],
             ),
             glow_player: atlas.token_color("ship.hull_glow.color"),
             glow_enemy: atlas.token_color("ship.hull_glow.enemy_color"),

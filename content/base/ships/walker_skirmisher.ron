@@ -1,0 +1,27 @@
+// Walker skirmisher (GDR-0127): the Phase walkers' small striker, hunting in twos and threes. A phase lance in its nose,
+// a phase core, a blink drive that carries it, one thruster; composite plate. PLACEHOLDER layout (lead default,
+// 20 Oct 2026; docs/results/walkers-balance-2026-10-20.md).
+(
+    id: "walker_skirmisher",
+    name: "Walker skirmisher",
+    summary: "A 3×4 Phase walker with a lance in its nose and a blink drive behind its core.",
+    description: "Skirmishers wait unseen until something provokes them, then blink in behind it, run their [[part:phase_lance|lance]] through its hull and blink out again before the fight turns. Shoot the [[part:blink_drive]] and it has to stay. Each one gives [[material:phase_residue]] and [[material:rift_silt]] when its drive and core are destroyed.",
+    tags: ["walkers", "inner"],
+    faction: "walkers",
+    behavior: "walker_skirmisher",
+    size: (3, 4),
+    parts: [
+        (part: "slope_1x1", x: 0, y: 0, flip: true, material: "composite"),
+        (part: "phase_lance", x: 1, y: 0),
+        (part: "slope_1x1", x: 2, y: 0, material: "composite"),
+        (part: "armor_block", x: 0, y: 1, material: "composite"),
+        (part: "phase_core", x: 1, y: 1),
+        (part: "armor_block", x: 2, y: 1, material: "composite"),
+        (part: "armor_block", x: 0, y: 2, material: "composite"),
+        (part: "blink_drive", x: 1, y: 2),
+        (part: "armor_block", x: 2, y: 2, material: "composite"),
+        (part: "slope_1x1", x: 0, y: 3, rot: 2, material: "composite"),
+        (part: "thruster", x: 1, y: 3),
+        (part: "slope_1x1", x: 2, y: 3, rot: 2, flip: true, material: "composite"),
+    ],
+)

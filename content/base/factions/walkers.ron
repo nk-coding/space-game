@@ -1,0 +1,12 @@
+(
+    id: "walkers",
+    name: "The Phase walkers",
+    summary: "A wary race of the inner band whose ships blink from place to place and strike with lances that run through a hull.",
+    description: "They stay out of sight until provoked: shot at, rammed, scanned close by, or their wrecks stripped. Then they blink in behind a ship, run their lances through it, and blink out again before the fight turns; they come back when their drives are ready. They share the inner band with the Lattice, never a cluster, and the giant phase colossi are their bosses.",
+    tags: ["enemy"],
+    glow: "enemy",
+    // Calm unless provoked (GDR-0127, as the Grown, GDR-0099 A3).
+    wary: true,
+    // Ships without one of their own.
+    behavior: "walker_skirmisher",
+)
