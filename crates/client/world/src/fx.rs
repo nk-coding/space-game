@@ -166,7 +166,24 @@ pub struct Effects {
     rng: Rng,
     /// Where engine plumes are burning a part now (`SimEvent::PlumeHit`, refreshed every tick while it lasts).
     burns: Vec<Burn>,
+    /// Glints running over refractive crystal hull parts now (GDR-0126).
+    glints: Vec<Glint>,
 }
+
+/// A glint on a refractive crystal hull part (GDR-0126): a thin streak of light along one of the cell's diagonals that
+/// sweeps across it in [`GLINT_LIFE`], drawn on the part at its render pose every frame, so it rides with the ship.
+#[derive(Clone, Copy)]
+struct Glint {
+    ship: ShipId,
+    piece: PieceId,
+    part: sim::PartIdx,
+    /// The streak's direction in the piece's frame (a diagonal); it sweeps across it.
+    along: Vec2,
+    age: f32,
+}
+
+/// How long a crystal glint takes to sweep over its cell (s).
+const GLINT_LIFE: f32 = 0.3;
 
 /// A plume lane blocked by a part: the engine (ship, part) and the world point it burns.
 #[derive(Clone, Copy)]
@@ -191,6 +208,7 @@ impl Default for Effects {
             blasts: Vec::new(),
             rng: Rng::new(0xF0F0_1234),
             burns: Vec::with_capacity(32),
+            glints: Vec::with_capacity(32),
         }
     }
 }
@@ -204,6 +222,7 @@ impl Effects {
         self.trail.clear();
         self.blasts.clear();
         self.burns.clear();
+        self.glints.clear();
     }
 
     /// A ring that grows from the point out to `radius` and fades (a warning ping, GDR-0126).
@@ -552,11 +571,13 @@ fn draw_ships_fx(
         }
     }
 
-    // Refractive crystal (GDR-0126): now and then a glint runs over a crystal hull part, about twice a second a piece.
+    // Refractive crystal (GDR-0126): now and then a glint runs over a crystal hull part, about twice a second a piece:
+    // a thin streak along a diagonal of the cell sweeping across it, on the part (it rides with the ship). Until
+    // 20 Oct 2026 a soft flash 1.1 m wide left where the part was, which read as a blob of light over the hull.
     for ship in world.sim.ships() {
         let d = ship.design();
         for piece in ship.pieces() {
-            if fx.rng.range(0.0, 1.0) > dt * 2.0 {
+            if fx.glints.len() >= 32 || fx.rng.range(0.0, 1.0) > dt * 2.0 {
                 continue;
             }
             let crystal = piece.parts.iter().filter(|&&p| d.parts[p as usize].refract > 0.0 && ship.parts()[p as usize].alive);
@@ -565,14 +586,31 @@ fn draw_ships_fx(
                 continue;
             }
             let pick = (fx.rng.range(0.0, n as f32) as usize).min(n - 1);
-            let Some(&p) = crystal.clone().nth(pick) else { continue };
-            let (pos, angle) = piece.render_pose(alpha);
-            let [cx, cy] = d.parts[p as usize].shape.center();
-            let jitter = Vec2::new(fx.rng.range(-0.35, 0.35), fx.rng.range(-0.35, 0.35));
-            let at = world_of(pos, angle, Vec2::new(cx - piece.origin[0], piece.origin[1] - cy) + jitter);
-            fx.flash(at, Color::srgb(0.9, 0.97, 1.0), 0.55, 0.4);
-            fx.flash(at, lattice, 1.1, 0.5);
+            let Some(&part) = crystal.clone().nth(pick) else { continue };
+            let along = if fx.rng.range(0.0, 1.0) < 0.5 { Vec2::new(1.0, 1.0) } else { Vec2::new(1.0, -1.0) } / 2f32.sqrt();
+            fx.glints.push(Glint { ship: ship.id(), piece: piece.id, part, along, age: 0.0 });
         }
+    }
+    fx.glints.retain_mut(|g| {
+        g.age += dt;
+        g.age < GLINT_LIFE
+    });
+    for g in &fx.glints {
+        let Some(ship) = world.sim.ship(g.ship) else { continue };
+        let Some(piece) = ship.piece(g.piece).filter(|_| ship.parts()[g.part as usize].alive) else { continue };
+        let k = g.age / GLINT_LIFE;
+        let bright = (k * std::f32::consts::PI).sin();
+        let (pos, angle) = piece.render_pose(alpha);
+        let [cx, cy] = ship.design().parts[g.part as usize].shape.center();
+        let centre = Vec2::new(cx - piece.origin[0], piece.origin[1] - cy);
+        // The streak lies across the diagonal it sweeps along, shorter near the cell's corners.
+        let across = Vec2::new(-g.along.y, g.along.x);
+        let sweep = (k - 0.5) * 0.9;
+        let half = 0.42 * (1.0 - (2.0 * sweep).abs()).max(0.15);
+        let mid = centre + g.along * sweep;
+        let (a, b) = (world_of(pos, angle, mid - across * half), world_of(pos, angle, mid + across * half));
+        queue.line(&regions.halo, a, b, 0.22, lattice.with_alpha(0.45 * bright), Z_SPARKS - 1.0);
+        queue.line(&regions.white, a, b, 0.045, Color::srgb(0.92, 0.98, 1.0).with_alpha(0.95 * bright), Z_SPARKS - 0.9);
     }
 
     // Projectiles: interpolated, a streak behind each. Missiles (GDR-0115): a body along their course, a hot
