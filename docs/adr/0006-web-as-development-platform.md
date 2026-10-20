@@ -1,6 +1,6 @@
 # ADR-0006: The web build is the development platform (web first), not an end-user platform
 
-- Status: Accepted
+- Status: Superseded by [ADR-0048](0048-the-web-build-is-a-player-platform.md)
 - Date: 2026-10-11
 - Decided by: Niklas
 - Supersedes: [ADR-0005](0005-web-as-full-end-user-platform.md)

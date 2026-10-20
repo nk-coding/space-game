@@ -14,7 +14,7 @@ is the overview and links to both series. Format and status rules: `CLAUDE.md`, 
 | [0003](0003-crate-architecture.md) | Crate architecture: engine-free `sim` and `data`, a Bevy `game` client, the physics benchmark kept outside | Accepted | 2026-10-10; 2026-10-11 |
 | [0004](0004-target-platforms-and-performance-first.md) | Targets are mid-range Android and desktop; performance comes first | Accepted | 2026-10-10 |
 | [0005](0005-web-as-full-end-user-platform.md) | The web build is a full end-user platform | Superseded by [ADR-0006](0006-web-as-development-platform.md) | 2026-10-11 |
-| [0006](0006-web-as-development-platform.md) | The web build is the development platform (web first), not an end-user platform | Accepted | 2026-10-11 |
+| [0006](0006-web-as-development-platform.md) | The web build is the development platform (web first), not an end-user platform | Superseded by [ADR-0048](0048-the-web-build-is-a-player-platform.md) | 2026-10-11 |
 | [0007](0007-development-setup-vm-and-host-browser.md) | Develop in a GPU-less VM and view the game as a web build in the host browser | Accepted | 2026-10-11 |
 | [0008](0008-local-git-only.md) | Local git only, no remote repositories | Accepted | 2026-10-10 |
 | [0009](0009-spike-first-systems-before-content.md) | Spike first, keep the spike as the foundation, build systems before content | Accepted | 2026-10-10; 2026-10-11 |
@@ -55,6 +55,8 @@ is the overview and links to both series. Format and status rules: `CLAUDE.md`, 
 | [0044](0044-no-save-compatibility-before-release.md) | No save compatibility before release: the game reads only the current formats and starts a new career in place of an older save | Accepted | 2026-10-18 |
 | [0045](0045-compact-layout-class-and-touch-in-the-kit.md) | The layout class follows the window (compact under 500 dp high, phone layouts scaled 0.9–1.3); touch hover, 48 dp hit slop and list drags live in the UI kit | Proposed | 2026-10-19 |
 | [0046](0046-one-dev-mode-replaces-the-url-flags.md) | One `dev=1` mode (its own save, everything open, the whole galaxy with each cluster's sites, the debug keys) replaces the URL flags; a few tool flags stay for scripts | Accepted | 2026-10-20 |
+| [0047](0047-licences-code-mit-or-apache-content-cc-by.md) | Licences: code MIT OR Apache-2.0, content and art CC BY 4.0; a third-party notices file, an AI disclosure | Accepted | 2026-10-20 |
+| [0048](0048-the-web-build-is-a-player-platform.md) | The web build is a player platform beside native and Android, published on GitHub Pages by a GitHub Actions workflow | Accepted | 2026-10-20 |
 <!-- index:end -->
 
 ## How to add, supersede and deprecate
