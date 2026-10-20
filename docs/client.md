@@ -96,9 +96,11 @@ variable (`kit::params`). A bare key means 1; `0`, `false`, `off` and `no` turn 
 - **The whole galaxy**: every cluster charted and every gate open, so every band is open and a jump reaches any
   cluster. On the [voyage map](#voyage-map) every cluster shows its notable sites as small marks above its ring (a
   gate's guardian a coral diamond, a boss a coral triangle, a station a gold square; `map::known::Notable`, from the
-  encounters' `boss` tag, the bands' gate trails and anchored ships), and a cluster's panel lists every encounter its
+  encounters' `boss` tag, the bands' gate trails and anchored ships; their words follow the cluster's state under its
+  name, `CHARTED · BOSS · STATION`), and a cluster's panel lists every encounter its
   interior holds with its count (`ENCOUNTERS · 7`; the interior from the cluster's own seed,
-  `world::voyage::cluster_encounters`). Screenshot: `docs/results/dev-mode-map-2026-10-20.png`.
+  `world::voyage::cluster_encounters`). Screenshot (1280 × 720, at 80 %, an inner gate and its Spire selected; checked at 1600 × 900 and 2560 × 1440 too):
+  `docs/results/dev-mode-map-2026-10-20.png`.
 - **The debug keys** work only here (`world::settings::DEV_KEYS`): F8 the debug overlay, F5–F7 the render toggles,
   Shift+R and C the test range's restart and waves; the controls overlay, SETTINGS and the flight menu leave them out
   elsewhere. P (pause) and H (hide the HUD) are player keys.

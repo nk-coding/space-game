@@ -1062,15 +1062,23 @@ fn sync_map(
                     (w, tone, 1.0)
                 }
             }
-            MapText::ClusterState(k) => match known.cluster(k) {
-                Some(m) if m.gate => ("GATE  ·  OPEN".into(), Tone::Coral, 1.0),
-                Some(m) if !m.signals.is_empty() => {
-                    let s = &known.signals[m.signals[0]];
-                    (format!("{}  ·  {}", s.head(), s.state_word()), Tone::Gold, 1.0)
+            MapText::ClusterState(k) => {
+                let (mut w, tone): (String, Tone) = match known.cluster(k) {
+                    Some(m) if m.gate => ("GATE  ·  OPEN".into(), Tone::Coral),
+                    Some(m) if !m.signals.is_empty() => {
+                        let s = &known.signals[m.signals[0]];
+                        (format!("{}  ·  {}", s.head(), s.state_word()), Tone::Gold)
+                    }
+                    Some(_) => ("CHARTED".into(), Tone::Teal),
+                    None => continue,
+                };
+                // The dev mode's notable sites, in words beside their marks (ADR-0046).
+                for n in known.sites.get(&k).map_or(&[][..], |s| s.notable.as_slice()) {
+                    w.push_str("  ·  ");
+                    w.push_str(n.word());
                 }
-                Some(_) => ("CHARTED".into(), Tone::Teal, 1.0),
-                None => continue,
-            },
+                (w, tone, 1.0)
+            }
             MapText::SignalHead(j) => match mark(j) {
                 Some(m) => (m.head(), Tone::Gold, if selected(Pick::Signal(m.signal)) || hovered(MapButton::Signal(j)) { 1.0 } else { 0.85 }),
                 None => continue,

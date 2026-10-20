@@ -43,9 +43,9 @@ const OPEN_R: f32 = 8.5;
 const CLUSTER_R: f32 = 6.0;
 const SELECT_R: f32 = 19.0;
 const PULSE_R: f32 = 25.0;
-/// The dev mode's notable-site marks (ADR-0046): how far above a cluster's marker their row sits, how far apart
-/// they are, how big each is (stage px).
-const NOTABLE_UP: f32 = 13.0;
+/// The dev mode's notable-site marks (ADR-0046): how far above a cluster's marker their row sits (a ring's, a gate's
+/// diamond's), how far apart they are, how big each is (stage px).
+const NOTABLE_UP: (f32, f32) = (13.0, 17.0);
 const NOTABLE_STEP: f32 = 9.0;
 const NOTABLE_R: f32 = 3.4;
 /// A signal's pulse: one every this many seconds.
@@ -504,7 +504,8 @@ pub fn build_detail(geo: &Geometry, look: &Look, to: impl Fn(Vec2) -> Vec2, area
         if let Some(sites) = look.known.sites.get(&m.cluster) {
             let n = sites.notable.len() as f32;
             for (j, x) in sites.notable.iter().enumerate() {
-                let c = at + Vec2::new((j as f32 - (n - 1.0) / 2.0) * NOTABLE_STEP, -NOTABLE_UP);
+                let up = if m.gate { NOTABLE_UP.1 } else { NOTABLE_UP.0 };
+                let c = at + Vec2::new((j as f32 - (n - 1.0) / 2.0) * NOTABLE_STEP, -up);
                 let r = NOTABLE_R;
                 match x {
                     Notable::Guardian => pen.diamond(c, r * 1.15, f(vcol(ui.coral, 1.0))),

@@ -95,6 +95,15 @@ pub enum Notable {
 }
 
 impl Notable {
+    /// Its word on the map, after the cluster's state: `GUARDIAN`, `BOSS`, `STATION`.
+    pub fn word(self) -> &'static str {
+        match self {
+            Notable::Guardian => "GUARDIAN",
+            Notable::Boss => "BOSS",
+            Notable::Station => "STATION",
+        }
+    }
+
     /// What makes the encounter `id` notable: none, one or two (the swarm's hive is a boss and a station).
     pub fn of(content: &Content, id: &str) -> Vec<Notable> {
         let Some(e) = content.encounters.get(id) else { return Vec::new() };
