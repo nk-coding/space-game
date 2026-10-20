@@ -83,6 +83,8 @@
         target: "resonator_site",
         sources: ["distress_call", "old_beacon"],
         hint: "A clear note",
+        // Only in the Lattice's own clusters (GDR-0126, GDR-0127: one faction per cluster in the inner band).
+        ends_in: ["lattice_reach", "crystal_deep"],
         gives: (materials: {"resonant_crystal": 3, "crystal": 6}), // the resonator's crystal (20 Oct 2026, GDR-0126)
     ),
     (
