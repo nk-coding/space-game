@@ -238,17 +238,21 @@ fn export_name(file_name: &str) -> Result<&str, String> {
     }
 }
 
-/// Exports go to a download on the web.
-#[cfg(target_arch = "wasm32")]
+/// Writes a design's export file (see [`save_file`]).
 pub fn write_export(file_name: &str, text: &str) -> Result<String, String> {
-    let file_name = export_name(file_name)?;
+    save_file(export_name(file_name)?, text)
+}
+
+/// Saves a file the player keeps (a design's export, a backup of the saves): a download on the web. `file_name` is
+/// the game's own (no path).
+#[cfg(target_arch = "wasm32")]
+pub fn save_file(file_name: &str, text: &str) -> Result<String, String> {
     web::download(file_name, text).map(|()| format!("downloaded {file_name}"))
 }
 
-/// Exports go to `<data dir>/exports/` on desktop.
+/// Saves a file the player keeps into `<data dir>/exports/` on desktop.
 #[cfg(not(target_arch = "wasm32"))]
-pub fn write_export(file_name: &str, text: &str) -> Result<String, String> {
-    let file_name = export_name(file_name)?;
+pub fn save_file(file_name: &str, text: &str) -> Result<String, String> {
     let dir = world::storage::data_dir().ok_or("no user data directory on this platform")?.join("exports");
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     let path = dir.join(file_name);
@@ -256,8 +260,18 @@ pub fn write_export(file_name: &str, text: &str) -> Result<String, String> {
     Ok(format!("written to {}", path.display()))
 }
 
-/// Opens the browser's file chooser (for a file of at most `max` bytes, else `too_large` is its error); the file's text
-/// arrives through [`take_picked`]. The drydock imports designs with it, the evolution lab run files.
+/// What a file is picked for: the screen that opened the chooser takes it, no other ([`take_picked`]).
+#[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Picking {
+    Design,
+    Run,
+    Backup,
+}
+
+/// Opens the browser's file chooser for `what` (a file of at most `max` bytes, else `too_large` is its error); the
+/// file's text arrives through [`take_picked`]. The drydock imports designs with it, the evolution lab run files,
+/// SETTINGS' SAVES backups.
 #[cfg(target_arch = "wasm32")]
 pub use web::{pick_file, take_picked};
 
@@ -268,12 +282,17 @@ mod web {
     use wasm_bindgen::JsCast;
     use wasm_bindgen::closure::Closure;
 
+    use super::Picking;
+
+    /// A file read from the chooser: what for, its name, its text or why not.
+    type Picked = (Picking, String, Result<String, String>);
+
     thread_local! {
-        /// The file input (made once), the largest file it reads now and why a larger one is refused, and the files
-        /// read from it: (name, text or why not).
+        /// The file input (made once), what it picks for now, the largest file it reads now and why a larger one is
+        /// refused, and the files read from it.
         static INPUT: RefCell<Option<web_sys::HtmlInputElement>> = const { RefCell::new(None) };
-        static LIMIT: RefCell<(usize, String)> = const { RefCell::new((0, String::new())) };
-        static PICKED: RefCell<Vec<(String, Result<String, String>)>> = const { RefCell::new(Vec::new()) };
+        static LIMIT: RefCell<(Picking, usize, String)> = const { RefCell::new((Picking::Design, 0, String::new())) };
+        static PICKED: RefCell<Vec<Picked>> = const { RefCell::new(Vec::new()) };
     }
 
     use kit::clipboard::js_text as js;
@@ -293,9 +312,9 @@ mod web {
         web_sys::Url::revoke_object_url(&url).map_err(js)
     }
 
-    /// Opens the file chooser for `.ron` files of at most `max` bytes.
-    pub fn pick_file(max: usize, too_large: String) -> Result<(), String> {
-        LIMIT.with_borrow_mut(|l| *l = (max, too_large));
+    /// Opens the file chooser for `.ron` files of at most `max` bytes, for `what`.
+    pub fn pick_file(what: Picking, max: usize, too_large: String) -> Result<(), String> {
+        LIMIT.with_borrow_mut(|l| *l = (what, max, too_large));
         INPUT.with_borrow_mut(|input| {
             if input.is_none() {
                 *input = Some(make_input()?);
@@ -307,9 +326,13 @@ mod web {
         })
     }
 
-    /// The files read since the last call: (name, text or why not).
-    pub fn take_picked() -> Vec<(String, Result<String, String>)> {
-        PICKED.with_borrow_mut(std::mem::take)
+    /// The files read for `what` since the last call: (name, text or why not).
+    pub fn take_picked(what: Picking) -> Vec<(String, Result<String, String>)> {
+        PICKED.with_borrow_mut(|p| {
+            let (mine, others): (Vec<Picked>, Vec<Picked>) = std::mem::take(p).into_iter().partition(|f| f.0 == what);
+            *p = others;
+            mine.into_iter().map(|(_, name, text)| (name, text)).collect()
+        })
     }
 
     fn make_input() -> Result<web_sys::HtmlInputElement, String> {
@@ -323,9 +346,9 @@ mod web {
             let Some(input) = e.target().and_then(|t| t.dyn_into::<web_sys::HtmlInputElement>().ok()) else { return };
             let Some(file) = input.files().and_then(|f| f.get(0)) else { return };
             let name = file.name();
-            let (max, too_large) = LIMIT.with_borrow(|l| l.clone());
+            let (what, max, too_large) = LIMIT.with_borrow(|l| l.clone());
             if file.size() > max as f64 {
-                PICKED.with_borrow_mut(|p| p.push((name, Err(too_large))));
+                PICKED.with_borrow_mut(|p| p.push((what, name, Err(too_large))));
                 return;
             }
             let Ok(reader) = web_sys::FileReader::new() else { return };
@@ -336,13 +359,13 @@ mod web {
                     .and_then(|r| r.result().ok())
                     .and_then(|v| v.as_string())
                     .ok_or_else(|| "the file doesn't read as text".to_string());
-                PICKED.with_borrow_mut(|p| p.push((name, text)));
+                PICKED.with_borrow_mut(|p| p.push((what, name, text)));
             });
             reader.set_onload(Some(on_load.as_ref().unchecked_ref()));
             // The reader holds the only reference to the callback until it fires once.
             on_load.forget();
             if let Err(e) = reader.read_as_text(&file) {
-                PICKED.with_borrow_mut(|p| p.push((file.name(), Err(js(e)))));
+                PICKED.with_borrow_mut(|p| p.push((what, file.name(), Err(js(e)))));
             }
         });
         input.add_event_listener_with_callback("change", on_change.as_ref().unchecked_ref()).map_err(js)?;

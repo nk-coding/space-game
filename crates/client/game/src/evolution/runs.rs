@@ -225,7 +225,7 @@ const MAX_RUN_FILE: usize = world::arena::evolve::MAX_SAVE_PACKED * 2;
 /// onto the window is read.
 pub(super) fn import(layer: &mut EvolutionLayer) {
     #[cfg(target_arch = "wasm32")]
-    match crate::drydock::share::pick_file(MAX_RUN_FILE, format!("that file is too large for a run (over {} MB)", MAX_RUN_FILE >> 20)) {
+    match crate::drydock::share::pick_file(crate::drydock::share::Picking::Run, MAX_RUN_FILE, format!("that file is too large for a run (over {} MB)", MAX_RUN_FILE >> 20)) {
         Ok(()) => layer.say("pick a run file  ·  arena evolve --save writes them", Tone::Teal),
         Err(e) => layer.say(format!("no file chooser: {e}"), Tone::Coral),
     }
@@ -244,7 +244,7 @@ pub(super) fn imported(
     #[cfg(not(target_arch = "wasm32"))] mut drops: MessageReader<bevy::window::FileDragAndDrop>,
 ) {
     #[cfg(target_arch = "wasm32")]
-    let files = crate::drydock::share::take_picked();
+    let files = crate::drydock::share::take_picked(crate::drydock::share::Picking::Run);
     #[cfg(not(target_arch = "wasm32"))]
     let files: Vec<(String, Result<String, String>)> = drops
         .read()

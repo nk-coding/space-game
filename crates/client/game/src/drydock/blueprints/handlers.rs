@@ -109,7 +109,7 @@ pub(in crate::drydock) fn apply(
     // Touched only when files came (a write marks the shelf changed, and its texts are made again then).
     #[cfg(target_arch = "wasm32")]
     {
-        let picked = share::take_picked();
+        let picked = share::take_picked(share::Picking::Design);
         if !picked.is_empty() {
             shelf.incoming.extend(picked);
         }
@@ -318,7 +318,7 @@ pub(super) fn press(b: ShelfButton, shelf: &mut Shelf, lib: &mut Lib, content: &
         ShelfButton::ImportFile => {
             #[cfg(target_arch = "wasm32")]
             {
-                if let Err(e) = share::pick_file(share::MAX_TEXT, share::ShareError::TooLarge.to_string()) {
+                if let Err(e) = share::pick_file(share::Picking::Design, share::MAX_TEXT, share::ShareError::TooLarge.to_string()) {
                     shelf.say(format!("no file chooser: {e}"), Tone::Coral);
                 }
             }
