@@ -25,14 +25,14 @@ fn has(problems: &[Problem], id: &str, field: &str, needle: &str) {
 }
 
 #[test]
-fn the_base_galaxy_is_the_rim_the_outer_reach_the_middle_band_and_two_stub_bands() {
+fn the_base_galaxy_is_the_rim_the_outer_reach_the_middle_and_inner_bands_and_a_stub_core() {
     let c = data::base_content();
     let g = c.galaxies.get("galaxy").unwrap();
     assert_eq!(g.bands, ["rim", "outer", "middle", "inner", "core"]);
     // Niklas, 16 Oct 2026 (GDR-0093): the drive jumps 2.5 S at the start.
     assert_eq!(g.jump_range, 2.5);
     assert!(g.spacing <= 0.9, "the first loop's voyages lie 0.9 S and more apart: they must fit");
-    for b in &g.bands[3..] {
+    for b in &g.bands[4..] {
         assert!(c.bands.get(b).unwrap().tags.iter().any(|t| t == "stub"), "{b} is a stub");
     }
     // The outer reach (GDR-0103): no stub, a precursor guardian at each gate, the elders at sites of their own.
@@ -48,6 +48,18 @@ fn the_base_galaxy_is_the_rim_the_outer_reach_the_middle_band_and_two_stub_bands
     let inner = c.trails.get(&c.bands.get("inner").unwrap().gates.as_ref().unwrap().trail).unwrap();
     assert_eq!((inner.reward, inner.target.as_str()), (Reward::Gate, "spire_gate"));
     assert_eq!(inner.gives.materials.get("gate_shard"), Some(&2));
+    // The inner band (GDR-0126): no stub; the Lattice's cluster types carry more weight than all the others (the
+    // Phase walkers', GDR-0127), the resonators at sites of their own.
+    let band = c.bands.get("inner").unwrap();
+    assert!(!band.tags.iter().any(|t| t == "stub"));
+    assert!(band.clusters.iter().all(|w| !c.cluster_types.get(&w.id).unwrap().tags.iter().any(|t| t == "stub")));
+    let lattice = |id: &str| id == "lattice_reach" || id == "crystal_deep";
+    let (ours, others): (Vec<_>, Vec<_>) = band.clusters.iter().partition(|w| lattice(&w.id));
+    assert_eq!(ours.len(), 2);
+    assert!(ours.iter().map(|w| w.weight).sum::<u32>() > others.iter().map(|w| w.weight).sum::<u32>());
+    let resonator = c.trails.get("lattice_resonator").unwrap();
+    assert_eq!((resonator.reward, resonator.target.as_str()), (Reward::Salvage, "resonator_site"));
+    assert!(band.trails.iter().any(|t| t.trail == "lattice_resonator"));
     // The middle band (GDR-0117): the Swarm's, no stub, the hives at sites of their own.
     let middle = c.bands.get("middle").unwrap();
     assert!(!middle.tags.iter().any(|t| t == "stub"));

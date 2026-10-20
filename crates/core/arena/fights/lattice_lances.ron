@@ -1,0 +1,12 @@
+// The Lattice (GDR-0126) against the Halvex Runner and two rim skiffs, 200 m apart: a lance, a guard and a needle
+// relay their beams through prisms, and the skiffs' and the Runner's lasers glance off their refractive crystal. One of
+// the fights in the determinism check (`scripts/determinism-check.sh --fight lattice_lances`).
+(
+    seed: 1,
+    sides: [
+        (entries: [(design: Ship("halvex_runner")), (design: Ship("rim_skiff"), count: 2)]),
+        (entries: [(design: Ship("lattice_lance")), (design: Ship("lattice_guard")), (design: Ship("lattice_needle"))]),
+    ],
+    start_distance: 200.0,
+    time_limit: 90.0,
+)

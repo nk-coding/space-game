@@ -1,0 +1,14 @@
+(
+    id: "lattice",
+    name: "The Lattice",
+    summary: "A wary race of crystal ships in the inner band, whose prisms carry a beam further than any gun.",
+    description: "Their ships are long glass lances: an emitter at the back and a chain of prisms down the spine, so their beams reach far and they keep their distance. Their crystal armour turns half of every laser's beam away. A Lattice site does not wake when a ship comes in sight, only when it is provoked (shot at, rammed, scanned close by or its wrecks stripped) or when a ship comes too close: it flashes a warning first. They are open to talk, some say; no one has found out how.",
+    tags: ["enemy"],
+    glow: "enemy",
+    // Calm unless provoked (GDR-0099 A3), and they keep their ground (GDR-0126; PLACEHOLDER, lead default 20 Oct
+    // 2026): a sleeping site warns at 420 m and wakes at 260 m.
+    wary: true,
+    territory: (wake: 260, warn: 420),
+    // Ships without one of their own.
+    behavior: "lattice_lance",
+)

@@ -56,7 +56,7 @@
     ),
     // The inner gate's guardian's ward (GDR-0116): a shield emitter grown from Lattice crystal (GDR-0027's refractive
     // crystal) that takes energy fire whole and lets most shells and missiles through, so kinetic and missile fits
-    // matter at the inner gate. Enemy only for now: no research unlocks it. PLACEHOLDER NUMBERS (lead
+    // matter at the inner gate. The Lattice research's `crystal_ward` unlocks it (20 Oct 2026, GDR-0126). PLACEHOLDER NUMBERS (lead
     // default, 19 Oct 2026, docs/results/spire-balance-2026-10-19.md).
     (
         id: "prism_ward",
@@ -64,7 +64,7 @@
         summary: "A precursor shield emitter of grown crystal: its bubble bends energy fire away and lets shells through.",
         description: "Its bubble takes laser fire whole and holds far more than a [[part:shield_emitter]], but most of a cannon's shell or a missile's warhead passes it. Lasers wear it down slowly; guns and missiles go through.",
         tags: ["automaton", "shield"],
-        locked: true,
+        locked: true, // the Lattice research's `crystal_ward` unlocks it (GDR-0126)
         category: "defense",
         icon: "prism-ward",
         color: "enemy",
@@ -77,6 +77,8 @@
         shield: (radius: 2.6, capacity: 20, regen: 1.5, absorb: {Energy: 1.0, Kinetic: 0.2, Missile: 0.25, Disruption: 1.0}),
         explosion: (damage: 1, radius: 0.6),
         salvage: (family: "shields", data: 6),
-        recipe: (materials: {"automaton_plate": 2, "copper": 2, "crystal": 8}, needs: "automaton_forge"),
+        // Grown from the Lattice's crystal (GDR-0126): the Lattice research's `crystal_ward` unlocks it, the crystal
+        // annealer makes it (the automaton forge until 20 Oct 2026, when nothing unlocked it).
+        recipe: (materials: {"copper": 2, "crystal": 8, "resonant_crystal": 2}, needs: "crystal_annealer"),
     ),
 ]

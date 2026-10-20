@@ -1,0 +1,75 @@
+// Parts of the Lattice, the inner band's first race (GDR-0027: "long-range prisms and refractive crystal armour";
+// GDR-0126). PLACEHOLDER NUMBERS (lead defaults, 20 Oct 2026, docs/results/lattice-balance-2026-10-20.md). They use the
+// Lattice's own system colour (`lattice`, art/tokens.json). Locked: a new game starts without them; the Lattice
+// research family (`research/lattice.ron`) unlocks the prism, the resonant core and the focus emitter stay the
+// Lattice's own. `salvage`: data to the Lattice family; a destroyed resonant core leaves resonant crystal, a destroyed
+// prism a shard of Lattice crystal. `recipe`: what the workshop fabricates it from (GDR-0108; PLACEHOLDER amounts);
+// all need the crystal annealer, which the Prism relay research installs.
+[
+    // The Lattice's mind and power: a faceted crystal that thinks, sees far and feeds the emitters beside it.
+    (
+        id: "lattice_core",
+        name: "Resonant core",
+        summary: "The Lattice's thinking crystal: it runs a ship's rules, sees far and feeds it power.",
+        description: "A Lattice ship is a vessel while one of its resonant cores lives. It runs a few rules, sees further than a logic core and feeds the emitters beside it. Destroyed, it leaves [[material:resonant_crystal]] to scoop; salvaged, it gives Lattice research data, but no programmable matter.",
+        tags: ["lattice", "core"],
+        locked: true, // the Lattice's own: no research unlocks it
+        category: "logic",
+        icon: "lattice-core",
+        color: "lattice",
+        size: (1, 1),
+        build_points: 5,
+        mass: 1.4,
+        hp: 1.5,
+        power: (output: 7),
+        heat: (output: 0.6, limit: 4),
+        logic: (rule_slots: 4, control_capacity: 6),
+        sensor: (range: 900),
+        gyro: (torque: 140),
+        salvage: (family: "lattice", data: 3, fragment: {"resonant_crystal": 1}),
+        recipe: (materials: {"copper": 1, "crystal": 2, "resonant_crystal": 1}, needs: "crystal_annealer"),
+    ),
+    // The Lattice's laser: a steady beam meant to be relayed (GDR-0126). Tagged `laser`, so prisms take it. Short on
+    // its own (36 m): two prisms carry it to 54 m, four to 72 m. 50 m and 1.3/s until the balance runs of 20 Oct 2026:
+    // a needle that outreached the starters' guns (88 m) cleared no voyage (docs/results/lattice-balance-2026-10-20.md).
+    (
+        id: "focus_emitter",
+        name: "Focus emitter",
+        summary: "The Lattice's beam laser: a steady, cool beam made to be sent on through prisms.",
+        description: "Needs a clear line of fire, or a [[part:prism]] in it: prisms in front of it send its beam on, further and harder. On its own it reaches only a short way; the Lattice never fire it without prisms.",
+        tags: ["lattice", "laser"],
+        locked: true, // the Lattice's own: no research unlocks it
+        category: "weapons",
+        icon: "focus-emitter",
+        color: "lattice",
+        size: (1, 1),
+        build_points: 4,
+        mass: 1.5,
+        hp: 1,
+        power: (draw: 4, tier: Low, min_level: 0.5),
+        heat: (output: 2, limit: 4),
+        weapon: (family: Energy, damage: 1.2, range: 36, delivery: Beam),
+        salvage: (family: "lattice", data: 3),
+        recipe: (materials: {"copper": 2, "crystal": 3, "resonant_crystal": 1}, needs: "crystal_annealer"),
+    ),
+    // The prism relay (GDR-0126): the first part in a laser's line of fire (or a prism's before it), entered by any
+    // side but its front, sends the beam on from its front. Up to four in a chain; the beam may turn at one.
+    (
+        id: "prism",
+        name: "Prism",
+        summary: "A crystal that takes a laser's beam and sends it on from its front, further and harder.",
+        description: "Place it in a laser's line of fire, its front where the beam should go: the beam enters by any other side and leaves by the front, so a prism can turn a beam. Each prism in the chain adds to the laser's reach and damage, up to four prisms; the last one needs a clear line of fire. It draws no power, but it is glass: shot out, the beam crosses the gap to the next part in line, and a turn lost blocks the laser.",
+        tags: ["lattice", "prism"],
+        locked: true, // the Lattice research family unlocks it (`prism_relay`)
+        category: "weapons",
+        icon: "prism",
+        color: "lattice",
+        size: (1, 1),
+        build_points: 3,
+        mass: 0.8,
+        hp: 0.8,
+        prism: (target: Tag("laser"), range: 0.25, damage: 0.15),
+        salvage: (family: "lattice", data: 2, fragment: {"crystal": 1}),
+        recipe: (materials: {"copper": 1, "crystal": 4}, needs: "crystal_annealer"),
+    ),
+]

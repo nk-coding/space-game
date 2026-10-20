@@ -3,9 +3,10 @@
 // rim's first is the Warden's, a set piece whose trail is the slice's voyages, GDR-0098);
 // `trails` adds caches, graveyards and the outer reach's elder groves (lore trails come from `lore/`). The rim and
 // the outer reach are real (the outer reach's Grown, guardians and elders 18 Oct 2026, GDR-0103), and so is the
-// middle band (the Swarm, 19 Oct 2026, GDR-0117); the other bands are stubs (tag `stub`) until their races and
-// guardians exist. PLACEHOLDER NUMBERS (lead, 16 Oct 2026, GDR-0094; the outer reach's 18 Oct 2026, GDR-0103; the
-// middle band's 19 Oct 2026, GDR-0117).
+// middle band (the Swarm, 19 Oct 2026, GDR-0117) and the inner band (the Lattice, 20 Oct 2026, GDR-0126; the Phase
+// walkers, GDR-0127); the core is a stub (tag `stub`) until its race and guardians exist. PLACEHOLDER NUMBERS (lead,
+// 16 Oct 2026, GDR-0094; the outer reach's 18 Oct 2026, GDR-0103; the middle band's 19 Oct 2026, GDR-0117; the inner
+// band's 20 Oct 2026, GDR-0126).
 [
     (
         id: "rim",
@@ -82,11 +83,29 @@
     (
         id: "inner",
         name: "The inner band",
-        summary: "Crowded space close to the core. Uncharted.",
-        tags: ["stub"],
+        summary: "Crowded space close to the core: the Lattice's crystal lances and the Phase walkers, one race to a cluster.",
         edge: 2.2,
-        clusters: [(id: "uncharted_deep", weight: 1)],
+        // Each cluster belongs to one faction, the Lattice or the Phase walkers, mixed across the band cluster by
+        // cluster (Niklas, 20 Oct 2026). The Lattice's (GDR-0126) are the more common: the walkers' cluster types join
+        // this list (GDR-0127) with less weight in all than the Lattice's 5.
+        clusters: [
+            (id: "lattice_reach", weight: 3),
+            (id: "crystal_deep", weight: 2),
+            (id: "phase_rift", weight: 2), // the Phase walkers' (GDR-0127)
+        ],
         gates: (count: 3, trail: "inner_gate"), // the Spire (GDR-0116)
+        trails: [(trail: "lattice_resonator", count: 2), (trail: "phase_colossus", count: 1)],
+        sky: (
+            planets: [
+                (kind: "ice_giant", weight: 3), (kind: "ice_world", weight: 3), (kind: "ringed", weight: 2), (kind: "rock", weight: 2),
+                (kind: "jovian", weight: 1), (kind: "eyeball", weight: 1),
+            ],
+            moons: [(kind: "icy_moon", weight: 3), (kind: "grey_moon", weight: 2), (kind: "geyser_moon", weight: 1), (kind: "rubble_moon", weight: 1)],
+            nebula: ("#3a6fb8", "#8a6fc8"),
+            nebula_core: "#d8ecff",
+            nebula_strength: 1.0,
+            galaxy: 0.7,
+        ),
     ),
     (
         id: "core",

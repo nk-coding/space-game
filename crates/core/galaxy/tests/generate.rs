@@ -117,7 +117,18 @@ fn check(c: &Content, s: &Skeleton) {
         let band = c.bands.get(id).unwrap();
         // A gate piece's gate has the slice for its trail.
         let gated = g.set_pieces.iter().filter(|p| p.gate && c.voyages.get(&p.voyage).unwrap().band == *id).count() as u32;
-        wanted += band.gates.as_ref().map_or(0, |x| x.count) - gated + band.trails.iter().map(|t| t.count).sum::<u32>();
+        wanted += band.gates.as_ref().map_or(0, |x| x.count) - gated;
+        // A trail that ends only in some cluster types (GDR-0127) is left out where the band has none of them free.
+        for tc in &band.trails {
+            let tpl = c.trails.get(&tc.trail).unwrap();
+            if tpl.ends_in.is_empty() {
+                wanted += tc.count;
+            } else {
+                let placed = s.trails.iter().filter(|t| t.trail == tc.trail && t.band == *id).count() as u32;
+                assert!(placed <= tc.count, "seed {seed}: {} trails", tc.trail);
+                wanted += placed;
+            }
+        }
         wanted += c.lore.iter().filter(|l| l.band == *id).count() as u32;
     }
     assert_eq!(s.trails.len() as u32, wanted, "seed {seed}: trails");
@@ -131,6 +142,8 @@ fn check(c: &Content, s: &Skeleton) {
         let end = t.places.last().unwrap();
         assert_eq!(end.encounter.as_deref(), Some(tpl.target.as_str()));
         assert!(ends.insert(end.cluster), "seed {seed}: two rewards in one cluster");
+        let kind = &s.clusters[end.cluster as usize].kind;
+        assert!(tpl.ends_in.is_empty() || tpl.ends_in.contains(kind), "seed {seed}: a {} trail ends in a {kind}", t.trail);
         assert_eq!(s.clusters[end.cluster as usize].gate, tpl.reward == Reward::Gate, "seed {seed}: gate trails end at gates");
         for p in &t.places {
             assert_eq!(s.clusters[p.cluster as usize].band, t.band, "seed {seed}: a trail stays in its band");
@@ -188,5 +201,5 @@ fn interiors_follow_their_cluster_types_and_hold_the_trail_places() {
 #[test]
 fn the_generation_hash_is_pinned() {
     let c = data::base_content();
-    assert_eq!(format!("{:016x}", generate(&c, "galaxy", 1).unwrap().hash()), "1dcf5256cc2be5fc");
+    assert_eq!(format!("{:016x}", generate(&c, "galaxy", 1).unwrap().hash()), "19c34e65385c797c");
 }

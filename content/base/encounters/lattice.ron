@@ -1,0 +1,57 @@
+// What waits in the inner band's Lattice clusters (GDR-0027: the Lattice, long-range prisms and refractive crystal;
+// GDR-0126): pairs of prism lances keeping watch, crystal sites with their guards, the Lattice's own dead, and the
+// resonators, their bosses, at the end of trails of their own. The Lattice are wary: a site wakes when it is
+// provoked (shot at, rammed, scanned close by, its wrecks stripped) or when a ship comes within their territory
+// (`factions/lattice.ron`), which it warns of first; the wake radius here is not used. PLACEHOLDER NUMBERS (lead
+// defaults, 20 Oct 2026; counts tuned with the headless voyage runner, docs/results/lattice-balance-2026-10-20.md).
+[
+    (
+        id: "lance_watch",
+        name: "Lance watch",
+        summary: "Two or three Lattice needles keeping watch, turning slowly at the edge of their reach.",
+        tags: ["lattice"],
+        ships: [(ship: "lattice_needle", count: (2, 3))],
+        wake_radius: 260,
+    ),
+    (
+        id: "lance_pair",
+        name: "Lance pair",
+        summary: "A Lattice lance and a needle: two crystal snipers that keep to the edge of their reach.",
+        description: "Both keep their distance and fire from the edge of their reach. Close the gap fast, or bring cannons: half of a laser's beam glances off their [[material:refractive_crystal]].",
+        tags: ["lattice"],
+        ships: [(ship: "lattice_lance", count: (1, 1)), (ship: "lattice_needle", count: (1, 1))],
+        wake_radius: 260,
+    ),
+    (
+        id: "crystal_site",
+        name: "Crystal site",
+        summary: "A Lattice site among crystal: a guard with a flat mirror front and a needle, their dead around them.",
+        description: "Strip the wrecks or come too close and the site wakes: the [[ship:lattice_guard]] closes in and throws your lasers back at you while the [[ship:lattice_needle]] snipes.",
+        lore: "The crystal round their sites grows in rings, as if the ships had sung it into shape.",
+        tags: ["lattice", "wrecks"],
+        ships: [(ship: "lattice_guard", count: (1, 1)), (ship: "lattice_needle", count: (1, 1))],
+        wrecks: [(ship: "lattice_needle", count: (1, 2), damage: 0.4)],
+        wake_radius: 260,
+    ),
+    (
+        id: "lattice_dead",
+        name: "Lattice dead",
+        summary: "Lattice wrecks drifting alone, their crystal dark.",
+        tags: ["lattice", "wrecks"],
+        wrecks: [
+            (ship: "lattice_needle", count: (1, 2), damage: 0.3),
+            (ship: "lattice_lance", count: (0, 1), damage: 0.4),
+        ],
+        wake_radius: 200,
+    ),
+    (
+        id: "resonator_site",
+        name: "Lattice resonator",
+        summary: "One of the Lattice's resonators, anchored deep in the inner band, two needles at its side: a great lance that turns onto whatever comes near.",
+        description: "The [[ship:lattice_resonator]] cannot chase you, but its three prism spokes send their beams out of one mouth, further than any gun reaches. Come at it from the side or the back, where only its short emitters reach, and break the spokes: each prism lost costs a beam reach. Beaten, it is the richest Lattice salvage there is.",
+        lore: "It rings once when a ship comes near: a single clear note.",
+        tags: ["boss", "lattice", "station"],
+        ships: [(ship: "lattice_resonator", count: (1, 1)), (ship: "lattice_needle", count: (2, 2))], // alone, 80-87 % cleared
+        wake_radius: 400,
+    ),
+]

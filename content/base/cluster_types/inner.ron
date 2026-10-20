@@ -1,0 +1,53 @@
+// The inner band's kinds of cluster (GDR-0026, GDR-0027; Niklas, 20 Oct 2026: each cluster belongs to one faction, the
+// Lattice or the Phase walkers, mixed across the band cluster by cluster, GDR-0126): the Lattice's. Their reach, where
+// lance pairs keep watch, and their crystal deeps, where their sites grow among crystal rock. Pale, cold skies; the
+// band's other clusters are the Phase walkers' (GDR-0127). PLACEHOLDER NUMBERS (lead defaults, 20 Oct 2026; counts
+// tuned with the headless voyage runner, docs/results/lattice-balance-2026-10-20.md).
+[
+    (
+        id: "lattice_reach",
+        name: "Lattice reach",
+        summary: "Space the Lattice watch: crystal lances turning slowly at the edge of their reach, and a crystal site somewhere close.",
+        radius: (2200, 3000),
+        spacing: (700, 1500),
+        words: ["Prism", "Glass"],
+        sites: [
+            (encounter: "lance_watch", count: (1, 1)),
+            (encounter: "lance_pair", count: (0, 1)),
+            (encounter: "crystal_site", count: (1, 1)),
+            (encounter: "lattice_dead", count: (0, 1)),
+        ],
+        scenery: (
+            rocks: [
+                (rock: "crystal_rock", layout: Field(radius: 160), count: (1, 2), rocks: (10, 16)),
+                (rock: "ice_rock", layout: Scatter, count: (1, 1), rocks: (14, 22)),
+            ],
+            dust: 0.8,
+            debris: 0.6,
+            derelicts: (1, 2),
+            landmarks: [(landmark: "silent_beacon", chance: 0.3)],
+        ),
+    ),
+    (
+        id: "crystal_deep",
+        name: "Crystal deep",
+        summary: "Deep space where Lattice crystal grows in fields round their sites, their dead drifting among it.",
+        radius: (2200, 3000),
+        spacing: (700, 1500),
+        words: ["Deep", "Facet"],
+        sites: [
+            (encounter: "crystal_site", count: (1, 2)),
+            (encounter: "lattice_dead", count: (1, 1)),
+            (encounter: "lance_watch", count: (0, 1)),
+        ],
+        scenery: (
+            rocks: [
+                (rock: "crystal_rock", layout: Field(radius: 200), count: (2, 3), rocks: (12, 18)),
+            ],
+            dust: 1.0,
+            debris: 0.7,
+            derelicts: (1, 2),
+            landmarks: [(landmark: "silent_beacon", chance: 0.3)],
+        ),
+    ),
+]

@@ -576,6 +576,7 @@ fn base_families() {
             ("utility", Some("cargo")),
             ("grown", Some("enemy")),
             ("swarm", Some("swarm")),
+            ("lattice", Some("lattice")),
             ("walkers", Some("phase")),
         ]
     );
@@ -622,13 +623,15 @@ fn base_salvage_blocks() {
         .iter()
         .filter_map(|p| p.salvage.as_ref().map(|s| (p, s)))
     {
-        let race = p.0.tags.iter().any(|t| t == "grown" || t == "swarm" || t == "walkers");
+        let race = p.0.tags.iter().any(|t| t == "grown" || t == "swarm" || t == "lattice" || t == "walkers");
         let core = p.0.logic.is_some() && !race;
         let heart = p.0.heart.is_some();
         let swarm = matches!(p.0.id.as_str(), "swarm_node" | "brood_hangar");
+        // The Lattice's resonant core leaves resonant crystal, a prism a shard of Lattice crystal (GDR-0126).
+        let lattice = matches!(p.0.id.as_str(), "lattice_core" | "prism");
         // The Phase walkers' core leaves rift silt, a blink drive phase residue (GDR-0127).
         let walkers = matches!(p.0.id.as_str(), "phase_core" | "blink_drive");
-        assert_eq!(!p.1.fragment.is_empty(), core || heart || swarm || walkers, "{}", p.0.id);
+        assert_eq!(!p.1.fragment.is_empty(), core || heart || swarm || lattice || walkers, "{}", p.0.id);
         let pm = p.0.recipe.as_ref().is_some_and(|r| r.materials.contains_key("programmable_matter"));
         assert!(!core || pm, "{}", p.0.id);
         // Every part but hull has a recipe (GDR-0108).
@@ -638,6 +641,8 @@ fn base_salvage_blocks() {
     assert_eq!(part("grown_heart").fragment.get("heartwood"), Some(&1));
     assert_eq!(part("swarm_node").fragment.get("nerve_core"), Some(&1));
     assert_eq!(part("brood_hangar").fragment.get("resin"), Some(&2));
+    assert_eq!(part("lattice_core").fragment.get("resonant_crystal"), Some(&1));
+    assert_eq!(part("prism").fragment.get("crystal"), Some(&1));
     let hull = |id: &str| c.materials.get(id).unwrap().salvage.clone().unwrap();
     assert_eq!(
         (hull("steel").family.as_str(), hull("steel").data),
@@ -664,7 +669,7 @@ fn base_locks_follow_the_early_game_kit() {
         [
             "automaton_core",
             "automaton_cannon",
-            "prism_ward", // the Spire's (GDR-0116): enemy only, no research unlocks it
+            "prism_ward", // the Spire's (GDR-0116); the Lattice research's `crystal_ward` unlocks it (GDR-0126)
             "wide_shield_emitter",
             "ion_cannon", // the logic research's (GDR-0125)
             "grown_heart",
@@ -673,6 +678,9 @@ fn base_locks_follow_the_early_game_kit() {
             "grown_ganglion",
             "spore_radiator",
             "heat_sink",
+            "lattice_core", // the Lattice's own (GDR-0126), like the focus emitter
+            "focus_emitter",
+            "prism", // the Lattice family unlocks it (GDR-0126)
             "rocket_pod",
             "torpedo_launcher",
             "point_defence",
@@ -703,7 +711,7 @@ fn base_locks_follow_the_early_game_kit() {
         .collect();
     assert_eq!(
         locked_materials,
-        ["composite", "reactive", "automaton_plate", "grown_tissue", "chitin"]
+        ["composite", "reactive", "automaton_plate", "grown_tissue", "refractive_crystal", "chitin"]
     );
     let open_frames: Vec<&str> = c
         .frames
@@ -725,6 +733,9 @@ fn base_research_nodes() {
             "living_weapons",
             "grown_heart",
             "spore_lining",
+            "crystal_plating", // the Lattice family (GDR-0126)
+            "prism_relay",
+            "crystal_ward",
             "smelter",
             "rocket_pod",
             "point_defence",

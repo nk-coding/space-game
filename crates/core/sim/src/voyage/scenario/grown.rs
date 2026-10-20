@@ -3,7 +3,8 @@
 //! player's ship-mind ships with a hold and a mender (a heart and tissue of its own) enter at the edge and fly the
 //! voyage scenario's script without its kills: they visit the grove (it stays asleep), strip its wreck and scan (it
 //! wakes), fight; random hits and blasts give the hearts work, a ram run every [`GROWN_RAM_EVERY`] ticks puts a
-//! thornback's prow into a player ship, and the star heats every part open to space.
+//! thornback's prow into a player ship, and the star heats every part open to space. Beside the way a Lattice needle
+//! keeps its territory (GDR-0126): it warns, wakes as the fleet passes and fights with its beam relayed by prisms.
 
 use super::*;
 
@@ -98,6 +99,7 @@ pub(super) fn mender_blueprint() -> data::Blueprint {
 pub(super) fn grown_scenario(content: &Content, seed: u64) -> Result<Scenario, String> {
     let compile = |bp: &data::Blueprint| ShipDesign::compile(content, bp).map(Arc::new);
     let thornback = compile(&thornback_blueprint())?;
+    let needle = compile(content.ships.get("lattice_needle").ok_or("the grown scenario needs the Lattice needle")?)?;
     let at = |x: f32, y: f32, angle: f32| Body::at(Vec2::new(x, y), angle);
     let spawn = |body: Body, damage: f32, seed: u64| crate::voyage::Spawn { design: Arc::clone(&thornback), body, damage, seed };
     let radius = 600.0;
@@ -114,8 +116,25 @@ pub(super) fn grown_scenario(content: &Content, seed: u64) -> Result<Scenario, S
             pos: Vec2::new(0.0, -150.0),
             wake_radius: 250.0,
             wary: true,
+            territory: None,
             ships: vec![spawn(at(-10.0, -150.0, 0.0), 0.0, 0), spawn(at(10.0, -150.0, 0.5), 0.0, 0)],
             wrecks: vec![spawn(at(0.0, -180.0, 2.0), 0.3, seed ^ 0x6772_6f77)],
+            calls: None,
+            called: false,
+        },
+        // A Lattice needle beside the way (GDR-0126): wary with a territory, so it warns, then wakes as the fleet
+        // passes; its beam runs through its prisms.
+        crate::voyage::SitePlan {
+            encounter: None,
+            goal: false,
+            signal: false,
+            core: None,
+            pos: Vec2::new(240.0, -380.0),
+            wake_radius: 250.0,
+            wary: true,
+            territory: content.factions.get("lattice").and_then(|f| f.territory),
+            ships: vec![crate::voyage::Spawn { design: needle, body: at(240.0, -380.0, 1.6), damage: 0.0, seed: 0 }],
+            wrecks: Vec::new(),
             calls: None,
             called: false,
         }],

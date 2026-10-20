@@ -438,8 +438,9 @@ fn grown_scenario_is_deterministic_and_the_mechanics_act() {
         panic!("diverged at tick {}", t + 1);
     }
     assert_eq!(sa, sb);
-    // Hearts re-grew parts, a prow rammed, the grove woke (it was visited first), the star overheated parts.
-    assert!(sa.regrown > 0 && sa.rams > 0 && sa.sites_woken == 1 && sa.overheated_part_ticks > 0, "{sa:?}");
+    // Hearts re-grew parts, a prow rammed, the grove woke (it was visited first) and so did the Lattice needle beside
+    // the way (its territory, GDR-0126), the star overheated parts.
+    assert!(sa.regrown > 0 && sa.rams > 0 && sa.sites_woken == 2 && sa.overheated_part_ticks > 0, "{sa:?}");
     assert!(sa.shots > 0, "{sa:?}");
     // Regrowth keeps the incremental caches right.
     let content = content();

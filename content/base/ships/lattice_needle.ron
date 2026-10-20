@@ -1,0 +1,34 @@
+// Lattice needle (GDR-0126): the Lattice's light prism lance. A focus emitter at the back of a two-prism spine, so its
+// beam leaves through the notch in its nose with half again its reach and 30 % more damage; a resonant core behind it,
+// two RCS pods and a thruster. Refractive crystal all round. PLACEHOLDER layout (lead default, 20 Oct 2026; a third
+// prism in the nose until the balance runs the same day, docs/results/lattice-balance-2026-10-20.md).
+(
+    id: "lattice_needle",
+    name: "Lattice needle",
+    summary: "A 3×6 crystal lance: one focus emitter relayed through two prisms down its spine.",
+    description: "Needles sit at the edge of their reach and snipe: two [[part:prism|prisms]] carry their [[part:focus_emitter]]'s beam out of the notch in the nose. Their [[material:refractive_crystal]] turns half of a laser's beam away, so bring cannons or come at an angle; the prisms are the weak point: each one shot out costs the beam reach.",
+    lore: "They hang in pairs at the edge of sensor range, turning slowly, as if listening.",
+    tags: ["lattice", "inner"],
+    faction: "lattice",
+    behavior: "lattice_lance",
+    size: (3, 6),
+    parts: [
+        (part: "slope_1x1", x: 0, y: 0, flip: true, material: "refractive_crystal"),
+        (part: "slope_1x1", x: 2, y: 0, material: "refractive_crystal"),
+        (part: "armor_block", x: 0, y: 1, material: "refractive_crystal"),
+        (part: "prism", x: 1, y: 1),
+        (part: "armor_block", x: 2, y: 1, material: "refractive_crystal"),
+        (part: "armor_block", x: 0, y: 2, material: "refractive_crystal"),
+        (part: "prism", x: 1, y: 2),
+        (part: "armor_block", x: 2, y: 2, material: "refractive_crystal"),
+        (part: "armor_block", x: 0, y: 3, material: "refractive_crystal"),
+        (part: "focus_emitter", x: 1, y: 3),
+        (part: "armor_block", x: 2, y: 3, material: "refractive_crystal"),
+        (part: "rcs_pod", x: 0, y: 4),
+        (part: "lattice_core", x: 1, y: 4),
+        (part: "rcs_pod", x: 2, y: 4),
+        (part: "slope_1x1", x: 0, y: 5, rot: 2, material: "refractive_crystal"),
+        (part: "thruster", x: 1, y: 5),
+        (part: "slope_1x1", x: 2, y: 5, rot: 2, flip: true, material: "refractive_crystal"),
+    ],
+)

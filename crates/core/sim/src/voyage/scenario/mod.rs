@@ -34,7 +34,8 @@
 //! * [`ScenarioKind::Grown`]: the Grown's mechanics (`grown.rs`, GDR-0102): a wary grove of thornbacks (hearts, ram
 //!   prows, thorn guns, tissue armour) and their wreck beside a hot star, the player's ships with a hold and a mender
 //!   (a heart of its own) on the voyage script without its kills; random hits and blasts, a ram run every
-//!   [`grown::GROWN_RAM_EVERY`] ticks: regrowth, healing, prow rams, thorns, star heat and the wary wake rules.
+//!   [`grown::GROWN_RAM_EVERY`] ticks: regrowth, healing, prow rams, thorns, star heat and the wary wake rules; and a
+//!   Lattice needle's site beside the way (GDR-0126): its territory's warning and wake, its prism-relayed beam.
 //! * [`ScenarioKind::Voyage`]: the voyage director (`voyage/mod.rs`): the content's first voyage rolled from the seed
 //!   and started, one player ship per ship-mind blueprint with a hold entering at its edge. Each flies random
 //!   pilot input locked on the nearest armed awake enemy (`Sim::armed_enemy`) within reach of a fight, else to the

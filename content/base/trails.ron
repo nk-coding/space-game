@@ -75,6 +75,30 @@
         gives: (materials: {"nerve_core": 3, "resin": 6}), // the hive's brood stores (19 Oct 2026, GDR-0117)
     ),
     (
+        id: "lattice_resonator",
+        name: "A Lattice resonator",
+        summary: "A trail to one of the Lattice's resonators, anchored deep in the inner band: rich salvage, if its lance can be beaten.",
+        reward: Salvage,
+        length: (2, 3),
+        target: "resonator_site",
+        sources: ["distress_call", "old_beacon"],
+        hint: "A clear note",
+        gives: (materials: {"resonant_crystal": 3, "crystal": 6}), // the resonator's crystal (20 Oct 2026, GDR-0126)
+    ),
+    (
+        id: "phase_colossus",
+        name: "A phase colossus",
+        summary: "A trail to one of the Phase walkers' giant phase ships, resting in one of their rifts in the inner band.",
+        reward: Salvage,
+        length: (2, 3),
+        target: "colossus_site",
+        sources: ["distress_call", "old_beacon"],
+        hint: "A double echo",
+        // Only in the walkers' own clusters (GDR-0127: one faction per cluster).
+        ends_in: ["phase_rift"],
+        gives: (materials: {"phase_residue": 3, "rift_silt": 4}), // the colossus's drives and cores (20 Oct 2026, GDR-0127)
+    ),
+    (
         id: "precursor_cache",
         name: "A precursor cache",
         summary: "A sealed cache of precursor work: research data and programmable matter, straight into store.",

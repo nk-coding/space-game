@@ -1,0 +1,41 @@
+// The Lattice research family (GDR-0027: each race teaches its own tech branch; GDR-0126): what the inner band's
+// Lattice teach, paid with the data their salvage gives (every Lattice part and crystal hull gives `lattice` data) and
+// with their materials. One chain of three, so the research screen keeps a single row for it: their refractive
+// crystal first, then the prism relay (which installs the crystal annealer), the crystal ward last and dearest (the
+// Spire's prism ward, GDR-0116, grown from their crystal; it takes resonant crystal). The resonant core and the focus
+// emitter stay the Lattice's own. PLACEHOLDER NUMBERS (lead defaults, 20 Oct 2026): a lance pair's wrecks give about
+// 20-30 Lattice data, so the first node comes with the first crystal site and the ward after three or four.
+[
+    (
+        id: "crystal_plating",
+        name: "Crystal plating",
+        summary: "The Lattice's refractive crystal, for your own hulls.",
+        description: "Unlocks [[material:refractive_crystal]] for every hull part: it turns half of every laser's beam away along the mirrored line, so angle it well: a flat face throws a beam straight back at the gun. Brittle against shells and blasts. Learning to grow it takes [[material:resonant_crystal]].",
+        family: "lattice",
+        kind: Variant,
+        cost: (data: {"lattice": 10}, materials: {"resonant_crystal": 1}),
+        unlocks: [Material("refractive_crystal")],
+    ),
+    (
+        id: "prism_relay",
+        name: "Prism relay",
+        summary: "The Lattice's prism: it sends a laser's beam on, further and harder.",
+        description: "Unlocks the [[part:prism]]. Put one in a laser's line of fire and the beam leaves from the prism's front, with more reach and damage for each prism in the chain, up to four; a prism can turn the beam. Installs the [[facility:crystal_annealer]] in the workshop.",
+        family: "lattice",
+        kind: Alien,
+        cost: (data: {"lattice": 16, "energy": 4}),
+        requires: ["crystal_plating"],
+        unlocks: [Part("prism"), Facility("crystal_annealer")], // the workshop upgrade that makes the Lattice's parts
+    ),
+    (
+        id: "crystal_ward",
+        name: "Crystal ward",
+        summary: "The prism ward the Spire carries: a bubble of Lattice crystal that takes laser fire whole.",
+        description: "Unlocks the [[part:prism_ward]]: a shield emitter whose bubble takes energy fire whole and holds far more than a [[part:shield_emitter]], but lets most of a shell or a warhead through. Growing its crystal takes [[material:resonant_crystal]].",
+        family: "lattice",
+        kind: Alien,
+        cost: (data: {"lattice": 28, "shields": 6}, materials: {"resonant_crystal": 3}),
+        requires: ["prism_relay"],
+        unlocks: [Part("prism_ward")],
+    ),
+]

@@ -1,0 +1,45 @@
+// The Lattice's tactics (GDR-0027: long-range prisms; GDR-0126). Their prisms carry their short beams a long way, so
+// they keep their distance and snipe: in reach they turn onto the target and hold, closer in they open the gap, and they
+// run when their glass is badly broken. Their guards close in instead, turning their crystal fronts onto the guns. A
+// resonator turns its lance onto what comes near. Each fits a resonant core's four rule slots. PLACEHOLDER (lead
+// defaults, 20 Oct 2026; docs/results/lattice-balance-2026-10-20.md).
+[
+    (
+        id: "lattice_lance",
+        name: "Prism lance",
+        summary: "Keep the target at the edge of reach and snipe; open the gap when it closes in.",
+        description: "Picks the nearest enemy. Far out of reach it closes to most of its reach; in reach it turns its prism lance onto the target and holds; when the target comes within half its reach it keeps its distance, backing off. Badly hurt, it flees.",
+        tags: ["lattice", "attack"],
+        target: "nearest",
+        rules: [
+            "when hull < 30% -> flee # broken glass: run",
+            "when target_in_range(50%) -> kite(85%) # too close: open the gap",
+            "when target_in_range(100%) -> face # in reach: hold and snipe",
+            "always -> approach(85%)",
+        ],
+    ),
+    (
+        id: "lattice_guard",
+        name: "Crystal guard",
+        summary: "Close in and turn the crystal front onto the target, shooting.",
+        description: "Picks the nearest enemy and closes in to half its reach, its flat crystal front on the target: lasers fired at it come back at the gun.",
+        tags: ["lattice", "attack"],
+        target: "nearest",
+        rules: [
+            "when target_in_range(100%) and cycle(8s) >= 2s -> face",
+            "always -> approach(50%)",
+        ],
+    ),
+    (
+        id: "lattice_resonator",
+        name: "Resonator",
+        summary: "Hold in place and turn the great lance onto the nearest enemy in reach.",
+        description: "Picks the nearest enemy it can see. While it is within the lance's reach the station turns its front onto it (it has no engines, so it only turns); otherwise it holds.",
+        tags: ["lattice", "station"],
+        target: "nearest",
+        rules: [
+            "when target_in_range(110%) -> face",
+            "always -> hold",
+        ],
+    ),
+]

@@ -57,6 +57,16 @@
         locked: true,
         within: "workshop",
     ),
+    // The crystal annealer (GDR-0031's race upgrade; GDR-0126, lead default 20 Oct 2026): it makes the Lattice's parts.
+    // The research that unlocks the first of them installs it, as the hive press.
+    (
+        id: "crystal_annealer",
+        name: "Crystal annealer",
+        summary: "A workshop upgrade that grows and anneals the Lattice's crystal parts from Lattice and resonant crystal.",
+        description: "Researching [[research:prism_relay]] installs it in the [[facility:workshop]]. Until then the Lattice's parts come only from intact salvage.",
+        locked: true,
+        within: "workshop",
+    ),
     // The phase chamber (GDR-0031's race upgrade; GDR-0127, lead default 20 Oct 2026): it makes the Phase walkers'
     // parts. The research that unlocks the first of them installs it, as the hive press.
     (

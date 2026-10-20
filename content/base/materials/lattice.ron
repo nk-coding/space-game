@@ -1,0 +1,25 @@
+// The Lattice's materials (GDR-0027, GDR-0031; GDR-0126): refractive crystal, their armour; resonant crystal, what is
+// left of a resonant core. Their prisms are of plain Lattice crystal (`crystal`, materials/fabrication.ron): a
+// destroyed prism leaves a shard of it. PLACEHOLDER NUMBERS (lead defaults, 20 Oct 2026). What gives them lives in
+// the salvage blocks, recipes and trails that name them.
+[
+    (
+        id: "refractive_crystal",
+        name: "Refractive crystal",
+        summary: "The Lattice's glassy plating: it turns half a laser's beam away along the mirrored line.",
+        description: "An energy shot (a beam or a laser pulse) that strikes it glances off at the mirrored angle with half its damage and goes on as a stray shot that hits whatever it meets, the shooter and its friends too. Head on, a flat face throws the beam back at the gun. Shells and missiles find it brittle: it is a little weaker than steel and lets blasts through. The Lattice research family's first node unlocks it for your hull parts.",
+        tags: ["lattice"],
+        locked: true, // the Lattice research family unlocks it (`crystal_plating`)
+        icon: "armor-crystal",
+        armor: (tone: "crystal", mass_per_cell: 1.5, hp_per_cell: 0.9, build_point_factor: 1.4, blast_factor: 0.7, refract: 0.5),
+        salvage: (family: "lattice", data: 1.2),
+    ),
+    (
+        id: "resonant_crystal",
+        name: "Resonant crystal",
+        summary: "The ringing heart of a Lattice resonant core, still humming at a pitch you feel more than hear.",
+        description: "A destroyed [[part:lattice_core]] leaves one to scoop, and a beaten [[ship:lattice_resonator|resonator]] gives more. The Lattice research takes it, and so do the recipes of their parts.",
+        tags: ["lattice"],
+        icon: "resonant-crystal",
+    ),
+]
