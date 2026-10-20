@@ -28,7 +28,7 @@ use super::draft::BehaviorDraft;
 use super::graph::{always_decides, never_reached};
 use super::{BehaviorUi, BehaviorView, EditorContext};
 
-/// The egui font family of the editor (Barlow, egui's own fonts as fallback for arrows and the like).
+/// The egui font family of the editor (Barlow).
 const FAMILY: &str = "barlow";
 /// Text size at UI scale 1 (logical px).
 const TEXT_SIZE: f32 = 16.0;
@@ -152,14 +152,23 @@ fn span_color(s: Span, style: &Style) -> egui::Color32 {
     }
 }
 
-/// Barlow for the editor, once.
-fn install_font(ctx: &egui::Context) {
-    let mut fonts = egui::FontDefinitions::default();
+/// `EguiPrimaryContextPass`, on every screen: Barlow as egui's only font, once the context exists. The build
+/// leaves out egui's own fonts (`bevy_egui`'s `default_fonts`, about 1.4 MB: Ubuntu Light, Hack, two emoji fonts;
+/// ADR-0051), so egui has none until this runs; Barlow takes every family (proportional, monospace and the editor's
+/// `barlow`) so nothing egui lays out can name a family without a font. What Barlow lacks (arrows such as `→`,
+/// emoji) shows as `?`.
+pub(super) fn install_fonts(mut contexts: EguiContexts, mut done: Local<bool>) {
+    if *done {
+        return;
+    }
+    let Ok(ctx) = contexts.ctx_mut() else { return };
+    let mut fonts = egui::FontDefinitions::empty();
     fonts.font_data.insert(FAMILY.into(), std::sync::Arc::new(egui::FontData::from_static(kit::ui_kit::BARLOW_REGULAR)));
-    let mut family = vec![FAMILY.to_string()];
-    family.extend(fonts.families.get(&egui::FontFamily::Proportional).cloned().unwrap_or_default());
-    fonts.families.insert(egui::FontFamily::Name(FAMILY.into()), family);
+    for family in [egui::FontFamily::Proportional, egui::FontFamily::Monospace, egui::FontFamily::Name(FAMILY.into())] {
+        fonts.families.insert(family, vec![FAMILY.to_string()]);
+    }
     ctx.set_fonts(fonts);
+    *done = true;
 }
 
 /// egui keeps the editor's undo history across frames under its id, whatever the text is now. When the text
@@ -210,9 +219,8 @@ pub(super) fn editor(
 ) -> Result {
     let ctx = contexts.ctx_mut()?;
     if !*font_ready {
-        install_font(ctx);
+        // `install_fonts` runs before the editor; the fonts it sets are there from the next pass on.
         *font_ready = true;
-        // The font is there from the next pass on.
         return Ok(());
     }
     let opened = view.view == BehaviorView::Text && !*was_open;

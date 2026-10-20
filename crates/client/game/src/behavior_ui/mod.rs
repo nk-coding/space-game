@@ -215,7 +215,10 @@ impl Plugin for BehaviorPlugin {
             .add_systems(Update, (saving::sync_title, list::sync).in_set(BehaviorSet::Show))
             // The live rule panel in the flight HUD (TEST IN RANGE).
             .add_systems(Update, live::update.run_if(in_state(AppMode::Flight)))
-            .add_systems(EguiPrimaryContextPass, text_view::editor.run_if(in_state(AppMode::Behavior)))
+            .add_systems(
+                EguiPrimaryContextPass,
+                (text_view::install_fonts, text_view::editor.run_if(in_state(AppMode::Behavior))).chain(),
+            )
             .add_systems(PostUpdate, reorder::draw_drop_line.run_if(in_state(AppMode::Behavior)).after(CameraSet).before(FxFlush));
         // Opening the screen from the drydock.
         app.add_systems(Update, actions::open_from_drydock.in_set(crate::drydock::DockSet::Apply));
