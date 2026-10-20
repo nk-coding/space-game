@@ -28,7 +28,7 @@ use kit::atlas::Region;
 use kit::meshbuf::MeshBuf;
 use kit::style::{Style, mix, vcol};
 
-use super::known::{Known, Pick};
+use super::known::{Known, Notable, Pick};
 use super::layout::{Geometry, PX_PER_S, STAGE, VoyageState};
 
 /// The legend's rows (stage y) and its columns (stage x of the symbols; the words start [`LEGEND_GAP`] after).
@@ -43,6 +43,11 @@ const OPEN_R: f32 = 8.5;
 const CLUSTER_R: f32 = 6.0;
 const SELECT_R: f32 = 19.0;
 const PULSE_R: f32 = 25.0;
+/// The dev mode's notable-site marks (ADR-0046): how far above a cluster's marker their row sits, how far apart
+/// they are, how big each is (stage px).
+const NOTABLE_UP: f32 = 13.0;
+const NOTABLE_STEP: f32 = 9.0;
+const NOTABLE_R: f32 = 3.4;
 /// A signal's pulse: one every this many seconds.
 pub const PULSE_PERIOD: f32 = 1.6;
 /// A signal area's pulse runs out to its edge in this many seconds.
@@ -493,6 +498,23 @@ pub fn build_detail(geo: &Geometry, look: &Look, to: impl Fn(Vec2) -> Vec2, area
         pen.disc(at, if m.charted { 2.6 } else { 2.0 }, f(vcol(tone, 1.0)));
         if look.selected == Some(Pick::Cluster(m.cluster)) {
             pen.dotted_ring(at, SELECT_R - 3.0, 24, 1.0, f(vcol(tone, 0.85)));
+        }
+        // The dev mode's notable sites, in a row above the marker: a gate's guardian a coral diamond, a boss a coral
+        // triangle, a station a gold square.
+        if let Some(sites) = look.known.sites.get(&m.cluster) {
+            let n = sites.notable.len() as f32;
+            for (j, x) in sites.notable.iter().enumerate() {
+                let c = at + Vec2::new((j as f32 - (n - 1.0) / 2.0) * NOTABLE_STEP, -NOTABLE_UP);
+                let r = NOTABLE_R;
+                match x {
+                    Notable::Guardian => pen.diamond(c, r * 1.15, f(vcol(ui.coral, 1.0))),
+                    Notable::Boss => {
+                        let tri = [c + Vec2::new(0.0, -r), c + Vec2::new(r, r * 0.8), c + Vec2::new(-r, r * 0.8)].map(p);
+                        pen.m.polygon(&tri, pen.uv, f(vcol(ui.coral, 1.0)));
+                    }
+                    Notable::Station => pen.rect(c - Vec2::splat(r * 0.75), c + Vec2::splat(r * 0.75), f(vcol(ui.gold, 1.0))),
+                }
+            }
         }
     }
 

@@ -59,8 +59,6 @@ pub struct Pack {
     pub controls: Vec<Control>,
     /// `lab.ron`: the evolution lab's words and numbers (GDR-0092).
     pub lab: Option<Lab>,
-    /// `playtest.ron`: the play-test kits by band ([`PlaytestKit`]).
-    pub playtest: Vec<PlaytestKit>,
     /// `icons/<key>.svg`, sorted by key.
     pub icons: Vec<Icon>,
     /// `icons/<key>.ship.svg`, sorted by key: machines as drawn on a ship (GDR-0069).
@@ -78,7 +76,6 @@ impl Pack {
     ///   `facilities`, `starts`, `voyages`, `encounters`, `galaxy`, `bands`, `cluster_types`, `rocks`, `landmarks`, `planets`, `trails`,
     ///   `signal_sources`, `lore`, `controls` ([`Kind::dir`]). A file holds one entry `( ... )` or a list `[ ( ... ), ... ]`.
     /// * `lab.ron`: the evolution lab's goals, trials, genes, pilots, sizes and measures, one `( ... )` ([`Lab`]).
-    /// * `playtest.ron`: the play-test kits, a list `[ ( ... ), ... ]` ([`PlaytestKit`]).
     /// * `icons/<key>.svg`: part, material and category icons as SVG text (`key` kebab-case).
     /// * `icons/<key>.ship.svg`: the ship drawing of the machines whose icon is `key` (GDR-0069).
     /// * `wiki/<kind>/<id>.md`: wiki prose (kind = `part`, `ship`, ..., or `page` for free articles).
@@ -156,7 +153,6 @@ impl Pack {
             lore: Vec::new(),
             controls: Vec::new(),
             lab: None,
-            playtest: Vec::new(),
             icons: Vec::new(),
             ship_art: Vec::new(),
             wiki: Vec::new(),
@@ -179,20 +175,6 @@ impl Pack {
                             problems.push(Problem::error(format!("the {what} `{id}` is listed twice")).at(&src).field(format!("lab.{what}s[{id}]")));
                         }
                         pack.lab = Some(Lab { source: src, ..lab });
-                    }
-                    Err(e) => problems.push(parse_problem(&e, &src)),
-                }
-                continue;
-            }
-            if path == "playtest.ron" {
-                match ron_options().from_str::<Vec<PlaytestKit>>(strip_bom(text)) {
-                    Ok(kits) => {
-                        for (k, kit) in kits.iter().enumerate() {
-                            if kits[..k].iter().any(|x| x.band == kit.band) {
-                                problems.push(Problem::error(format!("the band `{}` has two kits", kit.band)).at(&src).field(format!("playtest[{}]", kit.band)));
-                            }
-                        }
-                        pack.playtest = kits.into_iter().map(|kit| PlaytestKit { source: src.clone(), ..kit }).collect();
                     }
                     Err(e) => problems.push(parse_problem(&e, &src)),
                 }
@@ -478,8 +460,6 @@ pub struct Content {
     pub controls: Table<Control>,
     /// The evolution lab's words and numbers (`lab.ron`, packs merged by id).
     pub lab: Lab,
-    /// The play-test kits (`playtest.ron`), one per band at most: a later pack's replaces an earlier one's.
-    pub playtest: Vec<PlaytestKit>,
     /// Icons by key (`icons/<key>.svg`); a later pack's icon replaces an earlier one with the same key.
     pub icons: BTreeMap<String, Icon>,
     /// Ship drawings of machines by icon key (`icons/<key>.ship.svg`, GDR-0069); later packs replace them like icons.
@@ -563,12 +543,6 @@ impl Content {
             p.controls.iter().cloned().for_each(|e| drop(c.controls.upsert(e)));
             if let Some(lab) = &p.lab {
                 c.lab.merge(lab);
-            }
-            for kit in &p.playtest {
-                match c.playtest.iter().position(|x| x.band == kit.band) {
-                    Some(k) => c.playtest[k] = kit.clone(),
-                    None => c.playtest.push(kit.clone()),
-                }
             }
             for i in &p.icons {
                 c.icons.insert(i.key.clone(), i.clone());

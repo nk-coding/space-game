@@ -1,6 +1,7 @@
 //! A new game's career with its generated galaxy (galaxy plan E4, E7, GDR-0096, GDR-0098): the base galaxy from its
 //! game seed, the slice's voyages on their set pieces, home charted, the first voyage a located signal; clearing the
-//! slice charts its clusters and the Warden opens its gate and the outer reach; read back, it keeps that galaxy.
+//! slice charts its clusters and the Warden opens its gate and the outer reach; read back, it keeps that galaxy; the dev
+//! mode's career has everything open.
 //! Here rather than in `data` because it needs the generator.
 
 use data::career::{Career, Lead, SignalState, VoyageEnd};
@@ -56,4 +57,31 @@ fn a_career_keeps_its_galaxy() {
     assert!(back.reconcile(&c).is_empty());
     assert_eq!(back, career);
     assert_eq!(back.to_ron(), text);
+}
+
+/// The dev mode's career (ADR-0046): every research node researched, every material and family in store up to the
+/// bound, every cluster charted (a jump start) and every gate open, so every band is open and a jump reaches any
+/// cluster; read back and opened again, it stays the same.
+#[test]
+fn the_dev_career_has_everything_open() {
+    let (c, mut career) = new_game();
+    career.open_everything(&c);
+    assert!(c.research.iter().all(|n| career.is_researched(&n.id)));
+    assert!(c.materials.iter().all(|m| career.materials().get(&m.id) == Some(&data::career::MAX_MATERIALS)));
+    assert!(c.families.iter().all(|f| career.data().get(&f.id) == Some(&data::career::MAX_DATA)));
+    let sk = career.exploration().unwrap().skeleton().clone();
+    let bands = &c.galaxies.get("galaxy").unwrap().bands;
+    assert!(bands.iter().all(|b| career.band_open(&c, b)), "every band open");
+    for k in 0..sk.clusters.len() as u32 {
+        assert!(career.exploration().unwrap().is_charted(k));
+        assert!(career.jump_from(&c, k).is_some(), "cluster {k} in reach");
+    }
+    let deep = sk.clusters.iter().position(|x| x.band == *bands.last().unwrap()).expect("a cluster in the core") as u32;
+    let mut jump = career.clone();
+    assert!(jump.cluster_launched(&c, deep).is_ok());
+    let mut back = Career::from_ron(&career.to_ron()).unwrap();
+    assert!(back.reconcile(&c).is_empty());
+    let before = back.clone();
+    back.open_everything(&c);
+    assert_eq!(back, before);
 }

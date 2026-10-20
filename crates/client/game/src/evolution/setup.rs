@@ -24,7 +24,7 @@
 //!   arena locks a lock's mirror image too.
 //! * **Limits**: build points at most the start's (the default), a number or no cap; the hold at least the start's
 //!   or any; VOYAGE-READY (logic cores within the mind capacity less FLEET's escorts'); MIRROR (on when the first
-//!   start looks symmetric, a single part and the one across from it aside, which the arena keeps in place); only the career's parts, always (`?unlock=all` lifts it), said in LIMITS' head.
+//!   start looks symmetric, a single part and the one across from it aside, which the arena keeps in place); only the career's parts, always (the dev mode, `?dev=1`, lifts it), said in LIMITS' head.
 //! * **May change** (GDR-0092 step 6): `lab.ron`'s gene presets (EVERYTHING, the default, DESIGN ONLY, BEHAVIOR ONLY,
 //!   ASSISTS ONLY, NUMBERS ONLY; one lit while the genes are its), each gene on or off (`lab.ron`'s words, its summary
 //!   as the tip), the part categories whose parts may be added, removed or swapped, and FLOWN BY: the behavior, a
@@ -722,7 +722,7 @@ fn chips(p: &mut ChildSpawnerCommands, fonts: &HudFonts, c: &impl Fn(Tone, f32) 
 
 fn limits(p: &mut ChildSpawnerCommands, fonts: &HudFonts, c: &impl Fn(Tone, f32) -> Color, page: &SetupPage, granted: &world::career::Granted, free: u32) {
     let s = &page.setup;
-    let parts = if granted.free { "LIMITS  ·  EVERY PART  ·  ?UNLOCK=ALL" } else { "LIMITS  ·  ONLY THE PARTS AND MATERIALS YOUR CAREER HAS" };
+    let parts = if granted.dev { "LIMITS  ·  EVERY PART  ·  DEV MODE" } else { "LIMITS  ·  ONLY THE PARTS AND MATERIALS YOUR CAREER HAS" };
     p.spawn(label(fonts, parts, 9.0, c(Tone::Dim, 1.0)));
     let line = |p: &mut ChildSpawnerCommands, head: &str, body: &mut dyn FnMut(&mut ChildSpawnerCommands)| {
         p.spawn(Node { height: px(26), ..row(8.0) }).with_children(|r| {

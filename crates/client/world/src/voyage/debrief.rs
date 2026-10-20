@@ -31,8 +31,6 @@ pub struct DebriefStats {
     pub ships_lost: Option<u32>,
     /// Items left in the wrecks (a lost voyage).
     pub left: u32,
-    /// Why the voyage was a practice run (not saved).
-    pub practice: Option<String>,
 }
 
 /// One kind of item that came home.
@@ -87,7 +85,6 @@ pub struct DebriefData {
     pub finds: Vec<(String, Tone)>,
     /// Data cores it brought home: logs to decode at the LOG.
     pub logs: usize,
-    pub practice: Option<String>,
 }
 
 /// How a voyage ended, in words and their tone (the debrief's chip, the LOG's rows).
@@ -184,7 +181,6 @@ impl DebriefData {
             logs: after.exploration().map_or(0, |g| g.logs().len()).saturating_sub(before.exploration().map_or(0, |g| g.logs().len())),
             outcome: last.outcome,
             ticks: last.ticks,
-            practice: stats.practice.clone(),
             stats,
             items: last.report.items(),
             first_clear,
@@ -199,10 +195,9 @@ impl DebriefData {
 
     /// The panel's head line.
     pub fn head(&self) -> (&'static str, Tone) {
-        match (&self.practice, self.outcome) {
-            (Some(_), _) => ("PRACTICE RUN  ·  NOT SAVED", Tone::Gold),
-            (None, Outcome::Lost) => ("SHIP LOST  ·  RECALLED HOME", Tone::Coral),
-            (None, _) => ("VOYAGE HOME  ·  HAUL UNLOADED", Tone::Label),
+        match self.outcome {
+            Outcome::Lost => ("SHIP LOST  ·  RECALLED HOME", Tone::Coral),
+            _ => ("VOYAGE HOME  ·  HAUL UNLOADED", Tone::Label),
         }
     }
 

@@ -47,11 +47,11 @@
 //!   left out and the other takes the width): names in body text beside a fixed value column (a long name wraps), a
 //!   TOTAL under two lines or more; then a grid of compact tiles of the dismantled parts' icons (`workshop::icon_sized`,
 //!   the drydock's part icons) with their counts; a tile's tooltip names the part and what it gave (Niklas, 18 Oct
-//!   2026: the value ran out of the panel, a lone NONE, an oversized tile). `?debrief=sample|short` shows a sample. The icons are world meshes, so the panel's backing is one too (`UiIcon::Scrim`) and
+//!   2026: the value ran out of the panel, a lone NONE, an oversized tile). The icons are world meshes, so the panel's backing is one too (`UiIcon::Scrim`) and
 //!   home's words step aside while the report shows (`home::show`).
 
 use bevy::prelude::*;
-use data::career::{Haul, HaulItem, Outcome, VoyageEnd, dismantle_yield};
+use data::career::{Outcome, dismantle_yield};
 use kit::style::{Style, ui_color};
 use kit::ui_icons::UiIcon;
 use kit::ui_kit::{
@@ -64,7 +64,7 @@ use world::settings::SettingsLayer;
 use world::sim_bridge::GameContent;
 use world::storage::Storage;
 use world::voyage::clock;
-use world::voyage::debrief::{Debrief, DebriefData, DebriefStats, amount};
+use world::voyage::debrief::{Debrief, DebriefData, amount};
 
 use crate::fleet::Fleet;
 use crate::home::{COMPACT_TEXT, by_class};
@@ -118,7 +118,7 @@ impl Plugin for DebriefPlugin {
         app.init_resource::<Debrief>()
             .init_resource::<Sorted>()
             .add_systems(Startup, spawn.after(world::flight_hud::spawn_hud))
-            .add_systems(Update, (sample, dismiss, sort, settle, rebuild, fill_intake, show).chain().after(UiInputSet).before(UiStyleSet));
+            .add_systems(Update, (dismiss, sort, settle, rebuild, fill_intake, show).chain().after(UiInputSet).before(UiStyleSet));
     }
 }
 
@@ -152,51 +152,6 @@ fn spawn(mut commands: Commands, style: Res<Style>, clear: Res<ClearColor>) {
         BorderColor::all(ui_color(style.ui.dim, 0.5)),
         by_class(panel(PANEL[0]), panel(PANEL[1])),
     ));
-}
-
-/// `?debrief=sample` or `?debrief=short` with `?newgame=1` (it writes the new game's save; on another slot with
-/// `save=<name>`): at home, the report of a cleared Shipyard approach as if just recalled, for looking at the panel.
-/// `sample` is a full haul (several research families and materials, intact parts to sort, five kinds dismantled),
-/// `short` six core fragments (one material, no research data). A development fixture: the haul is here, not in the
-/// content.
-#[allow(clippy::too_many_arguments)]
-fn sample(
-    mut done: Local<bool>,
-    mode: Res<State<AppMode>>,
-    params: Res<kit::params::Params>,
-    content: Res<GameContent>,
-    mut career: ResMut<PlayerCareer>,
-    mut storage: ResMut<Storage>,
-    mut debrief: ResMut<Debrief>,
-) {
-    if *done || *mode.get() != AppMode::Home {
-        return;
-    }
-    *done = true;
-    let broken = |part: &str, n: u32| (HaulItem::Broken { part: part.into(), material: None }, n);
-    let whole = |part: &str, n: u32| (HaulItem::Part { part: part.into(), material: None }, n);
-    let fragments = |n: u32| (HaulItem::Fragment { part: "automaton_core".into() }, n);
-    let haul: Haul = match params.text("debrief") {
-        Some("sample") => [broken("automaton_cannon", 6), broken("pulse_laser", 2), broken("fission_reactor", 1), broken("radiator", 2), fragments(2), whole("thruster", 3), whole("capacitor", 1)].into_iter().collect(),
-        Some("short") => [fragments(6)].into_iter().collect(),
-        _ => return,
-    };
-    if !career.new_game() {
-        warn!("debrief: ?debrief needs ?newgame=1: it writes the save");
-        return;
-    }
-    let c = &content.0;
-    let voyage = "yard_approach";
-    let (launched, _) = career.update(&mut storage, |k| k.voyage_launched(c, voyage).is_ok());
-    let before = career.career().clone();
-    let end = VoyageEnd::Recalled { haul: haul.clone(), cleared: true, ticks: 30 * 462 };
-    let (last, written) = career.update(&mut storage, |k| k.voyage_ended(c, voyage, end).ok().cloned());
-    let (true, Some(last), Ok(())) = (launched, last, written) else {
-        warn!("debrief: the sample voyage could not be recorded");
-        return;
-    };
-    let stats = DebriefStats { sites: Some((4, 4)), kills: Some(9), ships_lost: Some(0), ..default() };
-    debrief.show(DebriefData::build(c, &before, career.career(), &last, &haul, stats));
 }
 
 /// DISMISS, Esc or Enter close the panel while it shows: not while a layer over home hides it (their Esc is
@@ -481,9 +436,6 @@ fn fill(p: &mut ChildSpawnerCommands, content: &data::Content, fonts: &HudFonts,
     }
     if let Some(t) = &d.cleared_text {
         p.spawn(prose(fonts, t, 13.0, c(Tone::Label)));
-    }
-    if let Some(why) = &d.practice {
-        p.spawn(label(fonts, why, 9.0, c(Tone::Gold)));
     }
 }
 

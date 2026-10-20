@@ -33,7 +33,7 @@
 //!   layer open again; the drydock's EVOLVE THIS DESIGN flies straight from the drydock to the lab.
 //! * **Labels** are small UI text placed over the world (the sketch's), shown while the camera rests on the yard.
 //! * **Notes** bottom right: what the career has to say (a new game, a save kept as it is, content that changed,
-//!   `?unlock=all`, an escort whose design is gone), from `career::PlayerCareer::notes`.
+//!   the dev mode, an escort whose design is gone), from `career::PlayerCareer::notes`.
 //! * **The layers over home** (FLEET, SETTINGS, the LOG, EVOLUTION) leave the station barely showing: home's words, labels and
 //!   click areas, and the debrief's panel, step aside while one is open, so nothing reads through it. Home's words,
 //!   labels and click areas step aside while the voyage's report shows, too (its backing is a world mesh).
@@ -499,7 +499,7 @@ fn enter(
     };
 }
 
-/// At start at home: the flight zoom of the URL (`?zoom=`, applied at Startup) is the one to give back.
+/// At start at home: the flight zoom at start is the one to give back.
 fn remember_start_zoom(rig: Res<CameraRig>, mut cam: ResMut<HomeCamera>) {
     cam.flight_zoom = rig.zoom_target;
 }

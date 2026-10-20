@@ -130,7 +130,6 @@ fn sync(
     style: Res<Style>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<AtlasMaterial>>,
-    params: Res<kit::params::Params>,
     parts: Query<Entity, With<SceneryPart>>,
 ) {
     let voyage = world.sim.voyage().filter(|_| *mode.get() == AppMode::Flight);
@@ -154,7 +153,7 @@ fn sync(
         let cx = &mut Build { commands: &mut commands, atlas: &atlas, style: &style, meshes: &mut meshes, materials: &mut materials };
         let home = first.and_then(|g| g.home_sky.as_ref());
         let strength = home.map_or(HOME_SKY_STRENGTH, |h| h.strength);
-        let s = sky::SkySpec { sky, seed: HOME_SKY_SEED, star: None, planet: None, over: None, strength, home };
+        let s = sky::SkySpec { sky, seed: HOME_SKY_SEED, star: None, over: None, strength, home };
         if let Some(c) = sky::spawn(cx, &s, packs) {
             let [_, _, nebula, galaxy] = c.vertices;
             info!("sky at home: vertices nebula {nebula}, galaxy {galaxy} ({})", c.galaxy);
@@ -202,7 +201,7 @@ fn sync(
     if let Some(sky) = &spec.sky {
         let star = spec.star.map(|s| s - spec.entry);
         let over = sky::Over { radius: spec.radius, entry: spec.entry };
-        let s = sky::SkySpec { sky, seed: spec.sky_seed, star, planet: params.text("planet"), over: Some(over), strength: sky::STRENGTH, home: None };
+        let s = sky::SkySpec { sky, seed: spec.sky_seed, star, over: Some(over), strength: sky::STRENGTH, home: None };
         let start = bevy::platform::time::Instant::now();
         if let Some(c) = sky::spawn(cx, &s, &world.content) {
             planet_light = c.light;

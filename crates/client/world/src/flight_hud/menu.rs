@@ -3,8 +3,9 @@
 //! the SETTINGS screen over it (`settings::OpenSettings`), CONTROLS the controls overlay over it (`help.rs`; Esc
 //! comes back to the menu), SHIPYARD goes home (the test range), ABANDON VOYAGE… opens the ABANDON VOYAGE? panel (a
 //! voyage). On a touch screen (docs/plans/android.md 4.2, GDR-0120; the ring top left opens it there) a second row
-//! holds what only keys do: in the test range DRYDOCK (or BEHAVIOR, where T goes), WAVES OFF / ON (C) and RESTART
-//! (Shift+R), and for a ship with pilot assists ASSISTS OFF / ON (Z), each through `ActionTaps`.
+//! holds what only keys do: in the test range DRYDOCK (or BEHAVIOR, where T goes) and, in the dev mode (`?dev=1`,
+//! ADR-0046), WAVES OFF / ON (C) and RESTART (Shift+R), and for a ship with pilot assists ASSISTS OFF / ON (Z), each
+//! through `ActionTaps`.
 //!
 //! ```text
 //!          PAUSED                    (a voyage: MENU · THE FLIGHT GOES ON)
@@ -112,8 +113,10 @@ pub(super) fn flight_menu(
     (touch, exit, mut taps): (Res<TouchScreen>, Res<crate::mode::FlightExit>, ResMut<ActionTaps>),
     (focus, world): (Res<crate::sim_bridge::PilotFocus>, Res<crate::sim_bridge::SimWorld>),
     mut touch_row: Single<&mut Node, With<TouchRow>>,
+    params: Option<Res<kit::params::Params>>,
 ) {
     let voyage = scene.voyage().is_some();
+    let dev = params.is_some_and(|p| p.dev());
     for c in clicks.read() {
         match buttons.get(c.0) {
             Ok(MenuButton::Resume) => menu.open = false,
@@ -174,8 +177,10 @@ pub(super) fn flight_menu(
             let on = match b {
                 MenuButton::Shipyard => !voyage,
                 MenuButton::Abandon => voyage,
-                MenuButton::Back | MenuButton::Restart => range,
-                MenuButton::Waves => range && scene.test_mode().is_none(),
+                MenuButton::Back => range,
+                // The debug keys' buttons (`settings::DEV_KEYS`): only in the dev mode.
+                MenuButton::Restart => range && dev,
+                MenuButton::Waves => range && dev && scene.test_mode().is_none(),
                 MenuButton::Assists => assists.is_some(),
                 _ => true,
             };

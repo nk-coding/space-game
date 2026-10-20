@@ -1,11 +1,13 @@
-//! Launch parameters. On the web they come from the page URL (`?zoom=80&debug=1`), natively from the
-//! `GAME_PARAMS` environment variable in the same `key=value&key=value` form. Used for screenshots and
-//! measurements (start in a given mode without pressing keys).
+//! Launch parameters (ADR-0046). On the web they come from the page URL (`?dev=1`), natively from the `GAME_PARAMS`
+//! environment variable in the same `key=value&key=value` form.
 //!
-//! `scene` picks where the game starts (`mode::AppMode::at_start`): `home` (the default), `sandbox` (the TEST
-//! RANGE), `showcase`, `watch`, `alongside`, `drydock`, `behavior`, `research`, `map` (the voyage map).
-//!
-//! [`RenderToggles`]: the render switches some of them set (`debug`, `bloom`, `glow`, `hud`, `stats`).
+//! * **`dev=1`** ([`Params::dev`]): the dev mode: its own save with everything open (`world::career`), the whole
+//!   galaxy on the map with each cluster's sites, and the debug keys (`world::settings::Act`). `newgame=1` with it
+//!   starts the dev save over.
+//! * **Tool flags** for scripts and agents (no player feature, they work without `dev=1`): `scene` (where the game
+//!   starts, `mode::AppMode::at_start`: `home` (the default), `sandbox` (the TEST RANGE), `showcase`, `watch`,
+//!   `alongside`, `drydock`, `behavior`, `research`, `map`, `fight`), `behavior`, `fight`, `load`, `seed`, `hashlog`,
+//!   `hashticks`, `hud` ([`RenderToggles`]) and `slowmo`.
 
 use bevy::platform::collections::HashMap;
 use bevy::prelude::*;
@@ -47,9 +49,15 @@ impl Params {
     pub fn flag(&self, key: &str) -> Option<bool> {
         self.0.get(key).map(|v| !matches!(v.as_str(), "0" | "false" | "off" | "no"))
     }
+
+    /// The dev mode (`?dev=1`).
+    pub fn dev(&self) -> bool {
+        self.flag("dev").unwrap_or(false)
+    }
 }
 
-/// Render switches. The spike measures style 2a vs. debug shapes and pre-blurred glow sprites vs. bloom.
+/// Render switches: F5–F7 and F8 in the dev mode, glow and bloom from the saved display settings, the HUD (H, and
+/// the tool flag `hud=0`).
 #[derive(Resource, Debug, Clone)]
 pub struct RenderToggles {
     /// Plain coloured cells only: no seams, icons, glow, plumes, trails or backdrop.
@@ -65,13 +73,7 @@ pub struct RenderToggles {
 
 impl RenderToggles {
     pub fn from_params(p: &Params) -> Self {
-        Self {
-            debug_shapes: p.flag("debug").unwrap_or(false),
-            bloom: p.flag("bloom").unwrap_or(false),
-            glow_sprites: p.flag("glow").unwrap_or(true),
-            hud: p.flag("hud").unwrap_or(true),
-            debug_info: p.flag("stats").unwrap_or(false),
-        }
+        Self { debug_shapes: false, bloom: false, glow_sprites: true, hud: p.flag("hud").unwrap_or(true), debug_info: false }
     }
 }
 
@@ -99,5 +101,12 @@ mod tests {
         assert_eq!(p.u64("big"), Some(u64::MAX));
         assert_eq!((p.u64("neg"), p.u64("half"), p.u64("missing")), (None, None, None));
         assert_eq!(p.f32("half"), Some(2.5));
+    }
+
+    /// `dev` alone or `dev=1` is the dev mode; `dev=0` and nothing are not.
+    #[test]
+    fn the_dev_mode_is_one_flag() {
+        assert!(Params::parse("?dev").dev() && Params::parse("?scene=map&dev=1").dev());
+        assert!(!Params::parse("?dev=0").dev() && !Params::parse("").dev());
     }
 }

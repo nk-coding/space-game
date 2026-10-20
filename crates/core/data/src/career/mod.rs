@@ -298,7 +298,7 @@ pub struct Unlocks {
 }
 
 impl Unlocks {
-    /// Every part, material, frame and facility of the content, locked or not (the development switch `?unlock=all`).
+    /// Every part, material, frame and facility of the content, locked or not (the dev mode, `?dev=1`).
     pub fn all(content: &Content) -> Unlocks {
         Unlocks {
             parts: content.parts.iter().map(|p| p.id.clone()).collect(),

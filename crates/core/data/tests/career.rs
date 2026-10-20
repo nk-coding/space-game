@@ -322,7 +322,7 @@ fn the_simulation_vault_opens_the_evolution_lab() {
     let c = content();
     let mut career = new_game(&c);
     assert!(!career.unlocks(&c).has_facility("evolution"), "dark in a new game");
-    assert!(Unlocks::all(&c).has_facility("evolution"), "open with ?unlock=all");
+    assert!(Unlocks::all(&c).has_facility("evolution"), "open in the dev mode");
     // Three logic data: a salvaged logic core and an automaton core's fragment.
     bring_home(&mut career, &c, &[(part("logic_core"), 1), (fragment("automaton_core"), 1)]);
     career.research(&c, "simulation_vault").unwrap();

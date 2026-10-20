@@ -238,7 +238,7 @@ pub(super) fn enter(mut rig: ResMut<CameraRig>, mut cam: ResMut<DockCamera>) {
     rig.auto_mode = CamMode::Free;
 }
 
-/// At start in the drydock: the flight zoom of the URL (`?zoom=`, applied at Startup) is the one to return to.
+/// At start in the drydock: the flight zoom at start is the one to return to.
 pub(super) fn remember_start_zoom(rig: Res<CameraRig>, mut cam: ResMut<DockCamera>) {
     cam.flight_zoom = rig.zoom_target;
 }

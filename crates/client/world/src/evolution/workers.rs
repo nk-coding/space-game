@@ -4,7 +4,7 @@
 //! run computes. A worker says it is ready with the content it fights with (`arena::worker::Reply::Ready`); one whose
 //! content differs from the game's is let go, so results of two contents never mix. Chunks wait in a queue for a
 //! free worker; a worker that fails hands its chunk back to the queue and is let go. With no worker left (none would
-//! load, or `?lab_workers=0`) the run computes in the frame's slices, as before. No shared memory: plain messages,
+//! load) the run computes in the frame's slices, as before. No shared memory: plain messages,
 //! so no COOP/COEP headers are needed and it works over plain `http://`.
 
 use std::cell::RefCell;

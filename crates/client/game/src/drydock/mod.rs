@@ -14,8 +14,8 @@
 //!   voyage-ready line from the career.
 //!
 //! What the player may build with is the career's (`career::Granted`): the palette, the armour swatches and the
-//! frames offer the unlocked parts, materials and frames and show the rest locked (everything in free mode,
-//! `?unlock=all`). A design that uses locked parts still opens, shows and test-flies; it is only not voyage-ready.
+//! frames offer the unlocked parts, materials and frames and show the rest locked (everything in the dev mode,
+//! `?dev=1`). A design that uses locked parts still opens, shows and test-flies; it is only not voyage-ready.
 //! A design is never limited by the workshop's stock (GDR-0108: designs plan ahead, the stock limits the launch):
 //! each palette row shows how many are in stock less those the design holds, coral when it is short, and the
 //! status line names what the fleet lacks.

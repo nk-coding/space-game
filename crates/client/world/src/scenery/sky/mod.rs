@@ -118,14 +118,12 @@ pub(super) struct Over {
     pub entry: Vec2,
 }
 
-/// The sky's inputs: the sky itself, the seed, the hot star's direction on screen from the entry (y up), a planet
-/// kind to show as the first planet (`?planet=<kind>`, for looking at kinds), the cluster (none at home: no
-/// planets), how strong it shows and, at the shipyard, its clouds and galaxy ([`data::HomeSky`]).
+/// The sky's inputs: the sky itself, the seed, the hot star's direction on screen from the entry (y up), the
+/// cluster (none at home: no planets), how strong it shows and, at the shipyard, its clouds and galaxy ([`data::HomeSky`]).
 pub(super) struct SkySpec<'a> {
     pub sky: &'a Sky,
     pub seed: u64,
     pub star: Option<Vec2>,
-    pub planet: Option<&'a str>,
     pub over: Option<Over>,
     pub strength: f32,
     pub home: Option<&'a data::HomeSky>,
@@ -163,7 +161,7 @@ pub(super) fn spawn(cx: &mut Build, s: &SkySpec, content: &data::Content) -> Opt
             if pool.is_empty() {
                 return None;
             }
-            let planets = roll_planets(&mut Stream::new(s.seed, "planet"), s, &pool, &all, hot, depth(over.radius));
+            let planets = roll_planets(&mut Stream::new(s.seed, "planet"), s, &pool, hot, depth(over.radius));
             let moons = roll_moons(&mut Stream::new(s.seed, "moons"), s, content, &planets, hot);
             anchor_planets(&mut Stream::new(s.seed, "anchors"), planets, moons, over)
         }
@@ -232,18 +230,17 @@ fn depth(radius: f32) -> (usize, f32) {
         .map_or((1, most), |(n, p)| (n, p.clamp(least, most)))
 }
 
-/// Up to `n` planets of different kinds by weight (the first `?planet=`'s if given), each in the design frame's
+/// Up to `n` planets of different kinds by weight, each in the design frame's
 /// middle, [`SMALL`] or at most one [`LARGE`] (25 %), its parallax round `parallax` by its size; lit from the hot
 /// star, from behind (a backlit sky) or from a side. Their anchors come after their moons ([`anchor_planets`]).
-fn roll_planets(r: &mut Stream, s: &SkySpec, pool: &[(&PlanetKind, u32)], all: &[(&PlanetKind, u32)], hot: Option<Vec2>, (n, parallax): (usize, f32)) -> Vec<Planet> {
+fn roll_planets(r: &mut Stream, s: &SkySpec, pool: &[(&PlanetKind, u32)], hot: Option<Vec2>, (n, parallax): (usize, f32)) -> Vec<Planet> {
     let mid = Vec2::new(W, H) / 2.0;
     let mut pool = pool.to_vec();
     let mut big_left = true;
     let mut out = Vec::new();
     for i in 0..n {
         let weights: Vec<u32> = pool.iter().map(|p| p.1).collect();
-        let rolled = pool[r.weighted(&weights)].0;
-        let kind = s.planet.filter(|_| i == 0).and_then(|id| all.iter().find(|k| k.0.id == id)).map_or(rolled, |k| k.0);
+        let kind = pool[r.weighted(&weights)].0;
         pool.retain(|p| p.0.id != kind.id);
         let big = big_left && r.chance(0.25);
         big_left &= !big;
@@ -472,11 +469,11 @@ mod tests {
     /// The planets and moons of `seed` over a cluster of `radius`.
     fn roll(c: &data::Content, sky: &Sky, seed: u64, radius: f32) -> (Vec<Planet>, Vec<(Body, usize, String)>) {
         let over = Over { radius, entry: Vec2::new(0.0, -radius) };
-        let s = SkySpec { sky, seed, star: seed.is_multiple_of(3).then_some(Vec2::new(1.0, 0.4)), planet: None, over: Some(over), strength: STRENGTH, home: None };
+        let s = SkySpec { sky, seed, star: seed.is_multiple_of(3).then_some(Vec2::new(1.0, 0.4)), over: Some(over), strength: STRENGTH, home: None };
         let all: Vec<(&PlanetKind, u32)> = c.planets.iter().filter(|k| k.body == BodyClass::Planet).map(|k| (k, 1)).collect();
         let pool: Vec<(&PlanetKind, u32)> = if sky.planets.is_empty() { all.clone() } else { sky.planets.iter().map(|w| (c.planets.get(&w.kind).unwrap(), w.weight)).collect() };
         let hot = s.star.map(|_| Vec2::new(W + 100.0, H / 2.0));
-        let planets = roll_planets(&mut Stream::new(seed, "planet"), &s, &pool, &all, hot, depth(radius));
+        let planets = roll_planets(&mut Stream::new(seed, "planet"), &s, &pool, hot, depth(radius));
         let moons = roll_moons(&mut Stream::new(seed, "moons"), &s, c, &planets, hot);
         anchor_planets(&mut Stream::new(seed, "anchors"), planets, moons, over)
     }

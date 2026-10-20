@@ -22,7 +22,7 @@
 //!   24 dp of slack), tap empty space = unlock, a tap on the target panel = LOCK TARGET (`flight_hud/phone.rs`), two
 //!   fingers = zoom and pan (`camera.rs`). A tap is shorter than 0.3 s and moves less than 10 dp. The touch widgets
 //!   show from the start on a touch screen (`kit::ui_kit::TouchScreen`: Android, a coarse pointer in the browser,
-//!   `?touch=1`, or after a first touch). A finger that lands on a HUD button (within its 48 dp touch target) or on
+//!   or after a first touch). A finger that lands on a HUD button (within its 48 dp touch target) or on
 //!   the fleet bar is the UI's: it never steers, fires, locks or pans.
 //!
 //! **Timing.** The input systems run every frame before the frame's sim ticks (`RunFixedMainLoop`, before the

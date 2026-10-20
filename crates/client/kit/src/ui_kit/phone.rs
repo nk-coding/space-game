@@ -9,9 +9,9 @@ use super::LayoutClass;
 use super::scrollbar::Scrollbar;
 
 /// The device's main pointer is a finger: the screens show their touch widgets (the flight's stick and FIRE, the
-/// fight viewer's buttons) from the start and name taps, not clicks. True on Android, in a browser whose primary
-/// pointer is coarse (a phone, or Chrome DevTools' device mode) and with `?touch=1`; `?touch=0` turns it off. Any
-/// touch turns it on (a touch laptop's first touch).
+/// fight viewer's buttons) from the start and name taps, not clicks. True on Android and in a browser whose primary
+/// pointer is coarse (a phone, or Chrome DevTools' device mode with a touch device chosen). Any touch turns it on (a
+/// touch laptop's first touch).
 #[derive(Resource, Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct TouchScreen(pub bool);
 
@@ -77,9 +77,8 @@ pub(super) fn plugin(app: &mut App) {
 }
 
 /// The device's touch screen at start.
-fn detect_touch(params: Option<Res<crate::params::Params>>, mut screen: ResMut<TouchScreen>) {
-    let forced = params.and_then(|p| p.flag("touch"));
-    screen.0 = forced.unwrap_or_else(platform_touch);
+fn detect_touch(mut screen: ResMut<TouchScreen>) {
+    screen.0 = platform_touch();
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -97,9 +96,9 @@ fn platform_touch() -> bool {
     false
 }
 
-/// A touch shows there is a touch screen (unless `?touch=0`).
-fn notice_touch(touches: Res<Touches>, params: Option<Res<crate::params::Params>>, mut screen: ResMut<TouchScreen>) {
-    if !screen.0 && touches.iter_just_pressed().next().is_some() && params.and_then(|p| p.flag("touch")) != Some(false) {
+/// A touch shows there is a touch screen.
+fn notice_touch(touches: Res<Touches>, mut screen: ResMut<TouchScreen>) {
+    if !screen.0 && touches.iter_just_pressed().next().is_some() {
         screen.0 = true;
     }
 }

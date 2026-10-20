@@ -9,7 +9,7 @@ publish.workspace = true
 [dependencies]
 data = { path = "../../core/data" }
 sim = { path = "../../core/sim" }
-galaxy = { path = "../../core/galaxy" }  # a generated cluster to fly for testing (`?scene=voyage&cluster=`)
+galaxy = { path = "../../core/galaxy" }  # a new game's galaxy, a cluster's interior at its launch
 arena = { path = "../../core/arena" }  # the fight viewer replays arena fights (GDR-0092, ADR-0040)
 kit = { path = "../kit" }
 bevy = { workspace = true }

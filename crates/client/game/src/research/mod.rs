@@ -165,8 +165,7 @@ fn enter(
     view.say = None;
 }
 
-/// At start on the research screen: the flight zoom of the URL (`?zoom=`, applied at Startup) is the one to give
-/// back.
+/// At start on the research screen: the flight zoom at start is the one to give back.
 fn remember_start_zoom(rig: Res<CameraRig>, mut cam: ResMut<ResearchCamera>) {
     cam.flight_zoom = rig.zoom_target;
 }
@@ -305,7 +304,7 @@ mod tests {
         let text = format!("// space-game: saves, format {}, saved 1\n(start: \"rim_awakening\", seed: 1, generator: {}{save})", data::career::FORMAT, data::career::GENERATOR);
         mem.write("saves", "career", &text).unwrap();
         let mut storage = Storage::new(mem);
-        let switches = Switches { slot: "career".into(), new_game: false, free: false, bands: None };
+        let switches = Switches::default();
         let career = load(&mut storage, &content, switches, 1, 1);
         let mut app = App::new();
         app.add_plugins((MinimalPlugins, StatesPlugin))

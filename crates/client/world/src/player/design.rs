@@ -1,5 +1,5 @@
 //! The player's design: the blueprint the drydock edits and every flight of the player flies (the sandbox
-//! runner, its `?fleet=` wingmen, re-forms and test flights). Raiders stay content ships.
+//! runner, re-forms and test flights). Raiders stay content ships.
 //!
 //! The design lives in a [`data::design::edit::Drydock`] (the editing model: legality, tools, mirror, undo). Every edit
 //! goes through [`PlayerDesign::edit`], which keeps the frame-coordinate blueprint the view, the report and the

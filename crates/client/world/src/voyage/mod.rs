@@ -2,15 +2,12 @@
 //! one, what happens while it runs, and how it ends. The scene builds the voyage's world (`scene.rs`,
 //! `SceneKind::Voyage`), the HUD shows it (`flight_hud/`), the debrief reports it at home (`debrief.rs`).
 //!
-//! * **Launch** ([`StartVoyage`] to a slice voyage or a cluster of the career's galaxy (galaxy plan E6), or
-//!   `?scene=voyage&voyage=<id>` at start; `?scene=voyage&cluster=<id, signal or hot>[&galaxy=<seed>]` flies a generated
-//!   cluster of the career's galaxy, with what the career knows, as a practice run, galaxy plan E3, E4): the career
+//! * **Launch** ([`StartVoyage`] to a slice voyage or a cluster of the career's galaxy, galaxy plan E6): the career
 //!   records the launch (`Career::voyage_launched`, `Career::cluster_launched`: the seed, `underway`) and the save is
 //!   written at once, so closing or reloading mid-voyage loses it (GDR-0062). The fleet is the drydock's working design (the flagship) and the
 //!   FLEET escorts; it must be voyage-ready (`data::career::voyage_ready` against what the career grants) and every
-//!   ship flight-ready (the design report). The URL launches whatever it names, for development: a voyage the
-//!   career refuses (not open, a fleet that is not ready by the career's own unlocks) flies as a **practice run**,
-//!   rolled from the seed the next launch would get and never written into the save.
+//!   ship flight-ready (the design report). The dev mode (`?dev=1`, ADR-0046) grants every part with unlimited stock
+//!   and its own save records its launches like any other.
 //! * **Running** ([`VoyageRun`]): kills and ships lost are counted from the sim's `VesselLost` events, site events
 //!   become banners; in a cluster of the galaxy the finds are noted ([`Find`], GDR-0097): a scan narrows the signals
 //!   whose area holds the cluster (once a voyage each) and hears a beacon it sweeps over, a signal's site seen is
@@ -35,10 +32,9 @@ use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
 use bevy_egui::input::egui_wants_any_keyboard_input;
 use data::career::{Haul, Leads, Outcome, Refusal, TrailSignal, Unlocks, VoyageEnd, VoyageResult, signal_to, voyage_ready};
-use data::{Blueprint, Career, Content, SourceForm};
+use data::{Blueprint, Career, Content};
 use data::career::SignalState;
 use sim::{Owner, SimConfig, SimEvent, SiteState};
-use kit::params::Params;
 use kit::ui_kit::Tone;
 
 use crate::career::{EscortDesigns, Granted, Note, PlayerCareer, readiness_words};
@@ -116,10 +112,7 @@ pub struct Launched {
     pub escorts: Vec<Blueprint>,
     /// The career's part-stat steps the fleet is built with (GDR-0024's refinement), as at the launch.
     pub upgrades: data::Upgrades,
-    /// `None`: recorded in the career (its end is too). `Some(why)`: a practice run (URL only), never saved.
-    pub practice: Option<String>,
-    /// A generated cluster instead of a content voyage (galaxy plan E3, E4, for testing: `?scene=voyage&cluster=`);
-    /// `voyage` is its name.
+    /// A cluster of the galaxy instead of a content voyage (galaxy plan E6); `voyage` is its name.
     pub cluster: Option<ClusterLaunch>,
 }
 
@@ -191,7 +184,6 @@ impl Plugin for VoyagePlugin {
         app.add_message::<StartVoyage>()
             .add_message::<LaunchRefused>()
             .init_resource::<VoyageRun>()
-            .add_systems(Startup, url_launch.before(crate::scene::setup))
             .add_systems(Update, start.run_if(not(in_state(AppMode::Flight))))
             .add_systems(
                 Update,
@@ -218,46 +210,32 @@ pub(crate) struct LaunchInputs<'w> {
 impl LaunchInputs<'_> {
     /// Decides and records a launch (the save is written for a recorded one) and makes it the scene's next
     /// voyage; `Err`: why not, in words.
-    fn launch(&mut self, voyage: Option<&str>, url: bool) -> Result<(), String> {
+    fn launch(&mut self, id: &str) -> Result<(), String> {
         let content = &self.content.0;
-        let career = self.career.career();
-        let Some(id) = voyage.map(str::to_string).or_else(|| default_voyage(career, content).map(str::to_string)) else {
-            return Err("NO VOYAGE IS OPEN".into());
-        };
         let flagship = self.design.blueprint();
         let escorts = &self.escorts.0;
-        let granted = fleet_blocker(content, &self.granted.unlocks, self.granted.mind_capacity, self.granted.launch_stock(), flagship, escorts);
-        // In free mode (`?unlock=all`) the drydock grants everything; the career records only fleets its own
-        // unlocks allow.
-        let own = if self.granted.free {
-            fleet_blocker(content, &career.unlocks(content), career.mind_capacity(content), Some(career.stock()), flagship, escorts)
-        } else {
-            granted.clone()
-        };
-        let mut next = career.clone();
-        let (seed, practice) = decide(&mut next, content, &id, own, granted, url)?;
-        if practice.is_none() {
-            let ((), written) = self.career.update(&mut self.storage, |c| *c = next);
-            if let Err(e) = written {
-                // The launch stands (the change is in this game); the save says why not.
-                warn!("voyage: the launch was not saved: {e}");
-                self.career.notes.push(Note::new("NOT SAVED", e, Tone::Coral));
-            }
+        let blocker = fleet_blocker(content, &self.granted.unlocks, self.granted.mind_capacity, self.granted.launch_stock(), flagship, escorts);
+        let mut next = self.career.career().clone();
+        let seed = decide(&mut next, content, id, blocker)?;
+        let ((), written) = self.career.update(&mut self.storage, |c| *c = next);
+        if let Err(e) = written {
+            // The launch stands (the change is in this game); the save says why not.
+            warn!("voyage: the launch was not saved: {e}");
+            self.career.notes.push(Note::new("NOT SAVED", e, Tone::Coral));
         }
-        info!("voyage: {id} launched, seed {seed}{}", practice.as_deref().map(|p| format!(" (practice: {p})")).unwrap_or_default());
+        info!("voyage: {id} launched, seed {seed}");
         let mind = self.granted.mind_capacity;
         *self.run = VoyageRun {
-            launched: Some(Launched { voyage: id.clone(), seed, mind, escorts: escorts.clone(), upgrades: self.granted.upgrades.clone(), practice, cluster: None }),
+            launched: Some(Launched { voyage: id.to_string(), seed, mind, escorts: escorts.clone(), upgrades: self.granted.upgrades.clone(), cluster: None }),
             ..default()
         };
-        self.scene.kind = SceneKind::Voyage(id);
+        self.scene.kind = SceneKind::Voyage(id.to_string());
         Ok(())
     }
 
     /// A launch into cluster `k` of the career's galaxy (the map's SET COURSE after the warp; galaxy plan E6): the
     /// career records it (`Career::cluster_launched`: charted, underway, the seed) and the save is written; its interior
-    /// rolls with what the career knows (`Career::leads`). A fleet only `?unlock=all` allows flies it as a practice
-    /// run, rolled from the seed the launch would get.
+    /// rolls with what the career knows (`Career::leads`).
     fn launch_into(&mut self, k: u32) -> Result<(), String> {
         let content = &self.content.0;
         let flagship = self.design.blueprint();
@@ -265,34 +243,27 @@ impl LaunchInputs<'_> {
         if let Some(b) = fleet_blocker(content, &self.granted.unlocks, self.granted.mind_capacity, self.granted.launch_stock(), flagship, escorts) {
             return Err(format!("NOT VOYAGE-READY · {b}"));
         }
-        let own = self.granted.free.then(|| fleet_blocker(content, &self.career.career().unlocks(content), self.career.career().mind_capacity(content), Some(self.career.career().stock()), flagship, escorts)).flatten();
         let mut next = self.career.career().clone();
         let sk = next.exploration().ok_or("THE CAREER HAS NO GALAXY")?.skeleton().clone();
         let cl = sk.clusters.get(k as usize).ok_or_else(|| format!("THE GALAXY HAS {} CLUSTERS", sk.clusters.len()))?;
         let (name, sky_seed, band) = (cl.name.clone(), cl.seed, cl.band.clone());
         let interior = galaxy::interior(content, &sk, k).map_err(|e| e.0.to_uppercase())?;
         let leads = next.leads(content, k);
-        let (seed, practice) = match own {
-            Some(b) => (next.cluster_seed(k), Some(format!("NOT VOYAGE-READY · {b}"))),
-            None => (next.cluster_launched(content, k).map_err(|r| refusal_words(content, &r))?, None),
-        };
-        if practice.is_none() {
-            let ((), written) = self.career.update(&mut self.storage, |c| *c = next.clone());
-            if let Err(e) = written {
-                warn!("voyage: the launch was not saved: {e}");
-                self.career.notes.push(Note::new("NOT SAVED", e, Tone::Coral));
-            }
+        let seed = next.cluster_launched(content, k).map_err(|r| refusal_words(content, &r))?;
+        let ((), written) = self.career.update(&mut self.storage, |c| *c = next.clone());
+        if let Err(e) = written {
+            warn!("voyage: the launch was not saved: {e}");
+            self.career.notes.push(Note::new("NOT SAVED", e, Tone::Coral));
         }
-        info!("voyage: cluster {k} ({name}) launched, seed {seed}{}", practice.as_deref().map(|p| format!(" (practice: {p})")).unwrap_or_default());
+        info!("voyage: cluster {k} ({name}) launched, seed {seed}");
         *self.run = VoyageRun {
-            knows: practice.is_none().then_some(next),
+            knows: Some(next),
             launched: Some(Launched {
                 voyage: name.clone(),
                 seed,
                 mind: self.granted.mind_capacity,
                 escorts: escorts.clone(),
                 upgrades: self.granted.upgrades.clone(),
-                practice,
                 cluster: Some(ClusterLaunch { cluster: k, sky_seed, band, interior, leads }),
             }),
             ..default()
@@ -300,70 +271,21 @@ impl LaunchInputs<'_> {
         self.scene.kind = SceneKind::Voyage(name);
         Ok(())
     }
-
-    /// A practice run into a generated cluster (galaxy plan E3, E4; [`url_launch`]): cluster `cluster` (`signal`: the
-    /// first that holds a trail's place; `hot`: the first beside a hot star, GDR-0102; a cluster type's id: the first
-    /// of that type, GDR-0103) of the career's galaxy, rolled from the seed its next launch would get and
-    /// carrying what the career knows (`Career::leads`: what a recorded launch carries). With `galaxy`, the base
-    /// galaxy generated from that seed instead, rolled from the cluster's own seed, every trail place a signal's site
-    /// and every log's data core in place ([`every_lead`]). Never saved.
-    fn launch_cluster(&mut self, galaxy: Option<u64>, cluster: &str) -> Result<(), String> {
-        let content = &self.content.0;
-        let flagship = self.design.blueprint();
-        if let Some(b) = fleet_blocker(content, &self.granted.unlocks, self.granted.mind_capacity, self.granted.launch_stock(), flagship, &self.escorts.0) {
-            return Err(format!("NOT VOYAGE-READY · {b}"));
-        }
-        let career = self.career.career();
-        let own = career.exploration().filter(|_| galaxy.is_none()).map(|g| g.skeleton().clone());
-        let sk = match own.clone() {
-            Some(sk) => sk,
-            None => {
-                let id = content.galaxies.iter().next().map(|g| g.id.clone()).ok_or("THE CONTENT HAS NO GALAXY")?;
-                galaxy::generate(content, &id, galaxy.unwrap_or_else(|| career.seed())).map_err(|e| e.0.to_uppercase())?
-            }
-        };
-        let hot = |kind: &str| content.cluster_types.get(kind).is_some_and(|t| t.star.is_some());
-        let k = match cluster.parse::<u32>() {
-            Ok(k) => k,
-            Err(_) if cluster == "hot" => sk.clusters.iter().position(|c| hot(&c.kind)).ok_or("NO CLUSTER LIES BESIDE A HOT STAR")? as u32,
-            Err(_) if content.cluster_types.contains(cluster) => {
-                sk.clusters.iter().position(|c| c.kind == cluster).ok_or_else(|| format!("NO CLUSTER IS A {}", cluster.to_uppercase()))? as u32
-            }
-            Err(_) => sk.trails.iter().flat_map(|t| &t.places).map(|p| p.cluster).find(|&k| k != sk.home).ok_or("NO CLUSTER HOLDS A TRAIL'S PLACE")?,
-        };
-        let c = sk.clusters.get(k as usize).ok_or_else(|| format!("THE GALAXY HAS {} CLUSTERS", sk.clusters.len()))?;
-        let interior = galaxy::interior(content, &sk, k).map_err(|e| e.0.to_uppercase())?;
-        let (seed, leads) = match own {
-            Some(_) => (career.cluster_seed(k), career.leads(content, k)),
-            None => (c.seed, every_lead(content, &sk, &interior)),
-        };
-        info!("voyage: cluster {k} ({}) of galaxy seed {} launched (practice)", c.name, sk.seed);
-        *self.run = VoyageRun {
-            launched: Some(Launched {
-                voyage: c.name.clone(),
-                seed,
-                mind: self.granted.mind_capacity,
-                escorts: self.escorts.0.clone(),
-                upgrades: self.granted.upgrades.clone(),
-                practice: Some("A GENERATED CLUSTER, FOR TESTING".into()),
-                cluster: Some(ClusterLaunch { cluster: k, sky_seed: c.seed, band: c.band.clone(), interior, leads }),
-            }),
-            ..default()
-        };
-        self.scene.kind = SceneKind::Voyage(c.name.clone());
-        Ok(())
-    }
 }
 
-/// Everything a cluster's interior holds, as leads (a practice run into another galaxy, [`LaunchInputs::launch_cluster`]):
-/// every trail place a signal's site, every log's place with its data core.
-pub fn every_lead(content: &Content, sk: &galaxy::Skeleton, interior: &galaxy::Interior) -> Leads {
-    let places: Vec<(u32, u32)> = interior.sites.iter().filter_map(|s| s.place).collect();
-    let log = |&(i, j): &(u32, u32)| {
-        let signal = sk.trails.get(i as usize).and_then(|t| t.signals.get(j as usize));
-        signal.and_then(|x| content.signal_sources.get(&x.source)).is_some_and(|x| x.form == SourceForm::Log)
-    };
-    Leads { cores: places.iter().copied().filter(log).collect(), signals: places }
+/// The encounters a cluster's interior holds (`galaxy::interior` from the cluster's own seed, the same at every
+/// launch), each with its count, in the interior's order: what the dev mode's map lists (ADR-0046). Empty for a
+/// cluster the skeleton doesn't have.
+pub fn cluster_encounters(content: &Content, sk: &galaxy::Skeleton, k: u32) -> Vec<(String, u32)> {
+    let mut out: Vec<(String, u32)> = Vec::new();
+    let Ok(interior) = galaxy::interior(content, sk, k) else { return out };
+    for id in interior.sites.iter().filter_map(|s| s.encounter.as_ref()) {
+        match out.iter_mut().find(|e| &e.0 == id) {
+            Some(e) => e.1 += 1,
+            None => out.push((id.clone(), 1)),
+        }
+    }
+    out
 }
 
 /// The voyage the map selects when it opens: the first open one whose goal is not cleared, else the first open one.
@@ -386,31 +308,16 @@ pub fn fleet_blocker(content: &Content, unlocks: &Unlocks, mind: u32, stock: Opt
     voyage_ready(content, unlocks, mind, stock, flagship, escorts).iter().find(|r| r.blocks()).map(|r| readiness_words(content, r))
 }
 
-/// Decides a launch of `voyage` on `career` (changed only when it is recorded): `Ok((seed, None))` recorded,
-/// `Ok((seed, Some(why)))` a practice run (only from the URL: `url`), `Err(why)` refused. `own`: the fleet's
-/// blocker by the career's own unlocks; `granted`: by what the drydock grants (the same unless `?unlock=all`).
-pub fn decide(
-    career: &mut Career,
-    content: &Content,
-    voyage: &str,
-    own: Option<String>,
-    granted: Option<String>,
-    url: bool,
-) -> Result<(u64, Option<String>), String> {
+/// Decides a launch of `voyage` on `career` (changed only when it is recorded): `Ok(seed)` recorded, `Err(why)`
+/// refused. `blocker`: the fleet's first blocker by what the career grants.
+pub fn decide(career: &mut Career, content: &Content, voyage: &str, blocker: Option<String>) -> Result<u64, String> {
     if content.voyages.get(voyage).is_none() {
         return Err(format!("THERE IS NO VOYAGE `{}`", voyage.to_uppercase()));
     }
-    if !url && let Some(b) = &granted {
+    if let Some(b) = blocker {
         return Err(format!("NOT VOYAGE-READY · {b}"));
     }
-    if let Some(b) = own.or(granted) {
-        return Ok((career.voyage_seed(voyage), Some(format!("NOT VOYAGE-READY · {b}"))));
-    }
-    match career.voyage_launched(content, voyage) {
-        Ok(seed) => Ok((seed, None)),
-        Err(r) if url => Ok((career.voyage_seed(voyage), Some(refusal_words(content, &r)))),
-        Err(r) => Err(refusal_words(content, &r)),
-    }
+    career.voyage_launched(content, voyage).map_err(|r| refusal_words(content, &r))
 }
 
 /// A refused launch in words.
@@ -425,24 +332,6 @@ fn refusal_words(content: &Content, r: &Refusal) -> String {
     }
 }
 
-/// `?scene=voyage[&voyage=<id>]`: launch at once (a practice run when the career refuses it); without any voyage
-/// to fly, home with a note. `?scene=voyage&cluster=<id, signal or hot>[&galaxy=<seed>]`: a practice run into a generated
-/// cluster ([`LaunchInputs::launch_cluster`]).
-fn url_launch(params: Res<Params>, mut inputs: LaunchInputs, mut next: ResMut<NextState<AppMode>>) {
-    if params.text("scene") != Some("voyage") {
-        return;
-    }
-    let launched = match params.text("cluster") {
-        Some(k) => inputs.launch_cluster(params.u64("galaxy"), k),
-        None => inputs.launch(params.text("voyage"), true),
-    };
-    if let Err(why) = launched {
-        warn!("voyage: {why}");
-        inputs.career.notes.push(Note::new("NO VOYAGE", why, Tone::Coral));
-        next.set(AppMode::Home);
-    }
-}
-
 /// A [`StartVoyage`] (from the voyage map): launch, or say why not.
 fn start(
     mut requests: MessageReader<StartVoyage>,
@@ -452,7 +341,7 @@ fn start(
 ) {
     let Some(request) = requests.read().last().cloned() else { return };
     let launched = match &request.to {
-        Destination::Voyage(id) => inputs.launch(Some(id), false),
+        Destination::Voyage(id) => inputs.launch(id),
         Destination::Cluster(k) => inputs.launch_into(*k),
     };
     match launched {
@@ -776,7 +665,7 @@ fn voyage_tick(
     }
 }
 
-/// Ends the voyage: the career's end (written; not for a practice run) and the debrief.
+/// Ends the voyage: the career's end (written) and the debrief.
 fn end(
     run: &mut VoyageRun,
     world: &SimWorld,
@@ -793,7 +682,6 @@ fn end(
         kills: Some(run.kills),
         ships_lost: Some(run.ships_lost),
         left: left_behind(&world.sim, PLAYER),
-        practice: None,
     };
     let haul = match &how {
         VoyageEnd::Recalled { haul, .. } => haul.clone(),
@@ -806,8 +694,7 @@ fn end(
 }
 
 /// The career's side of an end, and the debrief it makes: a recorded voyage ends in the career (a cluster's after its
-/// `finds`, lost or not) and the save is written; a practice run changes nothing (its debrief says what the haul
-/// would have given).
+/// `finds`, lost or not) and the save is written.
 #[allow(clippy::too_many_arguments)]
 pub fn ended(
     career: &mut PlayerCareer,
@@ -819,7 +706,6 @@ pub fn ended(
     haul: &Haul,
     stats: DebriefStats,
 ) -> DebriefData {
-    let stats = DebriefStats { practice: launched.practice.clone(), ..stats };
     let before = career.career().clone();
     let mut after = before.clone();
     let last = match recorded(&before, launched).then(|| end_in(&mut after, content, launched, finds, how.clone())).flatten() {
@@ -839,13 +725,12 @@ pub fn ended(
     DebriefData::build(content, &before, &after, &last, haul, stats)
 }
 
-/// Is `launched` the voyage the career has underway (not a practice run)?
+/// Is `launched` the voyage the career has underway?
 fn recorded(career: &Career, launched: &Launched) -> bool {
-    launched.practice.is_none()
-        && match &launched.cluster {
-            Some(c) => career.exploration().and_then(|g| g.underway()) == Some(c.cluster),
-            None => career.underway() == Some(launched.voyage.as_str()),
-        }
+    match &launched.cluster {
+        Some(c) => career.exploration().and_then(|g| g.underway()) == Some(c.cluster),
+        None => career.underway() == Some(launched.voyage.as_str()),
+    }
 }
 
 /// Ends `launched` in `career`: a cluster's finds first, then its end (`Career::cluster_ended`), or a slice
@@ -862,7 +747,7 @@ fn end_in(career: &mut Career, content: &Content, launched: &Launched, finds: &[
     }
 }
 
-/// The result of a voyage the career doesn't record (a practice run): what it would have given.
+/// The result of a voyage the career doesn't end (not the one underway): what it would have given.
 fn unrecorded_haul(content: &Content, voyage: &str, how: VoyageEnd) -> VoyageResult {
     let (outcome, ticks, report) = match how {
         VoyageEnd::Recalled { haul, cleared, ticks } => {
@@ -906,39 +791,33 @@ mod tests {
     fn fresh() -> (Content, Storage, PlayerCareer) {
         let content = data::base_content();
         let mut storage = Storage::new(MemoryBackend::default());
-        let career = load(&mut storage, &content, Switches::from_params(&Params::parse("")).0, 4207, 1);
+        let career = load(&mut storage, &content, Switches::default(), 4207, 1);
         (content, storage, career)
     }
 
-    fn launched(voyage: &str, seed: u64, practice: Option<String>) -> Launched {
-        Launched { voyage: voyage.into(), seed, mind: 2, escorts: Vec::new(), upgrades: data::Upgrades::NONE, practice, cluster: None }
+    fn launched(voyage: &str, seed: u64) -> Launched {
+        Launched { voyage: voyage.into(), seed, mind: 2, escorts: Vec::new(), upgrades: data::Upgrades::NONE, cluster: None }
     }
 
     /// The V key's voyage, the launch's decisions, and the seed it rolls from (`docs/career.md`'s fixed value).
     #[test]
-    fn a_launch_is_recorded_refused_or_practice() {
+    fn a_launch_is_recorded_or_refused() {
         let (content, _, pc) = fresh();
         let mut c = pc.career().clone();
         assert_eq!(default_voyage(&c, &content), Some("yard_approach"));
         // Ready and open: recorded, underway, the career's seed.
         let mut a = c.clone();
-        assert_eq!(decide(&mut a, &content, "yard_approach", None, None, false), Ok((9993844787240758234, None)));
+        assert_eq!(decide(&mut a, &content, "yard_approach", None), Ok(9993844787240758234));
         assert_eq!(a.underway(), Some("yard_approach"));
-        // Not ready: refused from home, a practice run from the URL (the career untouched).
+        // Not ready: refused, the career untouched.
         let mut b = c.clone();
-        let why = Some("USES BEAM LASER".to_string());
-        assert_eq!(decide(&mut b, &content, "yard_approach", why.clone(), why.clone(), false), Err("NOT VOYAGE-READY · USES BEAM LASER".into()));
-        let (seed, practice) = decide(&mut b, &content, "yard_approach", why.clone(), why, true).unwrap();
-        assert_eq!((seed, practice.as_deref()), (9993844787240758234, Some("NOT VOYAGE-READY · USES BEAM LASER")));
+        assert_eq!(decide(&mut b, &content, "yard_approach", Some("USES BEAM LASER".into())), Err("NOT VOYAGE-READY · USES BEAM LASER".into()));
         assert_eq!(b, c);
-        // Free mode: ready by what the drydock grants, not by the career's own unlocks: a practice run.
-        assert!(decide(&mut b, &content, "yard_approach", Some("USES BEAM LASER".into()), None, false).unwrap().1.is_some());
-        // Not open: refused from home, practice from the URL; an unknown voyage is refused either way.
-        assert_eq!(decide(&mut c, &content, "halvex_drift", None, None, false), Err("HALVEX DRIFT IS NOT OPEN YET".into()));
-        assert!(decide(&mut c, &content, "halvex_drift", None, None, true).unwrap().1.unwrap().contains("NOT OPEN"));
-        assert!(decide(&mut c, &content, "nowhere", None, None, true).is_err());
+        // Not open, or unknown: refused.
+        assert_eq!(decide(&mut c, &content, "halvex_drift", None), Err("HALVEX DRIFT IS NOT OPEN YET".into()));
+        assert!(decide(&mut c, &content, "nowhere", None).is_err());
         // One voyage at a time.
-        assert_eq!(decide(&mut a, &content, "yard_approach", None, None, false), Err("SHIPYARD APPROACH IS STILL UNDERWAY".into()));
+        assert_eq!(decide(&mut a, &content, "yard_approach", None), Err("SHIPYARD APPROACH IS STILL UNDERWAY".into()));
         // The first open voyage not cleared yet.
         let mut done = pc.career().clone();
         done.voyage_launched(&content, "yard_approach").unwrap();
@@ -966,12 +845,13 @@ mod tests {
         assert!(why.starts_with("ESCORT 1 CAN'T FLY"), "{why}");
     }
 
-    /// Launch, recall with a haul, the save written; a loss after a second launch; a practice run changes nothing.
+    /// Launch, recall with a haul, the save written; a loss after a second launch; an end the career doesn't have
+    /// underway changes nothing.
     #[test]
     fn launch_and_end_flows_go_through_the_career() {
         let (content, mut storage, mut pc) = fresh();
         let mut next = pc.career().clone();
-        let (seed, practice) = decide(&mut next, &content, "yard_approach", None, None, false).unwrap();
+        let seed = decide(&mut next, &content, "yard_approach", None).unwrap();
         let ((), w) = pc.update(&mut storage, |c| *c = next);
         w.unwrap();
         let stored = |s: &Storage| s.read::<crate::career::CareerDoc>("career").unwrap().unwrap().doc.0;
@@ -982,8 +862,8 @@ mod tests {
         ]
         .into_iter()
         .collect();
-        let stats = DebriefStats { sites: Some((4, 4)), kills: Some(5), ships_lost: Some(0), left: 0, practice: None };
-        let l = launched("yard_approach", seed, practice);
+        let stats = DebriefStats { sites: Some((4, 4)), kills: Some(5), ships_lost: Some(0), left: 0 };
+        let l = launched("yard_approach", seed);
         let d = ended(&mut pc, &mut storage, &content, &l, &[], VoyageEnd::Recalled { haul: haul.clone(), cleared: true, ticks: 9000 }, &haul, stats.clone());
         assert_eq!((d.outcome, d.items, d.first_clear), (Outcome::Cleared, 3, true));
         assert!(d.opened.iter().any(|v| v == "Halvex Drift"), "{:?}", d.opened);
@@ -995,20 +875,20 @@ mod tests {
 
         // A second launch, lost: nothing more in the stores, the loss logged.
         let mut next = pc.career().clone();
-        let (seed, _) = decide(&mut next, &content, "yard_approach", None, None, false).unwrap();
+        let seed = decide(&mut next, &content, "yard_approach", None).unwrap();
         pc.update(&mut storage, |c| *c = next).1.unwrap();
         let data_before = pc.career().data().clone();
-        let d = ended(&mut pc, &mut storage, &content, &launched("yard_approach", seed, None), &[], VoyageEnd::Lost { ticks: 300 }, &Haul::default(), stats.clone());
+        let d = ended(&mut pc, &mut storage, &content, &launched("yard_approach", seed), &[], VoyageEnd::Lost { ticks: 300 }, &Haul::default(), stats.clone());
         assert_eq!((d.outcome, d.items, d.first_clear), (Outcome::Lost, 0, false));
         let saved = stored(&storage);
         assert_eq!((saved.log().lost, saved.underway(), saved.data()), (1, None, &data_before));
 
-        // A practice run: the save stays as it is, the debrief still says what the haul gives.
+        // A voyage the career doesn't have underway: the save stays as it is, the debrief still says what the haul
+        // gives.
         let text = storage.read::<crate::career::CareerDoc>("career").unwrap().unwrap().doc.0.to_ron();
-        let l = launched("halvex_drift", 1, Some("HALVEX DRIFT IS NOT OPEN YET".into()));
+        let l = launched("halvex_drift", 1);
         let d = ended(&mut pc, &mut storage, &content, &l, &[], VoyageEnd::Recalled { haul: haul.clone(), cleared: false, ticks: 100 }, &haul, stats);
         assert_eq!((d.outcome, d.items), (Outcome::Recalled, 3));
-        assert!(d.practice.is_some());
         assert_eq!(storage.read::<crate::career::CareerDoc>("career").unwrap().unwrap().doc.0.to_ron(), text);
     }
 
@@ -1030,7 +910,6 @@ mod tests {
             mind: 2,
             escorts: Vec::new(),
             upgrades: data::Upgrades::NONE,
-            practice: None,
             cluster: Some(ClusterLaunch { cluster: k, sky_seed: 1, band: "rim".into(), interior: galaxy::interior(&content, pc.career().exploration().unwrap().skeleton(), k).unwrap(), leads: Leads::default() }),
         };
         let d = ended(&mut pc, &mut storage, &content, &l, &[Find::Heard(s)], VoyageEnd::Lost { ticks: 90 }, &Haul::default(), DebriefStats::default());
@@ -1110,10 +989,9 @@ mod tests {
         assert!(site_banner(&content, v, &SimEvent::ShipSpawned { ship: sim::ShipId(0) }).is_none());
     }
 
-    /// A scan from the entry of a voyage says what it found; the cluster launch finds a cluster with a trail's place
-    /// and rolls it.
+    /// A scan from the entry of a voyage says what it found; a cluster's launch carries what the career knows.
     #[test]
-    fn a_scan_makes_a_banner_and_a_generated_cluster_rolls() {
+    fn a_scan_makes_a_banner_and_a_cluster_rolls_with_what_the_career_knows() {
         let content = data::base_content();
         let plan = sim::VoyagePlan::roll(&content, content.voyages.get("corran_reach").unwrap(), 3).unwrap();
         let entry = plan.entry;
@@ -1133,15 +1011,10 @@ mod tests {
         assert!(sub.contains("BEARING") || sub.starts_with("SWEPT 1.2 KM"), "{sub}");
         assert!(scan_banner(&sim, PLAYER).is_none(), "one banner per sweep");
 
-        // Another galaxy's cluster carries everything it holds: every trail place a signal's site.
         let (_, _, pc) = fresh();
         let sk = pc.career().exploration().expect("a new game has its galaxy").skeleton();
         let k = sk.trails[0].places.iter().map(|p| p.cluster).find(|&k| k != sk.home).unwrap();
         let interior = galaxy::interior(&content, sk, k).unwrap();
-        let every = every_lead(&content, sk, &interior);
-        assert_eq!(every.signals.len(), interior.sites.iter().filter(|s| s.place.is_some()).count());
-        let plan = sim::VoyagePlan::roll_interior(&content, "test", &interior, &every, 1).unwrap();
-        assert!(plan.sites.iter().any(|s| s.signal));
         // The career's own launch carries what it knows: a new game has heard nothing yet.
         let own = pc.career().leads(&content, k);
         assert!(own.signals.is_empty());

@@ -1,7 +1,7 @@
 //! What the drydock's widgets show, as resources any system can drive: the editing state ([`DrydockUi`]), the
 //! status line ([`DrydockStatus`]) and the stats grid ([`DrydockStats`]). The widgets only display these and
 //! send [`DrydockAction`](super::DrydockAction)s; they never decide anything. What the player may build with comes
-//! from the career's unlocks (`career::Granted`; everything in free mode, `?unlock=all`).
+//! from the career's unlocks (`career::Granted`; everything in the dev mode, `?dev=1`).
 
 use data::career::Unlocks;
 use data::{Content, Material, Part, Unlock};

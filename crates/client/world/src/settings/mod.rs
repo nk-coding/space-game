@@ -95,14 +95,10 @@ impl Document for DisplaySettings {
 }
 
 impl DisplaySettings {
-    /// Applies them to the render toggles (what the URL sets for this run stays) and the UI size.
-    pub fn apply(&self, params: &Params, toggles: &mut RenderToggles, size: &mut UiSize) {
-        if params.flag("glow").is_none() {
-            toggles.glow_sprites = self.glow;
-        }
-        if params.flag("bloom").is_none() {
-            toggles.bloom = self.bloom;
-        }
+    /// Applies them to the render toggles and the UI size.
+    pub fn apply(&self, toggles: &mut RenderToggles, size: &mut UiSize) {
+        toggles.glow_sprites = self.glow;
+        toggles.bloom = self.bloom;
         let ui = UI_SIZES.into_iter().find(|s| (s - self.ui_size).abs() < 1e-3).unwrap_or(1.0);
         if size.0 != ui {
             size.0 = ui;
@@ -143,6 +139,16 @@ pub fn mods_of(k: &ButtonInput<KeyCode>) -> Mods {
     }
 }
 
+/// The debug keys (ADR-0046): the debug overlay, the render toggles, the test range's waves and restart. They fire
+/// only in the dev mode (`?dev=1`); elsewhere the controls overlay, the SETTINGS screen and the flight menu leave
+/// them out.
+pub const DEV_KEYS: [Action; 6] = [Action::DebugOverlay, Action::DebugShapes, Action::GlowToggle, Action::BloomToggle, Action::Waves, Action::ResetScene];
+
+/// Does `a` act with these launch parameters: every action, the [`DEV_KEYS`] only in the dev mode?
+pub fn acts_here(a: Action, params: Option<&Params>) -> bool {
+    !DEV_KEYS.contains(&a) || params.is_some_and(Params::dev)
+}
+
 /// The action map's view of the keyboard and mouse: does an action fire now (see `data::input` for the rules)?
 #[derive(SystemParam)]
 pub struct Act<'w> {
@@ -150,6 +156,7 @@ pub struct Act<'w> {
     mouse: Res<'w, ButtonInput<MouseButton>>,
     controls: Res<'w, Controls>,
     taps: Option<Res<'w, ActionTaps>>,
+    params: Option<Res<'w, Params>>,
 }
 
 /// Actions a touch button pressed (a button for what only a key does: the flight menu's RESTART, the fight viewer's
@@ -195,9 +202,9 @@ impl Act<'_> {
         }
     }
 
-    /// Is an input of `a` held?
+    /// Is an input of `a` held? (Never for a debug key outside the dev mode, [`DEV_KEYS`].)
     pub fn pressed(&self, a: Action) -> bool {
-        self.tapped(a) || self.controls.0.fires(a, |b| self.down(b, false), self.mods())
+        acts_here(a, self.params.as_deref()) && (self.tapped(a) || self.controls.0.fires(a, |b| self.down(b, false), self.mods()))
     }
 
     /// Did a touch button press `a` ([`ActionTaps`])?
@@ -205,9 +212,9 @@ impl Act<'_> {
         self.taps.as_ref().is_some_and(|t| t.tapped(a))
     }
 
-    /// Was an input of `a` pressed this frame?
+    /// Was an input of `a` pressed this frame? (Never for a debug key outside the dev mode, [`DEV_KEYS`].)
     pub fn just_pressed(&self, a: Action) -> bool {
-        self.tapped(a) || self.controls.0.fires(a, |b| self.down(b, true), self.mods())
+        acts_here(a, self.params.as_deref()) && (self.tapped(a) || self.controls.0.fires(a, |b| self.down(b, true), self.mods()))
     }
 
     /// The bound inputs' label (`W / UP`).
@@ -249,9 +256,8 @@ impl Plugin for SettingsPlugin {
             };
             (Controls(bindings), display)
         });
-        let params = app.world().resource::<Params>().clone();
         let mut size = UiSize::default();
-        app.world_mut().resource_scope(|_, mut toggles: Mut<RenderToggles>| display.apply(&params, &mut toggles, &mut size));
+        app.world_mut().resource_scope(|_, mut toggles: Mut<RenderToggles>| display.apply(&mut toggles, &mut size));
         app.insert_resource(controls)
             .insert_resource(display)
             .insert_resource(bevy::ui::UiScale(size.0))
@@ -297,23 +303,41 @@ mod tests {
     #[derive(Resource, Default)]
     struct Seen(Vec<bool>);
 
-    /// A touch button's tap is its action pressed for one frame, the next one, for every system in it.
-    #[test]
-    fn a_tap_is_the_action_pressed_for_the_next_frame() {
+    /// Taps `a` after a first frame and records over three more whether `a` was pressed, with these launch
+    /// parameters.
+    fn tapped(a: Action, query: &str) -> Vec<bool> {
         let mut app = App::new();
         app.add_plugins(MinimalPlugins)
             .init_resource::<ButtonInput<KeyCode>>()
             .init_resource::<ButtonInput<MouseButton>>()
             .init_resource::<ActionTaps>()
             .init_resource::<Seen>()
+            .insert_resource(Params::parse(query))
             .insert_resource(Controls::defaults(&data::base_content()))
             .add_systems(First, turn_taps)
-            .add_systems(Update, |act: Act, mut seen: ResMut<Seen>| seen.0.push(act.just_pressed(Action::Waves) && act.pressed(Action::Waves)));
+            .add_systems(Update, move |act: Act, mut seen: ResMut<Seen>| seen.0.push(act.just_pressed(a) && act.pressed(a)));
         app.update();
-        app.world_mut().resource_mut::<ActionTaps>().tap(Action::Waves);
+        app.world_mut().resource_mut::<ActionTaps>().tap(a);
         for _ in 0..3 {
             app.update();
         }
-        assert_eq!(app.world().resource::<Seen>().0, [false, true, false, false]);
+        app.world().resource::<Seen>().0.clone()
+    }
+
+    /// A touch button's tap is its action pressed for one frame, the next one, for every system in it.
+    #[test]
+    fn a_tap_is_the_action_pressed_for_the_next_frame() {
+        assert_eq!(tapped(Action::AllAssists, ""), [false, true, false, false]);
+    }
+
+    /// The debug keys act only in the dev mode (ADR-0046); the others always.
+    #[test]
+    fn the_debug_keys_act_only_in_the_dev_mode() {
+        assert_eq!(tapped(Action::Waves, "?dev=1"), [false, true, false, false]);
+        assert_eq!(tapped(Action::Waves, ""), [false; 4]);
+        for a in DEV_KEYS {
+            assert!(acts_here(a, Some(&Params::parse("?dev=1"))) && !acts_here(a, Some(&Params::parse(""))) && !acts_here(a, None));
+        }
+        assert!(acts_here(Action::Pause, None) && acts_here(Action::HideHud, Some(&Params::parse(""))));
     }
 }

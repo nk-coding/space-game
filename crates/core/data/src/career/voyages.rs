@@ -190,7 +190,7 @@ pub fn unload(content: &Content, haul: &Haul) -> HaulReport {
 }
 
 /// Is the fleet (the flagship and the escorts) voyage-ready with these unlocks, this mind capacity and this stock
-/// (`None`: unlimited, the free mode)? Empty: yes. Entries, in order: per ship (flagship first) a frame too big for
+/// (`None`: unlimited, the dev mode)? Empty: yes. Entries, in order: per ship (flagship first) a frame too big for
 /// every unlocked frame, then the locked parts and materials it uses (each once, in placement order); then every
 /// unlocked part the fleet carries more of than the stock holds (GDR-0108, in id order); then too many logic cores
 /// for the mind; then the

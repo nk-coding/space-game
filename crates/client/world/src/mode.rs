@@ -38,7 +38,7 @@ pub enum AppMode {
 impl AppMode {
     /// The mode the app starts in: home (`?scene=home`, and the default), the drydock (`?scene=drydock`), the
     /// BEHAVIOR screen (`?scene=behavior`), the research screen (`?scene=research`), the voyage map (`?scene=map`), or
-    /// flight for the flight scenes (`?scene=sandbox|showcase|watch|alongside|voyage|fight`). An unknown scene starts at
+    /// flight for the flight scenes (`?scene=sandbox|showcase|watch|alongside|fight`). An unknown scene starts at
     /// home.
     pub fn at_start(params: &Params) -> Self {
         match params.text("scene") {
@@ -47,7 +47,7 @@ impl AppMode {
             Some("behavior") => AppMode::Behavior,
             Some("research") => AppMode::Research,
             Some("map") => AppMode::Map,
-            Some("sandbox" | "showcase" | "watch" | "alongside" | "voyage" | "fight") => AppMode::Flight,
+            Some("sandbox" | "showcase" | "watch" | "alongside" | "fight") => AppMode::Flight,
             None => AppMode::Home,
             Some(other) => {
                 warn!("unknown scene `{other}`: starting at home");
@@ -129,19 +129,20 @@ mod tests {
     #[test]
     fn the_game_starts_at_home_unless_a_scene_says_otherwise() {
         assert_eq!(start(""), AppMode::Home);
-        assert_eq!(start("?scene=home&zoom=60"), AppMode::Home);
-        assert_eq!(start("?debug=1&hud=0&stats=1"), AppMode::Home);
+        assert_eq!(start("?scene=home&dev=1"), AppMode::Home);
+        assert_eq!(start("?hud=0&slowmo=4"), AppMode::Home);
         assert_eq!(start("?scene=nowhere"), AppMode::Home);
-        for q in ["?scene=sandbox", "?scene=showcase&fire=1", "?scene=watch&behavior=raider_basic", "?scene=alongside", "?scene=voyage&voyage=yard_approach", "?scene=fight&fight=SGF1:x"] {
+        assert_eq!(start("?scene=voyage"), AppMode::Home, "no scene since ADR-0046");
+        for q in ["?scene=sandbox", "?scene=showcase", "?scene=watch&behavior=raider_basic", "?scene=alongside", "?scene=fight&fight=SGF1:x"] {
             assert_eq!(start(q), AppMode::Flight, "{q}");
         }
-        for q in ["?load=20", "?hashlog=1&hashticks=600", "?fleet=3", "?zoom=70", "?seed=7"] {
+        for q in ["?load=20", "?hashlog=1&hashticks=600", "?seed=7"] {
             assert_eq!(start(q), AppMode::Home, "{q}");
             assert_eq!(start(&format!("?scene=sandbox&{}", &q[1..])), AppMode::Flight, "{q}");
         }
-        assert_eq!(start("?scene=drydock&zoom=40"), AppMode::Drydock);
+        assert_eq!(start("?scene=drydock"), AppMode::Drydock);
         assert_eq!(start("?scene=behavior&behavior=raider_basic"), AppMode::Behavior);
-        assert_eq!(start("?scene=research&unlock=all"), AppMode::Research);
-        assert_eq!(start("?scene=map&save=other"), AppMode::Map);
+        assert_eq!(start("?scene=research&dev=1"), AppMode::Research);
+        assert_eq!(start("?scene=map&dev=1"), AppMode::Map);
     }
 }

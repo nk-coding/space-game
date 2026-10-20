@@ -84,7 +84,7 @@ impl Held {
 
 /// A part's information (pure): `material` for a hull part's numbers; `held` how many of it the design or the fleet
 /// holds. A part that is not hull ends with the workshop's lines (GDR-0108): what it is fabricated from and the
-/// stock against `held` (unless every part is granted, `?unlock=all`). A locked part says which research unlocks it.
+/// stock against `held` (unless every part is granted: the dev mode). A locked part says which research unlocks it.
 pub fn part_info(content: &Content, granted: &Granted, part: &Part, material: Option<&Material>, held: (u32, Held)) -> PartInfo {
     let material = material.filter(|_| part.hull);
     let cat = content.categories.get(&part.category).map_or(String::new(), |c| c.name.to_uppercase());

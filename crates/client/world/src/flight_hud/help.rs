@@ -90,8 +90,11 @@ pub(super) fn spawn_overlay(mut commands: Commands, fonts: Res<HudFonts>, style:
 
 /// Does a row act in this scene? Flight's keys where someone flies (a fight's camera and debug keys too); the fight
 /// viewer's only in a replay; a voyage's and the test range's each only there.
-fn acts(row: &HelpRow, kind: &SceneKind, piloted: bool) -> bool {
+fn acts(row: &HelpRow, kind: &SceneKind, piloted: bool, params: Option<&kit::params::Params>) -> bool {
     let a = row.action;
+    if !crate::settings::acts_here(a, params) {
+        return false;
+    }
     let voyage_only = matches!(a, Action::Recall | Action::ClusterMap | Action::Minimap);
     let range_only = matches!(a, Action::TestReturn | Action::Waves | Action::ResetScene | Action::Pause);
     let flying = row.section != Section::Flight || piloted;
@@ -137,6 +140,7 @@ pub(super) fn update(
     mut keys: Query<(&HelpKeys, &mut Text), Without<HelpMouse>>,
     mut mouse: Single<&mut Text, With<HelpMouse>>,
     touch: Res<kit::ui_kit::TouchScreen>,
+    params: Option<Res<kit::params::Params>>,
 ) {
     show_screen(&mut root, menu.help && !layer.open);
     if !menu.help {
@@ -145,7 +149,7 @@ pub(super) fn update(
     let piloted = focus.0.is_some();
     let mut shown = [false; Section::ALL.len()];
     for (row, mut node) in &mut rows {
-        let on = acts(row, &scene.kind, piloted);
+        let on = acts(row, &scene.kind, piloted, params.as_deref());
         shown[row.section as usize] |= on;
         let d = if on { Display::Flex } else { Display::None };
         if node.display != d {

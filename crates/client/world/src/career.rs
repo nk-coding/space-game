@@ -2,20 +2,22 @@
 //! the career grants the drydock and FLEET. The rules are the pure model `data::career` (`docs/career.md`); this
 //! module keeps it in the player's storage and hands its answers to the screens.
 //!
-//! * **The save** ([`CareerDoc`]) is `Career::to_ron` as a document `saves/<slot>` (`saves/career`, or another
-//!   slot with `?save=<slot>`), with the storage layer's header and format (`data::career::FORMAT`).
+//! * **The save** ([`CareerDoc`]) is `Career::to_ron` as a document `saves/<slot>` (`saves/career`; the dev mode's
+//!   own `saves/dev`), with the storage layer's header and format (`data::career::FORMAT`).
 //! * **At start** ([`load`], before the first frame, so the drydock opens the right ship): the save is read and
 //!   reconciled with the content (what changed comes back as notes, never a panic). A new game gets the content's
 //!   first galaxy, generated once from its game seed and kept in the save (ADR-0035, [`chart`]). Without a save,
 //!   with a save of an older format (no save compatibility before release, ADR-0044; a log line and a note say
-//!   so), or with `?newgame=1`, a new game begins from the content's first start and is written at once; the
+//!   so), or with `?dev=1&newgame=1` (the dev save only), a new game begins from the content's first start and is written at once; the
 //!   drydock then docks a copy of the start's ship (`drydock::blueprints`). A save that doesn't read (broken, or
 //!   written by a newer build) is kept as it is: the game runs a new career in memory, never writes it, and says so.
 //! * **Writes** (`docs/plans/first-playable-loop.md` 5.2): at a new game, after a FLEET change, when the drydock
 //!   first shows a fresh part ([`SeenPart`]); later after UNLOCK and when a voyage ends. Never during a voyage.
-//! * **`?unlock=all`** (free mode): the drydock has every part, material and frame. Only what is offered changes:
-//!   no unlock is ever written into the save.
-//! * **[`Granted`]**: the unlocks, the fresh parts (NEW), the stock, the mind capacity and the free flag, recomputed whenever
+//! * **The dev mode** (`?dev=1`, ADR-0046): its own save `saves/dev`, never the career's. At every load it gets
+//!   everything (`Career::open_everything`: every research node researched, the stores full, the whole galaxy
+//!   charted with every gate open), and the drydock offers every part, material and frame of the content, with
+//!   unlimited stock for a launch.
+//! * **[`Granted`]**: the unlocks, the fresh parts (NEW), the stock, the mind capacity and the dev flag, recomputed whenever
 //!   the career changes; the drydock and FLEET read it. **[`EscortDesigns`]**: the escorts' saved designs, re-read
 //!   when home or the drydock opens (a deleted design empties its slot with a note).
 //! * **Notes** ([`Note`]) go to home's note block and the console.
@@ -31,10 +33,13 @@ use kit::ui_kit::Tone;
 use crate::player::library::{DesignDoc, problems_text};
 use crate::mode::AppMode;
 use crate::sim_bridge::GameContent;
-use crate::storage::{Document, Storage, StorageError, now_unix, valid_name};
+use crate::storage::{Document, Storage, StorageError, now_unix};
 
-/// The save's name when `?save=` doesn't give another.
+/// The career's save.
 pub const DEFAULT_SLOT: &str = "career";
+
+/// The dev mode's own save (`?dev=1`).
+pub const DEV_SLOT: &str = "dev";
 
 /// The save as a stored document: `saves/<slot>`.
 #[derive(Clone, Debug, PartialEq)]
@@ -68,43 +73,27 @@ impl Note {
     }
 }
 
-/// Where the save is and the development switches (`?save= ?newgame= ?unlock=all ?bands=`).
-#[derive(Clone, Debug, PartialEq)]
+/// The launch's switches (ADR-0046): the dev mode (`?dev=1`) and, only with it, a new dev game (`?newgame=1`).
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct Switches {
-    /// The save's name in `saves/`.
-    pub slot: String,
-    /// Start over: a new game replaces the save.
+    /// The dev mode: its own save ([`DEV_SLOT`]) with everything open.
+    pub dev: bool,
+    /// Start the dev save over: a new game replaces it.
     pub new_game: bool,
-    /// Every part, material and frame in the drydock; the save is untouched.
-    pub free: bool,
-    /// A play-test career: the bands up to this one open, with the kits of `playtest.ron`
-    /// (`data::Career::playtest`). Only with `new_game` on a slot other than [`DEFAULT_SLOT`].
-    pub bands: Option<String>,
 }
 
 impl Switches {
-    /// From the launch parameters; a slot that is no storage name is refused with a note.
+    /// From the launch parameters; `?newgame=1` without `?dev=1` is ignored, with a note.
     pub fn from_params(p: &Params) -> (Switches, Option<Note>) {
-        let mut note = None;
-        let slot = match p.text("save") {
-            Some(s) if valid_name(s) => s.to_string(),
-            Some(s) => {
-                note = Some(Note::new(
-                    "SAVE SLOT",
-                    format!("`{s}` is no save name (a-z, 0-9, _ and -): playing saves/{DEFAULT_SLOT}."),
-                    Tone::Gold,
-                ));
-                DEFAULT_SLOT.to_string()
-            }
-            None => DEFAULT_SLOT.to_string(),
-        };
-        let switches = Switches {
-            slot,
-            new_game: p.flag("newgame").unwrap_or(false),
-            free: p.text("unlock") == Some("all"),
-            bands: p.text("bands").map(str::to_string),
-        };
-        (switches, note)
+        let dev = p.flag("dev").unwrap_or(false);
+        let asked = p.flag("newgame").unwrap_or(false);
+        let note = (asked && !dev).then(|| Note::new("NO NEW GAME", "?newgame=1 starts only the dev save over: add ?dev=1.", Tone::Gold));
+        (Switches { dev, new_game: dev && asked }, note)
+    }
+
+    /// The save's name in `saves/`.
+    pub fn slot(&self) -> &'static str {
+        if self.dev { DEV_SLOT } else { DEFAULT_SLOT }
     }
 }
 
@@ -115,8 +104,9 @@ pub struct PlayerCareer {
     slot: String,
     /// Why the stored save is kept as it is (it didn't read): this game is never written.
     kept: Option<String>,
-    free: bool,
-    /// This run began a new game (no save, or `?newgame=1`; not the stand-in for a kept save): the drydock docks
+    /// The dev mode (`?dev=1`): everything open, its own save.
+    dev: bool,
+    /// This run began a new game (no save, or `?dev=1&newgame=1`; not the stand-in for a kept save): the drydock docks
     /// the start's ship.
     new_game: bool,
     /// For home's note block.
@@ -126,7 +116,8 @@ pub struct PlayerCareer {
 /// Reads the save `saves/<slot>` (or starts a new game) at start. `seed` is a new game's seed, `now` the time
 /// it is written at.
 pub fn load(storage: &mut Storage, content: &Content, switches: Switches, seed: u64, now: u64) -> PlayerCareer {
-    let Switches { slot, new_game: start_over, free, bands } = switches;
+    let Switches { dev, new_game: start_over } = switches;
+    let slot = switches.slot().to_string();
     let key = format!("{}/{slot}", CareerDoc::NAMESPACE);
     let mut notes = Vec::new();
     if let Some(why) = &storage.fallback {
@@ -151,7 +142,7 @@ pub fn load(storage: &mut Storage, content: &Content, switches: Switches, seed: 
             warn!("career: the save is kept as it is: {why}");
             notes.push(Note::new(
                 "THE SAVE IS KEPT AS IT IS",
-                format!("{}. This game is a new one and is not saved; ?newgame=1 starts over in its place.", shortened(&why, 90)),
+                format!("{}. This game is a new one and is not saved.", shortened(&why, 90)),
                 Tone::Coral,
             ));
             kept = Some(why);
@@ -174,38 +165,16 @@ pub fn load(storage: &mut Storage, content: &Content, switches: Switches, seed: 
         None => (new_career(content, seed, &mut notes, &mut kept, replaced), kept.is_none()),
     };
     let charted = chart(content, &mut career, &mut notes) && !new_game && kept.is_none();
-    if let Some(band) = &bands {
-        notes.push(playtest(content, &mut career, band, start_over && slot != DEFAULT_SLOT));
+    if dev {
+        career.open_everything(content);
+        let body = format!("Everything is open and the whole galaxy charted. This game is {key}; the career, {}/{DEFAULT_SLOT}, is untouched.", CareerDoc::NAMESPACE);
+        notes.push(Note::new("DEV MODE  ·  ?DEV=1", body, Tone::Gold));
     }
-    if slot != DEFAULT_SLOT {
-        let body = format!("This game is {key}; the usual one, {}/{DEFAULT_SLOT}, is untouched.", CareerDoc::NAMESPACE);
-        notes.push(Note::new(format!("SAVE SLOT  ·  ?SAVE={}", slot.to_uppercase()), body, Tone::Gold));
-    }
-    if free {
-        notes.push(Note::new("ALL UNLOCKED  ·  ?UNLOCK=ALL", "Every part, material and frame is in the drydock; the save is untouched.", Tone::Gold));
-    }
-    let mut out = PlayerCareer { career, slot, kept, free, new_game, notes };
-    if (new_game || charted) && let Err(e) = out.write(storage, now) {
+    let mut out = PlayerCareer { career, slot, kept, dev, new_game, notes };
+    if (new_game || charted || dev) && let Err(e) = out.write(storage, now) {
         out.notes.push(Note::new("NOT SAVED", e, Tone::Coral));
     }
     out
-}
-
-/// `?bands=<band>`: a play-test career, only when `allowed` (a new game on another slot than the usual one, so it
-/// never touches the real save). The note says what it did or why not.
-fn playtest(content: &Content, career: &mut Career, band: &str, allowed: bool) -> Note {
-    if !allowed {
-        let body = format!("?bands= needs ?newgame=1 and ?save=<slot> other than {DEFAULT_SLOT}: it only makes a test career.");
-        return Note::new("NO PLAY-TEST BANDS", body, Tone::Gold);
-    }
-    let head = format!("PLAY-TEST  ·  ?BANDS={}", band.to_uppercase());
-    match career.playtest(content, band) {
-        Ok(()) => {
-            let name = content.bands.get(band).map_or(band, |b| b.name.as_str());
-            Note::new(head, format!("Open up to {name}, with the research and materials of playtest.ron."), Tone::Gold)
-        }
-        Err(e) => Note::new(head, format!("Not applied: {e}."), Tone::Coral),
-    }
 }
 
 /// Gives a career without a galaxy (a new game) the content's first galaxy, generated from its game seed (ADR-0035:
@@ -269,12 +238,16 @@ impl PlayerCareer {
         content.starts.get(self.career.start()).map_or("", |s| s.ship.as_str())
     }
 
+    /// The dev mode (`?dev=1`).
+    pub fn dev(&self) -> bool {
+        self.dev
+    }
+
     /// What the career grants now.
     pub fn granted(&self, content: &Content) -> Granted {
-        let (unlocks, fresh) = if self.free { (Unlocks::all(content), BTreeSet::new()) } else { (self.career.unlocks(content), self.career.fresh_parts(content)) };
+        let (unlocks, fresh) = if self.dev { (Unlocks::all(content), BTreeSet::new()) } else { (self.career.unlocks(content), self.career.fresh_parts(content)) };
         let stock = self.career.stock().clone();
-        let upgrades = if self.free { data::Upgrades::NONE } else { self.career.upgrades(content) };
-        Granted { unlocks, fresh, stock, mind_capacity: self.career.mind_capacity(content), upgrades, free: self.free }
+        Granted { unlocks, fresh, stock, mind_capacity: self.career.mind_capacity(content), upgrades: self.career.upgrades(content), dev: self.dev }
     }
 
     /// Changes the career and writes the save; `Err` says why it was not written (the change stays for this
@@ -295,28 +268,28 @@ impl PlayerCareer {
 /// What the career grants the screens now (a resource, derived from [`PlayerCareer`]).
 #[derive(Resource, Clone, Debug, Default, PartialEq)]
 pub struct Granted {
-    /// The parts, materials and frames the drydock offers (everything in free mode).
+    /// The parts, materials and frames the drydock offers (everything in the dev mode).
     pub unlocks: Unlocks,
-    /// Parts research unlocked that the drydock hasn't shown yet (NEW tags; none in free mode).
+    /// Parts research unlocked that the drydock hasn't shown yet (NEW tags; none in the dev mode).
     pub fresh: BTreeSet<String>,
-    /// The workshop's stock (GDR-0108): parts by id the fleet is fitted from. Free mode ignores it.
+    /// The workshop's stock (GDR-0108): parts by id the fleet is fitted from. The dev mode ignores it.
     pub stock: BTreeMap<String, u32>,
     /// Logic cores the ship-mind runs at once.
     pub mind_capacity: u32,
     /// The researched part-stat steps (GDR-0024's refinement) the player's designs are built with: in the drydock's
-    /// numbers, the voyages, the sandbox and the lab's runs (none in free mode: the content's numbers).
+    /// numbers, the voyages, the sandbox and the lab's runs.
     pub upgrades: data::Upgrades,
-    /// `?unlock=all`.
-    pub free: bool,
+    /// The dev mode (`?dev=1`).
+    pub dev: bool,
 }
 
 impl Granted {
-    /// The stock a launch needs: `None` (unlimited) in free mode.
+    /// The stock a launch needs: `None` (unlimited) in the dev mode.
     pub fn launch_stock(&self) -> Option<&BTreeMap<String, u32>> {
-        (!self.free).then_some(&self.stock)
+        (!self.dev).then_some(&self.stock)
     }
 
-    /// How many of a part are in stock (`None`: unlimited, free mode).
+    /// How many of a part are in stock (`None`: unlimited, the dev mode).
     pub fn in_stock(&self, part: &str) -> Option<u32> {
         self.launch_stock().map(|s| s.get(part).copied().unwrap_or(0))
     }
@@ -464,7 +437,7 @@ fn grant(career: Res<PlayerCareer>, content: Res<GameContent>, mut granted: ResM
 /// Fresh parts the drydock showed are fresh no more.
 fn seen(mut parts: MessageReader<SeenPart>, mut career: ResMut<PlayerCareer>, mut storage: ResMut<Storage>, content: Res<GameContent>) {
     for SeenPart(part) in parts.read() {
-        if career.free || !career.career.fresh_parts(&content.0).contains(part) {
+        if career.dev || !career.career.fresh_parts(&content.0).contains(part) {
             continue;
         }
         let (_, written) = career.update(&mut storage, |c| c.mark_seen(&content.0, part));
@@ -495,17 +468,15 @@ mod tests {
         storage.read::<CareerDoc>(slot).ok().flatten().map(|d| d.doc.0.to_ron())
     }
 
+    /// `?dev=1` picks the dev save; `?newgame=1` counts only with it (a note says so without).
     #[test]
-    fn the_url_picks_the_slot_and_the_switches() {
-        assert_eq!(switches(""), Switches { slot: "career".into(), new_game: false, free: false, bands: None });
-        assert_eq!(
-            switches("?save=test_2&newgame=1&unlock=all&bands=middle"),
-            Switches { slot: "test_2".into(), new_game: true, free: true, bands: Some("middle".into()) }
-        );
-        assert!(!switches("?newgame=0&unlock=some").new_game);
-        let (s, note) = Switches::from_params(&Params::parse("?save=Bad%20Name"));
-        assert_eq!(s.slot, DEFAULT_SLOT);
-        assert!(note.unwrap().body.contains("Bad%20Name"));
+    fn the_url_picks_the_dev_mode_and_a_new_dev_game() {
+        assert_eq!((switches(""), switches("").slot()), (Switches { dev: false, new_game: false }, DEFAULT_SLOT));
+        assert_eq!((switches("?dev=1&newgame=1"), switches("?dev").slot()), (Switches { dev: true, new_game: true }, DEV_SLOT));
+        assert!(!switches("?dev=1&newgame=0").new_game && !switches("?dev=0").dev);
+        let (s, note) = Switches::from_params(&Params::parse("?newgame=1"));
+        assert_eq!(s, Switches::default());
+        assert!(note.unwrap().body.contains("?dev=1"));
     }
 
     /// No save: a new game from the first start, written at once; the next start loads it.
@@ -527,11 +498,11 @@ mod tests {
         let g = again.granted(&content);
         assert!(g.unlocks.has_part("pulse_laser") && !g.unlocks.has_part("beam_laser"));
         assert!(!g.frame_open(&content, (40, 40)) && g.frame_open(&content, (24, 24)) && g.frame_open(&content, (7, 7)));
-        assert_eq!((g.mind_capacity, g.fresh.len(), g.free), (2, 0, false));
+        assert_eq!((g.mind_capacity, g.fresh.len(), g.dev), (2, 0, false));
     }
 
     /// A save that doesn't read (broken, or from a newer build) is kept; the game runs a new career and never
-    /// writes it. `?newgame=1` replaces it.
+    /// writes it. A new game replaces it.
     #[test]
     fn a_broken_or_newer_save_is_kept_and_not_overwritten() {
         let content = data::base_content();
@@ -550,7 +521,7 @@ mod tests {
             assert!(written.is_err());
             assert!(storage.read::<CareerDoc>("career").is_err(), "still the broken text");
             // Starting over replaces it.
-            let fresh = load(&mut storage, &content, switches("?newgame=1"), 2, 20);
+            let fresh = load(&mut storage, &content, Switches { dev: false, new_game: true }, 2, 20);
             assert!(fresh.notes.iter().all(|n| n.tone != Tone::Coral), "{:?}", fresh.notes);
             assert_eq!(stored_text(&storage, "career"), Some(fresh.career().to_ron()));
         }
@@ -581,52 +552,32 @@ mod tests {
         assert_eq!(again.career(), c.career());
     }
 
-    /// Another slot, a new game over an old one, free mode leaving the save as it is.
+    /// The dev mode plays its own save with everything open and leaves the career's as it is; `?newgame=1` starts
+    /// the dev save over, never the career's.
     #[test]
-    fn slots_new_games_and_free_mode() {
+    fn the_dev_mode_plays_its_own_save_with_everything_open() {
         let content = data::base_content();
         let mut storage = Storage::new(MemoryBackend::default());
         let mut c = load(&mut storage, &content, switches(""), 1, 10);
         let ((), w) = c.update(&mut storage, |k| k.set_escorts(vec!["drone".into()]));
         w.unwrap();
-        let career_text = stored_text(&storage, "career").unwrap();
-        // Another slot is another game.
-        let t = load(&mut storage, &content, switches("?save=trial"), 2, 20);
-        assert!(t.new_game() && t.career().escorts().is_empty());
-        assert_eq!(storage.list("saves").unwrap(), ["career", "trial"]);
-        // Free mode: everything granted, nothing written.
-        let f = load(&mut storage, &content, switches("?unlock=all"), 3, 30);
-        assert!(!f.new_game());
-        let g = f.granted(&content);
-        assert!(g.free && g.unlocks.has_part("beam_laser") && g.unlocks.has_frame("capital") && g.fresh.is_empty());
-        assert!(f.notes.iter().any(|n| n.head.contains("ALL UNLOCKED")));
-        assert_eq!(stored_text(&storage, "career").unwrap(), career_text);
-        // A new game replaces the old one.
-        let n = load(&mut storage, &content, switches("?newgame=1"), 4, 40);
-        assert!(n.new_game() && n.career().escorts().is_empty());
-        assert_eq!(stored_text(&storage, "career").unwrap(), n.career().to_ron());
-    }
-
-    /// `?bands=`: a test career with the bands up to it open and the kits of `playtest.ron`, written to its slot;
-    /// never without `?newgame=1` or on the usual slot.
-    #[test]
-    fn a_playtest_career_opens_the_bands_only_on_a_new_test_slot() {
-        let content = data::base_content();
-        let mut storage = Storage::new(MemoryBackend::default());
-        let c = load(&mut storage, &content, switches("?newgame=1&save=deep&bands=middle"), 1, 10);
-        let k = c.career();
-        assert!(k.band_open(&content, "outer") && k.band_open(&content, "middle") && !k.band_open(&content, "inner"));
-        assert!(k.is_researched("jump_calibration_2") && k.is_researched("living_weapons") && !k.is_researched("drone_bay"));
-        assert!(k.materials().get("grown_tissue").is_some_and(|&n| n > 0));
-        assert!(c.notes.iter().any(|n| n.head.contains("?BANDS=MIDDLE") && n.tone == Tone::Gold), "{:?}", c.notes);
-        assert_eq!(stored_text(&storage, "deep"), Some(k.to_ron()));
-        for q in ["?newgame=1&bands=middle", "?save=other&bands=middle"] {
-            let c = load(&mut storage, &content, switches(q), 2, 20);
-            assert!(!c.career().band_open(&content, "outer") && c.career().researched().is_empty(), "{q}");
-            assert!(c.notes.iter().any(|n| n.head == "NO PLAY-TEST BANDS"), "{q}: {:?}", c.notes);
-        }
-        let rim = load(&mut storage, &content, switches("?newgame=1&save=deep&bands=rim"), 3, 30);
-        assert!(rim.notes.iter().any(|n| n.tone == Tone::Coral && n.body.contains("open from the start")), "{:?}", rim.notes);
+        let career_text = stored_text(&storage, DEFAULT_SLOT).unwrap();
+        let mut d = load(&mut storage, &content, switches("?dev=1"), 2, 20);
+        assert!(d.new_game() && d.dev() && d.career().escorts().is_empty());
+        assert!(content.research.iter().all(|n| d.career().is_researched(&n.id)));
+        assert!(d.notes.iter().any(|n| n.head.starts_with("DEV MODE")), "{:?}", d.notes);
+        let g = d.granted(&content);
+        assert!(g.dev && g.unlocks.has_part("beam_laser") && g.unlocks.has_frame("capital") && g.fresh.is_empty());
+        assert_eq!((g.launch_stock(), g.in_stock("thruster")), (None, None));
+        assert_eq!(storage.list("saves").unwrap(), [DEFAULT_SLOT, DEV_SLOT]);
+        assert_eq!(stored_text(&storage, DEFAULT_SLOT).unwrap(), career_text);
+        // The dev save keeps what was done in it; a new dev game starts it over.
+        let ((), w) = d.update(&mut storage, |k| k.set_escorts(vec!["wing".into()]));
+        w.unwrap();
+        assert_eq!(load(&mut storage, &content, switches("?dev=1"), 3, 30).career().escorts(), ["wing"]);
+        let n = load(&mut storage, &content, switches("?dev=1&newgame=1"), 4, 40);
+        assert!(n.new_game() && n.career().escorts().is_empty() && n.career().seed() == 4);
+        assert_eq!(stored_text(&storage, DEFAULT_SLOT).unwrap(), career_text);
     }
 
     /// Content changes reach a loaded save as a note (no panic); a gone escort design empties its slot.
@@ -673,9 +624,9 @@ mod tests {
         no_cargo.parts.retain(|p| !p.part.starts_with("cargo"));
         let (line, tone) = voyage_line(&content, &g, &no_cargo, &[]);
         assert_eq!((line.as_str(), tone), ("VOYAGE-READY  ·  CORES 2 / 2  ·  NO CARGO  ·  YOU CAN'T BRING SALVAGE HOME", Tone::Gold));
-        // Free mode: only the mind and the frame limit.
-        let free = Granted { unlocks: Unlocks::all(&content), free: true, ..g.clone() };
-        assert_eq!(voyage_line(&content, &free, runner, &[]).1, Tone::Teal);
+        // The dev mode: only the mind and the frame limit.
+        let dev = Granted { unlocks: Unlocks::all(&content), dev: true, ..g.clone() };
+        assert_eq!(voyage_line(&content, &dev, runner, &[]).1, Tone::Teal);
         assert_eq!(unlocked_by(&content, &Unlock::Part("beam_laser".into())).map(|n| n.id.as_str()), Some("beam_laser"));
         assert!(unlocked_by(&content, &Unlock::Material("automaton_plate".into())).is_none());
     }

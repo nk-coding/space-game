@@ -6,6 +6,11 @@
 //! * **Picks** ([`Pick`]): a voyage, a known cluster, a signal (its area: a blind jump to its middle) or a spot in
 //!   unknown space (a blind jump: `Career::blind_target` picks the nearest cluster). [`Pick::target`] is the cluster
 //!   a launch goes to, [`jump_blocker`] why it can't.
+//! * **The dev mode** (`?dev=1`, ADR-0046; its career has the whole galaxy charted): [`Known::with_sites`] adds what
+//!   each cluster holds ([`Sites`]: its encounters with their counts, from the cluster's own seed, and its notable
+//!   ones, [`Notable`]); the map marks the notable ones and the cluster's panel lists every encounter.
+
+use std::collections::BTreeMap;
 
 use data::career::{Lead, SignalState, TrailSignal};
 use data::skeleton::{Area, Point, UNITS_PER_S};
@@ -75,6 +80,58 @@ pub struct Known {
     pub reach: f32,
     /// The galaxy's bands from the rim inwards (`layout::Geometry::rings`' order).
     pub bands: Vec<BandMark>,
+    /// The dev mode's: what each known cluster holds ([`Known::with_sites`]); empty otherwise.
+    pub sites: BTreeMap<u32, Sites>,
+}
+
+/// A notable site the dev mode's map marks on its cluster (ADR-0046): a gate's guardian (the target of a band's gate
+/// trail), a boss (an encounter tagged `boss`, `layout::GUARDIAN_TAG`) or a station (an encounter with an anchored
+/// ship, GDR-0110).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum Notable {
+    Guardian,
+    Boss,
+    Station,
+}
+
+impl Notable {
+    /// What makes the encounter `id` notable: none, one or two (the swarm's hive is a boss and a station).
+    pub fn of(content: &Content, id: &str) -> Vec<Notable> {
+        let Some(e) = content.encounters.get(id) else { return Vec::new() };
+        let gates = content.bands.iter().filter_map(|b| b.gates.as_ref()).filter_map(|g| content.trails.get(&g.trail));
+        let guardian = gates.into_iter().any(|t| t.target == id);
+        let boss = !guardian && e.tags.iter().any(|t| t == super::layout::GUARDIAN_TAG);
+        let station = e.ships.iter().any(|s| content.ships.get(&s.ship).is_some_and(|b| b.anchored));
+        [(guardian, Notable::Guardian), (boss, Notable::Boss), (station, Notable::Station)].into_iter().filter(|x| x.0).map(|x| x.1).collect()
+    }
+}
+
+/// What a cluster holds (the dev mode, ADR-0046): its interior's encounters with their counts, in the interior's
+/// order (`world::voyage::cluster_encounters`), and its notable sites, in [`Notable`]'s order.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Sites {
+    pub encounters: Vec<(String, u32)>,
+    pub notable: Vec<Notable>,
+}
+
+impl Sites {
+    pub fn of(content: &Content, career: &Career, k: u32) -> Sites {
+        let Some(g) = career.exploration() else { return Sites::default() };
+        let encounters = world::voyage::cluster_encounters(content, g.skeleton(), k);
+        let mut notable: Vec<Notable> = encounters.iter().flat_map(|(id, _)| Notable::of(content, id)).collect();
+        notable.sort_unstable();
+        notable.dedup();
+        Sites { encounters, notable }
+    }
+
+    /// The encounters as the panel's rows: a guardian or a boss with the guardian's dot and tag.
+    pub fn rows(&self, content: &Content) -> Vec<SiteRow> {
+        let row = |(id, n): &(String, u32)| {
+            let goal = Notable::of(content, id).iter().any(|x| matches!(x, Notable::Guardian | Notable::Boss));
+            super::layout::site_row(content, &data::VoyageSite { encounter: id.clone(), count: *n, goal })
+        };
+        self.encounters.iter().map(row).collect()
+    }
 }
 
 /// A band's state: open (jumps reach into it: the first band, or a gate of the band outside it opened,
@@ -140,7 +197,13 @@ impl Known {
                 BandMark { open: career.band_open(content, &keys[b]), guardians }
             })
             .collect();
-        Known { clusters, signals, starts, reach: career.jump_range(content), bands }
+        Known { clusters, signals, starts, reach: career.jump_range(content), bands, sites: BTreeMap::new() }
+    }
+
+    /// The dev mode's map (ADR-0046): what each known cluster holds.
+    pub fn with_sites(mut self, content: &Content, career: &Career) -> Known {
+        self.sites = self.clusters.iter().map(|m| (m.cluster, Sites::of(content, career, m.cluster))).collect();
+        self
     }
 
     /// The mark of cluster `k`, if the map shows it.
@@ -316,6 +379,15 @@ pub fn place_words(content: &Content, career: &Career, known: &Known, pick: &Pic
                 chips.push(("SIGNAL".into(), Tone::Gold));
             }
             let flown = career.exploration()?.charted().get(k).map_or(0, |r| r.launched);
+            // The dev mode's: every encounter it holds, then the signals.
+            let sites = known.sites.get(k);
+            let mut rows_head = if signals.is_empty() { String::new() } else { format!("SIGNALS  ·  {}", signals.len()) };
+            if let Some(s) = sites {
+                let n: u32 = s.encounters.iter().map(|e| e.1).sum();
+                let head = format!("ENCOUNTERS  ·  {n}");
+                rows_head = if rows_head.is_empty() { head } else { format!("{head}  ·  {rows_head}") };
+            }
+            let rows = sites.map(|s| s.rows(content)).unwrap_or_default().into_iter().chain(signals.iter().copied().map(signal_row)).collect();
             let status = match (signals.is_empty(), flown) {
                 (false, _) => "A SIGNAL LEADS HERE  ·  SCAN TO FIND ITS SITE".to_string(),
                 (true, 0) => "CHARTED  ·  THE GATE IS OPEN".to_string(),
@@ -326,8 +398,8 @@ pub fn place_words(content: &Content, career: &Career, known: &Known, pick: &Pic
                 title: c.name.clone(),
                 chips,
                 summary: kind.map_or_else(String::new, |t| content.render_plain(&t.summary)),
-                rows_head: if signals.is_empty() { String::new() } else { format!("SIGNALS  ·  {}", signals.len()) },
-                rows: signals.into_iter().map(signal_row).collect(),
+                rows_head,
+                rows,
                 warp: warp_words(content, career, target, false),
                 status,
             })
@@ -467,5 +539,50 @@ mod tests {
         let gate = sk.band("rim").find(|&g| sk.clusters[g as usize].gate).expect("the rim has gates");
         assert!(c.open_gate(gate));
         assert_eq!(open(&Known::of(&content, &c)), [true, true, false, false, false]);
+    }
+
+    /// What makes an encounter notable on the dev mode's map: the target of a band's gate trail is a gate's guardian,
+    /// another `boss` a boss, an encounter with an anchored ship a station.
+    #[test]
+    fn notable_sites_come_from_the_content() {
+        let content = data::base_content();
+        let of = |id: &str| Notable::of(&content, id);
+        assert_eq!(of("gate_sentinel"), [Notable::Guardian]);
+        assert_eq!(of("the_warden"), [Notable::Boss]);
+        assert_eq!(of("hive_site"), [Notable::Boss, Notable::Station]);
+        assert_eq!(of("precursor_outpost"), [Notable::Station]);
+        assert!(of("raider_pack").is_empty() && of("nowhere").is_empty());
+    }
+
+    /// The dev mode (ADR-0046): every cluster but home and the slice's is known and charted, every band open; each
+    /// lists the encounters its interior holds with their counts, gates their guardians, and its panel lists them.
+    #[test]
+    fn the_dev_map_knows_every_cluster_and_what_it_holds() {
+        let content = data::base_content();
+        let mut storage = world::storage::Storage::new(world::storage::MemoryBackend::default());
+        let switches = world::career::Switches::from_params(&kit::params::Params::parse("?dev=1")).0;
+        let pc = world::career::load(&mut storage, &content, switches, 4207, 1);
+        let c = pc.career();
+        let g = c.exploration().unwrap();
+        let sk = g.skeleton();
+        let k = Known::of(&content, c);
+        assert!(k.sites.is_empty(), "only with_sites adds them");
+        let k = k.with_sites(&content, c);
+        let pinned: std::collections::BTreeSet<u32> = g.pins().values().copied().collect();
+        assert_eq!(k.clusters.len(), sk.clusters.len() - 1 - pinned.len());
+        assert!(k.clusters.iter().all(|m| m.charted) && k.bands.iter().all(|b| b.open));
+        assert_eq!(k.sites.len(), k.clusters.len());
+        let gates: Vec<u32> = k.clusters.iter().filter(|m| m.gate).map(|m| m.cluster).collect();
+        assert!(!gates.is_empty());
+        assert!(gates.iter().all(|x| k.sites[x].notable.contains(&Notable::Guardian)), "every gate keeps its guardian");
+        assert!(k.sites.values().any(|s| s.notable.contains(&Notable::Station)));
+        for (&x, s) in &k.sites {
+            assert_eq!(s.encounters, world::voyage::cluster_encounters(&content, sk, x));
+            let w = place_words(&content, c, &k, &Pick::Cluster(x)).unwrap();
+            let n: u32 = s.encounters.iter().map(|e| e.1).sum();
+            assert!(w.rows_head.starts_with(&format!("ENCOUNTERS  ·  {n}")), "{}", w.rows_head);
+            assert!(w.rows.len() >= s.encounters.len());
+            assert_eq!(jump_blocker(&content, c, &k, &Pick::Cluster(x), None), None, "every cluster in reach");
+        }
     }
 }

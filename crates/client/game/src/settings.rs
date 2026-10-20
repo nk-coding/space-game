@@ -27,7 +27,7 @@ use bevy::prelude::*;
 use bevy::ui::UiScale;
 use bevy::window::PrimaryWindow;
 use data::input::{Action, Button, Chord, MAX_INPUTS, Section};
-use kit::params::{Params, RenderToggles};
+use kit::params::RenderToggles;
 use kit::style::{Style, ui_color};
 use kit::ui_icons::Glyph;
 use kit::ui_kit::{
@@ -169,7 +169,6 @@ fn input(
     mut clicks: MessageReader<UiClick>,
     buttons: Query<&SettingsButton>,
     keys: Res<ButtonInput<KeyCode>>,
-    params: Res<Params>,
     mut layer: ResMut<SettingsLayer>,
     mut ui: ResMut<SettingsUi>,
     mut controls: ResMut<Controls>,
@@ -235,7 +234,7 @@ fn input(
         }
     }
     if display_changed {
-        display.apply(&params, &mut toggles, &mut size);
+        display.apply(&mut toggles, &mut size);
         ui.say = Some(match display.save(&mut storage) {
             Ok(()) => ("SAVED ON THIS DEVICE".into(), Tone::Label),
             Err(e) => (format!("NOT SAVED: {e}").to_uppercase(), Tone::Coral),
@@ -433,7 +432,7 @@ fn fit(
     }
 }
 
-fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>, content: Res<GameContent>, touch: Res<TouchScreen>) {
+fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>, content: Res<GameContent>, touch: Res<TouchScreen>, params: Option<Res<kit::params::Params>>) {
     let ui = style.ui;
     let c = |tone: Tone, a: f32| ui_color(tone.color(&ui), a);
     let fonts = &*fonts;
@@ -479,7 +478,9 @@ fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>, conten
                         .spawn((Pane(Tab::Controls), ScreenPart::new(Edge::Fade, 1), Scrollbar::vertical(), ScrollPosition::default(), by_class(list(wl), list(cl))))
                         .with_children(|list| {
                             for section in Section::ALL {
-                                let entries: Vec<&data::Control> = content.0.controls.iter().filter(|e| e.section == section).collect();
+                                // The debug keys only in the dev mode (ADR-0046).
+                                let here = |e: &&data::Control| Action::from_id(&e.id).is_some_and(|a| world::settings::acts_here(a, params.as_deref()));
+                                let entries: Vec<&data::Control> = content.0.controls.iter().filter(|e| e.section == section).filter(here).collect();
                                 if entries.is_empty() {
                                     continue;
                                 }

@@ -361,38 +361,38 @@ fn best_parts(content: &Content, e: &data::Encounter, n: usize) -> Vec<String> {
 
 /// The panel's site list.
 pub fn site_rows(content: &Content, v: &Voyage) -> Vec<SiteRow> {
-    v.sites
-        .iter()
-        .map(|s| {
-            let dot = dot_of(content, s);
-            let e = content.encounters.get(&s.encounter);
-            let base = e.map_or(s.encounter.as_str(), |e| e.name.as_str());
-            let name = if s.count > 1 { format!("{base} ×{}", s.count) } else { base.to_string() };
-            let (min, max) = e.map_or((0, 0), |e| e.ships.iter().fold((0, 0), |(a, b), s| (a + s.count.0, b + s.count.1)));
-            let ships = ships_words(min, max);
-            let tag = match dot {
-                Dot::Guardian => ("GUARDIAN".to_string(), Tone::Coral),
-                Dot::Goal => (format!("GOAL  ·  {ships}"), Tone::Gold),
-                Dot::Wrecks => ("WRECKS".to_string(), Tone::Gold),
-                Dot::Enemies => (ships, Tone::Coral),
-            };
-            let gives = match e {
-                Some(e) if dot == Dot::Wrecks => best_parts(content, e, 3).join("  ·  "),
-                Some(e) => {
-                    let mut names: Vec<String> = Vec::new();
-                    for s in &e.ships {
-                        let n = content.ships.get(&s.ship).map_or(s.ship.as_str(), |b| b.name.as_str()).to_uppercase();
-                        if !names.contains(&n) {
-                            names.push(n);
-                        }
-                    }
-                    names.join("  ·  ")
+    v.sites.iter().map(|s| site_row(content, s)).collect()
+}
+
+/// One site entry as a panel row: its dot, its name with the count, its tag, and what it gives or who waits there.
+pub fn site_row(content: &Content, s: &data::VoyageSite) -> SiteRow {
+    let dot = dot_of(content, s);
+    let e = content.encounters.get(&s.encounter);
+    let base = e.map_or(s.encounter.as_str(), |e| e.name.as_str());
+    let name = if s.count > 1 { format!("{base} ×{}", s.count) } else { base.to_string() };
+    let (min, max) = e.map_or((0, 0), |e| e.ships.iter().fold((0, 0), |(a, b), s| (a + s.count.0, b + s.count.1)));
+    let ships = ships_words(min, max);
+    let tag = match dot {
+        Dot::Guardian => ("GUARDIAN".to_string(), Tone::Coral),
+        Dot::Goal => (format!("GOAL  ·  {ships}"), Tone::Gold),
+        Dot::Wrecks => ("WRECKS".to_string(), Tone::Gold),
+        Dot::Enemies => (ships, Tone::Coral),
+    };
+    let gives = match e {
+        Some(e) if dot == Dot::Wrecks => best_parts(content, e, 3).join("  ·  "),
+        Some(e) => {
+            let mut names: Vec<String> = Vec::new();
+            for s in &e.ships {
+                let n = content.ships.get(&s.ship).map_or(s.ship.as_str(), |b| b.name.as_str()).to_uppercase();
+                if !names.contains(&n) {
+                    names.push(n);
                 }
-                None => String::new(),
-            };
-            SiteRow { dot, name, tag, gives }
-        })
-        .collect()
+            }
+            names.join("  ·  ")
+        }
+        None => String::new(),
+    };
+    SiteRow { dot, name, tag, gives }
 }
 
 /// One line of the voyage-ready checklist and its tone (teal: fine, gold: a warning, coral: it blocks).

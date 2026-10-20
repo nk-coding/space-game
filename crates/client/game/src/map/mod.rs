@@ -96,7 +96,7 @@ const Z_MAP: f32 = 550.0;
 /// The stage's scale against the window: whatever fits (a tall phone-like window shrinks it), at most 2.
 const SCALE: (f32, f32) = (0.3, 2.0);
 /// Rows the panel has: sites, chips, ships (the flagship and the escorts), dots under a voyage's name.
-const MAX_SITES: usize = 6;
+const MAX_SITES: usize = 12;
 const MAX_CHIPS: usize = 5;
 const SHIPS: usize = 1 + MAX_ESCORTS;
 const MAX_DOTS: usize = 12;
@@ -310,10 +310,10 @@ pub struct MapPlugin;
 impl Plugin for MapPlugin {
     fn build(&self, app: &mut App) {
         let world = app.world();
-        let (content, career) = (&world.resource::<GameContent>().0, world.resource::<PlayerCareer>().career());
-        let geometry = Geometry::new(content, career.exploration());
+        let (content, player) = (&world.resource::<GameContent>().0, world.resource::<PlayerCareer>());
+        let geometry = Geometry::new(content, player.career().exploration());
         let view = MapView::new(geometry.band.centre, geometry.band.outer);
-        let known = Known::of(content, career);
+        let known = known_of(content, player);
         let map = VoyageMap { seen: areas_now(&known), ..default() };
         app.insert_resource(MapGeometry(geometry))
             .insert_resource(MapKnown(known))
@@ -355,9 +355,15 @@ fn areas_now(known: &Known) -> BTreeMap<TrailSignal, Area> {
     known.signals.iter().map(|m| (m.signal, if m.is_area() { m.area } else { Area { centre: m.area.centre, radius: 0 } })).collect()
 }
 
+/// What the map knows of the career: in the dev mode with each cluster's sites (ADR-0046).
+fn known_of(content: &data::Content, career: &PlayerCareer) -> Known {
+    let known = Known::of(content, career.career());
+    if career.dev() { known.with_sites(content, career.career()) } else { known }
+}
+
 /// The career changed: what the map knows follows.
 fn know(career: Res<PlayerCareer>, content: Res<GameContent>, mut known: ResMut<MapKnown>) {
-    let now = Known::of(&content.0, career.career());
+    let now = known_of(&content.0, &career);
     if known.0 != now {
         known.0 = now;
     }
@@ -1262,16 +1268,13 @@ fn sync_panel(
         let who = if k == 0 { "FLAGSHIP".to_string() } else { format!("ESCORT {k}") };
         format!("{who}  ·  {}  ·  CARGO {}", plural(t.logic_cores, "CORE"), content.ship_hold(b))
     };
-    // What the line over SET COURSE says: the warp, a refusal, the blocker, a practice run (`?unlock=all` grants what
-    // the career doesn't), or how the pick stands.
+    // What the line over SET COURSE says: the warp, a refusal, the blocker, or how the pick stands.
     let status = if map.warp.is_some() {
         (format!("WARP  ·  {left} S  ·  ESC ENDS IT"), Tone::Teal)
     } else if let Some(why) = &map.say {
         (why.clone(), Tone::Coral)
     } else if let Some(b) = &blocker {
         (b.clone(), Tone::Coral)
-    } else if let Some(own) = f.granted.free.then(|| fleet_blocker(content, &career.unlocks(content), career.mind_capacity(content), Some(career.stock()), flagship, escorts)).flatten() {
-        (format!("PRACTICE RUN, NOT SAVED  ·  {own}"), Tone::Gold)
     } else {
         (panel.status.clone(), Tone::Teal)
     };

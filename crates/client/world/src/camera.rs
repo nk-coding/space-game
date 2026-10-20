@@ -33,7 +33,6 @@ use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
 use bevy_egui::input::egui_wants_any_pointer_input;
 use sim::Target;
-use kit::params::Params;
 use data::input::Action;
 use kit::view::{ViewScale, ViewSet};
 
@@ -356,14 +355,8 @@ pub fn camera_bundle(zoom: f32) -> impl Bundle {
     )
 }
 
-/// The main camera, at the zoom of `?zoom=` if given (added by `main` at `Startup`).
-pub fn spawn_camera(mut commands: Commands, params: Res<Params>, mut rig: ResMut<CameraRig>, mut view: ResMut<ViewScale>) {
-    if let Some(z) = params.f32("zoom") {
-        rig.zoom = z.clamp(MIN_PX_PER_M, MAX_PX_PER_M);
-        rig.zoom_target = rig.zoom;
-        rig.user_zoom = true;
-        *view = rig.view_scale();
-    }
+/// The main camera (added by `main` at `Startup`).
+pub fn spawn_camera(mut commands: Commands, rig: Res<CameraRig>) {
     commands.spawn((
         camera_bundle(rig.zoom),
         // Blend in sRGB space like the browser and the concept art (linear blending makes every faint glow

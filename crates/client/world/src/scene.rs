@@ -4,7 +4,7 @@
 //!   the Halvex Runner, then the autosaved working design) as the focus; waves of enemies (the content ships tagged
 //!   `enemy`) under their content behavior (`raider_basic`), a new wave a few seconds after the last enemy goes dark
 //!   (C turns the waves off and on), each wave as big as the flown design calls for, the biggest enemies first
-//!   (`sim::voyage::waves`, GDR-0074, GDR-0089, shared with the lab's TEST-RANGE WAVES) ; the player's other vessels (`?fleet=N` more of the design, their leader the player's ship, and pieces that split off with a
+//!   (`sim::voyage::waves`, GDR-0074, GDR-0089, shared with the lab's TEST-RANGE WAVES) ; the player's other vessels (pieces that split off with a
 //!   logic core) fly the behavior the design names (default: its faction's, `skirmisher`; the player's saved
 //!   behaviors are in the flight's library, `drydock::behaviors`); wrecks and salvage drift away and are cleaned up
 //!   far from the player, loose items after 60 s ([`SANDBOX_LOOSE_TICKS`]); when the player has no vessel left, a
@@ -15,15 +15,14 @@
 //!   behavior: **watch** (the design unpiloted on it, the camera follows it, focus switches are dropped; losing it
 //!   ends the test) or **alongside** (the player flies the design, a second copy is a wingman on it). T and a lost
 //!   test return to where the test started (`mode::FlightExit`).
-//! * **showcase** (`?scene=showcase`): the design holds position, three raiders orbit it without firing; with
-//!   `&fire=1` they attack it under their content behavior instead (for looking at shield hits).
+//! * **showcase** (`?scene=showcase`): the design holds position, three raiders orbit it without firing.
 //! * **load test** (`?scene=sandbox&load=1|5|20`): `sim::voyage::scenario::load_test(n, seed)`, no player, the camera frames the fight.
 //! * **fight viewer** (`?scene=fight&fight=<code>`, `replay.rs`, GDR-0092): a fight of the arena replayed from its
 //!   code, the world built by the arena; nobody pilots, the camera frames both sides or follows a clicked ship.
-//! * **voyage** (`voyage.rs` launches it: home's V, `?scene=voyage&voyage=<id>`): the sim gets the career's mind
+//! * **voyage** (`voyage.rs` launches it from the voyage map): the sim gets the career's mind
 //!   capacity and is seeded with the voyage's seed; the plan is rolled from the content the enemies fly with
 //!   (`sim::VoyagePlan::roll`) and the sim directs it (`Sim::start_voyage`); the flagship (the drydock's working
-//!   design) and the FLEET escorts (following the flagship's lock, like `?fleet=` wingmen, on their design's
+//!   design) and the FLEET escorts (following the flagship's lock, on their design's
 //!   behavior) enter at the plan's entry, the flagship the focus. No waves, no re-form, no wreck clean-up; Shift+R,
 //!   T does nothing (RECALL goes home; M asks in a panel whether to abandon the voyage, `voyage.rs`).
 //!
@@ -133,14 +132,12 @@ pub struct Scene {
     pub waves: bool,
     /// Another mode asked for a flight; `OnEnter(AppMode::Flight)` builds it.
     pub launch: Option<Launch>,
-    /// The player's design as compiled for this scene (the player, the wingmen and re-forms fly it).
+    /// The player's design as compiled for this scene (the player and re-forms fly it).
     player_design: Option<Arc<ShipDesign>>,
     /// Its pilot assists in the sim's library (GDR-0088), for the re-forms.
     player_assists: Option<AssistsId>,
     /// The last vessel the player flew (where a new one re-forms; its wreck is removed then).
     last_focus: Option<ShipId>,
-    /// Extra copies of the design flying with the player (`?fleet=N`).
-    wingmen: u32,
     pub wave: u32,
     pub wave_ships: Vec<ShipId>,
     next_wave_tick: Option<u64>,
@@ -172,7 +169,6 @@ impl Scene {
             player_design: None,
             player_assists: None,
             last_focus: None,
-            wingmen: 0,
             wave: 0,
             wave_ships: Vec::new(),
             next_wave_tick: None,
@@ -192,7 +188,6 @@ impl Scene {
     /// A fresh scene of the same kind and seed that keeps the settings that outlive a scene.
     fn restart(&self) -> Self {
         let mut s = Scene::new(self.kind.clone(), self.seed);
-        s.wingmen = self.wingmen;
         s.test_flight = self.test_flight;
         s.waves = self.waves;
         s.test = self.test.clone();
@@ -266,7 +261,6 @@ impl Plugin for ScenePlugin {
             SceneKind::Sandbox
         };
         let mut scene = Scene::new(kind, seed);
-        scene.wingmen = params.f32("fleet").map(|n| n.clamp(0.0, 8.0) as u32).unwrap_or(0);
         if let Some(test) = BehaviorTest::from_params(&params) {
             scene.begin_test(test);
         }
@@ -375,19 +369,12 @@ fn build_world(scene: &mut Scene, focus: &mut PilotFocus, inputs: &mut SceneInpu
             // `Body` places the design's main piece, wherever the blueprint sits in its drydock frame.
             let me = world.sim.spawn_ship(runner.clone(), PLAYER, Body::at(sim::Vec2::ZERO, 0.0));
             if scene.kind == SceneKind::Sandbox {
-                // Every vessel flies the behavior its design names; the focus parks it while piloted. Wingmen
-                // follow the player's lock (`target locked`). Each gets the design's assists, for when it is flown.
+                // Every vessel flies the behavior its design names; the focus parks it while piloted. Each gets the
+                // design's assists, for when it is flown.
                 let behavior = world.sim.behaviors().default_for(&runner);
                 scene.player_assists = add_assists(&mut world, bp);
                 world.sim.command(me, ShipCommand::Behavior(behavior));
                 world.sim.command(me, ShipCommand::Assists(scene.player_assists));
-                let wingmen = if scene.test.is_some() { 0 } else { scene.wingmen };
-                for k in 0..wingmen {
-                    let id = world.sim.spawn_ship(runner.clone(), PLAYER, Body::at(wing_slot(k), 0.0));
-                    world.sim.command(id, ShipCommand::Behavior(behavior));
-                    world.sim.command(id, ShipCommand::Assists(scene.player_assists));
-                    world.sim.command(id, ShipCommand::Leader(Some(me)));
-                }
                 if scene.test_mode() != Some(TestMode::Watch) {
                     world.sim.command(me, ShipCommand::Focus);
                     focus.0 = world.sim.focus(PLAYER);
@@ -401,32 +388,16 @@ fn build_world(scene: &mut Scene, focus: &mut PilotFocus, inputs: &mut SceneInpu
             rig.pos = Vec2::ZERO;
             if scene.kind == SceneKind::Showcase {
                 world.sim.command(me, ShipCommand::Maneuver { maneuver: Maneuver::Hold { at: sim::Vec2::ZERO }, fire: false });
-                // Three raiders: attacking ones start where their behavior fights from (about 45-50 m), so hits
-                // come at once.
-                let attack = params.flag("fire").unwrap_or(false);
-                let (n, dist) = (3, if attack { 46.0 } else { 16.0 });
+                // Three raiders orbiting it.
+                let n = 3;
                 if let Some(raider) = enemy_designs(&mut world).into_iter().next() {
                     for k in 0..n {
                         let a = k as f32 * std::f32::consts::TAU / n as f32 + 0.4;
-                        let pos = Vec2::new(a.cos(), a.sin()) * dist;
-                        // Attackers face the runner (like wave spawns); orbiters keep the old pose.
-                        let facing = if attack { a.cos().atan2(-a.sin()) } else { a };
-                        let id = world.sim.spawn_ship(raider.clone(), ENEMY, Body::at(sv(pos), facing));
-                        let command = if attack {
-                            ShipCommand::Behavior(world.sim.behaviors().default_for(&raider))
-                        } else {
-                            let orbit = Maneuver::Orbit { target: Target::Ship(me), radius: 16.0, ccw: true };
-                            ShipCommand::Maneuver { maneuver: orbit, fire: false }
-                        };
-                        world.sim.command(id, command);
+                        let pos = Vec2::new(a.cos(), a.sin()) * 16.0;
+                        let id = world.sim.spawn_ship(raider.clone(), ENEMY, Body::at(sv(pos), a));
+                        let orbit = Maneuver::Orbit { target: Target::Ship(me), radius: 16.0, ccw: true };
+                        world.sim.command(id, ShipCommand::Maneuver { maneuver: orbit, fire: false });
                     }
-                }
-                // `twin=1`: a second copy holds just under it, close enough that its bubbles reach the design's
-                // hull (for looking at whose bubbles show over whose hull, `shield.rs`).
-                if params.flag("twin").unwrap_or(false) {
-                    let at = sim::Vec2::new(0.0, -(crate::player::library::parts_size(base, bp).1 as f32 + 0.2));
-                    let twin = world.sim.spawn_ship(runner.clone(), PLAYER, Body::at(at, 0.0));
-                    world.sim.command(twin, ShipCommand::Maneuver { maneuver: Maneuver::Hold { at }, fire: false });
                 }
                 // The showcase is for looking: nobody flies the runner (no focus).
                 focus.0 = None;

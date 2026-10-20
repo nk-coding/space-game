@@ -533,40 +533,32 @@ impl Career {
         g.skeleton.clusters.get(cluster as usize).is_some_and(|c| c.gate) && g.gates.insert(cluster)
     }
 
-    /// A play-test career (`?bands=<band>`, `playtest.ron`, [`crate::content::model::PlaytestKit`]): opens the bands up to `band` as if
-    /// their gates were beaten (every gate of each band outside it opened and charted, as its guardian's fight
-    /// would), and gives the kit of every band from the galaxy's second up to `band`: its research researched
-    /// (unpaid), its materials and data in store. `Err` says why not: no galaxy, a band the galaxy doesn't have, or
-    /// its first (open from the start).
-    pub fn playtest(&mut self, content: &Content, band: &str) -> Result<(), String> {
-        let Some(g) = self.galaxy.as_ref() else { return Err("the game has no galaxy".into()) };
-        let bands = content.galaxies.get(&g.skeleton.galaxy).map(|x| x.bands.clone()).unwrap_or_default();
-        let depth = match bands.iter().position(|b| b == band) {
-            Some(0) => return Err(format!("`{band}` is open from the start")),
-            Some(d) => d,
-            None => return Err(format!("the galaxy has no band `{band}` (one of {})", bands.join(", "))),
-        };
-        for kit in bands[1..=depth].iter().filter_map(|b| content.playtest.iter().find(|k| &k.band == b)) {
-            for id in &kit.research {
-                if content.research.contains(id) && !self.is_researched(id) {
-                    self.researched.push(id.clone());
-                }
-            }
-            for (m, &n) in &kit.materials {
-                add_materials(&mut self.materials, m, n);
-            }
-            for (f, &x) in &kit.data {
-                add_data(&mut self.data, f, x);
+    /// The dev mode's career (`?dev=1`, ADR-0046; its own save): every research node researched (unpaid, in the
+    /// content's order), every material and research family in store up to the store's bound ([`MAX_MATERIALS`],
+    /// [`MAX_DATA`]), and the whole galaxy charted with every gate open, so every band is open and a jump reaches any
+    /// cluster (each one is a jump start). The game calls it at every load and after every change of a dev career,
+    /// so the stores never run dry.
+    pub fn open_everything(&mut self, content: &Content) {
+        for n in content.research.iter() {
+            if !self.is_researched(&n.id) {
+                self.researched.push(n.id.clone());
             }
         }
+        for m in content.materials.iter() {
+            self.materials.insert(m.id.clone(), MAX_MATERIALS);
+        }
+        for f in content.families.iter() {
+            self.data.insert(f.id.clone(), MAX_DATA);
+        }
         if let Some(g) = self.galaxy.as_mut() {
-            for k in (1..=depth).flat_map(|b| g.skeleton.entrances(&bands, b)) {
-                g.gates.insert(k);
+            for (k, c) in (0u32..).zip(&g.skeleton.clusters) {
                 g.charted.entry(k).or_default();
+                if c.gate {
+                    g.gates.insert(k);
+                }
             }
         }
         self.sync_slice(content);
-        Ok(())
     }
 
     /// Keeps the slice's voyages in the galaxy (galaxy plan E7): every voyage of the content lies on its set piece's

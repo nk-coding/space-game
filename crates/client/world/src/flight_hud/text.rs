@@ -175,9 +175,6 @@ pub(super) fn update_text(
                                 let _ = write!(s, "  ·  STAR HEAT {:.1} A SIDE", star.heat_at(p.com_world()));
                             }
                         }
-                        if run.launched.as_ref().is_some_and(|l| l.practice.is_some()) {
-                            s.push_str("  ·  PRACTICE, NOT SAVED");
-                        }
                     }
                     SceneKind::Fight => {
                         if let Some(w) = watched {

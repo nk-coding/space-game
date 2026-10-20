@@ -16,7 +16,7 @@
 //!   and pauses in flight: the test range, test flights, replays and voyages ([`compute`]). The
 //!   budget is turned into ticks of work from the measured cost per tick ([`Rate`]). The frame's budget breeds, and
 //!   the jobs go out of the frame ([`Lab::compute_out`], [`out`]): natively to Bevy's compute threads, on the web to
-//!   the lab's web workers (`workers`, ADR-0043). Without a worker (none loads, `?lab_workers=0`) `arena::Run::step`
+//!   the lab's web workers (`workers`, ADR-0043). Without a worker (none loads) `arena::Run::step`
 //!   breeds and fights within the budget on the main thread ([`Lab::compute`]). All of them make the same run.
 //! * **THE LADDER** ([`ladder`], GDR-0092 step 9): RATE ON THE LADDER rates saved designs on `lab.ron`'s ladder in
 //!   the run's place, as VALIDATE does ([`Lab::rate`]); each rating is kept in `ladder/<design id>`.
@@ -29,7 +29,7 @@
 //! * **SAVE AS DESIGN** ([`save_as_design`]): a genome into YOUR DESIGNS in its run's frame with an `origin` and the
 //!   `evolved` tag; an evolved behavior is saved beside it as a player behavior.
 //! * **Locked** until the career opens the facility [`FACILITY`] (the research node Simulation vault, or
-//!   `?unlock=all`): [`Lab::enabled`] follows [`Granted`], and a locked lab computes nothing.
+//!   the dev mode): [`Lab::enabled`] follows [`Granted`], and a locked lab computes nothing.
 
 pub mod ladder;
 mod out;
@@ -498,7 +498,7 @@ impl Setup {
     }
 
     /// The run's configuration with these starts (resolved, in order), under the career's limits and with its
-    /// part-stat steps: only the parts, materials and counts it has (`?unlock=all` lifts them), and with VOYAGE-READY
+    /// part-stat steps: only the parts, materials and counts it has (the dev mode lifts them), and with VOYAGE-READY
     /// at most `free_cores` cores; the
     /// trials that are on, filled in from `src`. Refused in words when a trial has nothing to fight or none is on.
     pub fn config(&self, content: &Content, starts: &[StartDesign], granted: &Granted, free_cores: u32, src: &Sources) -> Result<RunConfig, String> {
@@ -525,15 +525,15 @@ impl Setup {
         if trials.is_empty() {
             return Err("turn a trial on: nothing would score the designs".into());
         }
-        let free = granted.free;
+        let dev = granted.dev;
         let limits = Limits {
             frame: None,
             build_points: self.build_points,
             min_hold: self.min_hold,
             max_cores: self.voyage_ready.then_some(free_cores),
             counts: None,
-            parts: (!free).then(|| granted.unlocks.parts.clone()),
-            materials: (!free).then(|| granted.unlocks.materials.clone()),
+            parts: (!dev).then(|| granted.unlocks.parts.clone()),
+            materials: (!dev).then(|| granted.unlocks.materials.clone()),
             mirror: self.mirror,
         };
         // A run that leaves the design as it is is spread by how it fights, a design run by what it is (`docs/arena.md`
@@ -600,7 +600,7 @@ pub fn templates(content: &Content, faction: &str) -> Vec<String> {
 /// The lab (a resource): the runs, the one loaded for the page and the one that computes, the measured rate.
 #[derive(Resource, Default)]
 pub struct Lab {
-    /// The career has the facility [`FACILITY`] (its research node, or `?unlock=all`): the building works.
+    /// The career has the facility [`FACILITY`] (its research node, or the dev mode): the building works.
     pub enabled: bool,
     /// Every run, newest first.
     runs: Vec<RunEntry>,
@@ -1413,7 +1413,7 @@ pub fn compute(mode: Res<State<AppMode>>, time: Res<Time<Real>>, mut lab: ResMut
 
 /// Every frame at home and on the screens: the run that computes gets its budget, its jobs in the lab's web workers
 /// ([`workers`], started the first time there is work; ADR-0043) while any is there, else in slices on this thread
-/// ([`Lab::compute`]), as when `?lab_workers=0`. None in flight (the jobs underway finish beside it), none while the
+/// ([`Lab::compute`]). None in flight (the jobs underway finish beside it), none while the
 /// lab is locked.
 #[cfg(target_arch = "wasm32")]
 #[allow(clippy::too_many_arguments)]
@@ -1423,7 +1423,6 @@ pub fn compute(
     mut lab: ResMut<Lab>,
     mut storage: ResMut<Storage>,
     content: Res<GameContent>,
-    params: Res<kit::params::Params>,
     mut pool: NonSendMut<LabWorkers>,
 ) {
     let ms = budget(&content.0, *mode.get(), lab.layer_open);
@@ -1431,21 +1430,16 @@ pub fn compute(
         return;
     }
     let frame = time.delta_secs();
-    let mut pool = match params.flag("lab_workers") {
-        Some(false) => None,
-        _ => Some(pool.0.get_or_insert_with(|| workers::Workers::start(arena::worker::content_key(&content.0)))),
-    };
+    let pool = pool.0.get_or_insert_with(|| workers::Workers::start(arena::worker::content_key(&content.0)));
     let (t0, l) = (Instant::now(), lab.bypass_change_detection());
-    if let Some(p) = pool.as_mut() {
-        p.poll();
-    }
-    let changed = match pool {
-        Some(p) if p.gone() => {
-            l.take_back();
-            ms > 0.0 && l.compute(&mut storage, ms, frame)
-        }
-        Some(p) if l.has_out() || out::Executor::width(p) > 0 => l.compute_out(&mut storage, p, ms, frame),
-        _ => ms > 0.0 && l.compute(&mut storage, ms, frame),
+    pool.poll();
+    let changed = if pool.gone() {
+        l.take_back();
+        ms > 0.0 && l.compute(&mut storage, ms, frame)
+    } else if l.has_out() || out::Executor::width(pool) > 0 {
+        l.compute_out(&mut storage, pool, ms, frame)
+    } else {
+        ms > 0.0 && l.compute(&mut storage, ms, frame)
     };
     l.frame_ms += t0.elapsed().as_secs_f32() * 1000.0;
     if changed {
@@ -1458,7 +1452,7 @@ pub fn compute(
 #[derive(Default)]
 pub struct LabWorkers(Option<workers::Workers>);
 
-/// The lab opens with its facility: whenever the career's unlocks change (a research, `?unlock=all`).
+/// The lab opens with its facility: whenever the career's unlocks change (a research, the dev mode).
 fn unlock(granted: Res<Granted>, mut lab: ResMut<Lab>) {
     let open = granted.unlocks.has_facility(FACILITY);
     if granted.is_changed() && lab.enabled != open {
@@ -1516,7 +1510,7 @@ mod tests {
     fn config(content: &Content, s: &Setup, storage: &Storage) -> RunConfig {
         let design = PlayerDesign::starter(content, "rim_skiff");
         let starts: Vec<StartDesign> = s.starts.iter().map(|(p, _)| p.resolve(storage, content, &PlayerBehaviors::default(), &design).unwrap()).collect();
-        let granted = Granted { unlocks: data::career::Unlocks::all(content), mind_capacity: 4, free: true, ..default() };
+        let granted = Granted { unlocks: data::career::Unlocks::all(content), mind_capacity: 4, dev: true, ..default() };
         s.config(content, &starts, &granted, 4, &Sources::default()).unwrap()
     }
 
@@ -2124,7 +2118,7 @@ mod tests {
         // It builds a run as it is (the arena checks the blueprint text like content).
         let mut s = Setup::new(&content, vec![StartPick::Working], 3);
         s.size = Size { population: 2, generations: 1 };
-        let granted = Granted { unlocks: data::career::Unlocks::all(&content), mind_capacity: 4, free: true, ..default() };
+        let granted = Granted { unlocks: data::career::Unlocks::all(&content), mind_capacity: 4, dev: true, ..default() };
         let src = Sources { open_voyages: vec!["yard_approach".into()], ..default() };
         let cfg = s.config(&content, std::slice::from_ref(&w), &granted, 4, &src).unwrap();
         // GDR-0092's default selection: the enemies you meet (weight 2), the test-range waves, beat your start, the
