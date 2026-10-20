@@ -69,7 +69,11 @@ needles (`resonator_site`).
 `crates/core/arena/fights/lattice_lances.ron` (a lance, a guard and a needle against the Runner and two rim skiffs,
 200 m), 60 seeds, one thread: side 0 won 19, side 1 won 20, 21 undecided at 90 s; 23 fights/s, 0.05 M ticks/s
 against `runner_vs_raiders`' 52 fights/s, 0.09 M ticks/s (four ships against six; a relayed beam is one ray cast like
-any beam, a glance one more). Determinism: see GDR-0126's consequences.
+any beam, a glance one more).
+
+Determinism, native against wasm32-wasip1 (`scripts/determinism-check.sh`): `--fight lattice_lances` seed 42 (2700
+ticks, `702da3ede43c5b5f`) and seed 7 (1214 ticks, the fight's end, `8ddf91f65c6c190d`), `--scenario grown` seed 42
+(1800 ticks, the needle's site warns, wakes and fights, `10155c752bb919f9`): **identical**.
 
 ## Reproduce
 

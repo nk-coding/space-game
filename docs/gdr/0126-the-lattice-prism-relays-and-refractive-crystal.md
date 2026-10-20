@@ -96,6 +96,8 @@ research family with the **crystal annealer** installed by the node of the first
   runs). Reach decides the fight with the runner's pilot: the first cut (88 m needles) cleared nothing, so the Lattice
   are long only through their prisms, not beyond the starters' guns. Refraction costs the fleets a quarter to a third
   of their clears (t_site 97 % without it).
+- Determinism: native and wasm identical for the arena fight `lattice_lances` (seeds 42 and 7) and the grown scenario
+  with its Lattice site (seed 42).
 - A player's pulse laser behind four prisms reaches 120 m: the prism is strong in the drydock; its glass and the
   chain's length are the price. Watch it in the part reports (GDR-0124).
 - Open: standing with the Lattice (GDR-0027 calls them the most likely allies), a resonator that rebuilds its prisms,
