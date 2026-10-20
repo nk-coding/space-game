@@ -234,13 +234,18 @@ pub(super) fn snap(x: f32) -> f32 {
 }
 
 /// Skyline packing in atlas units: tallest first, each region at the lowest spot of the skyline it fits (the
-/// leftmost of equals) within rows of `LAYOUT_WIDTH`. Positions are multiples of the gutter, the height is rounded
-/// up so every mip level has an integer size at the smallest tier. A region wider or taller than a row is scaled
-/// down (keeping its aspect) to fit one. (Shelves until 13 Oct 2026: they left a third of the atlas empty beside
-/// the tall regions, and the machines' ship drawings did not fit 4096 px at the top tier with them.)
+/// leftmost of equals). Positions are multiples of the gutter, the height is rounded up so every mip level has an
+/// integer size at the smallest tier. A region wider or taller than [`LAYOUT_WIDTH_MIN`] (less the gutters) is
+/// scaled down (keeping its aspect) to fit it. (Shelves until 13 Oct 2026: they left a third of the atlas empty
+/// beside the tall regions, and the machines' ship drawings did not fit 4096 px at the top tier with them.)
+///
+/// The width adapts (20 Oct 2026): every width from [`LAYOUT_WIDTH_MIN`] to [`LAYOUT_SIDE_MAX`] in half units is
+/// packed and the layout with the shortest longest side wins (the smaller area of equals), so the atlas stays near
+/// square as content grows and its longest side, which decides the tiers a GPU can hold, grows with the square
+/// root of the art's area. At a fixed 8 units it grew only downwards: 8 × 17.5 units with the Lattice's and the
+/// Phase walkers' parts, 4480 px at tier 256.
 pub(super) fn pack(mut regs: Vec<(RegionDef, [f32; 2])>) -> Layout {
-    const EPS: f32 = 1e-4;
-    let most = LAYOUT_WIDTH - 2.0 * GUTTER;
+    let most = LAYOUT_WIDTH_MIN - 2.0 * GUTTER;
     for (_, [w, h]) in &mut regs {
         let k = (most / w.max(*h)).min(1.0);
         (*w, *h) = (*w * k, *h * k);
@@ -249,16 +254,49 @@ pub(super) fn pack(mut regs: Vec<(RegionDef, [f32; 2])>) -> Layout {
     order.sort_by(|&a, &b| {
         regs[b].1[1].total_cmp(&regs[a].1[1]).then(regs[b].1[0].total_cmp(&regs[a].1[0])).then(regs[a].0.name.cmp(&regs[b].0.name))
     });
+    let sizes: Vec<[f32; 2]> = regs.iter().map(|r| r.1).collect();
+    // Widths in ascending order; once the width alone is no shorter than the best longest side, none can win.
+    let mut best: Option<(f32, Vec<[f32; 2]>, f32)> = None;
+    let mut width = LAYOUT_WIDTH_MIN;
+    while width <= LAYOUT_SIDE_MAX && best.as_ref().is_none_or(|b| width < b.0.max(b.2)) {
+        let (at, height) = skyline(&sizes, &order, width);
+        let better = best.as_ref().is_none_or(|b| {
+            let (side, b_side) = (width.max(height), b.0.max(b.2));
+            side < b_side || (side == b_side && width * height < b.0 * b.2)
+        });
+        if better {
+            best = Some((width, at, height));
+        }
+        width += 0.5;
+    }
+    let (width, at, height) = best.expect("the narrowest width is always packed");
+    let regions: Vec<RegionDef> = regs
+        .into_iter()
+        .zip(at)
+        .map(|((mut r, [w, h]), [x, y])| {
+            r.rect = [x, y, w, h];
+            r
+        })
+        .collect();
+    let index = regions.iter().enumerate().map(|(i, r)| (r.name.clone(), i)).collect();
+    Layout { regions, size: [width, height], index }
+}
+
+/// The skyline packing of regions of `sizes` (in `order`) into rows of `width` units: each region's top-left
+/// corner, and the layout's height (a multiple of half a unit: integral mips down to 16 px).
+fn skyline(sizes: &[[f32; 2]], order: &[usize], width: f32) -> (Vec<[f32; 2]>, f32) {
+    const EPS: f32 = 1e-4;
+    let mut at = vec![[0.0; 2]; sizes.len()];
     // The skyline: steps `[x, y]` by ascending x, each up to the next one (the last to the layout's width); a
     // region goes at a step's x, as high as the steps under its width (gutter included) reach.
     let mut sky: Vec<[f32; 2]> = vec![[GUTTER, GUTTER]];
     let mut bottom = 0.0f32;
-    for &i in &order {
-        let [w, h] = regs[i].1;
+    for &i in order {
+        let [w, h] = sizes[i];
         let span = snap(w + GUTTER);
         let mut best: Option<[f32; 2]> = None;
         for (k, &[x, _]) in sky.iter().enumerate() {
-            if x + w + GUTTER > LAYOUT_WIDTH + EPS {
+            if x + w + GUTTER > width + EPS {
                 break;
             }
             let y = sky[k..].iter().take_while(|s| s[0] < x + span - EPS).fold(0.0f32, |m, s| m.max(s[1]));
@@ -266,25 +304,22 @@ pub(super) fn pack(mut regs: Vec<(RegionDef, [f32; 2])>) -> Layout {
                 best = Some([x, y]);
             }
         }
-        // The first step starts at the gutter and every region fits a row.
+        // The first step starts at the gutter and every region fits the narrowest row.
         let [x, y] = best.expect("a region fits a row");
-        regs[i].0.rect = [x, y, w, h];
+        at[i] = [x, y];
         bottom = bottom.max(y + h);
         let end = x + span;
         let resume = sky.iter().take_while(|s| s[0] < end + EPS).last().map_or(GUTTER, |s| s[1]);
         let mut next: Vec<[f32; 2]> = sky.iter().copied().filter(|s| s[0] < x - EPS).collect();
         next.push([x, snap(y + h + GUTTER)]);
-        if end < LAYOUT_WIDTH - EPS {
+        if end < width - EPS {
             next.push([end, resume]);
             next.extend(sky.iter().copied().filter(|s| s[0] > end + EPS));
         }
         next.dedup_by(|b, a| (a[1] - b[1]).abs() < EPS);
         sky = next;
     }
-    let height = ((bottom + GUTTER) * 2.0).ceil() / 2.0; // multiple of 0.5 unit: integral mips down to 16 px
-    let regions: Vec<RegionDef> = regs.into_iter().map(|r| r.0).collect();
-    let index = regions.iter().enumerate().map(|(i, r)| (r.name.clone(), i)).collect();
-    Layout { regions, size: [LAYOUT_WIDTH, height], index }
+    (at, ((bottom + GUTTER) * 2.0).ceil() / 2.0)
 }
 
 /// Splits an icon SVG into (crisp glyph, glow-only) documents. The glow is every `<g filter="url(#gl)" ...>`

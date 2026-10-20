@@ -2261,8 +2261,9 @@ Icons, glows, plumes and the FX dots come from one texture atlas that `atlas.rs`
 
 - **Which tier**: what the screen needs, `zoom × window scale factor` (px per cell; the UI's part icons' need,
   `UiAtlasNeed`, when larger), rounded up to a power of two
-  and capped by the GPU's largest 2D texture (tier 512 is 4096 × 4096 since the ship drawings, 13 Oct 2026, and
-  4096 × 5120 since the Grown's parts, 18 Oct 2026; logged once at start). Up at once, down
+  and capped by the GPU's largest 2D texture (tier 512 is 4096 × 4096 since the ship drawings, 13 Oct 2026,
+  4096 × 5120 since the Grown's parts, 18 Oct 2026, and 5888 × 6144 since the Lattice and the Phase walkers,
+  20 Oct 2026; logged once at start). Up at once, down
   only when half the tier is clearly enough. A new tier must be wanted for 0.25 s first (zooming through tiers
   costs nothing).
 - **Rebuild** (`art::Rasterizer::step`, small steps since 13 Oct 2026): zero the buffer 2 MB at a time, render
@@ -2304,7 +2305,8 @@ Icons, glows, plumes and the FX dots come from one texture atlas that `atlas.rs`
   size, which writes mip level 0 only and would leave stale mips. Headless Chromium (SwiftShader, so the frame
   times say nothing; tier 512 at 160 px/m and device scale 2, so the blurry budget): 396 ms of work over 34 frames,
   at most 5.6 MB uploaded per frame (before: 300–410 ms over 18–23 frames, then 84 MB in one frame). Memory: one atlas on the GPU (tier 32: 0.3 MB, 64: 1.4 MB, 128: 5.6 MB, 256: 22 MB, 512:
-  89 MB, mips included; 84 MB before the ship drawings), two while a job runs; the job's own buffer is as large and goes when it is done.
+  89 MB, mips included; 84 MB before the ship drawings; 20 Oct 2026, at 11.5 × 12 units: 128: 12 MB, 256: 48 MB,
+  512: 193 MB), two while a job runs; the job's own buffer is as large and goes when it is done.
 - **Sampling** (`AtlasMaterial`, `atlas.wesl`): every atlas mesh (ships, effects, backdrop, the drydock's view and
   its UI icons) draws with one material: atlas × vertex colour, alpha-blended, sRGB-encoded under `SRGB_OUTPUT`
   like Bevy's `ColorMaterial`, which it replaced on 13 Oct 2026 (the lit ship tiles use its opaque twin,
@@ -2330,12 +2332,25 @@ Icons, glows, plumes and the FX dots come from one texture atlas that `atlas.rs`
 - **What it holds** (13 Oct 2026, GDR-0069): the machines' ship drawings at full density (the world zooms in on
   them), the part icons at `art::ICON_DENSITY` = 0.5 (only the UI's part tiles draw them, at most about 40 px per
   cell; `UiAtlasNeed` asks for twice their pixels), no material or category icons (only the wiki shows those), the
-  FX textures. Regions are packed on a skyline (tallest first, each at the lowest spot it fits) into 8 × 8 units:
+  FX textures. Regions are packed on a skyline (tallest first, each at the lowest spot it fits) into 8 × 8 units
+  (a fixed width until 20 Oct 2026, see below):
   4096 × 4096 px at tier 512 (before: shelves, 8 × 7.5 units without the drawings; with them shelves needed 8 × 9,
   4608 px, over the 4096 the top tier kept to). 18 Oct 2026: the Grown's five parts (GDR-0102, GDR-0103) need
   8 × 10 units (59.5 units² of regions plus their gutters no longer fit 64), 4096 × 5120 px at tier 512; tier 256
   and below stay within 4096 px. A mod's drawings grow it; past the GPU's limit `max_tier` caps the tier (to 256
-  on a GPU whose largest texture is 4096). Profile at tier 512 (`... --example profile -- 512 11`, load 8.4): longest step 1.6 ms median (p95 3.6),
+  on a GPU whose largest texture is 4096). 20 Oct 2026: the Swarm's, the ion cannon's, the Lattice's and the
+  Phase walkers' parts brought the art to 110 units² (ship drawings 71, their glows 14, part icons and glows 18,
+  FX 7), and the 8-unit-wide layout grew to 8 × 17.5 units: 2048 × 4480 px at tier 256, over the 4096 the tiers
+  below the top keep to (and 8960 px at 512, over 8192), so a GPU limited to 4096 would have been held at tier 128.
+  **The rule since**: the layout's width adapts (`art::layout::pack`): every width from 8 to 16 units in half units
+  is packed and the one with the shortest longest side wins (the smaller area of equals), so the atlas stays near
+  square; 16 units is 4096 px at tier 256 and 8192 at 512, the sizes the tiers keep to. Now 11.5 × 12 units
+  (138 units², the same as 8 × 17.5): 2944 × 3072 px at tier 256, 5888 × 6144 at 512. Room: the square of 16
+  holds about 200 units² of art at this packing (about 80 % full), nearly twice today's; past that the layout
+  grows downwards and `max_tier` caps the tier as before. `art`'s test `uv_is_tier_independent_and_tiers_fit`
+  holds the base content to the limits, `the_layout_stays_near_square_as_art_grows` the adapting width. Packing
+  every width costs about 0.5 ms once per session (the layout: 2.2 → 2.7 ms). Memory grows with the art's area,
+  not its shape: about 48 MB at tier 256 and 193 MB at 512, mips included. Profile at tier 512 (`... --example profile -- 512 11`, load 8.4): longest step 1.6 ms median (p95 3.6),
   work 149 ms (130 before).
 - **Soft by design**: glows and plumes are stored at half density (they are blurred; above tier 128 their
   blurred layers are resampled from it); at the highest zoom a plume's edge is about 1.5 px soft. Everything else (drawings, barrel) is 1:1 with the tier; tiles, seams, hull lines

@@ -6,6 +6,8 @@
 //! * **Layout** ([`Layout`]): every region has a fixed rectangle in *atlas units* (1 unit = 1 ship cell at full
 //!   density). A texture for a pixel density `tier` (pixels per cell) is the layout scaled by `tier`, so the
 //!   normalised UV of a region never changes between tiers: meshes keep their UVs when the texture is swapped.
+//!   Its width adapts to the art (from 8 units up to 16) so the sheet stays near square: its
+//!   longest side decides which tiers a GPU can hold.
 //!   Soft regions (glows, plumes, aura) are stored at half density (they are blurry anyway), the part icons at
 //!   [`ICON_DENSITY`] (only the UI draws them, small; ships show the drawings, GDR-0069).
 //! * **Rasteriser** ([`Rasterizer`]): clears its buffer, renders the regions, then builds an alpha-weighted mip
@@ -49,8 +51,12 @@ pub const SOFT_TIER: u32 = 128;
 /// Density of the part icons in the atlas (texels per cell = `ICON_DENSITY × tier`): they are drawn in the UI only,
 /// so a client asks for `1 / ICON_DENSITY` times the pixels per cell its icons need.
 pub const ICON_DENSITY: f32 = 0.5;
-/// Layout width in atlas units (the atlas is `LAYOUT_WIDTH × tier` pixels wide).
-const LAYOUT_WIDTH: f32 = 8.0;
+/// The narrowest layout, in atlas units (a region larger than this, less the gutters, is scaled down to fit it).
+const LAYOUT_WIDTH_MIN: f32 = 8.0;
+/// The longest side a layout is packed for, in atlas units: 4096 px at tier 256, 8192 at [`MAX_TIER`]. The layout
+/// takes the width (from [`LAYOUT_WIDTH_MIN`] up to this) that keeps its longest side shortest, so it stays near
+/// square; content whose art no longer fits this square grows downwards, and `max_tier` in the client caps the tier.
+const LAYOUT_SIDE_MAX: f32 = 16.0;
 /// Gutter between regions, atlas units.
 const GUTTER: f32 = 1.0 / 16.0;
 /// Most mip levels generated.
@@ -288,6 +294,21 @@ mod tests {
         assert_eq!(tier_for(5000.0), MAX_TIER);
     }
 
+    /// The layout widens as the art grows instead of only growing downwards (20 Oct 2026): 160 drawings of a cell
+    /// each, about one and a half times the base atlas's art, still fit the square of [`LAYOUT_SIDE_MAX`], so
+    /// tier 256 stays within 4096 px.
+    #[test]
+    fn the_layout_stays_near_square_as_art_grows() {
+        let cell = r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><rect width="5" height="5"/></svg>"#;
+        let icons: Vec<(String, String)> = (0..160).map(|i| (format!("d{i}"), cell.to_string())).collect();
+        let icons: Vec<(&str, String)> = icons.iter().map(|(k, v)| (k.as_str(), v.clone())).collect();
+        let layout = Layout::new(&with_drawings(&icons));
+        let [w, h] = layout.size;
+        assert!(w > LAYOUT_WIDTH_MIN && w.max(h) <= LAYOUT_SIDE_MAX && (w - h).abs() <= 1.0, "{w} x {h}");
+        let (pw, ph) = layout.pixel_size(256);
+        assert!(pw.max(ph) <= 4096, "{pw} x {ph}");
+    }
+
     #[test]
     fn tokens_parse() {
         let t = tokens();
@@ -331,7 +352,7 @@ mod tests {
             let r = layout.get(&format!("ship/{key}")).unwrap_or_else(|| panic!("{key}"));
             let [_, _, vw, vh] = data::content::svg::view_box(svg).unwrap();
             assert_eq!(r.cells, [vw / UNITS_PER_CELL, vh / UNITS_PER_CELL], "{key}");
-            assert!(r.rect[2] <= LAYOUT_WIDTH - 2.0 * GUTTER && r.rect[3] <= LAYOUT_WIDTH - 2.0 * GUTTER, "{key}");
+            assert!(r.rect[2] <= LAYOUT_WIDTH_MIN - 2.0 * GUTTER && r.rect[3] <= LAYOUT_WIDTH_MIN - 2.0 * GUTTER, "{key}");
         }
         let r = rasterise(&layout, MIN_TIER).unwrap();
         assert_eq!(r.failed, Vec::<String>::new());
