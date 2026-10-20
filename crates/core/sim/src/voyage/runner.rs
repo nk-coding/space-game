@@ -35,8 +35,8 @@
 //! vessel any more) or out of time.
 //!
 //! Escorts start behind the flagship and fly the content's `escort` behavior with the flagship as their leader
-//! (they fight its lock; an escort with a mining laser flies `miner`, which mines between fights, and one with a
-//! tractor beam `salvager`, which strips wrecks between fights, GDR-0131); their holds count for the haul. Deterministic like the sim: the same setup and seed give the same run on every platform.
+//! (they fight its lock; an escort with a mining laser flies `miner`, which mines between fights; one with a tractor
+//! beam keeps `escort` and its beam pulls in what it passes, GDR-0131); their holds count for the haul. Deterministic like the sim: the same setup and seed give the same run on every platform.
 
 use std::collections::BTreeSet;
 use std::sync::Arc;
@@ -290,12 +290,10 @@ impl VoyageRunner {
             ),
         };
         // Mining (GDR-0114): escorts with a mining laser fly `miner`, which mines between fights. Escorts with a
-        // tractor beam fly `salvager` (GDR-0131: the part says the design is meant to strip; GDR-0123 kept plain
-        // escorts with a hold on `escort`, as stripping without one costs goals).
+        // tractor beam keep `escort` (Niklas, 20 Oct 2026, GDR-0131): the beam alone lifts the haul, and `salvager`
+        // on top only cost goals.
         let cuts = |d: &ShipDesign| d.parts.iter().any(|p| p.cut > 0.0);
-        let pulls = |d: &ShipDesign| !d.tractors.is_empty();
         let miner = behaviors.id("miner");
-        let salvager = behaviors.id("salvager");
         let mut sim = Sim::with_config(seed, SimConfig::default());
         sim.set_behaviors(behaviors);
         let plan = VoyagePlan::roll(content, voyage, seed)?;
@@ -315,7 +313,7 @@ impl VoyageRunner {
             body.pos = entry.pos + Vec2::new(side * ESCORT_GAP * row, -ESCORT_GAP * row);
             let id = sim.spawn_ship(Arc::clone(d), Owner::PLAYER, body);
             sim.command(id, ShipCommand::Leader(Some(me)));
-            let behavior = miner.filter(|_| cuts(d)).or(salvager.filter(|_| pulls(d))).or(escort_behavior);
+            let behavior = miner.filter(|_| cuts(d)).or(escort_behavior);
             sim.command(id, ShipCommand::Behavior(behavior));
             wing.push(id);
         }

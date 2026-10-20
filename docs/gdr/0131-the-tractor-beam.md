@@ -2,6 +2,9 @@
 
 - Status: Accepted (Niklas: the part, what it pulls, the reach, the salvage action and the escorts' switch, 20 Oct
   2026; every number and the details below lead defaults)
+  20 Oct 2026 (later, Niklas, after the measurement below): the voyage runner's escorts with a tractor keep plain
+  `escort`; the beam alone lifts the haul (5 to 18–20 items) and `salvager` on top cost about 12 goals of 230.
+  `salvager` stays the player's choice. The Decision's "escorts with one fly `salvager`" is replaced by this.
 - Date: 2026-10-20
 - Decided by: Niklas (the design); lead session and its agent (numbers, details)
 - Related: [GDR-0018](0018-weapon-families.md) (the utility family), [GDR-0025](0025-research-from-salvage.md) (loose
