@@ -21,10 +21,12 @@ publishing (ADR-0047), Niklas wants people to play the game in the browser witho
 ## Decision
 
 - **The web build is a first-class player platform**, alongside the future native desktop and Android builds. It is
-  hosted on **GitHub Pages** (a project page under `https://<user>.github.io/<repo>/`).
+  hosted on **GitHub Pages** (a project page: `https://nk-coding.github.io/space-game/`, the wiki under its `/docs/`
+  subpath, `https://nk-coding.github.io/space-game/docs/`; Niklas, 20 Oct 2026).
 - **Deploy**: a GitHub Actions workflow (`.github/workflows/pages.yml`) builds the optimised web build (as
   `scripts/web-build.sh --full`: profile `release`, wasm-opt -O3, both wasm binaries) on every push to `main` (and by
-  hand) and publishes it to Pages, with trunk's public URL set to `/<repo>/`. A second workflow (`ci.yml`) runs the
+  hand) and publishes it to Pages, with trunk's public URL set to `/<repo>/`, and the wiki built with
+  `WIKI_BASE=/<repo>/docs/` into the site's `docs/`. A second workflow (`ci.yml`) runs the
   workspace's tests and the wiki's build and check on pull requests and pushes. Both were written on 20 Oct 2026 and
   have not run yet: they run only where the repository is published.
 - **The VM's repository keeps no remote** (ADR-0008 and `CLAUDE.md`'s hard rule stand; Niklas, 20 Oct 2026): the

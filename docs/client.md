@@ -29,7 +29,8 @@ needs all of them.
 ## Publishing the web build
 
 The web game is published on GitHub Pages ([ADR-0048](adr/0048-the-web-build-is-a-player-platform.md), 20 Oct 2026)
-by GitHub Actions. The VM's repository has no remote (ADR-0008); the workflows run only where the repository is
+by GitHub Actions: the game at `https://nk-coding.github.io/space-game/`, its wiki under
+`https://nk-coding.github.io/space-game/docs/` (Niklas, 20 Oct 2026). The VM's repository has no remote (ADR-0008); the workflows run only where the repository is
 published, and were written without a run.
 
 - **`.github/workflows/pages.yml`** (pushes to `main`, and by hand: `workflow_dispatch`): Rust stable with
@@ -38,7 +39,8 @@ published, and were written without a run.
   build as `scripts/web-build.sh --full` makes it (`trunk build --release --cargo-profile release`, wasm-opt -O3 from
   `index.html`) with `--public-url "/<repo>/"`, since a project page lives under `https://<user>.github.io/<repo>/`.
   A step checks that `dist` holds both binaries (the game and the lab's worker with its loader), then
-  `actions/upload-pages-artifact` and `actions/deploy-pages` publish it (permissions `pages: write`,
+  the wiki is built with `WIKI_BASE=/<repo>/docs/` (`npm ci`, `npm run build`, `npm run check`) and copied into
+  `dist/docs/`, then `actions/upload-pages-artifact` and `actions/deploy-pages` publish it (permissions `pages: write`,
   `id-token: write`; environment `github-pages`). In the repository's settings, Pages' source must be "GitHub
   Actions".
 - **`.github/workflows/ci.yml`** (pull requests, pushes to `main` and `dev`): `cargo test --workspace --locked` (the
