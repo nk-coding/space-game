@@ -1,12 +1,12 @@
 # The web game on GitHub Pages (ADR-0048, docs/client.md "Publishing the web build"): the optimised web build, as
-# `scripts/web-build.sh --full` makes it, on every push to main and by hand. A project page lives under /<repo>/, so
+# `scripts/web-build.sh --full` makes it, on every push to dev (the main branch) and by hand. A project page lives under /<repo>/, so
 # trunk gets that public URL, and the wiki is built under /<repo>/docs/ (the site: nk-coding.github.io/space-game/, its
 # wiki nk-coding.github.io/space-game/docs/; Niklas, 20 Oct 2026). Written on the VM, which has no remote; it runs only where the repo is published.
 name: Pages
 
 on:
   push:
-    branches: [main]
+    branches: [dev] # the published main branch is `dev` (Niklas, 20 Oct 2026)
   workflow_dispatch:
 
 permissions:

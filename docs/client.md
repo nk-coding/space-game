@@ -33,7 +33,7 @@ by GitHub Actions: the game at `https://nk-coding.github.io/space-game/`, its wi
 `https://nk-coding.github.io/space-game/docs/` (Niklas, 20 Oct 2026). The VM's repository has no remote (ADR-0008); the workflows run only where the repository is
 published, and were written without a run.
 
-- **`.github/workflows/pages.yml`** (pushes to `main`, and by hand: `workflow_dispatch`): Rust stable with
+- **`.github/workflows/pages.yml`** (pushes to `dev`, the published main branch, and by hand: `workflow_dispatch`): Rust stable with
   `wasm32-unknown-unknown`, trunk 0.21.14 (its release binary; trunk fetches the wasm-bindgen CLI matching
   `Cargo.lock` and binaryen's wasm-opt itself), `Swatinem/rust-cache` for cargo and `target/`, then the optimised
   build as `scripts/web-build.sh --full` makes it (`trunk build --release --cargo-profile release`, wasm-opt -O3 from
