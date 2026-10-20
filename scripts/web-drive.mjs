@@ -19,6 +19,9 @@
 // `--dpr=N` emulates a phone like Chrome DevTools' device mode: device scale factor N (also forced on Chromium,
 // docs/client.md "Headless HiDPI"), mobile viewport, touch; e.g. `--dpr=3` with 844 390 (docs/client.md "Phones"). Its `shot`s are saved at CSS size
 // (844 × 390, the phone's dp: what to read the layout from); `crop` keeps the device pixels for close-ups.
+// `--touch` emulates a touch screen at the given size (a coarse pointer, like DevTools' touch toggle): the game's touch
+// widgets and words show from the start. Without `--touch` or `--dpr` the pointer is a mouse (the desktop layout);
+// `tap`, `touchdrag` and `touchdown` still send touches, and the game turns its touch widgets on at the first one.
 import { createRequire } from 'node:module';
 import path from 'node:path';
 import fs from 'node:fs';
@@ -30,6 +33,7 @@ const { chromium } = require('playwright');
 const args = process.argv.slice(2).filter(a => !a.startsWith('--'));
 const quiet = process.argv.includes('--quiet-console');
 const dpr = Number((process.argv.find(a => a.startsWith('--dpr=')) || '--dpr=0').slice(6));
+const touch = dpr > 0 || process.argv.includes('--touch');
 const [url, outDir, steps = '', w = '1280', h = '720'] = args;
 if (!url || !outDir) {
   console.error('usage: web-drive.mjs <url> <out-dir> "<steps>" [width] [height]');
@@ -41,7 +45,7 @@ const launchArgs = ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '-
 if (dpr) launchArgs.push(`--force-device-scale-factor=${dpr}`);
 const browser = await chromium.launch({ args: launchArgs });
 const phone = dpr ? { deviceScaleFactor: dpr, isMobile: true } : {};
-const ctx = await browser.newContext({ viewport: { width: +w, height: +h }, hasTouch: true, acceptDownloads: true, ...phone });
+const ctx = await browser.newContext({ viewport: { width: +w, height: +h }, hasTouch: touch, acceptDownloads: true, ...phone });
 await ctx.grantPermissions(['clipboard-read', 'clipboard-write']).catch(e => console.log(`[clipboard] ${e.message}`));
 const page = await ctx.newPage();
 page.on('download', async d => {
@@ -72,7 +76,12 @@ for (const raw of steps.split(';').map(s => s.trim()).filter(Boolean)) {
     case 'mouseup': await page.mouse.up({ button: a[0] || 'left' }); break;
     case 'click': await page.mouse.click(n(0), n(1)); break;
     case 'wheel': await page.mouse.wheel(0, n(0)); break;
-    case 'tap': await page.touchscreen.tap(n(0), n(1)); break;
+    case 'tap': {
+      // CDP touches: they work with and without touch emulation (Playwright's own tap needs `hasTouch`).
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: n(0), y: n(1), id: 7 }] });
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+      break;
+    }
     case 'touchdown': await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: n(0), y: n(1), id: 7 }] }); break;
     case 'touchup': await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] }); break;
     case 'touchdrag': {
