@@ -352,6 +352,14 @@ pub struct BlinkMount {
     pub spec: data::BlinkSpec,
 }
 
+/// A tractor beam's static mount (GDR-0131, `combat/tractor.rs`).
+#[derive(Clone, Copy, Debug)]
+pub struct TractorMount {
+    pub part: PartIdx,
+    /// Its numbers (content `tractor`).
+    pub spec: data::TractorSpec,
+}
+
 /// An engine's static mount.
 #[derive(Clone, Debug)]
 pub struct EngineSpec {
@@ -406,6 +414,8 @@ pub struct ShipDesign {
     pub flares: Vec<FlareMount>,
     /// Blink drives, ascending part (`flight/blink.rs`, GDR-0127).
     pub blinks: Vec<BlinkMount>,
+    /// Tractor beams, ascending part (`combat/tractor.rs`, GDR-0131).
+    pub tractors: Vec<TractorMount>,
     /// Parts that heal (`PartSpec::heal` above 0), ascending.
     pub healing: Vec<PartIdx>,
     /// Parts that block each gun's line of fire (cells straight ahead, to the grid edge), per gun slot.
@@ -707,6 +717,7 @@ impl ShipDesign {
         let mut hangars = Vec::new();
         let mut flares = Vec::new();
         let mut blinks = Vec::new();
+        let mut tractors = Vec::new();
         let mut plume_lanes = Vec::new();
         let mut plume_path = Vec::new();
         for (i, spec) in parts.iter().enumerate() {
@@ -750,6 +761,9 @@ impl ShipDesign {
             }
             if let Some(b) = defs[i].blink {
                 blinks.push(BlinkMount { part: i as u32, spec: b });
+            }
+            if let Some(t) = defs[i].tractor {
+                tractors.push(TractorMount { part: i as u32, spec: t });
             }
             if let Some(hs) = &defs[i].hangar {
                 let bp = content
@@ -812,6 +826,7 @@ impl ShipDesign {
             hangars,
             flares,
             blinks,
+            tractors,
             healing,
             gun_blockers: Csr::from_lists(gun_blockers),
             plume_lanes,

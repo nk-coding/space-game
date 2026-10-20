@@ -1,0 +1,27 @@
+// The tractor beam (GDR-0131; GDR-0018's utility family, GDR-0025's loose debris, GDR-0031's harvesting tools): it
+// pulls salvage, never ships, towards its vessel, so the hull collects it (GDR-0063) without flying over every piece.
+// PLACEHOLDER NUMBERS (lead defaults, 20 Oct 2026; docs/results/tractor-2026-10-20.md).
+// `tractor`: reach in metres, pull per beam in kN (a fragment comes at once, a 20 t wreck piece at 2 m/s²), the
+// fastest it closes in m/s (below the 8 m/s collecting allows), pieces held at once.
+// `salvage`, `recipe`: as every part's (GDR-0108).
+[
+    (
+        id: "tractor_beam",
+        name: "Tractor beam",
+        summary: "Pulls salvage within reach towards the ship, so the hull takes it in: loose pieces, wreck pieces and mined ore, never a ship.",
+        description: "Works on its own whenever the ship runs and its hold has room: it takes hold of the nearest salvage within reach (a few pieces at once), pulls it in and slows it at the hull, which takes it into the hold as when flying slowly over it. A light fragment comes at once, a heavy wreck piece slowly. It never pulls a ship, yours or an enemy's. With one aboard, the [[behavior_node:salvage]] action stops short of a wreck and lets the beam do the rest, and escorts carrying one strip wrecks between fights on a voyage.",
+        tags: ["tractor", "salvage"],
+        locked: true, // the utility research's `tractor_beam` unlocks it
+        category: "cargo",
+        icon: "tractor",
+        size: (1, 1),
+        build_points: 3,
+        mass: 1.5,
+        hp: 1,
+        power: (draw: 1.5, tier: Low),
+        heat: (output: 0.4, limit: 3),
+        tractor: (range: 80, force: 40, speed: 5, beams: 2),
+        salvage: (family: "utility", data: 3),
+        recipe: (materials: {"copper": 3, "crystal": 1, "steel": 2}),
+    ),
+]

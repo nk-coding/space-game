@@ -925,7 +925,9 @@ impl Ctx<'_> {
     /// range (from the ship's centre to the piece's centre of mass or the loose item) that drifts no faster than
     /// [`tuning::SALVAGE_DRIFT`] and holds something that fits into `free` units (a loose item, a wreck's own
     /// cargo or an alive salvageable part; ties: loose items first, then ship and piece order). Its distance and
-    /// the maneuver over it: onto the piece (range 0, so the hull passes over it slowly) or to the loose item.
+    /// the maneuver over it: onto the piece (range 0, so the hull passes over it slowly) or to the loose item; with a
+    /// tractor (GDR-0131), a hold `tractor::tuning::STANDOFF` of its reach short of it (where the ship is, once that
+    /// close), so the beam pulls it in.
     fn salvage_near(&self, free: u32) -> Option<(f32, Maneuver)> {
         if free == 0 {
             return None;
@@ -938,14 +940,20 @@ impl Ctx<'_> {
                 best = Some((d, m));
             }
         };
+        let standoff = self.me.tractor_reach().map(|r| r * crate::combat::tractor::tuning::STANDOFF);
+        let pull = |at: Vec2| Maneuver::Hold { at: crate::combat::tractor::short_of(from, at, standoff.unwrap_or(0.0)) };
         for l in self.loose.iter().filter(|l| l.units <= free && slow(l.vel)) {
-            consider((l.pos - from).length(), Maneuver::Hold { at: l.pos });
+            let m = if standoff.is_some() { pull(l.pos) } else { Maneuver::Hold { at: l.pos } };
+            consider((l.pos - from).length(), m);
         }
         for s in self.world {
             for (q, p) in s.pieces().iter().enumerate() {
                 if p.salvage() && slow(p.body.linvel) && s.has_salvage(q, free) {
-                    let target = Target::Piece(s.id(), p.id);
-                    consider((p.com_world() - from).length(), Maneuver::Approach { target, range: 0.0, aim: AimMode::Auto });
+                    let m = match standoff {
+                        Some(_) => pull(p.com_world()),
+                        None => Maneuver::Approach { target: Target::Piece(s.id(), p.id), range: 0.0, aim: AimMode::Auto },
+                    };
+                    consider((p.com_world() - from).length(), m);
                 }
             }
         }

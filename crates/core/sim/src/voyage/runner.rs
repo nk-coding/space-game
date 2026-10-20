@@ -17,7 +17,7 @@
 //!   giving up on one after 20 s.
 //! - **Strip** salvage within 250 m that fits its hold and drifts slower than 6 m/s, the best value per cargo unit
 //!   first (as the strip order counts it), a point of value worth 50 m of the way; it gives up on a piece after 20 s
-//!   without a part.
+//!   without a part. With a tractor beam (GDR-0131) it stops at half the beam's reach and lets the beam pull it in.
 //! - **Mine** (GDR-0114), a ship with a mining laser and room in its hold: the nearest rock with ore left within
 //!   300 m, as the `mine` behavior action flies (an approach to half its mining reach off the rock's circle, nose
 //!   on it), firing once within reach.
@@ -35,8 +35,8 @@
 //! vessel any more) or out of time.
 //!
 //! Escorts start behind the flagship and fly the content's `escort` behavior with the flagship as their leader
-//! (they fight its lock; an escort with a mining laser flies `miner`, which mines between fights); their holds count
-//! for the haul. Deterministic like the sim: the same setup and seed give the same run on every platform.
+//! (they fight its lock; an escort with a mining laser flies `miner`, which mines between fights, and one with a
+//! tractor beam `salvager`, which strips wrecks between fights, GDR-0131); their holds count for the haul. Deterministic like the sim: the same setup and seed give the same run on every platform.
 
 use std::collections::BTreeSet;
 use std::sync::Arc;
@@ -289,10 +289,13 @@ impl VoyageRunner {
                     .ok_or("the behaviors have no `escort` for the escorts")?,
             ),
         };
-        // Mining (GDR-0114): escorts with a mining laser fly `miner`, which mines between fights. (Not `salvager`
-        // for escorts with a hold, GDR-0123: it costs goals, as no part says a design is meant to strip.)
+        // Mining (GDR-0114): escorts with a mining laser fly `miner`, which mines between fights. Escorts with a
+        // tractor beam fly `salvager` (GDR-0131: the part says the design is meant to strip; GDR-0123 kept plain
+        // escorts with a hold on `escort`, as stripping without one costs goals).
         let cuts = |d: &ShipDesign| d.parts.iter().any(|p| p.cut > 0.0);
+        let pulls = |d: &ShipDesign| !d.tractors.is_empty();
         let miner = behaviors.id("miner");
+        let salvager = behaviors.id("salvager");
         let mut sim = Sim::with_config(seed, SimConfig::default());
         sim.set_behaviors(behaviors);
         let plan = VoyagePlan::roll(content, voyage, seed)?;
@@ -312,7 +315,8 @@ impl VoyageRunner {
             body.pos = entry.pos + Vec2::new(side * ESCORT_GAP * row, -ESCORT_GAP * row);
             let id = sim.spawn_ship(Arc::clone(d), Owner::PLAYER, body);
             sim.command(id, ShipCommand::Leader(Some(me)));
-            sim.command(id, ShipCommand::Behavior(miner.filter(|_| cuts(d)).or(escort_behavior)));
+            let behavior = miner.filter(|_| cuts(d)).or(salvager.filter(|_| pulls(d))).or(escort_behavior);
+            sim.command(id, ShipCommand::Behavior(behavior));
             wing.push(id);
         }
         Ok(VoyageRunner {
@@ -581,13 +585,20 @@ impl VoyageRunner {
                 (Some(k), _) => pilot.salvage = Some((k, tick)),
                 (None, _) => pilot.salvage = None,
             }
-            let maneuver = match key {
-                Some((s, p)) => Maneuver::Approach {
+            // With a tractor (GDR-0131) it stops short and lets the beam pull the salvage in, as the behaviors'
+            // `salvage` does.
+            let standoff = sim
+                .ship(me)
+                .and_then(|s| s.tractor_reach())
+                .map(|r| r * crate::combat::tractor::tuning::STANDOFF);
+            let maneuver = match (key, standoff) {
+                (_, Some(range)) => Maneuver::Hold { at: crate::combat::tractor::short_of(here, pos, range) },
+                (Some((s, p)), None) => Maneuver::Approach {
                     target: Target::Piece(s, p),
                     range: 0.0,
                     aim: AimMode::Auto,
                 },
-                None => Maneuver::Hold { at: pos },
+                (None, None) => Maneuver::Hold { at: pos },
             };
             fly(sim, me, maneuver, pilot);
         } else if let Some((aim, standoff)) = mining {

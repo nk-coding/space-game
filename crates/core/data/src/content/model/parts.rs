@@ -473,6 +473,23 @@ pub struct BlinkSpec {
     pub mass: f32,
 }
 
+/// A tractor beam (GDR-0131; GDR-0018's utility family, GDR-0025's loose debris): while its vessel runs and its hold
+/// has room, it pulls up to `beams` pieces of salvage within `range` metres (loose items, wreck pieces, mined ore;
+/// never a vessel) towards the ship, nearest first, with at most `force` kN each (a heavy wreck piece comes slower),
+/// closing at most `speed` m/s relative to the ship and easing off as it arrives, so the hull collects it (GDR-0063).
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TractorSpec {
+    /// Metres from the ship's centre of mass to the salvage (a piece's bounding circle).
+    pub range: f32,
+    /// kN on each pulled piece (loose items weigh `sim::combat::tractor::tuning::LOOSE_MASS` t a cargo unit).
+    pub force: f32,
+    /// m/s: the fastest it closes a pulled piece on the ship.
+    pub speed: f32,
+    /// How many pieces it holds at once.
+    pub beams: u32,
+}
+
 /// A scanner (GDR-0080, GDR-0093): a scan (SCAN in flight, the `scan` behavior action) charges for `charge` seconds,
 /// drawing the part's power only then, and sweeps: on a voyage every site within `range` shows, every trail place
 /// beyond it gets a bearing, and sleeping sites within `wake` wake up. Then it cools down for `cooldown` seconds.
@@ -644,6 +661,9 @@ pub struct Part {
     /// Jumps its vessel a short way (the Phase walkers' blink, GDR-0127).
     #[serde(default)]
     pub blink: Option<BlinkSpec>,
+    /// Pulls salvage towards its vessel (GDR-0131).
+    #[serde(default)]
+    pub tractor: Option<TractorSpec>,
     #[serde(default)]
     pub gyro: Option<GyroSpec>,
     #[serde(default)]

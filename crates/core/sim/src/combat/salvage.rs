@@ -781,14 +781,17 @@ impl Sim {
     }
 
     /// Moves the loose items one tick (after the physics step, like the bodies), settling as salvage does
-    /// (`SalvageTuning::settle`); expired ones are gone.
+    /// (`SalvageTuning::settle`) unless a tractor beam holds them (GDR-0131); expired ones are gone.
     pub(crate) fn drift_loose(&mut self) {
         let tick = self.tick();
         let t = self.config().salvage;
+        let held = &self.tractor.loose;
         let loose = &mut self.salvage.loose;
         loose.retain(|l| l.expires.is_none_or(|e| e > tick));
         for l in loose.iter_mut() {
-            l.vel = t.settle(l.vel);
+            if held.binary_search(&l.id).is_err() {
+                l.vel = t.settle(l.vel);
+            }
             l.prev_pos = l.pos;
             l.pos += l.vel * DT;
         }

@@ -189,6 +189,8 @@ pub struct Sim {
     pub(crate) mind_scratch: Vec<MindRow>,
     /// Loose fragments and the collect pass's buffer (`salvage.rs`).
     pub(crate) salvage: SalvageState,
+    /// This tick's tractor beams and pulls (`tractor.rs`, GDR-0131; worked out each tick, not hashed).
+    pub(crate) tractor: crate::combat::tractor::TractorState,
     /// The voyage underway, if any (`voyage/mod.rs`).
     pub(crate) voyage: Option<Box<Voyage>>,
     /// The drone pass's live drones (scratch, reused; `ship/drones.rs`).
@@ -234,6 +236,7 @@ impl Sim {
             mind_dirty: false,
             mind_scratch: Vec::new(),
             salvage: SalvageState::default(),
+            tractor: Default::default(),
             voyage: None,
             drone_scratch: Vec::new(),
         }
@@ -817,6 +820,8 @@ impl Sim {
         self.collect();
         // Blink drives charge and jump (GDR-0127), so the physics step starts from the new poses.
         self.blinks_step();
+        // Tractor beams take hold of salvage near their vessels (GDR-0131): loose items now, pieces in the physics step.
+        self.tractor_step();
 
         // Physics: ghosts expire, this tick's wrenches replace the last ones (world force at the centre of
         // mass; the speed governor cuts what would pass the top speed, salvage pieces settle,
@@ -824,10 +829,10 @@ impl Sim {
         mark(StepPhase::Physics);
         let salvage = self.config.salvage;
         let edge = self.voyage.as_deref().map(|v| v.edge(&self.config.voyage));
-        for s in &mut self.ships {
+        for (k, s) in self.ships.iter_mut().enumerate() {
             let sid = s.id();
             let control = s.control_piece();
-            for p in &mut s.pieces {
+            for (q, p) in s.pieces.iter_mut().enumerate() {
                 let key = BodyKey {
                     ship: sid,
                     piece: p.id,
@@ -844,7 +849,10 @@ impl Sim {
                 // The piece's own thrust never takes it past its top speed (GDR-0089).
                 let top = p.authority.speed.iter().fold(0.0f32, |a, &b| a.max(b));
                 f = crate::ship::govern(f, p.body.linvel, p.mass.mass, top);
-                if control != Some(p.id) {
+                // Salvage settles, unless a tractor beam holds it (GDR-0131): then the beam's pull.
+                if self.tractor.holds_piece((k, q)) {
+                    f += self.tractor.force_on((k, q));
+                } else if control != Some(p.id) {
                     let v = p.body.linvel;
                     f += (salvage.settle(v) - v) * (p.mass.mass / crate::DT);
                 }

@@ -694,6 +694,7 @@ fn base_locks_follow_the_early_game_kit() {
             "stinger", // the Swarm family unlocks it and the drone bay (GDR-0117)
             "brood_hangar",
             "drone_bay",
+            "tractor_beam", // the utility research's salvage tool (GDR-0131)
             "phase_core", // the walkers' own (GDR-0127); their family unlocks the drive and the lance
             "blink_drive",
             "phase_lance",
@@ -759,6 +760,7 @@ fn base_research_nodes() {
             "simulation_vault",
             "ion_cannon",
             "cruiser_drydock",
+            "tractor_beam", // the utility family's salvage tool (GDR-0131)
             "reactive_plating",
             "automaton_forge",
             "capital_drydock",

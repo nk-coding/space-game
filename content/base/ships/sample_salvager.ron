@@ -1,0 +1,42 @@
+// A salvage fit (GDR-0131): the rim skiff with a tractor beam for its scanner and cargo bays for its two rear armour
+// blocks, so it holds 12 units and pulls wreck pieces in from 80 m. It flies `salvager`: it fights its leader's lock
+// and strips wrecks between fights; on a voyage, escorts like it strip while plain escorts keep near the flagship.
+// PLACEHOLDER design (lead default, 20 Oct 2026).
+(
+    id: "sample_salvager",
+    name: "Sample salvager",
+    summary: "A salvage drydock sample: the rim skiff with a tractor beam and three cargo bays.",
+    description: "Fly it as an escort with a [[behavior:salvager]] mind: it fights what its leader has locked and, between fights, pulls the wrecks near by into its hold with its [[part:tractor_beam]]. Its rear has cargo bays where the rim skiff has armour.",
+    tags: ["sample", "salvage"],
+    faction: "ship_mind",
+    behavior: "salvager",
+    size: (8, 4),
+    parts: [
+        (part: "slope_1x1", x: 2, y: 0, flip: true, material: "steel"),
+        (part: "slope_1x1", x: 5, y: 0, material: "steel"),
+        (part: "pulse_laser", x: 3, y: 0),
+        (part: "pulse_laser", x: 4, y: 0, flip: true),
+        (part: "radiator", x: 1, y: 1),
+        (part: "radiator", x: 6, y: 1, flip: true),
+        (part: "shield_emitter", x: 2, y: 1),
+        (part: "shield_emitter", x: 5, y: 1, flip: true),
+        (part: "capacitor", x: 3, y: 1),
+        (part: "capacitor", x: 4, y: 1, flip: true),
+        (part: "radiator", x: 0, y: 2),
+        (part: "radiator", x: 7, y: 2, flip: true),
+        (part: "fission_reactor", x: 1, y: 2),
+        (part: "fission_reactor", x: 6, y: 2, flip: true),
+        (part: "cargo_bay", x: 2, y: 2),
+        (part: "tractor_beam", x: 5, y: 2),
+        (part: "logic_core", x: 3, y: 2),
+        (part: "logic_core", x: 4, y: 2, flip: true),
+        (part: "slope_1x1", x: 0, y: 3, rot: 2, material: "steel"),
+        (part: "slope_1x1", x: 7, y: 3, rot: 2, flip: true, material: "steel"),
+        (part: "thruster", x: 1, y: 3),
+        (part: "thruster", x: 6, y: 3, flip: true),
+        (part: "cargo_bay", x: 2, y: 3),
+        (part: "cargo_bay", x: 5, y: 3, flip: true),
+        (part: "gyro", x: 3, y: 3),
+        (part: "gyro", x: 4, y: 3, flip: true),
+    ],
+)

@@ -348,6 +348,15 @@ impl<'a> Validator<'a> {
                 self.err(p, "blink", "a blink drive draws power while it charges (`power.draw`)");
             }
         }
+        if let Some(x) = &p.tractor {
+            self.reach(p, "tractor.range", x.range);
+            self.number(p, "tractor.force", x.force, 0.0, true);
+            self.number(p, "tractor.speed", x.speed, 0.0, true);
+            if x.beams == 0 {
+                self.err(p, "tractor.beams", "must be at least 1");
+            }
+            self.count(p, "tractor.beams", x.beams, MAX_COUNT);
+        }
         if let Some(x) = &p.countermeasure {
             for (field, n) in [("countermeasure.charges", x.charges), ("countermeasure.decoys", x.decoys)] {
                 if n == 0 {

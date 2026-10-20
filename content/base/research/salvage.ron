@@ -1,0 +1,14 @@
+// Salvage tools (GDR-0131): the tractor beam, the utility family's tool for collecting. PLACEHOLDER NUMBERS (lead
+// defaults, 20 Oct 2026): about two voyages' utility data (cargo bays, holds and mining lasers dismantled).
+[
+    (
+        id: "tractor_beam",
+        name: "Tractor beam",
+        summary: "A beam that pulls salvage within reach into the hold: no more flying slowly over every wreck.",
+        description: "Unlocks the [[part:tractor_beam]]. Escorts that carry one strip wrecks between fights.",
+        family: "utility",
+        kind: NewPart,
+        cost: (data: {"utility": 5}),
+        unlocks: [Part("tractor_beam")],
+    ),
+]
