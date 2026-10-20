@@ -51,3 +51,5 @@ menu, behavior editor, galaxy map with autopilot, desktop drydock 1280×720) plu
 
 - The mockups in `docs/concept/boards/ui-mockups/` are the reference for every screen.
 - UI colours and fonts come from `art/tokens.json` and vector fonts (ADR-0021).
+- 21 Oct 2026 (Niklas, after the mobile browser check): landscape only on every touch device, tablets included; the
+  web page's "rotate your device to landscape" cover stays for any coarse pointer in portrait.

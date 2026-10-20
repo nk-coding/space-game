@@ -85,7 +85,7 @@ published, and were written without a run.
   The mobile browser check: done 20 Oct 2026 (`docs/results/mobile-check-2026-10-20.md`: the phone layouts' scale
   floor 0.75 so they fit a 667 × 375 phone and a phone's browser with its toolbars; the page without
   `viewport-fit=cover`, with `touch-action`/`overscroll-behavior: none`, no selection, callout or tap flash, iOS's
-  pinch gestures prevented; three questions for Niklas there).
+  pinch gestures prevented; Niklas's three decisions of 21 Oct 2026 there).
 
 ## Licences and third-party notices
 
@@ -2520,7 +2520,8 @@ but the type is too small to read). Numbers are placeholders.
     844 × 390; each lane's dot, name and data over its cards (`Metrics::lane_head`), so three columns of cards
     (163 px) fit beside a 254 px detail whose rows scroll over UNLOCK (no preview picture); the materials wrap right
     of the header (at every size now: `fit_materials` starts them at the header's laid-out right edge; at 1280 × 720
-    the eleven of the base pack ran into the title too), ALSO IN STORE left out.
+    the eleven of the base pack ran into the title too), ALSO IN STORE left out; since 21 Oct 2026 (Niklas) only the
+    materials the selected node costs and those in store (`shown_on_phone`).
   - *Evolution* (`evolution/mod.rs`, built again by `relayout`; home's UI scale follows while the layer is open):
     844 × 390; each page scrolls up and down between the header and the status line, its wide columns stacked
     (`Page::reflow`: SETUP's two columns one under the other, THE RUN's progress line, then the chart and the archive

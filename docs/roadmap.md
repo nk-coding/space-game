@@ -880,8 +880,9 @@ Next session:
   toolbars), 932 × 430, portrait and a 1180 × 820 tablet (`results/mobile-check-2026-10-20.md`). Fixed: the phone
   layouts' scale floor 0.75 (was 0.9; they lost their right or bottom edge on small phones and in a phone's browser);
   the page no longer draws under a notch (`viewport-fit=cover` gone) and never moves, selects or zooms under a
-  finger. Open for Niklas: type at about 7 px on 667-wide phones, research's materials wrapping over the tree on a
-  phone, the rotate cover on tablets in portrait.
+  finger. Niklas decided on 21 Oct 2026: the about 7 px type on 667-wide phones stays, research on a phone shows only
+  the selected node's materials and those in store (built), landscape only on tablets too. Also fixed: home's labels
+  keep clear of the career's notes on a phone, SETTINGS' rows grow with three-line summaries.
 
 ### 20 Oct 2026: save export and import (ADR-0050)
 

@@ -52,32 +52,37 @@ the wide HUD with the touch widgets), the debrief, SETTINGS' three tabs includin
 Portrait shows the existing "rotate your device to landscape" cover ([GDR-0008](../gdr/0008-ui-ship-mind-interface.md):
 landscape only).
 
-## Needs a decision (for Niklas)
+## Decided (Niklas, 21 Oct 2026)
 
-1. **Type on small phones.** At 667 × 375 the phone layouts now fit, but at 0.79 their 9 px floor
-   (`CompactText(9)`) is about 7 CSS px (14 device px at DPR 2): readable, small (`mobile-667-evolution-setup-2026-10-20.png`).
-   Options: (a) accept it for phones under about 700 dp wide (recommended: few phones are that small, and 844 ×
-   390 stays at 9 px); (b) a larger floor below 0.85 (lines will wrap and some screens overflow again); (c) layouts
-   of their own for 667 × 375.
-2. **Research's materials on a phone.** Every material any research costs is shown in the top bar (18 in the base
-   pack now, 12 on 19 Oct), and on a phone they wrap into four or five rows over the tier heads and the detail's top
-   (`mobile-844-research-materials-2026-10-20.png`; the dev mode's 1000000s make it worse, a career gets there with
-   its store). Options: (a) on a phone only the materials the selected node costs plus those in store, ALSO IN STORE
-   style (recommended); (b) one row that scrolls sideways; (c) a MATERIALS chip that opens the list.
-3. **Tablets in portrait.** The rotate cover shows for every coarse pointer in portrait, so an iPad held upright
-   gets it too (`mobile-tablet-portrait-2026-10-20.png`); the wide layouts would fit at about 0.64 scale. Options:
-   (a) keep landscape only everywhere (recommended: GDR-0008, nothing to build); (b) the cover only under about 600
-   dp wide, tablets get the 1280 × 720 layouts scaled down.
+1. **Type on small phones**: the about 7 CSS px smallest type at 667 × 375 (0.79 of the 9 px floor) is accepted;
+   nothing to build (`mobile-667-evolution-setup-2026-10-20.png`).
+2. **Research's materials on a phone**: only the materials the selected node costs and those in store (built,
+   `69ec263`: `research::screen::shown_on_phone`; the wide layouts show them all as before). Before:
+   `mobile-844-research-materials-2026-10-20.png` (the dev mode, every material in store, still shows all of them).
+   After, a fresh career with Reactive plating selected: `mobile-844-research-phone-materials-2026-10-21.png`.
+3. **Portrait**: landscape only on every touch device, tablets included ([GDR-0008](../gdr/0008-ui-ship-mind-interface.md)
+   note); the rotate cover stays (`mobile-tablet-portrait-2026-10-20.png`).
+
+## Fixed after the decisions (21 Oct 2026)
+
+- Home's career note over TEST RANGE's line at 667 × 375 (`c43a5cd`): on a phone the yard zooms out about its centre
+  until no place label runs under the notes' box (10 dp apart; `home::clear_of_notes`, measured from the laid-out
+  notes); 844 × 390 and wide windows keep their view. Before: `mobile-667-home-note-2026-10-20.png`; after:
+  `mobile-667-home-note-after-2026-10-21.png`.
+- SETTINGS › CONTROLS (`765a7e9`): a row is at least 34 px and grows with a summary of three lines (BLINK's, EMP
+  BURST's, OVERDRIVE's at 1280 × 720); BLINK's ran into EMP BURST's row. EMP BURST's missing description was a stale
+  build: `controls.ron` has its summary since GDR-0132.
+- Checked at 844 × 390 @3 and 667 × 375 @2 (research, a selected node, home with and without the dev mode) and with
+  `scripts/ui-check.sh` at 1280 × 720, 1600 × 900 and 2560 × 1440 (home, SETTINGS scrolled to BLINK, research).
 
 ## Still open (no decision needed)
 
-- Home's career note at 667 × 375 overlaps TEST RANGE's line (the station is fitted to the whole window, the note
-  sits over its corner; `mobile-667-home-note-2026-10-20.png`). Fine at 844 and up.
 - At 667 × 375 SETTINGS, FLEET and research leave 40 to 60 dp empty at the bottom: the layouts keep 390 dp of
   height and the window is 474 dp at that scale. Their bottom lines could hang from the window's bottom.
 - The voyage map's labels overlap where clusters crowd (`BRASA FOGNANDEEP`), on every size; not phone-specific.
-- Desktop, seen by the way: SETTINGS › CONTROLS' BLINK description takes three lines and touches EMP BURST's row,
-  and EMP BURST has no description.
+- Research's tree: a card with three chip lines (Precursor alloy: HULL, LOGIC, a material and the second material
+  on a third line) runs into the card under it (Capital drydock), on a phone and likely wide too; in the dev mode the
+  wide top bar's fourth row of materials touches the detail's kind line at 1280 × 720.
 - `SafeArea` stays the plan's placeholders (no web insets are read; with `viewport-fit=cover` gone, none are needed).
 - Not checkable headless: real browser toolbars (simulated by the 844 × 340 size), iOS Safari itself, the pinch.
 - **Headless note**: at DPR 3 SwiftShader draws about 1.7 frames a second, so a `tap` on a control with a tooltip
