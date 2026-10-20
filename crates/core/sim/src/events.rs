@@ -219,6 +219,15 @@ pub enum SimEvent {
         normal: Vec2,
         family: WeaponFamily,
     },
+    /// An energy hit-scan shot (beam tick or pulse) glanced off refractive armour (GDR-0126): the share it turned
+    /// away left `point` along the mirrored line and went on to `to` as nobody's shot, hitting what it met (`hit`).
+    /// `ship`: the ship it glanced off. One per glance; a beam glances every tick it rests on the armour.
+    Refracted {
+        ship: ShipId,
+        point: Vec2,
+        to: Vec2,
+        hit: bool,
+    },
     /// A kinetic shot glanced off a slope face.
     Ricochet {
         id: ProjectileId,
@@ -277,6 +286,9 @@ pub enum SimEvent {
     /// A voyage site woke (`voyage/mod.rs`): its ships fly their behavior from now on. `site` indexes
     /// `Voyage::sites`.
     SiteWoke { site: u32 },
+    /// A sleeping wary site warned a player vessel off its territory (GDR-0126): one came within its `warn`; it wakes
+    /// at `wake`. Once per site.
+    SiteWarned { site: u32 },
     /// A site's ship called its group (GDR-0113): the group's site `site` warps in on the cluster's edge
     /// [`crate::voyage::CALL_SECONDS`] later (`Site::arrives`), awake.
     SiteCalled { site: u32 },

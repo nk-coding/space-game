@@ -64,7 +64,7 @@ pub use math::{Rot, Vec2};
 pub use report::{DesignReport, design_report, design_report_upgraded};
 pub use rng::{Pcg32, Stream};
 pub use ship::{
-    Body, Defence, GunMount, PartState, Piece, PowerState, Scan, Ship, ShipControls, ThrustAuthority, Thruster,
+    Body, Defence, GunMount, PartState, Piece, PowerState, Relay, Scan, Ship, ShipControls, ThrustAuthority, Thruster,
     Wrench, gun_works, inherited_velocity, producing, rated_falloff,
 };
 pub use ship::alloc::{Actuation, TorqueSource};

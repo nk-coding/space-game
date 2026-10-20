@@ -194,9 +194,14 @@ impl Ship {
         for &p in &piece.parts {
             let slot = d.slot_of_part[p as usize];
             let spec = &d.parts[p as usize];
+            // A gun that prisms may relay: its beam path's (GDR-0126).
             let clear = slot == NO_SLOT
                 || spec.is_engine
-                || gun_blockers(d, &self.parts, slot, pid).next().is_none();
+                || if d.guns[slot as usize].prisms.is_empty() {
+                    gun_blockers(d, &self.parts, slot, pid).next().is_none()
+                } else {
+                    self.beam_path(slot, pid).clear()
+                };
             self.parts[p as usize].clear = clear;
         }
 
@@ -330,19 +335,37 @@ impl Ship {
                     Delivery::Missile { salvo, .. } => salvo.max(1) as f32,
                     _ => 1.0,
                 };
-                let damage = st.get(Stat::Damage);
+                let mut damage = st.get(Stat::Damage);
+                let (mut muzzle, mut facing, mut range) = (g.muzzle, g.facing, st.get(Stat::Range));
+                // Relayed by prisms (GDR-0126): the beam leaves from the last one's front, each adds its shares.
+                let mut relay = crate::ship::Relay { from: to_piece(g.muzzle, piece.origin), ..Default::default() };
+                if !g.prisms.is_empty() {
+                    let path = self.beam_path(slot, pid);
+                    let (mut r, mut f) = (0.0f32, 0.0f32);
+                    for (k, &o) in path.prisms().iter().enumerate() {
+                        let [dr, df] = d.parts[o as usize].relay;
+                        (r, f) = (r + dr, f + df);
+                        relay.prisms[k] = o;
+                    }
+                    relay.len = path.len;
+                    if path.len > 0 {
+                        (muzzle, facing) = (d.grid.side_mid(path.exit, path.dir), path.dir);
+                        range *= 1.0 + r;
+                        damage *= 1.0 + f;
+                    }
+                }
                 piece.guns.push(GunMount {
                     slot,
                     part: p,
-                    muzzle: to_piece(g.muzzle, piece.origin),
-                    dir: dir_vec(g.facing),
+                    muzzle: to_piece(muzzle, piece.origin),
+                    dir: dir_vec(facing),
                     clear,
                     fire_rate,
                     dps: damage * fire_rate,
                     output: 0.0,
                     family: spec.weapon.unwrap_or(WeaponFamily::Energy),
                     delivery: spec.delivery,
-                    range: st.get(Stat::Range),
+                    range,
                     rate: base_rate * fire_rate,
                     shot_damage: if base_rate > 0.0 {
                         damage / base_rate / salvo
@@ -356,6 +379,7 @@ impl Ship {
                     cut: spec.cut,
                     disrupt: spec.disrupt,
                     lance: spec.lance,
+                    relay,
                 });
             }
         }

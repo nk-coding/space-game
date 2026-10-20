@@ -260,13 +260,18 @@ pub struct GunReport {
     pub part: PartIdx,
     /// Index into `DesignReport::pieces`.
     pub piece: usize,
-    /// Centre of the facing side (blueprint frame).
+    /// Centre of the side its shots leave by (blueprint frame): its facing side, or the last prism's front when
+    /// prisms relay its beam (GDR-0126).
     pub muzzle: [f32; 2],
-    /// The side it fires through.
+    /// The side its shots leave by.
     pub facing: Dir,
+    /// The prisms its beam passes, in order (GDR-0126; empty: none). The beam enters at its own facing side's
+    /// centre, `from`.
+    pub relay: Vec<PartIdx>,
+    pub from: [f32; 2],
     /// Line of fire clear (no part of its own piece straight ahead).
     pub clear: bool,
-    /// The parts of its piece in its line of fire.
+    /// The parts of its piece in its line of fire (a relayed gun: the first one in its beam's way).
     pub blockers: Vec<PartIdx>,
     /// Reach (m), after bonuses.
     pub range: f32,
@@ -691,14 +696,23 @@ pub fn design_report_upgraded(
     for (k, piece) in ship.pieces.iter().enumerate() {
         for g in &piece.guns {
             let spec = &d.guns[g.slot as usize];
+            let (muzzle, facing, blockers) = if spec.prisms.is_empty() {
+                (spec.muzzle, spec.facing, gun_blockers(d, &ship.parts, g.slot, piece.id).collect())
+            } else {
+                let path = ship.beam_path(g.slot, piece.id);
+                let at = if path.len > 0 { d.grid.side_mid(path.exit, path.dir) } else { spec.muzzle };
+                (at, path.dir, path.blocker.map(|b| b as PartIdx).into_iter().collect())
+            };
             guns.push(GunReport {
                 slot: g.slot,
                 part: g.part,
                 piece: k,
-                muzzle: spec.muzzle,
-                facing: spec.facing,
+                muzzle,
+                facing,
+                relay: g.relay.prisms().to_vec(),
+                from: spec.muzzle,
                 clear: g.clear,
-                blockers: gun_blockers(d, &ship.parts, g.slot, piece.id).collect(),
+                blockers,
                 range: g.range,
                 dps: g.dps,
                 rate: g.rate,

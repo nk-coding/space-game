@@ -55,6 +55,8 @@ pub mod tuning {
     pub const RICOCHET_DAMAGE: f32 = 0.5;
     /// At most this many ricochets per projectile.
     pub const MAX_RICOCHETS: u8 = 2;
+    /// An energy hit-scan shot glances off refractive armour at most this many times (GDR-0126).
+    pub const MAX_REFRACTIONS: usize = 2;
     /// Ray segments per projectile per tick (ricochets add segments).
     pub const MAX_SEGMENTS: usize = 4;
     /// Grid cells a penetrating shot may walk through after its first hit (also the walk through parts destroyed
@@ -752,6 +754,11 @@ impl Sim {
                 ShotEnd { to: h.point, hit: true, rock: h.key.as_rock() }
             }
             Some(Cast::Part(h)) => {
+                // Refractive armour turns a share of an energy shot away (GDR-0126).
+                let turned = self.refraction(family, &h, left);
+                if turned > 0.0 {
+                    self.refract(h, dir, range - h.hit.distance, turned);
+                }
                 self.gun_hits.push(GunHit {
                     by: owner,
                     team,
@@ -760,7 +767,7 @@ impl Sim {
                     dir,
                     range,
                     hit: h,
-                    damage: left,
+                    damage: left - turned,
                     absorbed: damage - left,
                     disrupt,
                     lance,
@@ -776,6 +783,69 @@ impl Sim {
                 hit: false,
                 rock: None,
             },
+        }
+    }
+
+    /// The share of `damage` of a shot of `family` that the part `h` hit turns away (GDR-0126): its refractive
+    /// armour's `refract` for energy shots, else 0.
+    fn refraction(&self, family: WeaponFamily, h: &PartRayHit, damage: f32) -> f32 {
+        if family != WeaponFamily::Energy {
+            return 0.0;
+        }
+        damage * self.ships[h.k].design().parts[h.part as usize].refract
+    }
+
+    /// Refraction (GDR-0126): `damage` of an energy hit-scan shot along `dir` glances off the refractive part `h`
+    /// along the mirrored line (the hit's surface normal) and goes on for `range` m as nobody's shot (no team):
+    /// shields along the way, then the first part it meets, whoever's it is (the shooter's own and its friends'
+    /// too); only the ship it glanced off is passed. A part it meets queues its hit with the guns' (fire is mutual),
+    /// and a refractive one turns its share away again, at most [`tuning::MAX_REFRACTIONS`] glances in all.
+    /// `SimEvent::Refracted` for each glance.
+    fn refract(&mut self, mut h: PartRayHit, mut dir: Vec2, mut range: f32, mut damage: f32) {
+        let family = WeaponFamily::Energy;
+        for _ in 0..tuning::MAX_REFRACTIONS {
+            let by = self.ships[h.k].id();
+            let n = h.hit.normal;
+            dir = dir - n * (2.0 * dir.dot(n));
+            let from = h.hit.point + n * 1e-3;
+            if range <= 0.0 || damage <= 1e-6 {
+                return;
+            }
+            let hit = self.shot_cast(by, None, from, dir, range);
+            let len = hit.map_or(range, |c| c.distance());
+            let mut left = damage;
+            if let Some(t) = self.shield_pass(by, None, family, from, dir, len, &mut left, None) {
+                self.events.push(SimEvent::Refracted { ship: by, point: from, to: from + dir * t, hit: false });
+                return;
+            }
+            let p = match hit {
+                None => {
+                    self.events.push(SimEvent::Refracted { ship: by, point: from, to: from + dir * len, hit: false });
+                    return;
+                }
+                Some(Cast::Rock(r)) => {
+                    self.rock_hit(by, family, &r);
+                    self.events.push(SimEvent::Refracted { ship: by, point: from, to: r.point, hit: true });
+                    return;
+                }
+                Some(Cast::Part(p)) => p,
+            };
+            self.events.push(SimEvent::Refracted { ship: by, point: from, to: p.hit.point, hit: true });
+            let turned = self.refraction(family, &p, left);
+            self.gun_hits.push(GunHit {
+                by,
+                team: None,
+                family,
+                from,
+                dir,
+                range,
+                hit: p,
+                damage: left - turned,
+                absorbed: damage - left,
+                disrupt: 0.0,
+                lance: None,
+            });
+            (h, damage, range) = (p, turned, range - p.hit.distance);
         }
     }
 

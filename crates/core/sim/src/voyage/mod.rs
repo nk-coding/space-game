@@ -171,6 +171,10 @@ pub struct SitePlan {
     /// Calm unless provoked (GDR-0099 A3): every ship of the encounter is of a wary faction, so the site does not
     /// wake when a player vessel comes within `wake_radius`, only when it is hit, rammed, scanned or stripped.
     pub wary: bool,
+    /// The ground its wary faction keeps (GDR-0126, `data::Territory`): a sleeping site warns once when a player
+    /// vessel comes within `warn` (`SimEvent::SiteWarned`) and wakes when one comes within `wake`. `None`: only
+    /// provocation wakes a wary site.
+    pub territory: Option<data::Territory>,
     pub ships: Vec<Spawn>,
     pub wrecks: Vec<Spawn>,
     /// The site of the group it calls (GDR-0113: the encounter's `calls`), if any.
@@ -376,6 +380,7 @@ impl VoyagePlan {
             pos: at,
             wake_radius: e.map_or(0.0, |e| e.wake_radius),
             wary: e.is_some_and(|e| wary(content, e)),
+            territory: e.and_then(|e| territory(content, e)),
             ships,
             wrecks,
             calls: None,
@@ -419,6 +424,20 @@ fn wary(content: &Content, e: &data::Encounter) -> bool {
                 .and_then(|b| content.factions.get(&b.faction))
                 .is_some_and(|f| f.wary)
         })
+}
+
+/// The ground a wary encounter keeps (GDR-0126): when every ship's faction keeps one, the largest `wake` and `warn`
+/// among them (the touchiest); else none.
+fn territory(content: &Content, e: &data::Encounter) -> Option<data::Territory> {
+    if !wary(content, e) {
+        return None;
+    }
+    let mut out: Option<data::Territory> = None;
+    for s in &e.ships {
+        let t = content.ships.get(&s.ship).and_then(|b| content.factions.get(&b.faction))?.territory?;
+        out = Some(out.map_or(t, |o| data::Territory { wake: o.wake.max(t.wake), warn: o.warn.max(t.warn) }));
+    }
+    out
 }
 
 /// The push that turns a piece back at a voyage's edge (GDR-0095): nothing inside `edge` (m from the centre);
@@ -599,6 +618,8 @@ pub struct Site {
     rally: Option<Vec2>,
     /// A called group on its way (GDR-0113): the tick it warps in and where its ships rally. Kept after it came.
     due: Option<(u64, Vec2)>,
+    /// It warned the fleet off its territory (GDR-0126, `SimEvent::SiteWarned`). Final.
+    warned: bool,
 }
 
 impl Site {
@@ -786,9 +807,15 @@ impl StateHash for Site {
         }
         h.vec2(p.pos);
         h.f32(p.wake_radius);
-        // Only when wary, so plans without wary sites hash as before.
+        // Only when wary, so plans without wary sites hash as before; a territory and its warning likewise.
         if p.wary {
             h.u8(1);
+        }
+        if let Some(t) = p.territory {
+            h.u8(4);
+            h.f32(t.wake);
+            h.f32(t.warn);
+            h.bool(self.warned);
         }
         // Only for a calling site and its group, so plans without calls hash as before.
         if let Some(g) = p.calls {
@@ -888,6 +915,7 @@ impl Sim {
                 hit: false,
                 rally: None,
                 due: None,
+                warned: false,
             })
             .collect();
         self.voyage = Some(Box::new(Voyage {
@@ -1153,9 +1181,20 @@ impl Sim {
         }
         for k in 0..v.sites.len() {
             let site = &v.sites[k];
+            // A wary site's territory (GDR-0126): it warns once, then wakes closer in.
+            let ground = site.plan.territory.filter(|_| site.state == SiteState::Asleep);
+            if let Some(t) = ground
+                && !site.warned
+                && v.near(site.plan.pos, t.warn)
+            {
+                v.sites[k].warned = true;
+                self.events.push(SimEvent::SiteWarned { site: k as u32 });
+            }
+            let site = &v.sites[k];
             if site.state == SiteState::Asleep
                 && (site.hit
                     || (!site.plan.wary && v.near(site.plan.pos, site.plan.wake_radius))
+                    || ground.is_some_and(|t| v.near(site.plan.pos, t.wake))
                     || site.ships.iter().any(|&s| !self.running(s)))
             {
                 for &id in &site.ships {

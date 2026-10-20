@@ -200,6 +200,25 @@ pub struct GunMount {
     pub disrupt: f32,
     /// A lance (GDR-0127): its shots strike every part on their line through the struck piece.
     pub lance: Option<data::LanceSpec>,
+    /// The prisms its beam passes (GDR-0126): `muzzle` and `dir` are then the last prism's front, `range`, `dps`
+    /// and `shot_damage` raised by their shares.
+    pub relay: Relay,
+}
+
+/// The prisms a gun's beam passes on its piece (GDR-0126, [`crate::Ship::beam_path`]), for drawing and reports.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct Relay {
+    /// The gun's own muzzle (piece frame), where the beam enters the chain.
+    pub from: Vec2,
+    pub prisms: [PartIdx; data::design::geometry::MAX_PRISMS],
+    pub len: u8,
+}
+
+impl Relay {
+    /// The prisms, in the beam's order (empty: not relayed).
+    pub fn prisms(&self) -> &[PartIdx] {
+        &self.prisms[..self.len as usize]
+    }
 }
 
 /// A point-defence gun's targeting, compiled (`data::DefenceSpec`).

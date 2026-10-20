@@ -171,6 +171,11 @@ pub struct PartSpec {
     pub lance: Option<data::LanceSpec>,
     /// Shield bubbles: share of each family's damage absorbed (indexed by [`family_index`]).
     pub absorb: [f32; FAMILIES],
+    /// A prism (GDR-0126, content `prism`): the shares of a relayed gun's reach and damage it adds (`[0, 0]`: none).
+    pub relay: [f32; 2],
+    /// A hull part of refractive armour (GDR-0126, its material's `refract`): the share of an energy hit-scan
+    /// shot's damage it turns away along the mirrored line (0: none).
+    pub refract: f32,
     pub is_engine: bool,
     /// Reaction-control pod: one nozzle per straight side open to space.
     pub is_rcs: bool,
@@ -306,6 +311,9 @@ pub struct GunSpec {
     pub facing: Dir,
     /// Its weapon group, 1 to `data::MAX_WEAPON_GROUP` (GDR-0088): which of the pilot's triggers fires it.
     pub group: u8,
+    /// The prisms of the design that take its beam (GDR-0126, their `target` picks it), ascending: its line of fire
+    /// is a beam path through them ([`crate::Ship::beam_path`]). Empty: the plain line of fire.
+    pub prisms: Vec<PartIdx>,
 }
 
 /// A hangar's static mount (GDR-0117): where its drones leave, which way, and the drone they are.
@@ -574,6 +582,8 @@ impl ShipDesign {
                     .map_or(0.0, |w| w.disrupt / w.damage),
                 lance: def.weapon.as_ref().and_then(|w| w.lance),
                 absorb,
+                relay: def.prism.as_ref().map_or([0.0; 2], |p| [p.range, p.damage]),
+                refract: if def.hull { content.placement_armor(pl).map_or(0.0, |a| a.refract) } else { 0.0 },
                 is_engine: def.engine.is_some(),
                 is_rcs: def.rcs.is_some(),
                 is_radiator: def.radiator.is_some(),
@@ -728,6 +738,10 @@ impl ShipDesign {
                     facing,
                     // Out of range only in unvalidated blueprints (tests, tools): the nearest group.
                     group: ship.parts[i].group.unwrap_or(1).clamp(1, data::MAX_WEAPON_GROUP),
+                    prisms: (0..n)
+                        .filter(|&o| defs[o].prism.as_ref().is_some_and(|p| defs[i].matches(&p.target)))
+                        .map(|o| o as PartIdx)
+                        .collect(),
                 });
                 gun_blockers.push(line_of_fire_blockers(&grid, i, facing, bounds));
             }

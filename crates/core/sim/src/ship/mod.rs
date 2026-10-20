@@ -39,7 +39,7 @@ use crate::ship::mass::{MassProps, combine, to_piece};
 use crate::math::{Rot, Vec2, sin};
 use crate::ship::power::{Consumer, PowerSetting, Reactor};
 
-pub use piece::{Defence, GunMount, Piece, ThrustAuthority, Thruster, gun_works, producing};
+pub use piece::{Defence, GunMount, Piece, Relay, ThrustAuthority, Thruster, gun_works, producing};
 pub use scan::{Scan, tuning as sensor_tuning};
 pub(crate) use piece::{HeatK, refresh_authority};
 pub(crate) use systems::{applied_bonuses, gun_blockers, power_pass, reactor_supply};
@@ -483,6 +483,18 @@ impl Ship {
     /// Occupancy grid of the alive parts (blueprint frame).
     pub fn grid(&self) -> &ShipGrid {
         &self.grid
+    }
+
+    /// The beam path of gun `slot` on piece `piece` now (GDR-0126, `data::BeamPath`): through the prisms that take
+    /// its beam, past only the alive parts of that piece (a prism shot out leaves a gap the beam crosses).
+    pub fn beam_path(&self, slot: u32, piece: PieceId) -> data::BeamPath {
+        let d = &*self.design;
+        let g = &d.guns[slot as usize];
+        self.grid.beam_path(
+            g.part as usize,
+            |o| self.parts[o].piece == piece,
+            |o| g.prisms.binary_search(&(o as PartIdx)).ok().map(|_| d.grid.shape(o).facing()),
+        )
     }
 
     pub fn parts(&self) -> &[PartState] {

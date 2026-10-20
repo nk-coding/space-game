@@ -4,12 +4,14 @@
 //! summary.
 //!
 //! `cargo run --release -p sim --example voyage -- --voyage yard_approach --design rim_skiff --seeds 1..20`
-//! `[--escort rim_skiff[,...]] [--behavior skirmisher] [--minutes 30]`
+//! `[--escort rim_skiff[,...]] [--behavior skirmisher] [--minutes 30] [--pack dir]`
 //!
 //! `--design` and `--escort` take a content ship id or a blueprint file (`*.ron`, a saved or exported drydock
 //! design: a ship a player would build that is not content). Escorts start behind the flagship and fly the
 //! `escort` template with the flagship as their leader (they fight its lock); their holds count for the haul.
-//! With `--behavior` the ship flies that content behavior in fights, else the closing pilot.
+//! With `--behavior` the ship flies that content behavior in fights, else the closing pilot. `--pack` loads a pack
+//! directory (a mod over the base pack, its `pack.ron` depending on `base`) on top of the content: test voyages built
+//! from the content's encounters for a balance run, never in the game (GDR-0126's runs).
 //!
 //! The pilot and the run live in `sim::voyage::runner` (its module docs say how the pilot flies); this example
 //! parses the arguments, runs the seeds and prints. Native only; the wall clock times each tick of a run (the
@@ -30,6 +32,7 @@ struct Args {
     behavior: Option<String>,
     escorts: Vec<String>,
     minutes: u64,
+    pack: Option<String>,
 }
 
 fn args() -> Args {
@@ -40,6 +43,7 @@ fn args() -> Args {
         behavior: None,
         escorts: Vec::new(),
         minutes: 30,
+        pack: None,
     };
     let mut it = std::env::args().skip(1);
     while let Some(k) = it.next() {
@@ -50,6 +54,7 @@ fn args() -> Args {
             "--behavior" => a.behavior = Some(v),
             "--escort" => a.escorts.extend(v.split(',').map(str::to_string)),
             "--minutes" => a.minutes = v.parse().expect("--minutes: whole minutes"),
+            "--pack" => a.pack = Some(v),
             "--seeds" => {
                 a.seeds = match v.split_once("..") {
                     Some((lo, hi)) => {
@@ -112,9 +117,31 @@ fn blueprint(content: &data::Content, design: &str) -> data::Blueprint {
     }
 }
 
+/// The base content, with the pack in `dir` on top (every `.ron` file below it, by relative path).
+fn content_with(dir: Option<&str>) -> data::Content {
+    let Some(dir) = dir else { return data::base_content() };
+    fn walk(root: &std::path::Path, at: &std::path::Path, out: &mut Vec<(String, String)>) {
+        let mut entries: Vec<_> = std::fs::read_dir(at).unwrap_or_else(|e| panic!("{}: {e}", at.display())).flatten().collect();
+        entries.sort_by_key(|e| e.path());
+        for e in entries {
+            let p = e.path();
+            if p.is_dir() {
+                walk(root, &p, out);
+            } else if p.extension().is_some_and(|x| x == "ron") {
+                let rel = p.strip_prefix(root).unwrap().to_string_lossy().replace('\\', "/");
+                out.push((rel, std::fs::read_to_string(&p).unwrap()));
+            }
+        }
+    }
+    let mut files = Vec::new();
+    walk(std::path::Path::new(dir), std::path::Path::new(dir), &mut files);
+    let pack = data::Pack::from_files(files.iter().map(|(p, t)| (p.as_str(), t.as_str()))).unwrap_or_else(|e| panic!("{dir}: {e:?}"));
+    data::Content::load(&[data::base_pack().unwrap(), pack]).unwrap_or_else(|e| panic!("{dir}: {e:?}"))
+}
+
 fn main() {
     let a = args();
-    let content = data::base_content();
+    let content = content_with(a.pack.as_deref());
     let voyage = content
         .voyages
         .get(&a.voyage)
