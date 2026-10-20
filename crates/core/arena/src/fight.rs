@@ -20,8 +20,8 @@ use crate::error::ArenaError;
 use crate::score::arena_score;
 use crate::spec::{BehaviorRef, DesignRef, FightSpec, Formation};
 
-/// A side is out once it has had no running vessel for this many ticks (5 s), so a short brown-out is not a
-/// loss (coop-arena 3.7). PLACEHOLDER.
+/// A side is out once it has had no running vessel still in the fight ([`Referee::in_fight`]: a fragment only while
+/// armed) for this many ticks (5 s), so a short brown-out is not a loss (coop-arena 3.7). PLACEHOLDER.
 pub const OUT_AFTER: u64 = 5 * sim::TICK_HZ as u64;
 /// Metres between neighbouring ships of a formation, and between one entry's ships and the next entry's.
 /// PLACEHOLDER.
@@ -39,7 +39,7 @@ pub const OWNERS: [Owner; 2] = [Owner(1), Owner(2)];
 /// How a fight ended.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Outcome {
-    /// The other side had no running vessel for [`OUT_AFTER`] ticks while this one still had one.
+    /// The other side had no running vessel in the fight for [`OUT_AFTER`] ticks while this one still had one.
     Won(usize),
     /// Neither side has a running vessel any more.
     BothOut,
@@ -128,8 +128,11 @@ pub struct Referee {
     limit: u64,
     build_points: [f32; 2],
     damage: [f32; 2],
-    /// The first tick of the current stretch without a running vessel, per side.
+    /// The first tick of the current stretch without a running vessel in the fight, per side.
     out_since: [Option<u64>; 2],
+    /// The ships the fight fielded (its sides' and a gauntlet's waves', ascending): a vessel that is none of them
+    /// split off one (or is a drone) and keeps its side in the fight only while armed ([`Referee::in_fight`]).
+    fielded_ships: Vec<ShipId>,
     /// Per side, a bit for every behavior rule that decided at least once (bit `i`: rule `i`).
     decided: [u64; 2],
     /// A gauntlet's waves still to come (each entry's design, behavior and count), the next one's index, the tick it
@@ -261,6 +264,11 @@ impl FightSetup {
             build_points,
             damage: [0.0; 2],
             out_since: [None; 2],
+            fielded_ships: {
+                let mut ids: Vec<ShipId> = sim.ships().iter().map(|s| s.id()).collect();
+                ids.sort();
+                ids
+            },
             decided: [0; 2],
             waves: waves
                 .iter()
@@ -317,11 +325,11 @@ impl Referee {
         (self.next_wave as u32 + 1, self.waves.len() as u32 + 1)
     }
 
-    /// A gauntlet: once side 1 has no running vessel, its wave is cleared, and the next comes in [`WAVE_DELAY`]
+    /// A gauntlet: once side 1 has no running vessel in the fight, its wave is cleared, and the next comes in [`WAVE_DELAY`]
     /// later around side 0's first running vessel (as the test range's waves do), rolled on the `Scenario` stream.
     fn reinforce(&mut self, sim: &mut Sim) {
         let tick = sim.tick();
-        if running(sim, OWNERS[1]) {
+        if self.in_fight(sim, OWNERS[1]) {
             return;
         }
         if self.wave_at.is_none() && self.cleared <= self.next_wave as u32 {
@@ -346,12 +354,26 @@ impl Referee {
             let ships = wave.iter().flat_map(|(d, b, n)| std::iter::repeat_n((d, *b), *n as usize));
             for ((design, behavior), body) in ships.zip(bodies) {
                 let id = sim.spawn_ship(Arc::clone(design), OWNERS[1], body);
+                self.fielded_ships.push(id);
                 sim.command(id, ShipCommand::Behavior(Some(behavior)));
             }
             self.fielded += kept(sim, OWNERS[1]).0 - before;
             self.next_wave += 1;
             self.out_since[1] = None;
         }
+    }
+
+    /// Has `owner` a running vessel still in the fight: a ship the fight fielded, or a fragment (a vessel split off
+    /// one, a drone) while it is armed ([`sim::Ship::is_armed`]: a gun or a ram on its powered controlling piece)?
+    /// A disarmed fragment no longer holds a fight open, as it does not keep a voyage's site from clearing
+    /// (GDR-0068): a walker section shot off without its lances, a lone core drifting off (GDR-0127, 20 Oct 2026,
+    /// lead). A fielded ship keeps its side in the fight while it runs, guns or not (coop-arena 3.7).
+    fn in_fight(&self, sim: &Sim, owner: Owner) -> bool {
+        sim.ships().iter().any(|s| {
+            s.owner() == owner
+                && s.vessel_state() == Some(VesselState::Running)
+                && (s.is_armed() || self.fielded_ships.binary_search(&s.id()).is_ok())
+        })
     }
 
     /// The stand-in pilots' input for the next tick, on the ticks they decide.
@@ -426,7 +448,7 @@ impl Referee {
         // A gauntlet's side 1 is not out while a wave is still to come.
         let coming = self.next_wave < self.waves.len();
         for (side, &owner) in OWNERS.iter().enumerate() {
-            if running(sim, owner) || (side == 1 && coming) {
+            if self.in_fight(sim, owner) || (side == 1 && coming) {
                 self.out_since[side] = None;
             } else {
                 let since = *self.out_since[side].get_or_insert(tick);
@@ -469,12 +491,7 @@ impl Referee {
     }
 }
 
-/// Has `owner` a running vessel?
-fn running(sim: &Sim, owner: Owner) -> bool {
-    sim.ships()
-        .iter()
-        .any(|s| s.owner() == owner && s.vessel_state() == Some(VesselState::Running))
-}
+
 
 impl Fight {
     /// Checks the spec, compiles its designs and behaviors and spawns the ships ([`FightSetup::build`]).

@@ -102,8 +102,10 @@ side)` gives a side's build points and vessels now.
 **The end** (coop-arena 3.7): a side is out once it has had no running vessel (`VesselState::Running`) for 5 s
 (`OUT_AFTER`, placeholder), so a short brown-out is no loss. If one side is out while the other still has a running
 vessel, the other wins (`Outcome::Won(side)`); if neither has one, `Outcome::BothOut`; otherwise the fight ends at the
-time limit (`Outcome::TimeLimit`). A disarmed vessel that still runs keeps its side in the fight until the time
-limit.
+time limit (`Outcome::TimeLimit`). A fielded ship that still runs keeps its side in the fight until the time
+limit, guns or not; a fragment (a vessel split off one, or a drone) counts only while it is armed (`Ship::is_armed`,
+20 Oct 2026, GDR-0127's status note: a walker section shot off without its lances, a lone core drifting off, held
+fights open until the limit).
 
 **The result** (`FightResult`): the outcome (`winner()`), the ticks, the final state hash and per side
 (`SideResult`):
