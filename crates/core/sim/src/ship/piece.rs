@@ -196,6 +196,8 @@ pub struct GunMount {
     pub defence: Option<Defence>,
     /// Ore cut from rock per second at full power (GDR-0114; 0: not a mining gun).
     pub cut: f32,
+    /// Static carried per point of damage that reaches a part (disruption, GDR-0125; 0: none).
+    pub disrupt: f32,
 }
 
 /// A point-defence gun's targeting, compiled (`data::DefenceSpec`).

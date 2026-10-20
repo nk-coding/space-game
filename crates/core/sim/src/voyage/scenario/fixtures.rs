@@ -192,6 +192,57 @@ pub(super) fn burner_blueprint() -> data::Blueprint {
     }
 }
 
+pub(super) const ION: &str = "ion_ship";
+
+/// An ion ship (GDR-0125): two ion cannons in a sloped nose, two shield emitters behind them, a fission reactor and a
+/// core behind armour, gyros and thrusters in the rear row. A test fixture built from base part ids (skipped if a
+/// content pack lacks them).
+pub(super) fn ion_blueprint() -> data::Blueprint {
+    let p = |part: &str, x: i32, y: i32, rot: u8, flip: bool| data::Placement {
+        part: part.into(),
+        x,
+        y,
+        rot,
+        flip,
+        material: matches!(part, "armor_block" | "slope_1x1").then(|| "steel".into()),
+        power: None,
+        group: None,
+    };
+    data::Blueprint {
+        id: ION.into(),
+        name: "Ion ship".into(),
+        summary: "Determinism-scenario fixture that blinds with static.".into(),
+        description: None,
+        lore: None,
+        tags: vec![],
+        faction: "ship_mind".into(),
+        size: (4, 4),
+        parts: vec![
+            p("slope_1x1", 0, 0, 0, true),
+            p("ion_cannon", 1, 0, 0, false),
+            p("ion_cannon", 2, 0, 0, true),
+            p("slope_1x1", 3, 0, 0, false),
+            p("armor_block", 0, 1, 0, false),
+            p("shield_emitter", 1, 1, 0, false),
+            p("shield_emitter", 2, 1, 0, true),
+            p("armor_block", 3, 1, 0, false),
+            p("armor_block", 0, 2, 0, false),
+            p("fission_reactor", 1, 2, 0, false),
+            p("logic_core", 2, 2, 0, false),
+            p("armor_block", 3, 2, 0, false),
+            p("thruster", 0, 3, 0, false),
+            p("gyro", 1, 3, 0, false),
+            p("gyro", 2, 3, 0, true),
+            p("thruster", 3, 3, 0, true),
+        ],
+        behavior: None,
+        assists: None,
+        anchored: false,
+        origin: None,
+        source: Default::default(),
+    }
+}
+
 pub(super) fn nth_alive(ship: &Ship, n: u32) -> PartIdx {
     let mut k = 0;
     for (i, p) in ship.parts().iter().enumerate() {

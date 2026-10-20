@@ -26,6 +26,7 @@
     (id: "defence_arc", name: "Defence arc", summary: "How far to either side of its facing a point-defence turret can aim.", unit: "°", decimals: 0, better: Higher),
     (id: "defence_mass", name: "Defends against", summary: "With no missile in reach, the turret shoots at enemy vessels up to this mass.", unit: "t", decimals: 0, better: Higher),
     (id: "recoil", name: "Recoil", summary: "Push on the ship per shot.", unit: "kN·s", decimals: 1, better: Lower),
+    (id: "disrupt", name: "Static", summary: "Static per second at full power that a disruption gun's hits carry into the struck vessel's logic cores (twice on a hit on a core). Shields stop it with the shot; armour does not. Enough of it blinds the vessel's mind for a few seconds.", unit: "/s", decimals: 1, better: Higher),
     (id: "cut", name: "Mining", summary: "Ore cut from asteroid rock per second at full power. Each whole unit goes into the hold as ore of the rock's material, while the rock has any left.", unit: "/s", decimals: 2, better: Higher),
     (id: "fire_rate", name: "Fire rate", summary: "How fast a weapon fires. Raised by adjacency bonuses.", decimals: 0, better: Higher),
     (id: "thrust", name: "Thrust", summary: "Push of an engine at full power.", unit: "kN", decimals: 0, better: Higher),

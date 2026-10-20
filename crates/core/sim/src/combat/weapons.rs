@@ -369,6 +369,8 @@ pub(crate) struct GunHit {
     hit: PartRayHit,
     damage: f32,
     absorbed: f32,
+    /// Static per point of `damage` (disruption, GDR-0125; 0: none).
+    disrupt: f32,
 }
 
 /// Where a shot went, and the asteroid rock it stopped on, if any (mining, GDR-0114).
@@ -383,6 +385,7 @@ impl Sim {
     /// after the systems.
     pub(crate) fn weapons_step(&mut self) {
         self.beams.clear();
+        self.jam_step();
         self.collect_bubbles();
         self.flares_step();
         self.advance_projectiles();
@@ -716,7 +719,8 @@ impl Sim {
     }
 
     /// A hit-scan shot (beam tick or pulse): shields along the way, then the first block only. The block's
-    /// damage waits in `gun_hits` until every gun has fired ([`Sim::fire_guns`]).
+    /// damage (and the static it carries, `disrupt` per point: disruption, GDR-0125) waits in `gun_hits` until
+    /// every gun has fired ([`Sim::fire_guns`]).
     #[allow(clippy::too_many_arguments)]
     fn hitscan(
         &mut self,
@@ -727,6 +731,7 @@ impl Sim {
         dir: Vec2,
         range: f32,
         damage: f32,
+        disrupt: f32,
     ) -> ShotEnd {
         let hit = self.shot_cast(owner, team, from, dir, range);
         let len = hit.map_or(range, |h| h.distance());
@@ -754,6 +759,7 @@ impl Sim {
                     hit: h,
                     damage: left,
                     absorbed: damage - left,
+                    disrupt,
                 });
                 ShotEnd {
                     to: h.hit.point,
@@ -1037,6 +1043,9 @@ impl Sim {
                 g.damage,
                 g.absorbed,
             );
+            if g.disrupt > 0.0 {
+                self.disrupt(g.by, h.k, h.part, g.damage * g.disrupt);
+            }
         }
         self.gun_hits = hits;
     }
@@ -1064,7 +1073,7 @@ impl Sim {
         let com_local = piece.mass.com;
         match g.delivery {
             Delivery::Beam => {
-                let end = self.hitscan(owner, team, g.family, from, dir, g.range, g.output * DT);
+                let end = self.hitscan(owner, team, g.family, from, dir, g.range, g.output * DT, g.disrupt);
                 // A mining beam cuts the rock it rests on (GDR-0114), as hard as the gun works.
                 if let Some(rock) = end.rock.filter(|_| g.cut > 0.0) {
                     self.mine(k, rock, g.cut * work * DT, end.to, dir);
@@ -1097,7 +1106,7 @@ impl Sim {
                                     let off = at - from;
                                     let aim = off * (1.0 / off.length().max(1e-6));
                                     let shot = g.shot_damage;
-                                    self.hitscan(owner, team, g.family, from, aim, g.range, shot).to
+                                    self.hitscan(owner, team, g.family, from, aim, g.range, shot, 0.0).to
                                 }
                                 None => {
                                     self.ships[k].gun_cooldown[slot] = 0.0;
@@ -1131,6 +1140,7 @@ impl Sim {
                                 dir,
                                 g.range,
                                 g.shot_damage,
+                                g.disrupt,
                             );
                             self.events.push(SimEvent::ShotFired {
                                 ship: owner,

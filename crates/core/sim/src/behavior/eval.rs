@@ -992,13 +992,16 @@ impl Ctx<'_> {
 
     /// Picks the target ship (index, centre, distance) among the enemies within sensor range (the `locked`
     /// selector: the leader's lock, wherever it is). The current target keeps its place unless another is better by
-    /// the stickiness margin.
+    /// the stickiness margin. A mind blinded by static (GDR-0125) picks none.
     pub(super) fn select(
         &mut self,
         kind: SelectorKind,
         current: Option<ShipId>,
     ) -> Option<(usize, TargetState, f32)> {
         let me = self.me;
+        if me.blinded() {
+            return None;
+        }
         let from = self.kin().pos;
         if kind == SelectorKind::Locked {
             let leader = me.leader.and_then(|l| find_ship(self.world, l))?;
@@ -1069,10 +1072,12 @@ impl Ctx<'_> {
             return v;
         }
         let me = self.me;
-        let v = self
-            .world
-            .iter()
-            .any(|s| is_enemy(me, s) && aims_at(s) == Some(me.id()));
+        // Blinded by static (GDR-0125), it sees no one aim at it.
+        let v = !me.blinded()
+            && self
+                .world
+                .iter()
+                .any(|s| is_enemy(me, s) && aims_at(s) == Some(me.id()));
         self.lazy.under_attack = Some(v);
         v
     }
@@ -1177,6 +1182,8 @@ impl Ctx<'_> {
                 let (k, _, _) = self.focus.ok_or(Why::NoTarget)?;
                 self.hull_of(k)
             }
+            // Blinded by static (GDR-0125), it sees no enemy and no missile.
+            Sensor::EnemiesNear(_) | Sensor::MissilesIncoming if self.me.blinded() => 0.0,
             Sensor::EnemiesNear(d) => {
                 let r = d.metres(self.reach);
                 let from = self.kin().pos;
@@ -1226,7 +1233,7 @@ impl Ctx<'_> {
             vx: kin.vel.x,
             vy: kin.vel.y,
             angle: kin.angle,
-            enemies: self.world.iter().filter(|s| is_enemy(me, s)).count() as i64,
+            enemies: if me.blinded() { 0 } else { self.world.iter().filter(|s| is_enemy(me, s)).count() as i64 },
             ..ShipView::default()
         }
     }

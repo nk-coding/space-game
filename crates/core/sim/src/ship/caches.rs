@@ -354,6 +354,7 @@ impl Ship {
                         ship_mass: d.ship_mass,
                     }),
                     cut: spec.cut,
+                    disrupt: spec.disrupt,
                 });
             }
         }

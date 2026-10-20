@@ -181,6 +181,12 @@ pub enum SimEvent {
         at: Vec2,
         decoys: u32,
     },
+    /// Static from `by`'s disruption guns blinded `ship`'s mind for `seconds` (GDR-0125, `combat/disruption.rs`).
+    Blinded {
+        by: ShipId,
+        ship: ShipId,
+        seconds: f32,
+    },
     /// A shot struck an asteroid rock (GDR-0104; `Voyage::rocks`) and stopped there: the rock takes nothing (a
     /// mining beam's cut follows as `Mined`, GDR-0114). `by`: the shooter.
     RockHit {

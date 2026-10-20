@@ -36,7 +36,7 @@ fn main() {
         all.u64(h);
     }
     println!(
-        "# final={:016x} parts_destroyed={} splits={} pieces_spawned={} pieces_destroyed={} overheated_part_ticks={} firing_ticks={} shots={} hits={} shield_hits={} ricochets={} script_evals={} impacts={} rams={} burns={} explosions={} split_vessels={} vessels_lost={} dormant={} woken={} focus_changes={} collected={} collected_units={} collected_cargo={} collected_fragments={} fragments={} sites_woken={} sites_cleared={} recall_ticks={} regrown={} rocks={} rock_hits={}",
+        "# final={:016x} parts_destroyed={} splits={} pieces_spawned={} pieces_destroyed={} overheated_part_ticks={} firing_ticks={} shots={} hits={} shield_hits={} ricochets={} script_evals={} impacts={} rams={} burns={} explosions={} split_vessels={} vessels_lost={} dormant={} woken={} focus_changes={} collected={} collected_units={} collected_cargo={} collected_fragments={} fragments={} sites_woken={} sites_cleared={} recall_ticks={} regrown={} rocks={} rock_hits={} blinded={}",
         all.finish(),
         stats.parts_destroyed,
         stats.splits,
@@ -68,6 +68,7 @@ fn main() {
         stats.recall_ticks,
         stats.regrown,
         stats.rocks,
-        stats.rock_hits
+        stats.rock_hits,
+        stats.blinded
     );
 }

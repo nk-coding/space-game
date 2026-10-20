@@ -219,6 +219,8 @@ impl Ship {
             // The launchers keep their charges and cooldowns: the parts are the same.
             flares: self.flares.clone(),
             flare_asked: false,
+            // Its own cores, its own mind: a split-off vessel starts without static (GDR-0125).
+            jam: Default::default(),
         };
         for i in 0..self.parts.len() {
             if !self.parts[i].alive {

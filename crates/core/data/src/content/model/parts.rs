@@ -245,6 +245,11 @@ pub struct WeaponSpec {
     /// `ship_mass`. Pulse guns only.
     #[serde(default)]
     pub defence: Option<DefenceSpec>,
+    /// Static per second at full power (disruption, GDR-0018, GDR-0125): what of the shot's damage passes the
+    /// shields carries static in this proportion into the struck vessel's logic cores (twice on a hit on a core
+    /// itself); enough static blinds its mind for a while. Hit-scan guns only (beam, pulse). 0 (default): none.
+    #[serde(default)]
+    pub disrupt: f32,
 }
 
 /// A point-defence gun's targeting (GDR-0115).

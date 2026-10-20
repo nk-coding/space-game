@@ -315,6 +315,9 @@ impl Content {
             if w.cut > 0.0 {
                 v.push(("cut", w.cut));
             }
+            if w.disrupt > 0.0 {
+                v.push(("disrupt", w.disrupt));
+            }
         }
         if let Some(e) = &part.engine {
             v.push(("thrust", e.thrust));

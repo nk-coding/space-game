@@ -598,7 +598,9 @@ fn think(cx: &mut Ctx, rocks: &[Rock], st: &AssistState, input: &PilotInput, out
         return;
     };
     let code = &st.program.code;
+    // Blinded by static (GDR-0125), the assists see no target (the pilot keeps the lock itself).
     let focus = match input.lock {
+        _ if cx.me.blinded() => None,
         Some(Target::Ship(id) | Target::Piece(id, _)) => cx.world.binary_search_by_key(&id, |s| s.id()).ok().and_then(|k| {
             let ts = cx.centres[k].or_else(|| resolve_target(cx.world, &Target::Ship(id)))?;
             Some((k, ts, (ts.pos - kin.pos).length()))

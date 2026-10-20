@@ -321,6 +321,8 @@ pub struct Ship {
     pub(crate) flares: Vec<crate::combat::flare::FlareSlot>,
     /// A release was asked this tick (handled and cleared in the weapons step).
     pub(crate) flare_asked: bool,
+    /// Static from disruption guns and its blinding (`combat/disruption.rs`, GDR-0125).
+    pub(crate) jam: crate::combat::disruption::Jam,
 }
 
 impl Ship {
@@ -391,6 +393,7 @@ impl Ship {
             drone: None,
             flares: Vec::new(),
             flare_asked: false,
+            jam: Default::default(),
         };
         ship.hull_base = ship.design.hp_total;
         ship.regrowth = vec![0.0; ship.design.hearts.len()];
@@ -777,6 +780,10 @@ impl StateHash for Ship {
         // Nothing for a ship without flare launchers, likewise.
         for f in &self.flares {
             f.hash_state(h);
+        }
+        // Nothing while it holds no static and runs no blinding, likewise (GDR-0125).
+        if !self.jam.is_clear() {
+            self.jam.hash_state(h);
         }
         self.cargo.hash_state(h);
         h.u32(self.parts.len() as u32);

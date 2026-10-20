@@ -116,8 +116,11 @@ impl Ship {
     }
 
     /// How far the vessel sees now (see the module docs): its working sensors on the controlling piece while it
-    /// is active, at least [`tuning::ALWAYS_SEEN`].
+    /// is active, at least [`tuning::ALWAYS_SEEN`]; nothing while static blinds it (GDR-0125).
     pub fn sensor_range(&self) -> f32 {
+        if self.blinded() {
+            return 0.0;
+        }
         let mut r = tuning::ALWAYS_SEEN;
         let Some(piece) = self.control_piece().and_then(|c| self.piece(c)).filter(|p| p.active) else {
             return r;

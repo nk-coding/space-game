@@ -141,6 +141,18 @@ impl<'a> Validator<'a> {
             self.number(p, "weapon.damage", x.damage, 0.0, false);
             self.number(p, "weapon.range", x.range, 0.0, true);
             self.number(p, "weapon.cut", x.cut, 0.0, false);
+            self.number(p, "weapon.disrupt", x.disrupt, 0.0, false);
+            if x.disrupt > 0.0 {
+                if x.damage <= 0.0 {
+                    self.err(p, "weapon.disrupt", "static rides on the shot's damage: needs damage above 0");
+                }
+                if !matches!(
+                    x.delivery,
+                    crate::content::model::Delivery::Beam | crate::content::model::Delivery::Pulse { .. }
+                ) {
+                    self.err(p, "weapon.disrupt", "only hit-scan guns (Beam, Pulse) carry static");
+                }
+            }
             match x.delivery {
                 crate::content::model::Delivery::Beam => {}
                 crate::content::model::Delivery::Pulse { rate } => self.shot_rate(p, rate),

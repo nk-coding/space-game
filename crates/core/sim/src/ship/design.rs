@@ -162,6 +162,9 @@ pub struct PartSpec {
     pub cut: f32,
     /// Point defence (GDR-0115): the gun aims itself and fires on its own (guns only).
     pub defence: Option<data::DefenceSpec>,
+    /// Disruption (GDR-0125, `combat/disruption.rs`): static carried per point of damage that reaches a part
+    /// (content `weapon.disrupt / weapon.damage`; 0: none).
+    pub disrupt: f32,
     /// Shield bubbles: share of each family's damage absorbed (indexed by [`family_index`]).
     pub absorb: [f32; FAMILIES],
     pub is_engine: bool,
@@ -548,6 +551,11 @@ impl ShipDesign {
                 delivery: def.weapon.as_ref().map_or(Delivery::Beam, |w| w.delivery),
                 cut: def.weapon.as_ref().map_or(0.0, |w| w.cut),
                 defence: def.weapon.as_ref().and_then(|w| w.defence),
+                disrupt: def
+                    .weapon
+                    .as_ref()
+                    .filter(|w| w.disrupt > 0.0 && w.damage > 0.0)
+                    .map_or(0.0, |w| w.disrupt / w.damage),
                 absorb,
                 is_engine: def.engine.is_some(),
                 is_rcs: def.rcs.is_some(),

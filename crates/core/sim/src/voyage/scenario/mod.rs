@@ -12,7 +12,8 @@
 //!   automaton or a wreck right behind a ship-mind vessel's engine at full throttle).
 //! * [`ScenarioKind::Flight`]: player ships flown by random pilot input (stick, lock on an enemy, drift,
 //!   fire), automaton ships by their faction's content behavior (`raider_basic`), fewer hits: flight
-//!   computer, allocation, maneuvers, fire at will.
+//!   computer, allocation, maneuvers, fire at will. Plus one ion ship (two ion cannons, GDR-0125) in the ring's
+//!   centre, so static and blinded behaviors are covered.
 //! * [`ScenarioKind::Assists`]: the flight scenario with pilot assists (GDR-0088): every player ship flies its random
 //!   input with [`fixtures::ASSISTS`] (avoid collisions, brake, hold station beside an ally, auto-lock, auto-fire),
 //!   lets go of the controls more often so the assists have channels, and flips a toggle or ALL ASSISTS now and then.
@@ -79,7 +80,8 @@ pub(super) fn scenario_blueprints(content: &Content) -> impl Iterator<Item = &da
 
 pub use fixtures::BEHAVIOR_MIND_CAPACITY;
 use fixtures::{
-    BURNER, HEAT_STRESS, assign_assists, assign_behaviors, burner_blueprint, heat_stress_blueprint, library, nth_alive,
+    BURNER, HEAT_STRESS, assign_assists, assign_behaviors, burner_blueprint, heat_stress_blueprint, ion_blueprint, library,
+    nth_alive,
 };
 use salvage::{SALVAGE_RETARGET, destroy_parts, salvage_scenario, salvage_target};
 use grown::{GROWN_RAM_EVERY, grown_scenario};
@@ -211,6 +213,8 @@ pub struct ScenarioStats {
     /// Asteroid rocks spawned so far and shots that struck one (`RockHit`, GDR-0104).
     pub rocks: u32,
     pub rock_hits: u32,
+    /// Vessels blinded by static (`Blinded`, disruption, GDR-0125).
+    pub blinded: u32,
 }
 
 pub struct Scenario {
@@ -273,8 +277,29 @@ impl Scenario {
             let owner = scenario_owner(&design);
             sim.spawn_ship(design, owner, body);
         }
+        let mut ion = None;
+        if (kind == ScenarioKind::Flight || kind == ScenarioKind::Assists)
+            && let Ok(d) = ShipDesign::compile(content, &ion_blueprint())
+        {
+            // A player ship with ion cannons (GDR-0125) just outside the ring by the first raider (else the first
+            // enemy), its nose on it, under the ship-mind's default behavior (it closes in and fires at will): its
+            // static blinds the automatons' behaviors now and then.
+            let enemies = || sim.ships().iter().filter(|s| s.owner() != Owner::PLAYER);
+            let near = enemies()
+                .find(|s| s.design().id == "automaton_raider")
+                .or_else(|| enemies().next())
+                .and_then(|s| s.pieces().first());
+            let at = near.map_or(Vec2::ZERO, |p| p.body.pos);
+            let u = at * (1.0 / at.length().max(1e-3));
+            let body = Body::at(at + u * 22.0, crate::math::atan2(u.x, -u.y));
+            ion = Some(sim.spawn_ship(Arc::new(d), Owner::PLAYER, body));
+        }
         if kind == ScenarioKind::Flight || kind == ScenarioKind::Assists {
             sim.set_behaviors(library(content)?);
+            if let Some(id) = ion {
+                let b = sim.ship(id).and_then(|s| sim.behaviors().default_for(s.design()));
+                sim.command(id, ShipCommand::Behavior(b));
+            }
             let enemies: Vec<(crate::ShipId, Option<crate::BehaviorId>)> = sim
                 .ships()
                 .iter()
@@ -355,6 +380,7 @@ impl Scenario {
                 SimEvent::SiteWoke { .. } => self.stats.sites_woken += 1,
                 SimEvent::SiteCleared { .. } => self.stats.sites_cleared += 1,
                 SimEvent::PartRegrown { .. } => self.stats.regrown += 1,
+                SimEvent::Blinded { .. } => self.stats.blinded += 1,
                 _ => {}
             }
         }
