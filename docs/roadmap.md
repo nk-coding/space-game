@@ -874,6 +874,15 @@ Next session:
   /space-game/ [--wiki]` serve the build as Pages does. Checked headless under `/space-game/` with a throttled
   network, the lab's workers and the wiki.
 
+### 20 Oct 2026: the mobile browser check (ADR-0048)
+
+- Every screen and the main flows in phone emulation at 667 × 375, 844 × 390, 844 × 340 (a phone's browser with its
+  toolbars), 932 × 430, portrait and a 1180 × 820 tablet (`results/mobile-check-2026-10-20.md`). Fixed: the phone
+  layouts' scale floor 0.75 (was 0.9; they lost their right or bottom edge on small phones and in a phone's browser);
+  the page no longer draws under a notch (`viewport-fit=cover` gone) and never moves, selects or zooms under a
+  finger. Open for Niklas: type at about 7 px on 667-wide phones, research's materials wrapping over the tree on a
+  phone, the rotate cover on tablets in portrait.
+
 ### 20 Oct 2026: save export and import (ADR-0050)
 
 - SETTINGS › SAVES (home only): EXPORT writes one RON backup file of everything the game keeps (lab runs WITH or

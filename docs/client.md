@@ -81,7 +81,11 @@ published, and were written without a run.
   `--dist <dir>` serves another build. Python's server sends no gzip. Checked 20 Oct 2026: the game with `?dev=1`
   under `/space-game/`, a QUICK evolution run whose 16 workers loaded `/space-game/lab-worker_loader.js`,
   `lab-worker.js` and `lab-worker_bg.wasm`, and the wiki at `/space-game/docs/`.
-- Not built yet (ADR-0048): a browser performance pass, a mobile browser check. Save export and import: built (ADR-0050, "The web's storage").
+- Not built yet (ADR-0048): a browser performance pass. Save export and import: built (ADR-0050, "The web's storage").
+  The mobile browser check: done 20 Oct 2026 (`docs/results/mobile-check-2026-10-20.md`: the phone layouts' scale
+  floor 0.75 so they fit a 667 × 375 phone and a phone's browser with its toolbars; the page without
+  `viewport-fit=cover`, with `touch-action`/`overscroll-behavior: none`, no selection, callout or tap flash, iOS's
+  pinch gestures prevented; three questions for Niklas there).
 
 ## Licences and third-party notices
 
@@ -2472,7 +2476,7 @@ Icons, glows, plumes and the FX dots come from one texture atlas that `atlas.rs`
 Small screens are tested in the web build before the Android port (19 Oct 2026, [ADR-0045](adr/0045-compact-layout-class-and-touch-in-the-kit.md),
 `docs/plans/android.md` 4.1). The **layout class** follows the window, not the platform: `kit::ui_kit::LayoutClass`
 is `Compact` in a window under 500 logical px (dp) high, else `Wide` (today's 1280 × 720 layouts, unchanged). A
-screen's phone layout is made for 844 × 390 and scaled by `compact_scale` (min(w / 844, h / 390), 0.9–1.3); a
+screen's phone layout is made for 844 × 390 and scaled by `compact_scale` (min(w / 844, h / 390), 0.75–1.3; 0.9 until 20 Oct 2026, when 667 × 375 phones and a phone's browser lost the layouts' edges); a
 screen without one yet keeps its desktop layout fitted by `ui_scale_for` (about 0.54 at 844 × 390: everything fits,
 but the type is too small to read). Numbers are placeholders.
 
