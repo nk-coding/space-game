@@ -650,6 +650,15 @@ Next session:
 - Open: the list in `client.md` "Phones" ("Still not built for phones": the soft keyboard, the pinch checked on a
   device, `SafeArea` from Android's insets, the packages' leftovers); the Android build itself.
 
+### 20 Oct 2026: the balance check (coop-arena A3)
+
+- ([GDR-0122](gdr/0122-the-balance-check.md), lead defaults) GDR-0032's "short run on every data change":
+  `scripts/arena-check.sh` (`arena check`, `arena::check`; `docs/arena.md` "The balance check") runs seven fixed
+  fights (the four of `crates/core/arena/fights/` plus `skiff_vs_lancer`, `mid_vs_warden`, `runner_vs_rammers`; 1696
+  seeded runs, about 6 s on 4 cores) against `crates/core/arena/check/baseline.ron` and exits 1 when a fight's win
+  rate moves more than 0.15, side 0's score more than 0.12 or its mean time more than 15 %; `--update` writes the
+  baseline after an intended change. Run it after every content or sim change.
+
 ## Phase 4: measurement
 
 Status 12 Oct 2026 (new VM): `results/spike-summary.md` written. Determinism native vs wasm IDENTICAL on the new VM

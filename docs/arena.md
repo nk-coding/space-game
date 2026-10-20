@@ -211,8 +211,9 @@ cargo run --release -p arena-cli -- matrix halvex_runner automaton_raider rim_sk
   (a content ship id, or a blueprint file `*.ron`) one against one under their default behaviors, N seeds (from S,
   default 1) in each starting position, and each design once against itself. Prints the row design's win rate and
   mean score against the column's; the diagonal is side 0's in the mirror match.
-- Both run on `std::thread::available_parallelism` threads (`std::thread::scope`, each thread takes the next fight)
+- All three run on `std::thread::available_parallelism` threads (`std::thread::scope`, each thread takes the next fight)
   and print fights per second and million ticks per second. Only that line depends on the machine.
+- `arena check`: the balance check (below, [The balance check](#the-balance-check)).
 
 ```text
 | vs | halvex_runner | automaton_raider | rim_skiff | sample_mid | automaton_hunter |
@@ -230,6 +231,49 @@ was 21 / 17 / 36 / 0 / 9 % (mean scores 0.45–0.52, the spawn order alternating
 most (it orbits under `raider_basic`, and `orbit(auto)` now goes by both ids): the raider against it 22 → 60 %,
 `sample_mid` 52 → 66 %, the starter 84 → 92 %; the Runner against `sample_mid` 74 → 64 %; the rest within a few
 fights in a hundred.
+
+## The balance check
+
+GDR-0032's "a short run checks every data change" (coop-arena track A3; defaults
+[GDR-0122](gdr/0122-the-balance-check.md), 20 Oct 2026). Run it after every content or sim change:
+
+```sh
+scripts/arena-check.sh            # builds the CLI (release) and runs `arena check`; exit 1 when a fight is out
+scripts/arena-check.sh --update   # after an intended change: write the baseline anew, commit it with the change
+```
+
+`arena check [<set.ron>] [--baseline FILE] [--update] [--threads N]` (run from the repository's root; default set
+`crates/core/arena/check/set.ron`, baseline `baseline.ron` beside it) runs every fight of the set on its seeds (the
+spec's seed and the ones after it), sums each fight up (`arena::check::CheckRow`: wins per side, side 0's mean score,
+the mean length, a fold of the final hashes) and compares it with the baseline's row within the set's tolerance (a
+fight may carry its own). It prints one row per fight, the baseline's number in brackets where it moved, and whether
+the fights changed at all (`same`: bit for bit; never a failure):
+
+```text
+| fight | seeds | won 0 / 1 / undecided | score 0 | time | fights | check |
+|---|---|---|---|---|---|---|
+| runner_vs_raiders | 300 | 151 / 78 / 71 (was 143 / 76 / 81) | 0.612 (was 0.625) | 57.0 s (was 59.6 s) | changed | ok |
+| skiff_mirror | 100 | 1 / 0 / 99 | 0.505 | 89.5 s | same | ok |
+| mid_vs_warden | 200 | 42 / 125 / 33 (was 17 / 159 / 24) | 0.320 (was 0.149) | 44.5 s (was 42.1 s) | changed | **OUT**: side 1 wins -17 %, score +0.171 |
+| … | | | | | | |
+# 2 of 7 fights out of tolerance; if the change is intended: scripts/arena-check.sh --update
+```
+
+(The beam laser's damage 2.6 → 3.4 as a test, 20 Oct 2026, then undone.) A fight missing from the baseline, or run
+on another number of seeds, is out too.
+
+**The set** (`set.ron`; GDR-0122): `runner_vs_raiders` 300 seeds, `skiff_mirror` 100, `skiff_vs_lancer` 400,
+`mid_vs_warden` 200, `runner_vs_rammers` 300, `runner_gauntlet` 300, `hive_flood` 96: 1696 fights, **about 6 s** on
+this VM's 4 cores (284 fights/s, release, load average under 1; the release build of the CLI after a content change
+adds about a minute). **Tolerances** (*placeholders*): each side's win rate ±0.15, side 0's score ±0.12, the mean
+time ±15 % of the baseline's. Any data change re-rolls every fight, so the check compares samples: the seed counts
+are chosen so that a re-roll alone stays 2.7–4 standard deviations inside the tolerances (measured over 1000 seeds
+per fight in blocks; five re-rolls with other seeds all passed), and what fails is a real shift. A pulse laser 30 %
+stronger passed (it moved the hive fight's score by 0.08), the beam laser 30 % stronger failed two fights.
+
+`tests/check.rs` checks that the committed set reads, every fight file reads as a spec and has a baseline row with
+the same seeds (so a set changed without `--update` fails `cargo test`), the baseline's round trip, a row's sums on
+short fights and the tolerance rules; the set itself runs only in release.
 
 ## Determinism
 
