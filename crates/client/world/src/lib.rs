@@ -16,6 +16,7 @@
 //!   debrief's data; `warp_fx`: the voyage's transitions (the warp-out, the arrival, the dip to dark and the lift
 //!   at the next screen).
 //! - `storage`: the player's documents (saves, designs, behaviors, settings), per platform.
+//! - `backup`: EXPORT and IMPORT of everything the storage holds, one RON file (ADR-0050).
 //! - `settings`: the action map's bindings (every screen reads its inputs through `settings::Act`) and the display
 //!   settings, saved on this device (GDR-0090).
 //! - `ship_model` / `ship_view`: content + sim piece → style-2a meshes, posed from `render_pose` every frame;
@@ -35,6 +36,7 @@
 pub use arena;
 
 pub mod backdrop;
+pub mod backup;
 pub mod camera;
 pub mod career;
 pub mod controls;

@@ -243,6 +243,11 @@ impl PlayerCareer {
         self.dev
     }
 
+    /// The save's name in `saves/` (`career`, the dev mode's `dev`).
+    pub fn slot(&self) -> &str {
+        &self.slot
+    }
+
     /// What the career grants now.
     pub fn granted(&self, content: &Content) -> Granted {
         let (unlocks, fresh) = if self.dev { (Unlocks::all(content), BTreeSet::new()) } else { (self.career.unlocks(content), self.career.fresh_parts(content)) };

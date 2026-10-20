@@ -39,7 +39,7 @@ impl Document for RunDoc {
 }
 
 /// A run's configuration (`lab/<id>/config`).
-struct ConfigDoc(RunConfig);
+pub(crate) struct ConfigDoc(RunConfig);
 
 impl Document for ConfigDoc {
     const NAMESPACE: &'static str = "lab";
@@ -55,7 +55,7 @@ impl Document for ConfigDoc {
 }
 
 /// A generation's part (`lab/<id>/g<n>`).
-struct PartDoc(RunPart);
+pub(crate) struct PartDoc(RunPart);
 
 impl Document for PartDoc {
     const NAMESPACE: &'static str = "lab";

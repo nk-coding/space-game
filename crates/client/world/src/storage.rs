@@ -124,6 +124,13 @@ pub trait Backend: Send + Sync + 'static {
     fn usage(&self) -> Option<Usage> {
         None
     }
+    /// Whether writes or deletes made are still on their way (web: not yet committed). Backends that write in the
+    /// call are never busy.
+    fn busy(&self) -> bool {
+        false
+    }
+    /// Forgets every document kept for leaving (an import replaced them, `world::backup`).
+    fn drop_kept(&mut self) {}
 }
 
 /// A kind of stored document: its namespace, its current format and its RON text.
@@ -154,12 +161,15 @@ pub struct Storage {
     backend: Box<dyn Backend>,
     /// Why the storage only keeps documents in memory, when the platform's could not be opened.
     pub fallback: Option<String>,
+    /// Why the game may no longer write (an import replaced the saves under it, `world::backup`): every write and
+    /// delete is refused with it until the game starts again.
+    frozen: Option<String>,
 }
 
 impl Storage {
     /// A storage on one backend (the tests of the client crates, on a `MemoryBackend`).
     pub fn new(backend: impl Backend) -> Self {
-        Self { backend: Box::new(backend), fallback: None }
+        Self { backend: Box::new(backend), fallback: None, frozen: None }
     }
 
     /// The platform's storage: the browser's IndexedDB on the web (opened by `preload` before the game starts),
@@ -167,8 +177,8 @@ impl Storage {
     /// platform has none.
     pub fn open() -> Self {
         match platform_backend() {
-            Ok(b) => Self { backend: b, fallback: None },
-            Err(e) => Self { backend: Box::new(MemoryBackend::default()), fallback: Some(e.to_string()) },
+            Ok(b) => Self { backend: b, fallback: None, frozen: None },
+            Err(e) => Self { backend: Box::new(MemoryBackend::default()), fallback: Some(e.to_string()), frozen: None },
         }
     }
 
@@ -194,21 +204,7 @@ impl Storage {
         check_key(name)?;
         let (folder, leaf) = place(D::NAMESPACE, name);
         let Some(text) = self.backend.read(&folder, leaf)? else { return Ok(None) };
-        let key = format!("{}/{name}", D::NAMESPACE);
-        let unreadable = |why: String| StorageError::Unreadable { key: key.clone(), why };
-        let (header, body) = split_header(&text);
-        let (format, saved) = match header {
-            Some(h) => parse_header(h, D::NAMESPACE).map_err(unreadable)?,
-            None => (1, None),
-        };
-        if format > D::FORMAT {
-            return Err(StorageError::Newer { key, format, supported: D::FORMAT });
-        }
-        if format < D::OLDEST {
-            return Err(StorageError::Older { key, format, oldest: D::OLDEST });
-        }
-        let doc = D::from_ron(body).map_err(unreadable)?;
-        Ok(Some(Stored { doc, saved }))
+        parse_stored(name, &text).map(Some)
     }
 
     /// Writes a document or a part in the current format, stamped with the time `saved` (Unix seconds). Written
@@ -216,6 +212,7 @@ impl Storage {
     /// that failure (the storage is full, ...), as it may not be kept either; it is tried all the same.
     pub fn write<D: Document>(&mut self, name: &str, doc: &D, saved: u64) -> Result<(), StorageError> {
         check_key(name)?;
+        self.writable()?;
         let (folder, leaf) = place(D::NAMESPACE, name);
         self.backend.write(&folder, leaf, &stored_text(doc, saved))?;
         self.backend.failure().map_or(Ok(()), Err)
@@ -226,7 +223,7 @@ impl Storage {
     /// lost; the page's `pagehide` writes it). `doc` runs only where that is done; the text is made only then.
     /// Desktop needs none (it writes a waiting autosave when the app closes).
     pub fn keep_on_leave<D: Document + 'static>(&mut self, name: &str, doc: impl FnOnce() -> D) {
-        if self.backend.keeps_on_leave() && check_key(name).is_ok() {
+        if self.backend.keeps_on_leave() && check_key(name).is_ok() && self.frozen.is_none() {
             let doc = doc();
             let (folder, leaf) = place(D::NAMESPACE, name);
             self.backend.keep_on_leave(&folder, leaf, Box::new(move || stored_text(&doc, now_unix())));
@@ -237,12 +234,14 @@ impl Storage {
     /// failed write behind: deleting makes room.
     pub fn delete<D: Document>(&mut self, name: &str) -> Result<(), StorageError> {
         check_key(name)?;
+        self.writable()?;
         let (folder, leaf) = place(D::NAMESPACE, name);
         self.backend.delete(&folder, leaf)
     }
 
     /// Removes every part of a document.
     pub fn delete_parts<D: Document>(&mut self, name: &str) -> Result<(), StorageError> {
+        self.writable()?;
         let folder = format!("{}/{name}", D::NAMESPACE);
         for part in self.parts::<D>(name)? {
             self.backend.delete(&folder, &part)?;
@@ -267,11 +266,106 @@ impl Storage {
     pub fn set_aside<D: Document>(&mut self, name: &str, aside: &str) -> Result<(), StorageError> {
         check_name(name)?;
         check_name(aside)?;
+        self.writable()?;
         match self.backend.read(D::NAMESPACE, name)? {
             Some(text) => self.backend.write(D::NAMESPACE, aside, &text),
             None => Ok(()),
         }
     }
+}
+
+// The stored texts as they are (header and all), by key: for the backup's export and import (`world::backup`),
+// which check every text against its document's kind themselves.
+impl Storage {
+    /// Every document of a namespace and every part of them, by name (`<name>`, `<name>/<part>`), sorted.
+    pub fn names_with_parts(&self, namespace: &str) -> Result<Vec<String>, StorageError> {
+        check_name(namespace)?;
+        let mut names = Vec::new();
+        for name in self.backend.list(namespace)? {
+            let parts = self.backend.list(&format!("{namespace}/{name}"))?;
+            names.push(name.clone());
+            names.extend(parts.into_iter().map(|p| format!("{name}/{p}")));
+        }
+        Ok(names)
+    }
+
+    /// A document's stored text by its key (`namespace/name` or `namespace/name/part`), unread.
+    pub fn read_stored(&self, key: &str) -> Result<Option<String>, StorageError> {
+        let (namespace, name) = split_key(key)?;
+        let (folder, leaf) = place(namespace, name);
+        self.backend.read(&folder, leaf)
+    }
+
+    /// Writes a stored text as it is under its key (an import's document, checked before). Refused only by a
+    /// failure that comes back from writing behind, like [`Storage::write`]; it writes while the storage is frozen
+    /// (the import freezes it first).
+    pub fn write_stored(&mut self, key: &str, text: &str) -> Result<(), StorageError> {
+        let (namespace, name) = split_key(key)?;
+        let (folder, leaf) = place(namespace, name);
+        self.backend.write(&folder, leaf, text)?;
+        self.backend.failure().map_or(Ok(()), Err)
+    }
+
+    /// Removes a document or a part by its key; also while frozen.
+    pub fn delete_stored(&mut self, key: &str) -> Result<(), StorageError> {
+        let (namespace, name) = split_key(key)?;
+        let (folder, leaf) = place(namespace, name);
+        self.backend.delete(&folder, leaf)
+    }
+
+    /// From now on the game writes nothing (every write and delete is refused with `why`) and nothing kept for
+    /// leaving is written: an import is replacing the saves, and the game's own state is the old one until it
+    /// starts again.
+    pub fn freeze(&mut self, why: impl Into<String>) {
+        self.frozen = Some(why.into());
+        self.backend.drop_kept();
+    }
+
+    /// Why the storage is frozen, if it is.
+    pub fn frozen(&self) -> Option<&str> {
+        self.frozen.as_deref()
+    }
+
+    /// Whether writes and deletes made are still on their way (web), and why the last one failed, if it did.
+    pub fn settling(&self) -> (bool, Option<StorageError>) {
+        (self.backend.busy(), self.backend.failure())
+    }
+
+    fn writable(&self) -> Result<(), StorageError> {
+        match &self.frozen {
+            Some(why) => Err(StorageError::Unavailable(why.clone())),
+            None => Ok(()),
+        }
+    }
+}
+
+/// `namespace/name[/part]` → (`namespace`, `name[/part]`), checked.
+fn split_key(key: &str) -> Result<(&str, &str), StorageError> {
+    match key.split_once('/') {
+        Some((namespace, name)) if valid_name(namespace) && check_key(name).is_ok() => Ok((namespace, name)),
+        _ => Err(StorageError::BadName(key.into())),
+    }
+}
+
+/// Reads a stored text (its header line, then its RON) as a document of kind `D` stored under `name` in its
+/// namespace: refuses another namespace, a format newer than the build's or older than `D::OLDEST`, and RON that
+/// doesn't read.
+pub fn parse_stored<D: Document>(name: &str, text: &str) -> Result<Stored<D>, StorageError> {
+    let key = format!("{}/{name}", D::NAMESPACE);
+    let unreadable = |why: String| StorageError::Unreadable { key: key.clone(), why };
+    let (header, body) = split_header(text);
+    let (format, saved) = match header {
+        Some(h) => parse_header(h, D::NAMESPACE).map_err(unreadable)?,
+        None => (1, None),
+    };
+    if format > D::FORMAT {
+        return Err(StorageError::Newer { key, format, supported: D::FORMAT });
+    }
+    if format < D::OLDEST {
+        return Err(StorageError::Older { key, format, oldest: D::OLDEST });
+    }
+    let doc = D::from_ron(body).map_err(unreadable)?;
+    Ok(Stored { doc, saved })
 }
 
 /// A document's folder and its name there: `lab` + `run/g3` is (`lab/run`, `g3`).
@@ -648,6 +742,11 @@ mod behind {
         pub fn bytes(&self) -> u64 {
             self.bytes
         }
+
+        /// Whether changes wait to be taken or batches are out.
+        pub fn busy(&self) -> bool {
+            !self.dirty.is_empty() || !self.flying.is_empty()
+        }
     }
 }
 
@@ -1013,6 +1112,14 @@ mod web {
         fn usage(&self) -> Option<Usage> {
             with_open(|o| Usage { documents: o.docs.bytes(), estimate: o.estimate })
         }
+
+        fn busy(&self) -> bool {
+            with_open(|o| o.queued || o.docs.busy()).unwrap_or(false)
+        }
+
+        fn drop_kept(&mut self) {
+            with_open(|o| o.on_leave.clear());
+        }
     }
 }
 
@@ -1107,6 +1214,9 @@ pub(crate) mod testing {
         fn waiting(&self, folder: &str, name: &str) -> bool {
             self.0.lock().unwrap().0.waiting(&behind::key(folder, name))
         }
+        fn busy(&self) -> bool {
+            self.0.lock().unwrap().0.busy()
+        }
     }
 }
 
@@ -1188,6 +1298,32 @@ mod tests {
         // A part is a file in its document's folder.
         storage.write("b/g0", &Note("p0".into()), 22).unwrap();
         assert!(dir.join("notes/b/g0.ron").is_file());
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// The backup's access: documents and their parts by name, stored texts by key, and a frozen storage that refuses
+    /// the game's writes and deletes but takes the import's (memory and files).
+    #[test]
+    fn stored_texts_by_key_and_a_frozen_storage() {
+        let dir = std::env::temp_dir().join(format!("space-game-storage-raw-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        for mut storage in [Storage::new(MemoryBackend::default()), Storage::new(FileBackend::new(&dir))] {
+            storage.write("b", &Note("two".into()), 20).unwrap();
+            storage.write("b/g0", &Note("p0".into()), 20).unwrap();
+            storage.write("a", &Note("one".into()), 20).unwrap();
+            assert_eq!(storage.names_with_parts("notes").unwrap(), ["a", "b", "b/g0"]);
+            assert_eq!(storage.read_stored("notes/b/g0").unwrap().unwrap(), "// space-game: notes, format 3, saved 20\n\"p0\"\n");
+            assert!(storage.read_stored("notes").is_err() && storage.read_stored("../x/y").is_err());
+            storage.freeze("replaced");
+            assert_eq!(storage.frozen(), Some("replaced"));
+            assert_eq!(storage.write("c", &Note("x".into()), 1), Err(StorageError::Unavailable("replaced".into())));
+            assert!(storage.delete::<Note>("a").is_err() && storage.delete_parts::<Note>("b").is_err());
+            storage.write_stored("notes/c", "// space-game: notes, format 3\n\"three\"").unwrap();
+            storage.delete_stored("notes/b/g0").unwrap();
+            assert_eq!(storage.read::<Note>("c").unwrap().unwrap().doc, Note("three".into()));
+            assert_eq!(storage.names_with_parts("notes").unwrap(), ["a", "b", "c"]);
+            assert_eq!(storage.settling(), (false, None));
+        }
         std::fs::remove_dir_all(&dir).unwrap();
     }
 
