@@ -152,6 +152,11 @@ pub struct Gates {
 pub struct TrailCount {
     pub trail: String,
     pub count: u32,
+    /// Placed after the band's lore fragments, in the clusters they leave free (GDR-0128): a small band's extra caches
+    /// and graveyards never crowd out its story. Like every trail, left out of a galaxy whose band has no cluster
+    /// free for its end.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub spare: bool,
 }
 
 /// `cluster_types/*.ron`: what kind of place a cluster is. Its interior is rolled from the cluster's seed when the

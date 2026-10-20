@@ -111,29 +111,41 @@ fn check(c: &Content, s: &Skeleton) {
         }
         assert!(s.band(id).all(|k| seen.contains(&k)), "seed {seed}: band {id} is not reachable");
     }
-    // Trails: as many as the bands and lore ask for, each well formed.
-    let mut wanted = 0;
+    // Trails: as many as the bands and lore ask for, each well formed. Any but a gate's is left out only where its
+    // band has no cluster free for its end (GDR-0127: of its `ends_in` types; GDR-0128: a small band full).
+    let ends_of: BTreeSet<u32> = s.trails.iter().map(|t| t.places.last().unwrap().cluster).collect();
+    let none_free = |band: &str, tpl: &data::Trail| {
+        s.band(band).all(|k| {
+            let kc = &s.clusters[k as usize];
+            k == s.home || kc.gate || piece(k) || ends_of.contains(&k) || !(tpl.ends_in.is_empty() || tpl.ends_in.contains(&kc.kind))
+        })
+    };
     for id in &g.bands {
         let band = c.bands.get(id).unwrap();
+        let placed = |trail: &str| s.trails.iter().filter(|t| t.trail == trail && t.band == *id).count() as u32;
         // A gate piece's gate has the slice for its trail.
         let gated = g.set_pieces.iter().filter(|p| p.gate && c.voyages.get(&p.voyage).unwrap().band == *id).count() as u32;
-        wanted += band.gates.as_ref().map_or(0, |x| x.count) - gated;
-        // A trail that ends only in some cluster types (GDR-0127) is left out where the band has none of them free.
+        if let Some(gates) = &band.gates {
+            assert_eq!(placed(&gates.trail), gates.count - gated, "seed {seed}: gate trails of {id}");
+        }
         for tc in &band.trails {
             let tpl = c.trails.get(&tc.trail).unwrap();
-            if tpl.ends_in.is_empty() {
-                wanted += tc.count;
-            } else {
-                let placed = s.trails.iter().filter(|t| t.trail == tc.trail && t.band == *id).count() as u32;
-                assert!(placed <= tc.count, "seed {seed}: {} trails", tc.trail);
-                wanted += placed;
-            }
+            let n = placed(&tc.trail);
+            assert!(n <= tc.count, "seed {seed}: {} trails", tc.trail);
+            assert!(n == tc.count || none_free(id, tpl), "seed {seed}: a {} trail left out of {id} with room for it", tc.trail);
         }
-        wanted += c.lore.iter().filter(|l| l.band == *id).count() as u32;
+        for l in c.lore.iter().filter(|l| l.band == *id) {
+            let n = s.trails.iter().filter(|t| t.lore.as_deref() == Some(l.id.as_str())).count();
+            assert!(n <= 1, "seed {seed}: fragment {} twice", l.id);
+            let tpl = c.trails.get(&l.trail).unwrap();
+            assert!(n == 1 || none_free(id, tpl), "seed {seed}: fragment {} left out of {id} with room for it", l.id);
+        }
+        // A band's lore comes before its spare trails (GDR-0128).
+        let lore_out = c.lore.iter().any(|l| l.band == *id && !s.trails.iter().any(|t| t.lore.as_deref() == Some(l.id.as_str())));
+        let spares = band.trails.iter().filter(|tc| tc.spare).map(|tc| placed(&tc.trail)).sum::<u32>();
+        assert!(!lore_out || spares == 0, "seed {seed}: a spare trail in {id} while a fragment is left out");
     }
-    assert_eq!(s.trails.len() as u32, wanted, "seed {seed}: trails");
     let mut ends = BTreeSet::new();
-    let mut fragments = BTreeSet::new();
     for t in &s.trails {
         let tpl = c.trails.get(&t.trail).unwrap();
         let n = t.signals.len() as u32;
@@ -160,11 +172,7 @@ fn check(c: &Content, s: &Skeleton) {
             assert!((units(lo) / 2 - 1..=units(hi) / 2 + 1).contains(&r));
         }
         assert_eq!(t.lore.is_some(), tpl.reward == Reward::Lore);
-        if let Some(l) = &t.lore {
-            assert!(fragments.insert(l.clone()), "seed {seed}: fragment {l} twice");
-        }
     }
-    assert_eq!(fragments.len(), c.lore.len(), "seed {seed}: every lore fragment has its trail");
 }
 
 #[test]

@@ -23,10 +23,12 @@
 //!    entrances (home for the first band, the gates of the band outside it for the others). Steps 1 to 4 start
 //!    again on a new attempt when a band is empty, home or a gate cannot be placed, or a band is not reachable.
 //! 5. **Types, seeds and names** per cluster in id order; a set piece's cluster takes its voyage's name.
-//! 6. **Trails** per band: one per gate but a gate piece's (its voyages are its trail), the band's caches and
-//!    graveyards, one per lore fragment of the band. No trail place lies at home or a set piece. A
-//!    trail's reward goes into a cluster of its own; its earlier places are walked back from there, a trail step at a
-//!    time, towards the band's entrances where possible; each signal's area holds the place it leads to.
+//! 6. **Trails** per band: one per gate but a gate piece's (its voyages are its trail), the band's bosses, caches and
+//!    graveyards, one per lore fragment of the band, then its spare caches and graveyards. No trail place lies at
+//!    home or a set piece. A trail's reward goes into a cluster of its own (of its `ends_in` types, if it names any);
+//!    with none left free, the trail is left out of that galaxy. Its earlier places are walked back from there, a
+//!    trail step at a time, towards the band's entrances where possible; each signal's area holds the place it leads
+//!    to.
 //!
 //! **Determinism** (ADR-0010, ADR-0042): integer positions in hundredths of S ([`UNITS_PER_S`]), distance tests in
 //! integers, `libm` for every root and angle, ordered containers only, PCG32 streams with fixed ids

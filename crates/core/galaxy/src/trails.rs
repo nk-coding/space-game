@@ -8,7 +8,9 @@ use data::{Band, Content, Galaxy, Trail};
 use crate::{Area, GenError, Place, Point, Signal, Skeleton, Stream, TrailPlan, polar, stream, unit, units};
 
 /// The trails of a skeleton whose clusters, home, set pieces and gates are set: per band (rim first) one per gate (but
-/// a gate piece's), then the band's `trails`, then one per lore fragment of the band.
+/// a gate piece's), then the band's `trails`, then one per lore fragment of the band, then the band's spare `trails`
+/// (GDR-0128). A trail that finds no cluster free for its end (none of its `ends_in` types, or a small band full) is
+/// left out of that galaxy.
 pub(crate) fn trails(c: &Content, g: &Galaxy, bands: &[&Band], s: &Skeleton) -> Result<Vec<TrailPlan>, GenError> {
     let mut rng = stream(s.seed, Stream::Trails, 0);
     let get = |id: &str| c.trails.get(id).ok_or_else(|| GenError(format!("unknown trail `{id}`")));
@@ -24,12 +26,16 @@ pub(crate) fn trails(c: &Content, g: &Galaxy, bands: &[&Band], s: &Skeleton) -> 
             let t = get(&gates.trail)?;
             wanted.extend(s.band(&band.id).filter(|&k| s.clusters[k as usize].gate && !piece(k)).map(|k| (t, Some(k), None)));
         }
-        for tc in &band.trails {
+        for tc in band.trails.iter().filter(|tc| !tc.spare) {
             let t = get(&tc.trail)?;
             wanted.extend((0..tc.count).map(|_| (t, None, None)));
         }
         for l in c.lore.iter().filter(|l| l.band == band.id) {
             wanted.push((get(&l.trail)?, None, Some(l.id.clone())));
+        }
+        for tc in band.trails.iter().filter(|tc| tc.spare) {
+            let t = get(&tc.trail)?;
+            wanted.extend((0..tc.count).map(|_| (t, None, None)));
         }
         let entrances: Vec<Point> = s.entrances(&g.bands, b).iter().map(|&k| s.clusters[k as usize].at).collect();
         let from_start = |k: u32| entrances.iter().map(|e| e.dist2(s.clusters[k as usize].at)).min().unwrap_or(0);
@@ -39,15 +45,12 @@ pub(crate) fn trails(c: &Content, g: &Galaxy, bands: &[&Band], s: &Skeleton) -> 
             let end = match fixed {
                 Some(k) => k,
                 None => {
-                    // Only clusters of the types the trail ends in, if it names any (GDR-0127); none of them in the
-                    // band: no such trail in this galaxy.
+                    // Only clusters of the types the trail ends in, if it names any (GDR-0127); none of them free in
+                    // the band (or the band full, GDR-0128): no such trail in this galaxy.
                     let fits = |k: &u32| t.ends_in.is_empty() || t.ends_in.contains(&s.clusters[*k as usize].kind);
                     let free: Vec<u32> = open.iter().copied().filter(|k| !ends.contains(k) && fits(k)).collect();
-                    if free.is_empty() && !t.ends_in.is_empty() {
-                        continue;
-                    }
                     if free.is_empty() {
-                        return Err(GenError(format!("band `{}` has no cluster left for the end of a `{}` trail", band.id, t.id)));
+                        continue;
                     }
                     free[rng.below(free.len() as u32) as usize]
                 }
