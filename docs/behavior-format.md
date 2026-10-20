@@ -45,6 +45,9 @@ There is no `end`, no `or` and no nesting. For "this **or** that", write two rul
 - **Flags** are true or false and stand alone: `shield_down`, `under_attack`, `target_in_range(60m)`.
 - **Values** measure something and must be compared with `<`, `<=`, `>` or `>=`: `hull < 30%`,
   `enemies_near(150m) >= 3`, `missiles_incoming >= 2` (enemy missiles homing on the ship, GDR-0115), `cycle(9s) >= 5s`.
+- **Salvage** (added 20 Oct 2026, GDR-0123): `wreck_in_range(250m)` holds while salvage with anything left to take (a
+  wreck, a broken-off piece, a loose fragment, drifting slower than 6 m/s) lies within the distance, whatever the
+  hold; `cargo_full` while the hold has no free unit (a ship without a hold is always full).
 - `not` in front turns a condition around: `not target_in_range(100%)`.
 - A condition about the target (`target_in_range`, `target_hull`, `target_on_me`, `cycle`, `target_time`, ...) is
   **false while there is no target**, with or without `not`. An action that needs a target does not run without
@@ -53,7 +56,7 @@ There is no `end`, no `or` and no nesting. For "this **or** that", write two rul
 ### Actions
 
 `approach(range)`, `orbit(radius, dir)`, `kite(range)`, `face`, `flee`, `ram`, `hold`, `escort(distance)`, `scan`,
-`flare`, `mine`. See
+`flare`, `mine`, `salvage`. See
 the vocabulary in the wiki (or `content/base/behavior_nodes/actions.ron`) for what each does.
 
 `ram` (added 18 Oct 2026, GDR-0103, the Grown's charge) flies straight at the target at top speed, nose first, and
@@ -71,6 +74,12 @@ launcher is ready (charged and cooled down), then steps aside like `scan` (the d
 `no flare launcher is ready`). A launcher has a few releases per fight, so give it a condition:
 `when missiles_incoming >= 1 -> flare` at the top of the list. The flown ship's pilot assists have `auto_flare` for the
 same (below).
+
+`salvage` (added 20 Oct 2026, GDR-0123) flies slowly over the nearest salvage within sensor range that drifts slower
+than 6 m/s and holds something the free hold can take, so the ship strips it as it does whenever it passes slowly
+over salvage (there is no tractor). Like `mine` it needs no target and steps aside with a full hold or nothing in
+sight; guns still fire at will at the target. Only the player's ships collect. Put it below the rules that fight:
+`when wreck_in_range(200m) and not cargo_full -> salvage`, as the content's `salvager` escort behavior does.
 
 `escort(distance)` (added 13 Oct 2026, GDR-0065; default `30m`) keeps the ship within that distance of its
 **leader**, the ship it escorts (for wingmen: the player's flagship): it closes in when farther and keeps pace

@@ -2594,6 +2594,15 @@ defaults throughout.
   point of the rock's circle nearest the ship, `range` `behavior::tuning::MINE_STANDOFF` (0.5) of the shortest mining
   reach (at most the default reach), and `Fire::Mine` at the aim point: `guns_at_will` for the mining guns only.
   Without a rock it steps aside like a rule without a target. `BehaviorState::mine` (rock and aim point).
+- **The `salvage` action** (`Action::Salvage`, GDR-0123, needs no target ship): the nearest salvage within sensor
+  range (ship centre to a salvage piece's centre of mass, or a loose item) drifting no faster than
+  `behavior::tuning::SALVAGE_DRIFT` (6 m/s) with something that fits the free hold (`Ship::has_salvage`: a wreck's
+  own cargo or an alive salvageable part; a loose item's units); ties loose items first, then ship and piece order.
+  The rule decides with `Approach { target: Piece, range: 0, aim: Auto }` (flown relative to the piece, not the
+  target) or `Hold` at the loose item; fire at will at the target as usual. The conditions `wreck_in_range(d)`
+  (`Test::WreckInRange`: the same search with any hold, its distance measured) and `cargo_full`
+  (`Flag::CargoFull`). The think pass reads `SalvageState::loose`. Nothing new in the state hash: the choice is the
+  maneuver. Checked in `tests/salvage.rs` and the salvage determinism scenario (one ship under `salvager`).
 - **State hash**: the spawned rocks' `ore` and `cut` after the rock count, once a mining beam has cut
   (`Voyage::mined`); a behavior's `mine` after its rally point, while set. Voyages and behaviors without mining hash
   as before.

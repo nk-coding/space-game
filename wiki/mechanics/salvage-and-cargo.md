@@ -79,6 +79,12 @@ quietly, with no explosion and no fragment, and the wreck may fall apart further
 Salvage settles: a wreck or loose item faster than [[sim:settle_speed]] slows down by [[sim:settle_decel]] until it
 drifts at that speed, so cargo dropped at full speed is easy to catch.
 
+Your escorts collect the same way when their behavior takes them there: the [[behavior_node:salvage]] action flies a
+ship slowly over the nearest wreck or loose fragment its hold can take, [[behavior_node:wreck_in_range]] tells whether
+there is one near, and [[behavior_node:cargo_full]] whether the hold has room. The [[behavior:salvager]] behavior
+strips wrecks between fights this way and keeps near its leader once its hold is full. An escort busy with a wreck
+falls behind, so it may reach the next fight late.
+
 ## Cargo holds
 
 Your hold is the summed [[stat:cargo_capacity]] of the cargo parts on your vessel's main piece:

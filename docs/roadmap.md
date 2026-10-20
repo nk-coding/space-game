@@ -668,6 +668,16 @@ Next session:
   test: every researched part can be fabricated once its node, or one it requires, is researched (the recorded
   exceptions: the automatons' parts wait for the forge, the torch drive for the fusion reactor's node).
 
+### 20 Oct 2026: behavior words for salvage
+
+- ([GDR-0123](gdr/0123-behavior-words-for-salvage.md), lead defaults; `plans/first-playable-loop.md` §7) the
+  behavior action `salvage` (the nearest slow salvage within sensor range with something that fits the hold, flown
+  over at range 0 so collecting strips it), the conditions `wreck_in_range(range)` and `cargo_full`, the content's
+  `salvager` escort template (the escort's rules with salvage between fights); the salvage determinism scenario flies
+  one. The voyage runner's escorts keep `escort`: with `salvager` they doubled the haul but cleared fewer goals
+  (47 against 61 of 80 on `yard_approach`).
+- Open: the tractor (GDR-0031), a leader-distance word, salvage in the lab's trials.
+
 ## Phase 4: measurement
 
 Status 12 Oct 2026 (new VM): `results/spike-summary.md` written. Determinism native vs wasm IDENTICAL on the new VM

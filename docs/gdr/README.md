@@ -131,6 +131,7 @@ overview and links to both series. Format and status rules: `CLAUDE.md`, section
 | [0120](0120-flight-and-the-fight-viewer-on-a-phone.md) | Flight and the fight viewer on a phone: the corner ring pauses, a floating stick, FIRE and FLARE, a tap on the target panel locks the next, the voyage's salvage at the bottom, the viewer's buttons beside its scrubbing timeline | Proposed | 2026-10-20 |
 | [0121](0121-tooltips-and-flings-by-touch.md) | Tooltips and flings by touch: a long press (0.35 s, 10 dp) shows a control's name and never clicks, a list lifted while it moves flings on (the wheel's glide over 0.9 s) | Proposed | 2026-10-20 |
 | [0122](0122-the-balance-check.md) | The balance check: seven fixed fights (1696 seeded runs, about 6 s) against a stored baseline, flagged past ±0.15 win rate, ±0.12 score or ±15 % time | Accepted (provisional, lead) | 2026-10-20 |
+| [0123](0123-behavior-words-for-salvage.md) | Behavior words for salvage: a `salvage` action (fly slowly over the nearest wreck that fits the hold), `wreck_in_range` and `cargo_full`, a `salvager` escort template; the voyage runner's escorts keep `escort` | Accepted (provisional, lead) | 2026-10-20 |
 <!-- index:end -->
 
 ## How to add, supersede and deprecate

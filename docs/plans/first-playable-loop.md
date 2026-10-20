@@ -676,7 +676,7 @@ Waves (3–5 agents each):
 | Capture (GDR-0017), alien nodes, variants and refinement chains | One kind of each node is enough to show the system | salvage-research |
 | Timed research, research focus | Waiting isn't play (G5) | later |
 | Mid-voyage saves, several save slots, new game+ | Voyages are short; one player | later |
-| Behavior words for salvage (`wreck in range`, `cargo full`, `tractor`) | Escorts don't need to salvage in the slice | salvage-research |
+| Behavior words for salvage (`wreck in range`, `cargo full`, `tractor`) | Escorts don't need to salvage in the slice (built 20 Oct 2026 without the tractor: `salvage`, `wreck_in_range`, `cargo_full`, [GDR-0123](../gdr/0123-behavior-words-for-salvage.md)) | salvage-research |
 | The fabricator, storage and galaxy map buttons of the ring | Nothing behind them yet | later |
 
 ## 8. Risks and what to try first
