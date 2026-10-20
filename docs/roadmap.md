@@ -806,6 +806,20 @@ Next session:
   call costing 8–15 points; the call banner names its caller. `sample_miner`, the mining fit GDR-0114 left open.
 - Open: a station's alarm as a caller.
 
+### 20 Oct 2026: the core band
+
+- ([GDR-0130](gdr/0130-the-core-band-precursor-defences-radiation-and-the-archive.md), Niklas's design, lead defaults;
+  `results/core-band-2026-10-20.md`) The precursor defences (faction `precursors`, the sentinel core, precursor alloy,
+  the sentry, aegis, sentry station, megastructure fragment and the Archive's warden; `sentry_patrol` and
+  `archive_warden` tactics, the warden's switching on its hull share as sections break off), radiation (a cluster
+  type's `radiation: (edge, centre)` through the interior into `Voyage::radiation`, the star's heat path; the HUD's
+  `RADIATION … A SIDE`), the core's cluster types and sky, a band's `centre` in the generator (the Archive's cluster
+  and trail; a band with a centre holds three clusters or more), the archive key and two research nodes (precursor
+  alloy, the Archive's codex), two lore fragments and the sealed vault. A late fleet clears a core patrol 46–63 %, the
+  Archive 8–19 %. The `archive` determinism scenario and the arena fight `archive_warden` are in the determinism
+  check; the galaxy hash re-pinned.
+- Open: a radiation shield or armour, the Archive as a place of its own, the forty's other surviving mind.
+
 ## Phase 4: measurement
 
 Status 12 Oct 2026 (new VM): `results/spike-summary.md` written. Determinism native vs wasm IDENTICAL on the new VM

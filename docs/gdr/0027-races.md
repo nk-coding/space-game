@@ -17,6 +17,8 @@
   2026-10-20: the Phase walkers in play (lead, [GDR-0127](0127-the-phase-walkers-blink-drives-and-piercing-lances.md)):
   blink drives, piercing lances, skirmishers, strikers and the phase colossus; phase rifts in the inner band; phase
   residue and rift silt; their research family (phase lances, the blink drive) and the phase chamber.
+  2026-10-20: the core is the precursors' own defences, no alien race (Niklas, [GDR-0130](0130-the-core-band-precursor-defences-radiation-and-the-archive.md)):
+  sentries, an aegis, sentry stations and the Archive's warden, one of the forty minds that signed the gate order.
 - Date: 2026-10-10
 - Decided by: Niklas (interactive Q&A)
 - Related: [GDR-0024](0024-tech-trees-no-mk-levels.md), [GDR-0026](0026-procedural-galaxy-and-bands.md), [GDR-0031](0031-materials-and-fabrication.md), [GDR-0032](0032-balancing-arena-evolution.md)

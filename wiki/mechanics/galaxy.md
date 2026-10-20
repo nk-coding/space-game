@@ -24,8 +24,9 @@ about the distance between two neighbouring clusters. No two clusters lie closer
 
 [[galaxy:galaxy]] is a disc of [[galaxy:galaxy.bands]] bands around the centre: [[band:rim]] (out to
 [[band:rim.edge]] from the centre), [[band:outer]], [[band:middle]], [[band:inner]] and [[band:core]]. Each band is a
-ring filled with clusters at the galaxy's spacing, so there is no empty stretch wider than about one spacing. The rim
-and the outer reach are made so far; the bands past them are stand-ins until their races and guardians exist.
+ring filled with clusters at the galaxy's spacing, so there is no empty stretch wider than about one spacing. Every
+band has its own race: the rim's automatons, the outer reach's Grown, the middle band's Swarm, the inner band's Lattice
+and Phase walkers, and in the core the precursors' own defences.
 
 A cluster is one place you fly a voyage in: one space a couple of kilometres across. Its **cluster type** says what
 kind of place it is and what it holds:
@@ -41,6 +42,16 @@ The outer reach is the [[faction:grown]]'s ([living parts](/mechanics/living-par
   into every part open to space, and [[encounter:scorched_wrecks]] as near the star as the cluster goes;
 - [[cluster_type:border_drift]] ([[cluster_type:border_drift.radius]]): only near the rim's border, where automaton
   stragglers run into the first groves.
+
+The core is the [[faction:precursors]]' ([radiation](/mechanics/power-and-heat#radiation)): every core cluster
+radiates, more the nearer it lies to the galaxy's centre, and every part takes the heat through its sides open to space.
+
+- [[cluster_type:sentry_reach]] ([[cluster_type:sentry_reach.radius]]): patrols of [[ship:precursor_sentry|sentries]]
+  and the [[encounter:sentry_post|sentry posts]] that hold the approaches;
+- [[cluster_type:fragment_deep]] ([[cluster_type:fragment_deep.radius]]): pieces of a precursor megastructure, rich
+  salvage, still guarded ([[encounter:megastructure_fragment]]);
+- [[cluster_type:archive_heart]] ([[cluster_type:archive_heart.radius]]): the core's cluster nearest the galaxy's
+  centre, always, where the Archive lies at the end of [[trail:archive|its trail]].
 
 What a cluster holds is rolled from its own seed the first time a fleet warps in, so it is the same every time you
 come back.
@@ -82,6 +93,12 @@ of four shielded pods round a heart, each pod on a core of its own, so you open 
 spine of three sections under [[part:prism_ward|prism wards]] that take laser fire whole but let most shells and
 missiles through, so bring cannons or missiles, and point defence against its torpedoes and rockets.
 
+The core has no gate. At its centre lies **the Archive** ([[encounter:archive_site]]), the end of the galaxy: the
+[[ship:archive_warden]] keeps it, five sections round a heart, each on cores of its own. Whole, it holds off at the
+reach of its torpedoes; with a section shot off it closes in to bring its beams to bear; down to half its hull it
+charges. Each section shot off fights on alone with the same rules. Beaten, it gives the [[material:archive_key]], which
+the [[research:archive_codex]] takes: one more core at once, and the [[part:sentinel_core]] for your own ships.
+
 ## Trails and signals
 
 A **trail** is a chain of signals that ends at something worth the trip. Each signal points from where it was found to
@@ -98,6 +115,8 @@ the next place of the trail; the last place holds the reward:
 | [[trail:overgrown_cache]] | [[trail:overgrown_cache.length]] | an [[encounter:overgrown_cache]] in the outer reach, kept by the [[faction:grown]]: a cache's store, more than the rim's |
 | [[trail:overgrown_fleet]] | [[trail:overgrown_fleet.length]] | an [[encounter:overgrown_fleet]]: precursor hulls and Grown dead, far more salvage than usual |
 | [[trail:resin_cache]] | [[trail:resin_cache.length]] | a [[encounter:resin_cache]] in the middle band, kept by the [[faction:swarm]] |
+| [[trail:archive]] | [[trail:archive.length]] | [[encounter:archive_site]] at the galaxy's centre: beat the [[ship:archive_warden]] and the [[material:archive_key]], research data and programmable matter go into store |
+| [[trail:sealed_vault]] | [[trail:sealed_vault.length]] | a [[encounter:sealed_vault]] in the core, one sentry on watch: a cache's store, the richest outside the Archive |
 | [[trail:picked_graveyard]] | [[trail:picked_graveyard.length]] | a [[encounter:picked_graveyard]]: an old battlefield the Swarm are picking clean |
 | [[trail:crystal_cache]] | [[trail:crystal_cache.length]] | a [[encounter:crystal_cache]] in the inner band, kept by the [[faction:lattice]] in one of their clusters |
 | [[trail:crystal_wreck_field]] | [[trail:crystal_wreck_field.length]] | a [[encounter:crystal_wreck_field]]: old hulls held in Lattice crystal |
@@ -191,5 +210,5 @@ Lore trails end at a fragment of the story, kept in the memory log, which the **
 the rim [[lore:last_launch]], [[lore:the_quiet]] and [[lore:a_note_to_myself]]; in the outer reach
 [[lore:older_than_the_yard]], [[lore:facing_inwards]] and [[lore:a_hollow_core]]; in the middle band
 [[lore:the_second_chart]], [[lore:not_the_cargo]] and [[lore:only_loud]]; in the inner band [[lore:forty_names]] and
-[[lore:logged_twice]]. Each fragment is placed once per galaxy, but the inner band is small: in about one galaxy
+[[lore:logged_twice]]; in the core [[lore:the_order_kept]] and [[lore:two_names_left]]. Each fragment is placed once per galaxy, but the inner band is small: in about one galaxy
 in eight it has no cluster left for its second fragment, which is then left out.

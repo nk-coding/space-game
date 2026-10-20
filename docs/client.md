@@ -895,6 +895,11 @@ off, the flash and its ring where it left), `voyage-warp-emergency.png` (the eme
   heat warnings as before. A heart's re-grown part (`SimEvent::PartRegrown`) swells softly in its hull's glow before
   the piece's view is rebuilt (`sim_bridge.rs`). Screenshots (taken 17 Oct 2026 with the
   flags of then, `?scene=voyage&cluster=hot&galaxy=1&unlock=all`) at 1280 × 720, 1600 × 900 and 2560 × 1440 (the glow above the ship, the subtitle legible over it).
+- **Radiation** (20 Oct 2026, [GDR-0130](gdr/0130-the-core-band-precursor-defences-radiation-and-the-archive.md)): in a
+  core cluster (`Voyage::radiation` above 0) the voyage's subtitle adds `RADIATION x A SIDE` (two decimals: the heat a
+  second per open side, the same everywhere in the cluster) after a star's, if any; no glow (the core's amber sky is
+  its look). Screenshot `docs/results/core-radiation-2026-10-20.png` (1280 × 720, `?dev=1`, a fragment deep); the
+  subtitle is the star heat's line (checked at three sizes then), so it was looked at at 1280 × 720 only.
 - **Finds** (a recorded cluster voyage, galaxy plan E6, [GDR-0097](gdr/0097-galaxy-map-and-voyage-flow.md); `voyage::note_finds`): the run keeps a copy of the
   career (`VoyageRun::knows`) and the finds (`Find`): a player's scan narrows every heard signal whose area holds the
   cluster (`Career::scanned`, once per signal per voyage) and hears the beacon of every trail place its sweep reaches

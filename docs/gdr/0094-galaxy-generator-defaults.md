@@ -14,6 +14,8 @@
   2026-10-18: a band's cluster type may be rolled only near the band's outer edge (`border`); the outer reach is no
   longer a stub (its types, gates and trails in [GDR-0103](0103-the-grown-in-play-defaults.md)); generator version 3.
   2026-10-17: cluster types gain `scenery` ([GDR-0104](0104-scenery-rocks-filler-landmarks.md)): rock fields, belts and scattered rock rolled into the voyage plan after the sites, and drawn-only dust, debris, derelicts, landmarks and distant fights; a generated interior carries its type (`Interior::kind`), so the interiors' hash changed (the skeletons' did not).
+  2026-10-20: no band is a stub any more: the core has the precursor defences ([GDR-0130](0130-the-core-band-precursor-defences-radiation-and-the-archive.md));
+  `uncharted_deep` is deleted.
 - Date: 2026-10-16
 - Decided by: lead session (defaults for Niklas to review, galaxy tracks E1 and E2)
 - Supersedes: the plan's placeholder cluster counts per band (12, 18, 22, 24, 4; `docs/plans/galaxy-voyages.md` 4.8; not a record)

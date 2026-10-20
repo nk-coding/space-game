@@ -9,6 +9,9 @@
   their own ([GDR-0103](0103-the-grown-in-play-defaults.md)).
   2026-10-18: the first outpost, a station that never moves, as a rim and an outer site ([GDR-0110](0110-anchored-stations.md)).
   2026-10-18: the middle band's gates have a guardian of their own, the Keeper ([GDR-0112](0112-the-keeper-guards-the-middle-bands-gates.md)).
+  2026-10-20: the core is real ([GDR-0130](0130-the-core-band-precursor-defences-radiation-and-the-archive.md)): the precursor defences, radiation as heat
+  through every open side, rising toward the centre, and the Archive at the galaxy's centre (a band's `centre`) with its
+  warden; no gate leads out of it.
 - Date: 2026-10-10
 - Decided by: Niklas (interactive Q&A)
 - Related: [GDR-0002](0002-awakened-ship-mind-light-story.md), [GDR-0027](0027-races.md), [GDR-0028](0028-clusters-and-voyages.md), [ADR-0022](../adr/0022-one-simulation-space-per-cluster.md), [ADR-0024](../adr/0024-saves-seed-and-deltas.md)

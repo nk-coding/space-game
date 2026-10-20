@@ -195,6 +195,17 @@ strip them fast and leave before your parts cook. The flight HUD's subtitle show
 side where you are, a glow at the edge of the view shows where the star lies, and the HUD names the parts near their
 limit as always.
 
+### Radiation
+
+Every cluster of [[band:core]] radiates ([[cluster_type:sentry_reach]]: [[cluster_type:sentry_reach.radiation]] heat a
+second per open side, from the band's outer edge to the galaxy's centre). It works like a hot star's heat, but the same
+everywhere in the cluster: every part takes it through each of its sides open to space, the skin warms first and
+passes the heat inward to the machines. The nearer the galaxy's centre the cluster lies, the more it radiates. A ship
+with a few [[part:radiator|radiators]] or [[part:heat_sink|heat sinks]] along its edges copes; one without them runs
+its reactors and guns hot and overheats them after a few minutes of fighting on the core's edge, and within half a
+minute near the galaxy's centre. The flight HUD's subtitle shows the
+radiation a second for each open side. The core's own defences carry radiators all along their flanks.
+
 ## Adjacency bonuses
 
 Some parts make their neighbours better. A bonus goes from the part that grants it to each **linked** neighbour of

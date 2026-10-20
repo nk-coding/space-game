@@ -91,7 +91,7 @@ the runner, the scenarios); at the root what everything uses.
 | `events` | `SimEvent`, `SplitEvent`, `PieceSnapshot` |
 | `ship::vessel` | `Owner`, `friendly`, `VesselState`, `VesselInfo`; the vessel split, focus and mind pass (`Sim::focus`, `vessels`, `mind_load`) |
 | `world` | `Sim` (tick, config, RNG, ships, physics, events, impacts and ramming, state hash), `TickInputs`, `ShipCommand`, `DamageCommand`, `PartHit`, `StepPhase` |
-| `voyage::scenario` | (`salvage.rs`, `voyage.rs`, `grown.rs`: those three scenarios; `fixtures.rs`: the behaviors and ships they add) the deterministic `core`, `flight`, `load`, `behavior`, `salvage` and `voyage` scenarios |
+| `voyage::scenario` | (`salvage.rs`, `voyage.rs`, `grown.rs`, `archive.rs`: those four scenarios; `fixtures.rs`: the behaviors and ships they add) the deterministic `core`, `flight`, `load`, `behavior`, `salvage` and `voyage` scenarios |
 
 Examples: `determinism` (prints per-tick hashes; used by `scripts/determinism-check.sh`), `sim_perf` (load
 numbers, Rapier vs the rest; `--report` times the design report, `--calibrate` measures its device-load model),
@@ -210,7 +210,7 @@ How it is checked:
 - `cargo test -p sim` (`tests/determinism.rs`): same seed → identical hash sequence (core 600 ticks, flight 900
   ticks); different seeds → different hashes and different runs; a cloned world continues identically; a 1e-6
   change in one part's hp changes the hash; incrementally maintained caches equal a full recompute.
-- `scripts/determinism-check.sh [--seed N] [--ticks N] [--scenario core|flight|assists|load|behavior|salvage|voyage|grown]` builds the `determinism`
+- `scripts/determinism-check.sh [--seed N] [--ticks N] [--scenario core|flight|assists|load|behavior|salvage|voyage|grown|archive]` builds the `determinism`
   example natively and for `wasm32-wasip1`, runs the wasm under Node's built-in WASI (`scripts/wasi-run.mjs`)
   and compares the per-tick hashes, printing the first divergent tick (exit 1). `--compare A.txt B.txt` compares
   any two hash streams (`<tick> <hash>` lines, `#` comments), e.g. a browser console dump.
@@ -577,6 +577,12 @@ those tagged `outer` or `middle`, since 18 Oct 2026, `scenario::DEEP_TAGS`):
   (a fixture with a heart in tissue) fly the voyage scenario's script without its kills (they pass within the wake
   radius, strip the wreck, scan, fight), random hits (5 %) and a blast every 300 ticks, a ram run every 300 ticks (the
   first thornback's prow into the first player vessel). Counts `regrown` (`PartRegrown`).
+- `archive` (20 Oct 2026, GDR-0130, `scenario/archive.rs`): a voyage built in code, 700 m, radiation 0.35 everywhere
+  (the core's at the galaxy's centre), the content's `archive_warden` and a `precursor_sentry` 450 m in from the entry,
+  waking as the fleet comes; the player's ship-mind ships with a hold fly the voyage scenario's script without its kills,
+  random hits (5 %) and a blast every 300 ticks, and every 240 ticks one of the warden's three bridges is shot through
+  (fore, port, starboard), so its sections split off as vessels and the heart's `hull` falls past the
+  `archive_warden` behavior's thresholds. Counts `warden_rules` (a bit per rule the warden's vessels ran).
 
 For the browser: the game build (`wasm32-unknown-unknown`) can call `sim::voyage::scenario::run_kind(kind, seed, ticks)`
 and log the same `<tick> <hash>` lines to the console; capture them with `tools/headless/shot.mjs` and run
@@ -732,7 +738,7 @@ loss = 0.02 × area + open_sides × (radiator ? vent : 0.3)
 
 In a cluster beside a hot star (GDR-0102) the generation also takes `star × open_sides × DT`, `star` the star's heat
 per side at the ship's controlling piece ([Hot stars](#hot-stars-gdr-0102); 0 adds exactly nothing, so worlds without
-a star keep their hashes). Reactors make `heat × (1/3 + 2/3 × load)` (none when nothing draws). The steady state equals the drydock
+a star keep their hashes), plus a core cluster's radiation ([Radiation](#radiation-gdr-0130)). Reactors make `heat × (1/3 + 2/3 × load)` (none when nothing draws). The steady state equals the drydock
 model's (`loss·T = gen − Σ K (T − T_n)`, K = 1). A part above its `heat.limit` shuts down (no work, no draw,
 no output) from the next tick until it cools below **75%** of the limit (hysteresis). Constants in
 `ship::tuning`, all placeholders. With the current Halvex Runner layout nothing overheats under combat load;
@@ -2268,6 +2274,19 @@ tick, `Star::heat_at(p) = heat × min((reach / |p − pos|)², data::STAR_HEAT_C
 piece's centre of mass goes into `Ship::update_systems(star)`, and every part gains `star × open_sides × DT` heat
 ([Heat](#heat-dynamic-lumped-per-part)): overheating, the restart, conduction and radiators as before. One
 multiplication and addition per part a tick. Only `+ − × ÷` and `min`.
+
+## Radiation (GDR-0130)
+
+The core's clusters radiate: a cluster type's `radiation: (edge, centre)` gives the heat per open side of a cluster on
+its band's outer edge and at the galaxy's centre; the galaxy's interior takes it at the cluster's distance from the
+centre, linear in between, in thousandths (`data::RadiationSpec::at`, `galaxy::Interior::radiation`; none for a type
+without it, so other interiors roll and hash as before), and a content voyage may name one (`Voyage::radiation`, for
+test voyages). `VoyagePlan::radiation` (0: none) goes into `Voyage::radiation` (in the voyage's hash only when above
+0). Every tick each ship's heat per open side is the radiation plus a hot star's at its controlling piece
+(`Voyage::heat_at`), so radiation is the star's rule without the distance: the same everywhere in the cluster, every
+part taking `radiation × open_sides × DT` ([Heat](#heat-dynamic-lumped-per-part)). A zero adds exactly nothing. The
+skin warms first and conducts inward: a ship's thick middle warms over tens of seconds, and radiators (which shed far
+more through their open sides than they take) pull the heat out. The `archive` determinism scenario flies in it.
 
 ## Damage and breakage
 
