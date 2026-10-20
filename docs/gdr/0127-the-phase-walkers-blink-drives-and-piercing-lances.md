@@ -4,6 +4,17 @@
   lead: a blink keeps speed, heading and spin (it does not turn onto the target); each drive moves 22 t and a blink
   uses as many drives as the mass needs (TOO HEAVY TO BLINK otherwise); the lance is Energy, so shield bubbles absorb
   it whole unless it is fired from inside one; the other rules' details and numbers provisional, lead).
+- Status note (20 Oct 2026, lead defaults, fixes after the screenshots): the blink drive draws **1 MW** while charging
+  (was 6: High tier, it switched the walkers' Low-tier lances off on every charge, the skirmisher at 13 / 8, the
+  striker 26 / 16, the colossus 57 / 40; now 8 / 8, 16 / 16, 37 / 40). Voyage runner, 60 seeds, R + C / R + 2S /
+  R + 2C, before → after: t_wpack 46 / 60 / 60 → 41 / 60 / 60 %, t_strike 41 / 53 / 50 → 45 / 50 / 53 %,
+  t_colossus 16 / 30 / 35 → 16 / 26 / 35 % (within the seeds' noise). The drydock's POWER note gives the pool while a
+  burst cuts what full use runs (`report::Burst::cuts`: "+6 WHILE CHARGING (13 / 8)"; the starter skiff's scan now
+  reads "+3 WHILE SCANNING (29 / 28)"). A split-off section without lances no longer holds an arena fight open: the
+  referee counts a fragment (a vessel split off a fielded ship, or a drone) only while it is armed (GDR-0068's rule for
+  sites); a fielded ship still counts while it runs. The colossus's sections keep their rules (a lone core cannot fly
+  anyway). The fight viewer frames the running vessels' controlling pieces (not their shed salvage), disarmed ones only
+  within 120 m of the armed.
 - Date: 2026-10-20
 - Decided by: Niklas (the design, 20 Oct 2026) and the lead session (agent WALKERS: the rules, numbers and content;
   defaults for Niklas to review)

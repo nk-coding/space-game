@@ -3,6 +3,10 @@
 - Status: Accepted (Niklas, 20 Oct 2026: the design points marked (Niklas), and, confirmed later that day with the
   lead, that a refracted shot belongs to nobody and hits anyone, the shooter and other Lattice ships included; the
   other rules' details and every number provisional, lead).
+- Status note (20 Oct 2026, lead): the crystal hull's glint is a thin streak sweeping across a diagonal of the cell in
+  0.3 s, drawn on the part every frame (it was a 1.1 m soft flash left in world space, a blob of light over the hull).
+  Open: the needle overdraws (8 / 7 at full use: the focus emitter, Low tier, runs at 75 % while the thruster and both
+  RCS pods push), and the resonator alone dies in about 26 s against a Runner and two skiffs; neither fixed yet.
 - Date: 2026-10-20
 - Decided by: Niklas (the design, 20 Oct 2026) and the lead session (agent LATTICE: the rules, numbers and content;
   defaults for Niklas to review)

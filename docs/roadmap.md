@@ -794,6 +794,11 @@ Next session:
   drydock's TOO HEAVY TO BLINK. Keeper-capable fleets clear a walker pack 60 %, a strike 50–53 %, the colossus
   30–35 %. The arena fight `walker_strike` is in the determinism check.
 - Open: a blink that turns onto its target, a BLINK assist (the touch button since GDR-0129), an armour of their own.
+- (20 Oct 2026, fixes after the screenshots) The blink drive draws 1 MW while charging (6 browned the lances out); the
+  drydock's POWER note gives the pool while a burst cuts full use; an arena fight no longer waits on a disarmed
+  fragment; the fight viewer frames the running vessels, not their salvage, and `?slowmo=N` slows its playback too;
+  the Lattice's crystal glint is a streak on the part, not a blob. Open: the needle's 8 / 7, the resonator's staying
+  power.
 
 ### 20 Oct 2026: behavior words, a BLINK button and the railgun
 
@@ -831,6 +836,7 @@ Next session:
   Archive 8–19 %. The `archive` determinism scenario and the arena fight `archive_warden` are in the determinism
   check; the galaxy hash re-pinned.
 - Open: a radiation shield or armour, the Archive as a place of its own, the forty's other surviving mind.
+
 ### 20 Oct 2026: the tractor beam
 
 - ([GDR-0131](gdr/0131-the-tractor-beam.md), Niklas's design, lead defaults; `results/tractor-2026-10-20.md`) The
