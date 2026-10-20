@@ -421,7 +421,8 @@ broken-off ones too, keeps its place (its bodies turn but never move: no ram, sh
 the RON when false. The base's one station is the `automaton_outpost`.
 
 Base ships: `halvex_runner`, `automaton_raider` (from `../space-game-archive/ships/automaton-raider.svg`), `sample_early` and
-`sample_mid` (from the concept-board drafts), and `rim_skiff` (13 Oct 2026, the starter ship of `rim_awakening`:
+`sample_mid` (from the concept-board drafts), `sample_miner` (20 Oct 2026, GDR-0128: a mining fit, `sample_early`'s hull with two mining lasers, a cargo hold
+and the `miner` behavior), and `rim_skiff` (13 Oct 2026, the starter ship of `rim_awakening`:
 `sample_early` with a gyro pair in place of its two rear armour blocks and radiators on the shoulders in place of
 two slopes, so it turns 90° in about 0.67 s by the design report instead of 1.6 s and its reactors feed the gyros;
 early-game kit only; a lead placeholder), and the voyages' enemies `automaton_hunter` (5×4, two cannons on forward
@@ -781,7 +782,11 @@ GDR-0110); the station flies `behaviors/outpost.ron`. Then `picket_post` (the un
 call its faction's sites, GDR-0111; its `calls: "picket_call"`, two or three raiders, warp in from the edge after
 its first call, GDR-0113: an encounter's optional `calls` names the group, an encounter with ships that calls none
 itself, and needs a ship with a scanner) and `keeper_gate` (the `automaton_keeper`, tagged `middle`, and three hunters:
-the deeper gates' trail `deep_gate`, GDR-0112; `docs/results/picket-keeper-balance-2026-10-18.md`).
+the deeper gates' trail `deep_gate`, GDR-0112; `docs/results/picket-keeper-balance-2026-10-18.md`). More callers
+(20 Oct 2026, GDR-0128, `docs/results/deeper-bands-2026-10-20.md`): `watched_grove` (the unarmed `grown_sentinel`, a
+rammer and a thornback, 0–1 per grove reach; calls `grove_call`, one rammer) and `scout_patrol` (the
+unarmed `swarm_scout` and 2–3 spitters, 0–1 per swarm reach; calls `swarm_call`, one spitter); both scouts fly
+`picket`.
 
 ### Controls (`controls.ron`, added 15 Oct 2026, GDR-0090)
 
@@ -838,17 +843,21 @@ is in the rules' fingerprint: a game keeps its generated galaxy (ADR-0035).
 | Kind | Fields besides the common header |
 |---|---|
 | `galaxy` (`galaxy.ron`) | `bands` (ids, rim first, each inside the one before), `spacing` (S, no two clusters closer), `jump_range` (S at the start; at least twice the spacing), `home_neighbours` (home's band clusters without a set piece within the jump range), `warp` (`(seconds, seconds per S)`), `signal_area: (across: (min, max) S, offset: share of the radius the place may lie off-centre, below 1, narrow: share of the radius a scan from another cluster keeps, above 0 and below 1)`, `trail_step` (`(min, max)` S between a trail's places), `names: (starts, ends)` (syllables of a cluster name's first word), `set_pieces` (`[(voyage, distance: (min, max) S from home, gate)]`: hand-made voyages placed on clusters of their band that take their names; a `gate` piece keeps its band's first gate, its voyages the gate's trail, at most one a band, its goal with ships for sure; E7, GDR-0098) |
-| `band` (`bands.ron`) | `edge` (S from the centre to its outer edge; the next band's edge is its inner one), `clusters` (`[(id: cluster type, weight)]`, optional `border: S` per type: rolled only for clusters within that many S of the band's outer edge, at least one type without; 18 Oct 2026, GDR-0103: the outer reach's `border_drift`), `gates` (optional `(count, trail)`: gates near its inner edge, each at the end of a `Gate` trail; every band but the innermost has them), `trails` (`[(trail, count)]`, `Cache` or `Salvage` trails) |
+| `band` (`bands.ron`) | `edge` (S from the centre to its outer edge; the next band's edge is its inner one), `clusters` (`[(id: cluster type, weight)]`, optional `border: S` per type: rolled only for clusters within that many S of the band's outer edge, at least one type without; 18 Oct 2026, GDR-0103: the outer reach's `border_drift`), `gates` (optional `(count, trail)`: gates near its inner edge, each at the end of a `Gate` trail; every band but the innermost has them), `trails` (`[(trail, count, spare)]`, `Cache` or `Salvage` trails; placed after the gates' trails in their order, then the band's lore, then the `spare` ones (optional, default `false`): a small band's extra caches and graveyards take only the clusters its bosses and lore leave free; any of them is left out of a galaxy whose band has no cluster free for its end, 20 Oct 2026, GDR-0128) |
 | `cluster_type` (`cluster_types/*.ron`) | `radius` (`(min, max)` m, at most 4000: one `f32` space, ADR-0022), `spacing` (`(min, max)` m between sites, as a voyage's), `words` (the second word of its clusters' names), `sites` (`[(encounter, count: (min, max))]`, at most 64 sites), `star` (optional `(heat, distance)`: a hot star beside the cluster, `distance` cluster radii from the centre (above 1, at most 10) in a direction rolled after its sites; every part takes `heat` per second per open side at the centre, by the inverse square of the distance nearer it, at most `data::STAR_HEAT_CAP` = 4 times; 17 Oct 2026, GDR-0102; the outer reach's `scorched_deep`: 0.3 at 1.8) |
 | `trail` (`trails.ron`) | `reward` (`Gate`, `Cache`, `Lore`, `Salvage`), `length` (`(min, max)` signals, 1 to 4), `target` (the encounter at its end; a gate's must have ships for sure), `sources` (signal source ids, equally likely), `hint` (text: the signal's first line, "SIGNAL · A GATE"), `gives` (optional `(data: {family: amount}, materials: {material: count})`: what its end puts into store, a cache's; E8), `ends_in` (optional cluster type ids its end may lie in; none of them free in the band: the trail is left out of that galaxy; not for gate trails; GDR-0127) |
 | `signal_source` (`signal_sources.ron`) | `form` (`Log`: a data core in a wreck, decoded at home; `Beacon`: scanned in the cluster), `line` (text: the signal's second line, "a log from a hauler's wreck"), `site` (the encounter at its place: required for a log and must hold wrecks; a beacon's keeper, none for the beacon alone) |
-| `lore` (`lore/*.ron`) | `band`, `trail` (a `Lore` trail: one is placed per fragment), `text` (the fragment, for the memory log) |
+| `lore` (`lore/*.ron`) | `band`, `trail` (a `Lore` trail: one is placed per fragment, after the band's other trails but its spare ones; left out where the band has no cluster free, which only the small inner band ever is, GDR-0128), `text` (the fragment, for the memory log) |
 
 Texts keyed as usual: `trail.<id>.hint`, `signal_source.<id>.line`, `lore.<id>.text`. Name syllables and words are
 not keyed (they make proper names). Validation warns when a band is in no galaxy, a cluster type in no band, or a
 trail placed by no band or fragment, and when a voyage of the galaxy's bands has no set piece (never on the map). The
 rim's trails end at their own encounters since E8 (17 Oct 2026, GDR-0098): a gate sentinel, a sealed cache, a memory
-wreck, a deep graveyard. The jump range's research is two propulsion nodes of +0.75 S (GDR-0093, built 16
+wreck, a deep graveyard. The deeper bands have their own since 20 Oct 2026 (GDR-0128): lore in `lore/outer.ron`,
+`middle.ron` and `inner.ron` (three, three and two fragments), and spare caches and graveyards kept by the band's race:
+`overgrown_cache` and `overgrown_fleet` (the Grown, outer), `resin_cache` and `picked_graveyard` (the Swarm, middle),
+`crystal_cache` and `crystal_wreck_field` (the Lattice, `ends_in` their cluster types) and `rift_graveyard` (the
+walkers, `ends_in: ["phase_rift"]`) in the inner band. The jump range's research is two propulsion nodes of +0.75 S (GDR-0093, built 16
 Oct 2026 in track E4: `Unlock::JumpRange`, "Research nodes" above). A game's generated skeleton is kept in its career
 (`docs/career.md` "The galaxy"; its types are `data::skeleton`).
 

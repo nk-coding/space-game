@@ -139,6 +139,8 @@ the sites done of all (`SITES n / m`) and the time since you arrived.
 | [[encounter:seedling_shoal]] | [[encounter:seedling_shoal.wake_radius]] (wary: only a scan) |
 | [[encounter:precursor_outpost]] | [[encounter:precursor_outpost.wake_radius]] |
 | [[encounter:picket_post]] | [[encounter:picket_post.wake_radius]] |
+| [[encounter:scout_patrol]] | [[encounter:scout_patrol.wake_radius]] |
+| [[encounter:watched_grove]] | [[encounter:watched_grove.wake_radius]] (wary: only a scan) |
 | [[encounter:outpost_garrison]] | [[encounter:outpost_garrison.wake_radius]] |
 
 ::: tip Pick your fights
@@ -157,6 +159,11 @@ within [[part:scanner.scan_range]] of it, not just those within [[part:scanner.s
 on its tail so it never gets clear; if it gets away, the sites around you come for you together. Its first scan
 also calls a group from outside the cluster ([[encounter:picket_call]]): half a minute later it warps in on the
 cluster's edge and heads for where the picket saw you. A banner tells you when that happens.
+
+The automatons are not the only ones who keep a lookout. A [[encounter:scout_patrol]] of the [[faction:swarm]] flies
+with a [[ship:swarm_scout]] that calls in an [[encounter:swarm_call]], and a [[encounter:watched_grove]] of the
+[[faction:grown]] keeps a [[ship:grown_sentinel]] that calls in an [[encounter:grove_call]] once the grove is provoked.
+Both fly the same [[behavior:picket]] mind, so they are beaten the same way.
 
 The cluster has an **edge**, [[sim:edge_margin]] outside its radius: fly past it and your ship is pushed back
 towards the centre.

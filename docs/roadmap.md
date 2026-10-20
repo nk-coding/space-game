@@ -795,6 +795,17 @@ Next session:
   30–35 %. The arena fight `walker_strike` is in the determinism check.
 - Open: a blink that turns onto its target, a BLINK touch button and assist, an armour of their own.
 
+### 20 Oct 2026: the deeper bands' lore, caches, graveyards and callers
+
+- ([GDR-0128](gdr/0128-the-deeper-bands-lore-caches-graveyards-and-callers.md), lead defaults;
+  `results/deeper-bands-2026-10-20.md`) Lore for the outer, middle and inner bands (3, 3, 2 fragments); a cache and
+  a graveyard per band kept by its race (the overgrown cache and fleet, the resin-sealed cache and the picked
+  graveyard, the crystal-grown cache, the crystal wreck field and the rift graveyard), placed after the band's lore
+  (`spare`); a trail with no free cluster for its end is left out of the galaxy instead of failing it. Two more
+  callers: the Swarm scout's scout patrol (calls a spitter) and the Grown sentinel's watched grove (calls a rammer), a
+  call costing 8–15 points; the call banner names its caller. `sample_miner`, the mining fit GDR-0114 left open.
+- Open: a station's alarm as a caller.
+
 ## Phase 4: measurement
 
 Status 12 Oct 2026 (new VM): `results/spike-summary.md` written. Determinism native vs wasm IDENTICAL on the new VM

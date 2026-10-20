@@ -95,6 +95,13 @@ the next place of the trail; the last place holds the reward:
 | [[trail:outer_gate]] | [[trail:outer_gate.length]] | an outer gate and its guardian, a [[encounter:bastion_gate]]: beaten, the gate opens and a [[material:gate_shard]] goes into store |
 | [[trail:inner_gate]] | [[trail:inner_gate.length]] | an inner gate and its guardian, the [[encounter:spire_gate]]: beaten, the gate opens and two [[material:gate_shard|gate shards]] go into store |
 | [[trail:elder_grove]] | [[trail:elder_grove.length]] | an [[encounter:elder_grove]]: a [[ship:grown_elder]] at rest, rich salvage if it can be beaten |
+| [[trail:overgrown_cache]] | [[trail:overgrown_cache.length]] | an [[encounter:overgrown_cache]] in the outer reach, kept by the [[faction:grown]]: a cache's store, more than the rim's |
+| [[trail:overgrown_fleet]] | [[trail:overgrown_fleet.length]] | an [[encounter:overgrown_fleet]]: precursor hulls and Grown dead, far more salvage than usual |
+| [[trail:resin_cache]] | [[trail:resin_cache.length]] | a [[encounter:resin_cache]] in the middle band, kept by the [[faction:swarm]] |
+| [[trail:picked_graveyard]] | [[trail:picked_graveyard.length]] | a [[encounter:picked_graveyard]]: an old battlefield the Swarm are picking clean |
+| [[trail:crystal_cache]] | [[trail:crystal_cache.length]] | a [[encounter:crystal_cache]] in the inner band, kept by the [[faction:lattice]] in one of their clusters |
+| [[trail:crystal_wreck_field]] | [[trail:crystal_wreck_field.length]] | a [[encounter:crystal_wreck_field]]: old hulls held in Lattice crystal |
+| [[trail:rift_graveyard]] | [[trail:rift_graveyard.length]] | a [[encounter:rift_graveyard]] in one of the [[faction:walkers]]' rifts |
 | [[trail:memory]] | [[trail:memory.length]] | a [[encounter:memory_wreck]]: see it and its fragment of what happened joins the memory log |
 
 Following a trail to its end gives its reward once, even if the voyage is lost on the way home: a gate, a cache's
@@ -126,7 +133,8 @@ A data core you bring home waits at the **LOG** at home (its mast glows): DECODE
 
 A trail's first source lies in an ordinary cluster of its band; each later one waits at the place the signal before
 it led to, so following a trail walks you across the band, a [[galaxy:galaxy.trail_step]] step at a time, towards its
-end. No two rewards share a cluster.
+end. No two rewards share a cluster. The inner band is small, so its gates and bosses come first, then its memories,
+and its caches and graveyards only where clusters are left: some galaxies have none of them there.
 
 ## Inside a cluster: sensors and scans
 
@@ -146,10 +154,11 @@ with the [[behavior_node:scan]] action. The scanner charges for [[part:scanner.s
   pointing straight at it. Scan again from somewhere else and the two lines cross at the place;
 - sleeping ships within [[part:scanner.scan_wake]] wake up: where you scan matters.
 
-An enemy's scan is a call: when an enemy ship scans (the [[ship:automaton_picket]] of the [[faction:automatons]]),
+An enemy's scan is a call: when an enemy ship scans (the [[ship:automaton_picket]] of the [[faction:automatons]],
+the [[ship:swarm_scout]] of the [[faction:swarm]], the [[ship:grown_sentinel]] of the [[faction:grown]]),
 every sleeping site of its own faction within [[part:scanner.scan_range]] wakes. It shows you nothing. A site whose
-encounter calls a group (a [[encounter:picket_post]]) also brings that group in from the cluster's edge with its
-first call.
+encounter calls a group (a [[encounter:picket_post]], a [[encounter:scout_patrol]], a [[encounter:watched_grove]])
+also brings that group in from the cluster's edge with its first call.
 
 Then it cools down for [[part:scanner.scan_cooldown]]. A banner says what the scan found, and what it did to your
 signals. [[control:cluster_map.keys]] ([[control:cluster_map]]) lays the whole cluster over your view: its edge,
@@ -179,5 +188,8 @@ outer reach, worlds like the [[planet:lava]] beside a hot star. A cluster keeps 
 ## Lore
 
 Lore trails end at a fragment of the story, kept in the memory log, which the **LOG** at home shows under MEMORY: in
-the rim [[lore:last_launch]], [[lore:the_quiet]] and [[lore:a_note_to_myself]]. Each fragment is placed once per
-galaxy.
+the rim [[lore:last_launch]], [[lore:the_quiet]] and [[lore:a_note_to_myself]]; in the outer reach
+[[lore:older_than_the_yard]], [[lore:facing_inwards]] and [[lore:a_hollow_core]]; in the middle band
+[[lore:the_second_chart]], [[lore:not_the_cargo]] and [[lore:only_loud]]; in the inner band [[lore:forty_names]] and
+[[lore:logged_twice]]. Each fragment is placed once per galaxy, but the inner band is small: in about one galaxy
+in eight it has no cluster left for its second fragment, which is then left out.
