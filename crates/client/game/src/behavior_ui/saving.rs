@@ -42,7 +42,7 @@ use super::screen::ScreenText;
 use super::{BehaviorAction, BehaviorUi, BehaviorView, EditorContext};
 
 /// The working draft's name in the `drydock` namespace (next to the working design, `drydock/working`).
-const WORKING: &str = "behavior";
+pub(crate) const WORKING: &str = "behavior";
 /// Where a working draft that doesn't read is kept before the next autosave writes over it.
 const WORKING_ASIDE: &str = "behavior-unread";
 

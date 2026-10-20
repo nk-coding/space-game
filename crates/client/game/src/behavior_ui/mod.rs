@@ -137,6 +137,9 @@ pub struct BehaviorPlugin;
 impl Plugin for BehaviorPlugin {
     fn build(&self, app: &mut App) {
         dashed::plugin(app);
+        // The working draft (`drydock/behavior`) goes into backups with the world's documents.
+        app.init_resource::<world::backup::BackupKinds>();
+        app.world_mut().resource_mut::<world::backup::BackupKinds>().add(world::backup::Kind::of::<saving::WorkingBehavior>(saving::WORKING));
         app.init_resource::<BehaviorDraft>()
             .init_resource::<BehaviorUi>()
             .init_resource::<EditorContext>()

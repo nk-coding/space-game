@@ -1,5 +1,5 @@
 //! SETTINGS (GDR-0090): a layer over home (the gear ring top right, or its key, O) and over flight (the flight menu's
-//! SETTINGS), with two tabs.
+//! SETTINGS), with three tabs.
 //!
 //! ```text
 //! (o) SHIPYARD › SETTINGS  [EVOLVING 12 / 50]                  [CONTROLS] [DISPLAY]   [CLOSE]
@@ -19,6 +19,7 @@
 //!   (`settings/controls`).
 //! * **DISPLAY**: GLOW and BLOOM on or off, the UI size (100 %, 90 %, 80 % of what fits the window); saved at once
 //!   (`settings/display`).
+//! * **SAVES** (home only, ADR-0050; [`saves`]): EXPORT everything the game keeps into one file, IMPORT one back.
 //!
 //! Esc (not while waiting for an input) and CLOSE close it; home's places and flight's keys wait meanwhile
 //! (`SettingsLayer`). UI words are chrome in code, like home's; the actions' names and summaries are content.
@@ -42,6 +43,8 @@ use world::storage::Storage;
 use crate::fleet::Fleet;
 use crate::home::{COMPACT_TEXT, by_class};
 use crate::voyage_log::VoyageLog;
+
+mod saves;
 
 /// Where the screen's parts go (stage px), like FLEET's: [`Lay::WIDE`] a 1280 × 720 stage, [`Lay::COMPACT`] a
 /// phone's 844 × 390 at `compact_scale` (docs/client.md "Phones": the list across the stage, narrower names and
@@ -71,6 +74,7 @@ enum Tab {
     #[default]
     Controls,
     Display,
+    Saves,
 }
 
 /// The screen's state: the tab, the input waiting for a key, what the status line says.
@@ -123,6 +127,7 @@ impl Plugin for SettingsPlugin {
             .add_systems(OnExit(AppMode::Home), close)
             .add_systems(OnExit(AppMode::Flight), close)
             .add_systems(Update, (open, input, capture, sync, show, fit).chain().after(UiInputSet).before(UiStyleSet));
+        saves::plugin(app);
     }
 }
 
@@ -154,6 +159,10 @@ fn open(
         layer.open = true;
         ui.capture = None;
         ui.say = None;
+        // SAVES is home's only.
+        if by_menu && ui.tab == Tab::Saves {
+            ui.tab = Tab::Controls;
+        }
     }
 }
 
@@ -333,7 +342,7 @@ fn sync(
     }
     for (b, mut pill, children) in &mut buttons {
         let (active, disabled) = match *b {
-            SettingsButton::Tab(t) => (ui.tab == t, false),
+            SettingsButton::Tab(t) => (ui.tab == t, t == Tab::Saves && *mode.get() == AppMode::Flight),
             SettingsButton::Chip(a, slot) => (ui.capture == Some((a, slot)), false),
             SettingsButton::Clear => (false, ui.capture.is_none()),
             SettingsButton::Glow(on) => (display.glow == on, false),
@@ -369,6 +378,7 @@ fn sync(
                 let (words, tone) = ui.say.clone().unwrap_or_else(|| match ui.tab {
                     Tab::Controls => (touch.says("CLICK AN INPUT, THEN PRESS A KEY OR A MOUSE BUTTON", "TAP AN INPUT, THEN PRESS A KEY ON A KEYBOARD").into(), Tone::Dim),
                     Tab::Display => ("CHANGES SHOW AT ONCE AND ARE SAVED ON THIS DEVICE".into(), Tone::Dim),
+                    Tab::Saves => ("EXPORT KEEPS A COPY OF YOUR SAVES  ·  IMPORT BRINGS ONE BACK".into(), Tone::Dim),
                 });
                 set_text(&mut text, &words);
                 let c = ui_color(tone.color(&ui_pal), 1.0);
@@ -521,6 +531,9 @@ fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>, conten
                             choice(d, "UI SIZE", "The screens' size, as a share of what fits the window.", vec![("100 %", SettingsButton::Size(0)), ("90 %", SettingsButton::Size(1)), ("80 %", SettingsButton::Size(2))]);
                         });
 
+                    // SAVES: export and import.
+                    saves::spawn_pane(stage, fonts, &style);
+
                     // Bottom: the status line, CLEAR and RESET.
                     let bottom = |l: Lay| Node {
                         position_type: PositionType::Absolute,
@@ -554,6 +567,7 @@ fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>, conten
             root.spawn((ScreenPart::new(Edge::Top, 0), f.top_right())).with_children(|tr| {
                 top_pill(tr, fonts, "CONTROLS", Pill::new(Tone::Teal), (SettingsButton::Tab(Tab::Controls), Tip::new("CONTROLS")));
                 top_pill(tr, fonts, "DISPLAY", Pill::new(Tone::Teal), (SettingsButton::Tab(Tab::Display), Tip::new("DISPLAY")));
+                top_pill(tr, fonts, "SAVES", Pill::new(Tone::Teal), (SettingsButton::Tab(Tab::Saves), Tip::new("EXPORT AND IMPORT YOUR SAVES")));
                 spawn_close(tr, fonts, SettingsButton::Close);
             });
         });
