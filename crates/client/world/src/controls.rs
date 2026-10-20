@@ -215,6 +215,10 @@ struct FireButton;
 struct FlareButton;
 #[derive(Component)]
 struct BlinkButton;
+/// The holder of an ability's slot (FLARE, BLINK): a flight UI root, hidden by `mode` when the flight ends and at a
+/// start elsewhere, so `touch_ui` shows it again in flight.
+#[derive(Component)]
+struct SlotHolder;
 
 pub struct ControlsPlugin;
 
@@ -573,6 +577,7 @@ fn spawn_touch_ui(mut commands: Commands, style: Res<Style>, fonts: Res<HudFonts
     commands
         .spawn((
             FlightUi,
+            SlotHolder,
             Node { position_type: PositionType::Absolute, right: px(FIRE_EDGE + FIRE_SIZE + SLOT_GAP), bottom: px(FIRE_EDGE + (FIRE_SIZE - SLOT) / 2.0), ..default() },
         ))
         .with_children(|p| {
@@ -582,6 +587,7 @@ fn spawn_touch_ui(mut commands: Commands, style: Res<Style>, fonts: Res<HudFonts
     commands
         .spawn((
             FlightUi,
+            SlotHolder,
             Node { position_type: PositionType::Absolute, right: px(FIRE_EDGE + (FIRE_SIZE - SLOT) / 2.0), bottom: px(FIRE_EDGE + FIRE_SIZE + SLOT_GAP), ..default() },
         ))
         .with_children(|p| {
@@ -627,11 +633,16 @@ fn touch_ui(
     mut fire: Query<(&mut Visibility, &mut BackgroundColor), (With<FireButton>, Without<StickBase>, Without<FlareButton>, Without<BlinkButton>)>,
     mut flare: Query<&mut Visibility, (With<FlareButton>, Without<StickBase>, Without<FireButton>, Without<BlinkButton>)>,
     mut blink: Query<&mut Visibility, (With<BlinkButton>, Without<StickBase>, Without<FireButton>, Without<FlareButton>)>,
+    mut holders: Query<&mut Visibility, (With<SlotHolder>, Without<StickBase>, Without<FireButton>, Without<FlareButton>, Without<BlinkButton>)>,
     mut knob: Query<(&mut Node, &mut BorderColor, &mut BackgroundColor), (With<StickKnob>, Without<StickBase>, Without<FireButton>)>,
     style: Res<Style>,
 ) {
     let show = screen.on() && focus.0.is_some() && !layer.open;
     let want = if show { Visibility::Inherited } else { Visibility::Hidden };
+    // The slots' holders come back with the flight (a start elsewhere or a flight's end hid them, `mode.rs`).
+    for mut v in &mut holders {
+        v.set_if_neq(want);
+    }
     let flown = focus.0.and_then(|id| world.sim.ship(id));
     let flares = flown.is_some_and(|s| !s.design().flares.is_empty());
     for mut v in &mut flare {

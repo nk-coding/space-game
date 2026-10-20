@@ -1,7 +1,9 @@
 # Client (`crates/client/kit`, `world`, `game`)
 
-The Bevy 0.20 client. Web (wasm32 + WebGL2) is the development platform; desktop and Android come later and
-must keep compiling (`cargo check -p game` natively). Written 11–13 Oct 2026; split into three crates on 14 Oct 2026
+The Bevy 0.20 client. Web (wasm32 + WebGL2) is where development happens and, since 20 Oct 2026, a player platform
+too, published on GitHub Pages ([ADR-0048](adr/0048-the-web-build-is-a-player-platform.md), [Publishing the web
+build](#publishing-the-web-build)); desktop and Android come later and must keep compiling (`cargo check -p game`
+natively). Written 11–13 Oct 2026; split into three crates on 14 Oct 2026
 (ADR-0038, see [Structure](#structure)).
 
 ## Build and run
@@ -10,7 +12,7 @@ must keep compiling (`cargo check -p game` natively). Written 11–13 Oct 2026; 
 |---|---|
 | Dev build with live reload | `scripts/web-serve.sh` → http://10.77.9.2:8081 (port via `PORT=`) |
 | Optimised build, served | `scripts/web-serve.sh --release` |
-| Optimised build into `crates/client/game/dist` + sizes | `scripts/web-build.sh` (cargo `release`, opt-level 3, wasm-opt -O3), then `scripts/web-serve-dist.sh` |
+| Optimised build into `crates/client/game/dist` + sizes | `scripts/web-build.sh --full` (cargo `release`, opt-level 3, wasm-opt -O3; what GitHub Pages gets), then `scripts/web-serve-dist.sh` |
 | Atlas preview / timing | `cargo run --release -p art --example preview [-- <tier> <scratch.png>]` (the game rasterises its atlas at runtime; nothing raster is committed); the longest step and frame of a job as the game spends it: `... --example profile -- <tier> [runs]` |
 | Headless check | `node /home/devbox/workspace/tools/headless/shot.mjs <url> <png> <waitMs>` |
 | One bounded check (build, serve on a free port, headless shot, console, stop) | `scripts/web-check.sh [--release] [--params '?scene=sandbox&load=5'] [--wait MS] [--size WxH] [--out FILE]` |
@@ -23,6 +25,50 @@ Every web build makes two wasm binaries (ADR-0043): the game (`game-<hash>_bg.wa
 evolution lab's web worker (`crates/client/lab-worker`: `lab-worker_bg.wasm`, `lab-worker.js` and Trunk's loader
 `lab-worker_loader.js`, not hashed; `index.html`'s second `rel="rust"` link, `data-type="worker"`). A served copy
 needs all of them.
+
+## Publishing the web build
+
+The web game is published on GitHub Pages ([ADR-0048](adr/0048-the-web-build-is-a-player-platform.md), 20 Oct 2026)
+by GitHub Actions. The VM's repository has no remote (ADR-0008); the workflows run only where the repository is
+published, and were written without a run.
+
+- **`.github/workflows/pages.yml`** (pushes to `main`, and by hand: `workflow_dispatch`): Rust stable with
+  `wasm32-unknown-unknown`, trunk 0.21.14 (its release binary; trunk fetches the wasm-bindgen CLI matching
+  `Cargo.lock` and binaryen's wasm-opt itself), `Swatinem/rust-cache` for cargo and `target/`, then the optimised
+  build as `scripts/web-build.sh --full` makes it (`trunk build --release --cargo-profile release`, wasm-opt -O3 from
+  `index.html`) with `--public-url "/<repo>/"`, since a project page lives under `https://<user>.github.io/<repo>/`.
+  A step checks that `dist` holds both binaries (the game and the lab's worker with its loader), then
+  `actions/upload-pages-artifact` and `actions/deploy-pages` publish it (permissions `pages: write`,
+  `id-token: write`; environment `github-pages`). In the repository's settings, Pages' source must be "GitHub
+  Actions".
+- **`.github/workflows/ci.yml`** (pull requests, pushes to `main` and `dev`): `cargo test --workspace --locked` (the
+  client needs no system headers: no audio or gamepads, winit loads libX11 at runtime), then the wiki's `npm ci`,
+  `npm run build` and `npm run check`. The determinism and balance checks stay local.
+- **Paths under `/<repo>/`**: trunk writes the game's script and wasm links with the public URL; the worker is
+  `./lab-worker_loader.js`, relative to the page (`world::evolution::workers`), and the loader imports
+  `./lab-worker.js` relative to itself. The game fetches nothing else (content and icons are embedded), so nothing
+  needs an absolute `/` path. A local build without `--public-url` keeps `/` and is served from the root as before.
+- **IndexedDB on github.io**: every project page of one user shares the origin `<user>.github.io` and so its
+  IndexedDB; the game's database is `space-game` (`world::storage`).
+- Not built yet (ADR-0048): checking the `/<repo>/` subpath locally, wasm size and a loading screen, a browser
+  performance pass, save export and import, a mobile browser check.
+
+## Licences and third-party notices
+
+Code is MIT OR Apache-2.0, content and art CC BY 4.0 (`LICENSE`, [ADR-0047](adr/0047-licences-code-mit-or-apache-content-cc-by.md)).
+`THIRD_PARTY_NOTICES.md` lists the Rust dependencies of the web and desktop builds with their licence texts, plus the
+fonts and the wiki's npm packages. Regenerate it after adding, removing or upgrading a dependency and commit it with
+the change:
+
+```
+cargo binstall cargo-about        # once (0.9.2 on 20 Oct 2026)
+scripts/third-party-notices.sh    # cargo about generate with scripts/notices/about.toml and notices.md.hbs
+```
+
+`scripts/notices/about.toml` names the targets (`wasm32-unknown-unknown`, `x86_64-unknown-linux-gnu`; add Android's
+when that build starts), leaves out dev- and build-dependencies and our own crates, and lists the accepted licences:
+a crate under a new licence fails the script until it is reviewed and added. The hand-written parts (fonts, the
+MPL, Unicode and BSD notes, the wiki's packages) are in the template `scripts/notices/notices.md.hbs`.
 
 ## Controls
 
@@ -451,6 +497,11 @@ PostUpdate            ship_view::sync_piece_views (render_pose(alpha) → Transf
   only, no new texture). `SimEvent::Collected` plays a teal flash where the item was and a pulse streak from there
   into the collecting vessel (`Effects::flash`, `Effects::pulse`); a piece emptied by stripping goes without the
   usual burst.
+- **Railgun slugs and kicks** (20 Oct 2026, GDR-0129; `fx.rs`, `sim_bridge.rs`): a projectile with three or more
+  blocks to pierce (`fx::RAIL_PIERCE`) draws as a white-hot needle 4 m long with a thin wake along its path
+  (`Effects::wake`, fading in 0.45 s); a projectile gun with at least 6 kN·s of recoil (`sim_bridge::KICK_RECOIL`)
+  kicks when it fires: a bigger flash and two fans of sparks thrown back past it (`Effects::kick`, as big as its
+  recoil) instead of the plain muzzle flash. Screenshot: `docs/results/railgun-slugs-2026-10-20.png`.
 - **Missiles** (19 Oct 2026, GDR-0115; `fx.rs`, `sim_bridge.rs`): a projectile with a seeker is drawn as a body
   along its course (longer and wider with its blast radius: a torpedo reads bigger than a rocket) in the shooter's
   weapon colour, a flickering hot nozzle at its back and a smoke trail (trail particles, like an engine's, capped with

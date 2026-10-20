@@ -11,7 +11,8 @@
 //   <holdMs> at the end before it lifts: 1 lifts at once, a fling)
 //   touchdown <x> <y> | touchup (one finger held down across other steps, e.g. a shot during a long press)
 //   shot <file.png> | crop <x> <y> <w> <h> <file.png> (a part of the page; enlarge with scripts/png-zoom.py)
-//   eval <js> | reload (the page again, same storage)
+//   eval <js> | reload (the page again, same storage) | viewport <w> <h> (resize the window, same page and storage;
+//   e.g. set a design up in the desktop drydock, then fly it at 844 390 under --dpr=3)
 //   upload <file> (the next file chooser gets this file) | clip <text> (put text on the clipboard) | readclip
 // Downloads are saved into <out-dir> under their suggested names ("[download] <path>" is printed).
 // Keys use Playwright names (KeyW, Space, Tab, Digit1, F3, ShiftLeft...).
@@ -106,6 +107,7 @@ for (const raw of steps.split(';').map(s => s.trim()).filter(Boolean)) {
     }
     case 'eval': console.log(await page.evaluate(a.join(' '))); break;
     case 'reload': await page.reload({ waitUntil: 'load', timeout: 120000 }); break;
+    case 'viewport': await page.setViewportSize({ width: n(0), height: n(1) }); break;
     case 'upload': page.once('filechooser', fc => fc.setFiles(a[0])); break;
     case 'clip': await page.evaluate(t => navigator.clipboard.writeText(t), a.join(' ')); break;
     case 'readclip': console.log(`[clipboard] ${await page.evaluate(() => navigator.clipboard.readText())}`); break;

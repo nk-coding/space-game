@@ -32,6 +32,8 @@ pub const Z_TRAILS: f32 = 5.0;
 pub const Z_WEAPONS: f32 = 300.0;
 pub const Z_SPARKS: f32 = 320.0;
 pub const Z_HUD: f32 = 400.0;
+/// A projectile with this many blocks or more to pierce draws as a railgun's slug (GDR-0129).
+const RAIL_PIERCE: u32 = 3;
 
 #[derive(Clone, Copy, Debug)]
 pub struct FxSprite {
@@ -145,6 +147,8 @@ struct Ring {
 struct Line {
     from: Vec2,
     to: Vec2,
+    /// The halo's width (m); the white core is a tenth of it.
+    width: f32,
     age: f32,
     life: f32,
     color: Color,
@@ -214,7 +218,7 @@ impl Effects {
     pub fn refracted(&mut self, point: Vec2, to: Vec2, color: Color) {
         self.flash(point, Color::srgb(0.95, 0.99, 1.0), 0.8, 0.1);
         self.flash(point, color, 1.4, 0.18);
-        self.lines.push(Line { from: point, to, age: 0.0, life: 0.12, color });
+        self.lines.push(Line { from: point, to, width: 0.7, age: 0.0, life: 0.12, color });
     }
 
     /// A blink (GDR-0127): the ship flashes out where it was with a ring snapping inwards, and in where it lands
@@ -228,15 +232,15 @@ impl Effects {
         if self.rings.len() < 32 {
             self.rings.push(Ring { pos: to, radius: 9.0, age: 0.0, life: 0.5, color });
         }
-        self.lines.push(Line { from, to, age: 0.0, life: 0.18, color: color.with_alpha(0.35) });
+        self.lines.push(Line { from, to, width: 0.7, age: 0.0, life: 0.18, color: color.with_alpha(0.35) });
         self.spray(from, Vec2::Y, std::f32::consts::PI, 10, (2.0, 6.0), (0.2, 0.45), 0.08, color);
     }
 
     /// A lance went through a hull (GDR-0127): its line from where it entered to where it left, lingering a little
     /// longer than a pulse, and a glint at the exit.
     pub fn lanced(&mut self, from: Vec2, to: Vec2, color: Color) {
-        self.lines.push(Line { from, to, age: 0.0, life: 0.3, color });
-        self.lines.push(Line { from, to, age: 0.0, life: 0.12, color: Color::srgb(1.0, 0.94, 0.99) });
+        self.lines.push(Line { from, to, width: 0.7, age: 0.0, life: 0.3, color });
+        self.lines.push(Line { from, to, width: 0.7, age: 0.0, life: 0.12, color: Color::srgb(1.0, 0.94, 0.99) });
         self.flash(to, color, 1.6, 0.2);
         let dir = (to - from).normalize_or_zero();
         self.spray(to, dir, 0.4, 5, (6.0, 14.0), (0.12, 0.3), 0.06, color);
@@ -271,7 +275,24 @@ impl Effects {
 
     /// A pulse: a bright line that fades quickly.
     pub fn pulse(&mut self, from: Vec2, to: Vec2, color: Color) {
-        self.lines.push(Line { from, to, age: 0.0, life: 0.14, color });
+        self.lines.push(Line { from, to, width: 0.7, age: 0.0, life: 0.14, color });
+    }
+
+    /// A railgun's slug passing (GDR-0129): a thin line it leaves behind that fades slower than a pulse.
+    pub fn wake(&mut self, from: Vec2, to: Vec2, color: Color) {
+        self.lines.push(Line { from, to, width: 0.22, age: 0.0, life: 0.45, color });
+    }
+
+    /// A heavy gun's kick (GDR-0129): a bigger muzzle flash and a fan of sparks thrown back past the gun on both
+    /// sides, as big as the gun's recoil (kN·s per shot).
+    pub fn kick(&mut self, pos: Vec2, back: Vec2, color: Color, recoil: f32) {
+        let k = (recoil / 9.0).clamp(0.3, 1.5);
+        self.flash(pos, color, 1.6 * k, 0.16);
+        self.flash(pos, Color::WHITE, 0.6 * k, 0.07);
+        let side = Vec2::new(-back.y, back.x);
+        let n = (6.0 * k) as usize;
+        self.spray(pos, (back + side * 0.9).normalize_or_zero(), 0.4, n, (5.0, 12.0), (0.12, 0.3), 0.05, color);
+        self.spray(pos, (back - side * 0.9).normalize_or_zero(), 0.4, n, (5.0, 12.0), (0.12, 0.3), 0.05, color);
     }
 
     /// Damage reached a part.
@@ -579,8 +600,18 @@ fn draw_ships_fx(
             }
             continue;
         }
-        let back = at - v / speed * (speed * 0.05).clamp(0.6, 3.0);
         let c = weapon_color(p.owner);
+        // A railgun's slug (GDR-0129: three blocks or more to pierce): a long white-hot needle that leaves a thin
+        // wake along its path.
+        if p.pierce >= RAIL_PIERCE {
+            let back = at - v / speed * 4.0;
+            queue.line(&regions.halo, back, at, 0.35, c.with_alpha(0.6), Z_WEAPONS);
+            queue.line(&regions.white, back, at, 0.08, Color::WHITE.with_alpha(0.95), Z_WEAPONS + 0.1);
+            queue.dot(&regions.hard, at, 0.16, Color::WHITE, Z_WEAPONS + 0.2);
+            fx.wake(v2(p.prev_pos), at, c);
+            continue;
+        }
+        let back = at - v / speed * (speed * 0.05).clamp(0.6, 3.0);
         queue.line(&regions.halo, back, at, 0.5, c.with_alpha(0.7), Z_WEAPONS);
         queue.line(&regions.white, back, at, 0.06, core_tint(c).with_alpha(0.9), Z_WEAPONS + 0.1);
         queue.dot(&regions.soft, at, 0.55, c.with_alpha(0.85), Z_WEAPONS + 0.2);
@@ -754,8 +785,8 @@ fn draw_effects(
     });
     for l in &fx.lines {
         let k = 1.0 - l.age / l.life;
-        queue.line(&regions.halo, l.from, l.to, 0.7, l.color.with_alpha(0.9 * k), Z_WEAPONS);
-        queue.line(&regions.white, l.from, l.to, 0.07, core_tint(l.color).with_alpha(k), Z_WEAPONS + 0.1);
+        queue.line(&regions.halo, l.from, l.to, l.width, l.color.with_alpha(0.9 * k), Z_WEAPONS);
+        queue.line(&regions.white, l.from, l.to, 0.1 * l.width, core_tint(l.color).with_alpha(k), Z_WEAPONS + 0.1);
     }
     fx.rings.retain_mut(|r| {
         r.age += dt;

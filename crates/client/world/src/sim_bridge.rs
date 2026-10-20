@@ -34,6 +34,10 @@ use crate::shield::ShieldBubbles;
 use crate::ship_model::{DesignVisual, Look, design_visual};
 use crate::ship_view::{PieceView, Z_FOCUS, draw_layer, spawn_piece_view, world_of};
 
+/// A projectile gun with at least this recoil (kN·s per shot) kicks visibly when it fires (GDR-0129: the railgun's 9;
+/// the long-barrel cannon's 3.5 does not).
+const KICK_RECOIL: f32 = 6.0;
+
 /// The simulation type the client runs. Change the backend here once the physics engine is chosen.
 pub type SimT = sim::Sim;
 
@@ -500,6 +504,10 @@ fn apply_events(
                 let ion = spec.and_then(|p| p.weapon) == Some(data::WeaponFamily::Disruption);
                 // A lance in the Phase walkers' colour (GDR-0127).
                 let lance = spec.is_some_and(|p| p.lance.is_some());
+                let recoil = match spec.map(|p| p.delivery) {
+                    Some(data::Delivery::Projectile { recoil, .. }) => recoil,
+                    _ => 0.0,
+                };
                 let color = if ion {
                     style.system_color("logic")
                 } else if lance {
@@ -507,7 +515,12 @@ fn apply_events(
                 } else {
                     weapon_color(world, ship, &style)
                 };
-                fx.muzzle(from, color);
+                // A heavy kick (GDR-0129: the railgun's) throws a bigger flash and sparks back past the gun.
+                if recoil >= KICK_RECOIL {
+                    fx.kick(from, (from - to).normalize_or_zero(), color, recoil);
+                } else {
+                    fx.muzzle(from, color);
+                }
                 if kind == sim::ShotKind::Pulse {
                     fx.pulse(from, to, color);
                     // Relayed by prisms (GDR-0126): the pulse runs through them first, each glinting.
