@@ -24,6 +24,7 @@
 
 mod grid;
 mod hull;
+mod relay;
 
 use std::collections::BTreeMap;
 
@@ -33,6 +34,7 @@ use crate::content::model::Shape;
 
 pub use grid::{Pieces, ShipGrid, main_of};
 pub use hull::{HullLoop, HullSegment, hull_loops};
+pub use relay::{BeamPath, MAX_PRISMS};
 
 /// A cell position `(x, y)` in the blueprint frame.
 pub type Cell = (i32, i32);

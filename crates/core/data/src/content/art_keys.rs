@@ -15,13 +15,15 @@ pub const SYSTEM_COLORS: &[&str] = &[
     "swarm",
     // The Phase walkers' accent (GDR-0127): their parts, their blinks and lances.
     "phase",
+    // The Lattice's accent (GDR-0126): their parts, their prisms and refracted shots.
+    "lattice",
 ];
 
 /// `ship.armor` in `art/tokens.json`: armour tile tones.
-pub const ARMOR_TONES: &[&str] = &["steel", "composite", "reactive", "enemy", "tissue", "chitin"];
+pub const ARMOR_TONES: &[&str] = &["steel", "composite", "reactive", "enemy", "tissue", "chitin", "crystal"];
 
 /// `world.rock` in `art/tokens.json`: asteroid rock tones, each with `shadow`, `mid`, `lit` and `edge` (GDR-0104).
-pub const ROCK_TONES: &[&str] = &["iron", "ice", "slag"];
+pub const ROCK_TONES: &[&str] = &["iron", "ice", "slag", "crystal"];
 
 /// Hull glow colours: "player" = `ship.hull_glow.color` (teal), "enemy" = `ship.hull_glow.enemy_color` (coral).
 pub const GLOWS: &[&str] = &["player", "enemy"];

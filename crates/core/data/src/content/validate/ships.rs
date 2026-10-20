@@ -189,7 +189,7 @@ impl<'a> Validator<'a> {
         }
         for (k, pl) in s.parts.iter().enumerate() {
             let part = self.c.parts.get(&pl.part).unwrap();
-            if part.weapon.is_some() && !grid.line_of_fire_clear(k) {
+            if part.weapon.is_some() && !self.c.beam_path(&s.parts, &grid, k).clear() {
                 self.warn(
                     s,
                     format!("parts[{k}]"),

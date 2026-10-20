@@ -38,7 +38,7 @@ pub use content::validate::{validate, validate_ship, validate_ship_flying};
 pub use design::blueprint::{BEHAVIOR_MARK, blueprint_to_ron, export_text, parse_blueprint};
 pub use design::edit::Drydock;
 pub use design::geometry::{
-    Bounds, Cell, Dir, Footprint, GridPoint, HullLoop, HullSegment, Pieces, PlacedShape, ShipGrid,
+    BeamPath, Bounds, Cell, Dir, Footprint, GridPoint, HullLoop, HullSegment, Pieces, PlacedShape, ShipGrid,
 };
 pub use design::stats::{BonusInfo, ShipTotals, StatLine};
 pub use design::upgrades::{StatStep, Upgrades};

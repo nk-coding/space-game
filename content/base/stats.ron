@@ -70,11 +70,14 @@
     (id: "decoy_lure", name: "Decoy lure", summary: "Enemy homing missiles this close to a burning decoy turn onto it and are spent on it.", unit: "m", decimals: 0, better: Higher),
     (id: "drone_capacity", name: "Drones", summary: "Drones the hangar holds, out and in the bay together. It launches them one by one while its ship has a target.", decimals: 0, better: Higher),
     (id: "drone_rebuild", name: "Drone rebuild", summary: "How long the hangar takes to build a lost drone again at full power.", unit: "s", decimals: 1, better: Lower),
+    (id: "relay_range", name: "Relay reach", summary: "A laser whose beam passes this prism reaches this much further, as a share of its own reach. The shares of every prism in the chain add up (at most four prisms).", unit: "%", decimals: 0, better: Higher),
+    (id: "relay_damage", name: "Relay focus", summary: "A laser whose beam passes this prism deals this much more damage, as a share of its own. The shares of every prism in the chain add up (at most four prisms).", unit: "%", decimals: 0, better: Higher),
     (id: "drone_leash", name: "Drone leash", summary: "How far from the carrier its drones may range before they turn back.", unit: "m", decimals: 0, better: Higher),
     (id: "mass_per_cell", name: "Mass per cell", summary: "Mass of one full cell of this armor; slopes count half a cell per footprint cell.", unit: "t", decimals: 2, better: Lower),
     (id: "hp_per_cell", name: "Hit points per cell", summary: "Hit points of one full cell of this armor.", unit: "HP", decimals: 2, better: Higher),
     (id: "build_point_factor", name: "Build point factor", summary: "Multiplies the build points of hull parts made of this armor.", unit: "×", decimals: 2, better: Lower),
     (id: "blast_factor", name: "Blast damage taken", summary: "Share of an explosion's damage that hull parts of this armor take, and that they let through to the parts behind them.", unit: "×", decimals: 2, better: Lower),
+    (id: "refract", name: "Refraction", summary: "Share of a laser's damage that hull parts of this crystal turn away along the mirrored line: it goes on as a stray shot that hits whatever it meets, the shooter and its friends too. The part takes the rest.", unit: "%", decimals: 0, better: Higher),
     (id: "heal_per_cell", name: "Healing per cell", summary: "Hit points one full cell of this living armor regains every second while it is on a vessel, up to its full hit points.", unit: "HP/s", decimals: 2, better: Higher),
     // Ship-level stats of the drydock's stats panel (data::stats::SHIP_STATS; the sim's design report computes
     // them). The panel shows build points, mass, hit points, cargo and rule slots with the part stats above.

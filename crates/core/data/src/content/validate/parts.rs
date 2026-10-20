@@ -279,6 +279,20 @@ impl<'a> Validator<'a> {
                 self.err(p, "rcs", "hull parts cannot carry RCS nozzles");
             }
         }
+        if let Some(x) = &p.prism {
+            // GDR-0126: a prism relays a gun's beam; it is no gun, hull or shield itself.
+            self.number(p, "prism.range", x.range, 0.0, false);
+            self.number(p, "prism.damage", x.damage, 0.0, false);
+            if x.range > 4.0 || x.damage > 4.0 {
+                self.err(p, "prism", "a prism raises a gun's reach and damage by a share of its own: at most 4 each");
+            }
+            if !self.c.parts.iter().any(|q| q.weapon.is_some() && q.matches(&x.target)) {
+                self.err(p, "prism.target", format!("picks no gun: {:?}", x.target));
+            }
+            if p.hull || p.weapon.is_some() || p.engine.is_some() || p.shield.is_some() {
+                self.err(p, "prism", "a prism is no hull part, gun, engine or shield");
+            }
+        }
         if let Some(x) = &p.hangar {
             match self.c.ships.get(&x.drone) {
                 None => self.err(p, "hangar.drone", format!("unknown ship `{}`", x.drone)),

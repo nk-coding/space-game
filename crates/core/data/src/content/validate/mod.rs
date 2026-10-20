@@ -50,6 +50,16 @@ pub fn validate(c: &Content) -> Vec<Problem> {
         if let Some(b) = &e.behavior {
             v.behavior_ref(e, b);
         }
+        if let Some(t) = &e.territory {
+            v.number(e, "territory.wake", t.wake, 0.0, true);
+            v.number(e, "territory.warn", t.warn, 0.0, true);
+            if t.warn < t.wake {
+                v.err(e, "territory.warn", "it warns before it wakes: `warn` at least `wake`");
+            }
+            if !e.wary {
+                v.err(e, "territory", "only a wary faction keeps a territory (a hostile one wakes at the encounter's wake radius)");
+            }
+        }
     });
     v.entries(c.materials.as_slice(), |v, e| v.material(e));
     v.entries(c.parts.as_slice(), |v, e| v.part(e));
@@ -503,6 +513,10 @@ impl<'a> Validator<'a> {
             self.number(m, "armor.hp_per_cell", a.hp_per_cell, 0.0, true);
             self.number(m, "armor.blast_factor", a.blast_factor, 0.0, false);
             self.number(m, "armor.heal", a.heal, 0.0, false);
+            self.number(m, "armor.refract", a.refract, 0.0, false);
+            if a.refract > 1.0 {
+                self.err(m, "armor.refract", "a share of the shot: at most 1");
+            }
             self.number(
                 m,
                 "armor.build_point_factor",

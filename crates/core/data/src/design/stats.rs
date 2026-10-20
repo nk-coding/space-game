@@ -75,6 +75,9 @@ pub const BUILTIN_STATS: &[&str] = &[
     "build_point_factor",
     "blast_factor",
     "heal_per_cell",
+    "refract",
+    "relay_range",
+    "relay_damage",
 ];
 
 /// Stat ids an adjacency bonus may change: the ones the sim applies to a part (`sim::ship::design::Stat`). `fire_rate`
@@ -381,6 +384,10 @@ impl Content {
             v.push(("decoy_life", x.life));
             v.push(("decoy_lure", x.lure));
         }
+        if let Some(x) = &part.prism {
+            v.push(("relay_range", x.range * 100.0));
+            v.push(("relay_damage", x.damage * 100.0));
+        }
         if let Some(x) = &part.hangar {
             v.push(("drone_capacity", x.capacity as f32));
             v.push(("drone_rebuild", x.rebuild));
@@ -519,10 +526,11 @@ impl Content {
             ("build_point_factor", a.build_point_factor),
             ("blast_factor", a.blast_factor),
             ("heal_per_cell", a.heal),
+            ("refract", a.refract * 100.0),
         ];
         self.sorted(
             v.into_iter()
-                .filter(|&(s, x)| s != "heal_per_cell" || x > 0.0)
+                .filter(|&(s, x)| !matches!(s, "heal_per_cell" | "refract") || x > 0.0)
                 .filter_map(|(s, x)| self.stat_line(s, x))
                 .collect(),
         )

@@ -20,6 +20,11 @@ pub struct ArmorSpec {
     /// while it is on a vessel's controlling piece, up to its full hit points. Default 0: it never heals.
     #[serde(default)]
     pub heal: f32,
+    /// Refractive armour (GDR-0126, the Lattice's crystal): the share of an energy hit-scan shot's damage (beam,
+    /// pulse) that a hull part of this armour turns away along the mirrored line, as a shot of nobody's that hits
+    /// whatever it meets; the part takes the rest. Default 0: it turns nothing.
+    #[serde(default)]
+    pub refract: f32,
 }
 
 /// `materials/*.ron`: materials: armour materials (with an `armor` block) and fabrication resources (without one,
@@ -504,6 +509,19 @@ pub struct HangarSpec {
 /// Most drones a hangar may hold (validation).
 pub const MAX_HANGAR: u32 = 16;
 
+/// A prism (GDR-0126, the Lattice's relay): it takes the beam of a gun the `target` picks when it is the first part
+/// in that gun's line of fire (or a prism's before it) and the beam enters any side but its front, and sends it on
+/// from its front side. Each prism in the chain raises the gun's reach by `range` and its damage by `damage`
+/// (shares of the gun's own, summed over the chain); at most [`crate::design::geometry::MAX_PRISMS`] count.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PrismSpec {
+    /// Which guns' beams it takes (in the base game the parts tagged `laser`).
+    pub target: Selector,
+    pub range: f32,
+    pub damage: f32,
+}
+
 /// Hosts a copy of the ship-mind (or an automaton mind) and runs behaviour rules.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -633,6 +651,9 @@ pub struct Part {
     /// Launches drones (GDR-0117).
     #[serde(default)]
     pub hangar: Option<HangarSpec>,
+    /// Relays a laser's beam (GDR-0126).
+    #[serde(default)]
+    pub prism: Option<PrismSpec>,
     /// Destroyed, it explodes into its neighbours (GDR-0019, GDR-0084).
     #[serde(default)]
     pub explosion: Option<ExplosionSpec>,

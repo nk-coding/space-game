@@ -20,7 +20,7 @@ pub use controls::Control;
 pub use galaxy::{Band, ClusterSite, ClusterType, Galaxy, Gates, LoreFragment, NameParts, Reward, STAR_HEAT_CAP, SetPiece, SignalArea, SignalSource, SourceForm, StarSpec, Trail, TrailCount, Weighted};
 pub use lab::{Duty, EnemyPalette, GENES, GOALS, GenePreset, GoalPreset, Lab, LabAxis, LabBudget, LabGene, LabGoal, LabKind, LabMeasure, LabPilot, LabShips, LabSize, LabSpread, MAX_DUTY_SECONDS, MAX_LAB_WEIGHT, MAX_PRESET_BEST, MAX_PRESET_SEEDS, MAX_PRESET_SHIPS, MAX_PRESET_WAVES, MEASURES, SPREADS, StandIn, TRIAL_KINDS, TrialPreset, TrialPresetKind};
 pub use behaviors::{Behavior, BehaviorNode, ChoiceOption, NodeParam, NodeRole, ParamType, Quantity};
-pub use parts::{ArmorSpec, BarrelArt, BlinkSpec, Bonus, CargoSpec, Condition, CountermeasureSpec, DefenceSpec, Delivery, Effect, EngineSpec, ExplosionSpec, GyroSpec, HangarSpec, HeartSpec, HeatSpec, HullSalvageSpec, LanceSpec, LogicSpec, MAX_CONTROL_COST, MAX_HANGAR, MAX_POWER_WEIGHT, Material, Part, PlumeSpec, PowerOverride, PowerSpec, PowerTier, RadiatorSpec, RamSpec, RcsSpec, Recipe, SalvageSpec, ScannerSpec, Selector, SensorSpec, Shape, ShieldSpec, WeaponFamily, WeaponSpec};
+pub use parts::{ArmorSpec, BarrelArt, BlinkSpec, Bonus, CargoSpec, Condition, CountermeasureSpec, DefenceSpec, Delivery, Effect, EngineSpec, ExplosionSpec, GyroSpec, HangarSpec, HeartSpec, HeatSpec, HullSalvageSpec, LanceSpec, LogicSpec, MAX_CONTROL_COST, MAX_HANGAR, MAX_POWER_WEIGHT, Material, Part, PlumeSpec, PrismSpec, PowerOverride, PowerSpec, PowerTier, RadiatorSpec, RamSpec, RcsSpec, Recipe, SalvageSpec, ScannerSpec, Selector, SensorSpec, Shape, ShieldSpec, WeaponFamily, WeaponSpec};
 pub use progression::{Facility, Family, ResearchCost, ResearchKind, ResearchNode, Refine, Start, Unlock, WorkshopRules};
 pub use scenery::{Landmark, LandmarkForm, LandmarkPlace, RockGroup, RockKind, RockLayout, RockLook, Scenery};
 pub use sky::{Atmosphere, BodyClass, FarGalaxy, GalaxyKind, HomeSky, Palette, PlanetForm, PlanetKind, Rings, Sky, SkyWeight, hex_rgb};
@@ -195,10 +195,23 @@ pub struct Faction {
     /// player vessel comes near, only when it is hit, rammed, scanned nearby or its wrecks are stripped.
     #[serde(default)]
     pub wary: bool,
+    /// The ground a wary faction keeps (GDR-0126, the Lattice): its sleeping sites wake when a player vessel comes
+    /// this close too, and warn it off once first. `None`: only provocation wakes them.
+    #[serde(default)]
+    pub territory: Option<Territory>,
     #[serde(skip_deserializing)]
     pub source: Source,
 }
 entry!(Faction, Kind::Faction);
+
+/// A wary faction's ground (GDR-0126): a sleeping site of its ships warns once when a player vessel comes within
+/// `warn` metres and wakes when one comes within `wake`.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Territory {
+    pub wake: f32,
+    pub warn: f32,
+}
 
 /// Long-form wiki prose from `wiki/<kind>/<id>.md`. Never needed by the game.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

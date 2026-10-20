@@ -107,7 +107,7 @@ impl ShipGrid {
         }
     }
 
-    fn slot(&self, (x, y): Cell) -> Option<usize> {
+    pub(super) fn slot(&self, (x, y): Cell) -> Option<usize> {
         let (lx, ly) = (x - self.origin.0, y - self.origin.1);
         if lx < 0 || ly < 0 || lx >= self.width || ly >= self.height {
             None
@@ -408,7 +408,7 @@ impl ShipGrid {
     }
 
     /// Cells of part `i` on its `dir` side whose neighbour in `dir` is not part of `i`.
-    fn border_cells(&self, i: usize, dir: Dir) -> Vec<Cell> {
+    pub(super) fn border_cells(&self, i: usize, dir: Dir) -> Vec<Cell> {
         let (dx, dy) = dir.delta();
         self.shapes[i]
             .cells()
