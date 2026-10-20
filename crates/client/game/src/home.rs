@@ -263,6 +263,7 @@ impl Plugin for HomePlugin {
                     apply,
                     (place_labels, sync_titles, sync_name, sync_notes, log_tip, evolution_tip).run_if(not(fleet::is_open).and_eager(not(crate::settings::is_open)).and_eager(not(voyage_log::is_open)).and_eager(not(evolution::is_open)).and_eager(not(workshop_layer::is_open))),
                     measure_labels,
+                    measure_notes,
                     show,
                 )
                     .chain()
@@ -325,7 +326,7 @@ fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>) {
         // and inside the safe area (the window's corner may be rounded there).
         let notes = |right: f32, bottom: f32, width: f32| Node { position_type: PositionType::Absolute, right: px(right), bottom: px(bottom), width: px(width), flex_direction: FlexDirection::Column, row_gap: px(5), ..default() };
         let safe = SafeArea::PHONE;
-        root.spawn(by_class(notes(f.edge, f.top, 300.0), notes(safe.right, safe.bottom, 212.0)))
+        root.spawn((NotesBox, by_class(notes(f.edge, f.top, 300.0), notes(safe.right, safe.bottom, 212.0))))
         .with_children(|notes| {
             for k in 0..NOTES {
                 notes.spawn((NoteText::Head(k), label(fonts, "", 9.0, c(Tone::Teal, 1.0)), Node { margin: UiRect::top(px(if k == 0 { 0.0 } else { 6.0 })), ..default() }));
@@ -383,6 +384,7 @@ fn place_view(place: Place, layout: &Layout, window: &Window, dock: &DockCamera,
 /// the one the labels were last measured in (home entered after the drydock changed the frame) is the one the yard
 /// settles on (19 Oct 2026: the flight out of the drydock ended in a jump the first time after a frame change).
 fn overview(layout: &Layout, window: &Window, tags: &LabelTags) -> View {
+    let notes_room = tags.1;
     // Every place whole too (research's dishes reach above the sketch's overview).
     let all = Place::ALL.iter().fold(layout.overview, |r, p| r.union(layout.hit(*p)));
     let tags: Vec<Tag> = tags
@@ -398,13 +400,68 @@ fn overview(layout: &Layout, window: &Window, tags: &LabelTags) -> View {
             Tag { at, min: Vec2::new(x.0, 0.0), max: Vec2::new(x.1, size.y) }
         })
         .collect();
-    let (centre, zoom) = fit_tagged(all, &tags, window.size(), MARGIN);
+    let (centre, mut zoom) = fit_tagged(all, &tags, window.size(), MARGIN);
+    zoom = clear_of_notes(centre, zoom, &tags, window.size(), notes_room);
     View { centre, zoom }
 }
 
-/// Each place's label size in logical px (measured from the laid-out labels; where it hangs comes from the layout).
+/// How far a label keeps from the notes on a phone (logical px, *placeholder*).
+const NOTES_GAP: f32 = 10.0;
+
+/// On a phone the career's notes stand in the window's bottom right corner (`corner`: how far their box reaches in
+/// from the window's right and bottom edges, logical px; zero in a wide window): the view zooms out about its centre
+/// until no label runs under them (21 Oct 2026: at 667 × 375 TEST RANGE's line lay under the dev mode's note).
+fn clear_of_notes(centre: Vec2, zoom: f32, tags: &[Tag], window: Vec2, corner: Vec2) -> f32 {
+    if corner.cmple(Vec2::ZERO).any() {
+        return zoom;
+    }
+    // A label keeps NOTES_GAP px from them.
+    let notes = Rect::from_corners(window - corner - Vec2::splat(NOTES_GAP), window);
+    let under = |z: f32| {
+        tags.iter().any(|t| {
+            let at = window / 2.0 + Vec2::new(t.at.x - centre.x, centre.y - t.at.y) * z;
+            !Rect::from_corners(at + t.min, at + t.max).intersect(notes).is_empty()
+        })
+    };
+    let mut z = zoom;
+    for _ in 0..24 {
+        if !under(z) {
+            break;
+        }
+        z *= 0.96;
+    }
+    z
+}
+
+/// Each place's label size in logical px (measured from the laid-out labels; where it hangs comes from the layout),
+/// and on a phone how far the career's notes reach in from the window's bottom right corner ([`clear_of_notes`]).
 #[derive(Resource, Debug, Default, PartialEq)]
-struct LabelTags(Vec<(Place, Vec2)>);
+struct LabelTags(Vec<(Place, Vec2)>, Vec2);
+
+/// The career's notes' box (bottom right).
+#[derive(Component)]
+struct NotesBox;
+
+/// Measures the notes' box on a phone (zero in a wide window, where the yard leaves them room): written only when it
+/// changes by half a pixel or more.
+fn measure_notes(
+    window: Single<&Window, With<PrimaryWindow>>,
+    class: Res<LayoutClass>,
+    notes: Query<(&ComputedNode, &UiGlobalTransform), With<NotesBox>>,
+    mut tags: ResMut<LabelTags>,
+) {
+    let k = 1.0 / window.scale_factor();
+    let corner = match notes.single() {
+        Ok((node, tf)) if class.is_compact() && node.size.y > 0.0 => {
+            let top_left = (tf.translation - node.size / 2.0) * k;
+            (window.size() - top_left).max(Vec2::ZERO)
+        }
+        _ => Vec2::ZERO,
+    };
+    if tags.1.distance(corner) >= 0.5 {
+        tags.1 = corner;
+    }
+}
 
 /// Measures the labels (their texts change with the career, their size with the UI scale): written only when a
 /// label's size changes by half a pixel or more.
@@ -1127,7 +1184,7 @@ mod tests {
     #[test]
     fn the_yard_view_hangs_the_labels_on_its_own_layout() {
         let window = Window::default();
-        let tags = LabelTags(Place::ALL.iter().map(|p| (*p, Vec2::new(150.0, 30.0))).collect());
+        let tags = LabelTags(Place::ALL.iter().map(|p| (*p, Vec2::new(150.0, 30.0))).collect(), Vec2::ZERO);
         let hung = |on: &Layout, view: &Layout| {
             let all = Place::ALL.iter().fold(view.overview, |r, p| r.union(view.hit(*p)));
             let placed: Vec<Tag> = tags
@@ -1149,5 +1206,22 @@ mod tests {
         let view = overview(&cruiser, &window, &tags);
         assert_eq!((view.centre, view.zoom), hung(&cruiser, &cruiser));
         assert_ne!((view.centre, view.zoom), hung(&frigate, &cruiser), "the old frame's label places give another view");
+    }
+
+    /// On a phone the yard zooms out until no label runs under the notes in the bottom right corner; with no notes, or
+    /// with the labels clear of them, the view stays.
+    #[test]
+    fn labels_keep_clear_of_the_notes() {
+        let window = Vec2::new(667.0, 375.0);
+        // A label 120 × 24 px hanging from a point 200 m right of and 100 m under the centre.
+        let tags = [Tag { at: Vec2::new(200.0, -100.0), min: Vec2::new(-60.0, 0.0), max: Vec2::new(60.0, 24.0) }];
+        let corner = Vec2::new(180.0, 60.0);
+        assert_eq!(clear_of_notes(Vec2::ZERO, 1.5, &tags, window, Vec2::ZERO), 1.5);
+        assert_eq!(clear_of_notes(Vec2::ZERO, 0.8, &tags, window, corner), 0.8);
+        let z = clear_of_notes(Vec2::ZERO, 1.5, &tags, window, corner);
+        assert!(z < 1.5);
+        let at = window / 2.0 + Vec2::new(200.0, 100.0) * z;
+        let edge = window - corner - Vec2::splat(NOTES_GAP);
+        assert!(at.y + 24.0 < edge.y || at.x - 60.0 > edge.x, "{at}");
     }
 }
