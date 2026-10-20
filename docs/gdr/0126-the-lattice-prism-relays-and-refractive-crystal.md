@@ -1,7 +1,8 @@
 # GDR-0126: The Lattice: prisms relay a laser's beam further and harder, refractive crystal turns lasers away, a resonator is their boss
 
-- Status: Accepted (provisional, lead), 20 Oct 2026, for Niklas to review. The design points marked (Niklas) are his
-  of 20 Oct 2026; the rules' details and every number are lead defaults.
+- Status: Accepted (Niklas, 20 Oct 2026: the design points marked (Niklas), and, confirmed later that day with the
+  lead, that a refracted shot belongs to nobody and hits anyone, the shooter and other Lattice ships included; the
+  other rules' details and every number provisional, lead).
 - Date: 2026-10-20
 - Decided by: Niklas (the design, 20 Oct 2026) and the lead session (agent LATTICE: the rules, numbers and content;
   defaults for Niklas to review)
@@ -43,8 +44,9 @@ research family with the **crystal annealer** installed by the node of the first
 - **What counts as a laser**: a hard-coded family, or **the prism's `target` selector** (chosen, content: `Tag("laser")`:
   the pulse, burst and beam lasers and the Lattice's focus emitter; cannons, missiles and ion guns are blocked).
 - **The refracted shot's owner**: the shooter's (it would pass the shooter's friends, against Niklas's design), the
-  crystal ship's (it would pass the Lattice's own fleet), or **nobody's** (chosen): it passes only the ship it glanced
-  off and hits anyone else, the shooter included: a flat face hit head on throws the beam back at the gun.
+  crystal ship's (it would pass the Lattice's own fleet), or **nobody's** (chosen; confirmed by Niklas, 20 Oct 2026):
+  it passes only the ship it glanced off and hits anyone else, the shooter and other Lattice ships included: a flat
+  face hit head on throws the beam back at the gun.
 - **The proximity provocation**: the encounter's wake radius (it already means "wakes on sight" for hostile races), or
   **a territory on the faction** (chosen: `territory: (wake, warn)`), with a warning ring at `warn` and the wake
   closer in.
@@ -78,7 +80,10 @@ research family with the **crystal annealer** installed by the node of the first
   which the walkers' types join with less weight in all (the Lattice the more common); encounters `lance_watch` (two
   or three needles), `lance_pair`, `crystal_site` (a guard and a needle among needle wrecks), `lattice_dead`,
   `resonator_site` (the resonator and two needles) at the end of a `lattice_resonator` trail (two per galaxy; three
-  resonant crystal and six Lattice crystal into store); crystal rock (mines Lattice crystal); a pale sky. The gates
+  resonant crystal and six Lattice crystal into store). The trail ends only in a Lattice cluster (`ends_in:
+  ["lattice_reach", "crystal_deep"]`, GDR-0127's trail field; added 20 Oct 2026 after Niklas's rule that an inner
+  cluster holds one faction only: before, a resonator could end in a phase rift). Where the band has no free
+  Lattice cluster the trail is left out: seeds 1–200 give two resonators in 195 galaxies, one in 3, none in 2; crystal rock (mines Lattice crystal); a pale sky. The gates
   keep the Spire.
 - **The player's side**: the Lattice research family (`crystal_plating`: refractive crystal, 10 Lattice data and a
   resonant crystal → `prism_relay`: the prism and the crystal annealer, 16 Lattice and 4 energy data →

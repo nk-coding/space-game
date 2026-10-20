@@ -1,7 +1,9 @@
 # GDR-0127: The Phase walkers: blink drives jump a ship a short way, piercing lances run through a hull, a giant phase ship is their boss
 
-- Status: Accepted (provisional, lead), 20 Oct 2026, for Niklas to review. The design points marked (Niklas) are his
-  of 20 Oct 2026; the rules' details and every number are lead defaults.
+- Status: Accepted (Niklas, 20 Oct 2026: the design points marked (Niklas), and, confirmed later that day with the
+  lead: a blink keeps speed, heading and spin (it does not turn onto the target); each drive moves 22 t and a blink
+  uses as many drives as the mass needs (TOO HEAVY TO BLINK otherwise); the lance is Energy, so shield bubbles absorb
+  it whole unless it is fired from inside one; the other rules' details and numbers provisional, lead).
 - Date: 2026-10-20
 - Decided by: Niklas (the design, 20 Oct 2026) and the lead session (agent WALKERS: the rules, numbers and content;
   defaults for Niklas to review)
@@ -46,17 +48,17 @@ The rest was left to the lead.
 - **What a blink moves**: the whole ship (all its pieces) or **the controlling piece** (chosen: the vessel; salvage
   pieces stay, and a split-off section with a drive of its own is a ship of its own).
 - **Heavy ships**: one drive jumps anything (a giant blinks as freely as a skirmisher), range by mass, or **a load per
-  drive** (chosen: `blink.mass` t each; a blink takes ready drives until they cover the piece's mass and all of them
+  drive** (chosen; confirmed by Niklas, 20 Oct 2026, with 22 t a drive: `blink.mass` t each; a blink takes ready drives until they cover the piece's mass and all of them
   cool down; so the colossus blinks whole only with all four drives and a player's heavy ship needs several).
 - **What blocks a landing**: nothing (ships inside each other), the path (a blink through a wreck field fails), or
   **the landing spot only** (chosen: no other body or rock within the piece's bounding radius plus a margin; the jump
   tries shorter spots, then fizzles with half the cooldown).
-- **Heading after the jump**: turned onto the target, or **kept** with the speed and spin (chosen: physical; the
-  walkers turn after landing, which is the player's moment).
+- **Heading after the jump**: turned onto the target, or **kept** with the speed and spin (chosen; confirmed by
+  Niklas, 20 Oct 2026: physical; the walkers turn after landing, which is the player's moment).
 - **The lance's fall-off**: per part, per hit point, or **per cell crossed** with a share for machines and a smaller
   one for armour (chosen: Niklas's "weaker with each cell"; "thick armour still helps").
-- **Lance and shields**: let it through (an anti-shield weapon), or **energy** like the lasers (chosen: bubbles take it
-  whole, unless fired from inside one, which a blink in close does).
+- **Lance and shields**: let it through (an anti-shield weapon), or **energy** like the lasers (chosen; confirmed by
+  Niklas, 20 Oct 2026: bubbles take it whole, unless fired from inside one, which a blink in close does).
 - **Their armour**: a material of their own (a research node more), or **composite plate** (chosen: minimal content).
 - **Their cluster share**: a separate band list, or **the band's weighted list** the Lattice set up (chosen: weight 2
   beside the Lattice's 5, about one inner cluster in four).
@@ -120,8 +122,9 @@ The rest was left to the lead.
 - Determinism: the arena fight `walker_strike` is in `scripts/determinism-check.sh --fight` (native = wasm, seeds 42
   and 7). A ship's blink state is hashed only when it has drives (their cooldowns) and while a charge runs, so worlds
   without them keep their hashes; the balance check's seven fights are unchanged fight for fight.
-- The trail field `ends_in` is open to every trail; the Lattice's resonator trail does not use it yet, so a resonator
-  can still end in a phase rift (and take the only one a colossus could have used).
-- Open: whether the blink should turn the ship onto its target; a touch button for BLINK (the key only so far); a
+- The trail field `ends_in` is open to every trail. The Lattice's resonator trail uses it too since 20 Oct 2026
+  (`lattice_reach`, `crystal_deep`; GDR-0126), so a resonator no longer ends in a phase rift and takes the only one a
+  colossus could have used.
+- Open: a touch button for BLINK (the key only so far); a
   pilot assist that blinks (none yet); a phase armour of their own; whether trails that cannot be placed should fall
   back to any cluster; every number above.
