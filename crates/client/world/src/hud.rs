@@ -69,9 +69,16 @@ impl Plugin for HudPlugin {
 
 /// `?slowmo=N`: the virtual clock (the sim's steps, flight's effects) runs N times slower.
 fn slow_motion(params: Res<kit::params::Params>, mut time: ResMut<Time<Virtual>>) {
-    if let Some(n) = params.f32("slowmo").filter(|n| *n > 1.0) {
-        time.set_relative_speed(1.0 / n.min(50.0));
+    let k = slowmo(&params);
+    if k < 1.0 {
+        time.set_relative_speed(k);
     }
+}
+
+/// The virtual clock's speed `?slowmo=N` asks for: `1 / N` (N from 1 to 50), else 1. What sets the clock's speed
+/// itself (the fight viewer's playback speed) multiplies this in.
+pub fn slowmo(params: &kit::params::Params) -> f32 {
+    params.f32("slowmo").filter(|n| *n > 1.0).map_or(1.0, |n| 1.0 / n.min(50.0))
 }
 
 fn spawn_debug(mut commands: Commands, style: Res<Style>) {

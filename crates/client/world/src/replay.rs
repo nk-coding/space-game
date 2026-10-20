@@ -477,8 +477,8 @@ impl Plugin for ReplayPlugin {
                     .chain()
                     .run_if(in_state(AppMode::Flight)),
             )
-            .add_systems(OnExit(AppMode::Flight), |mut time: ResMut<Time<Virtual>>, mut rig: ResMut<CameraRig>| {
-                time.set_relative_speed(1.0);
+            .add_systems(OnExit(AppMode::Flight), |mut time: ResMut<Time<Virtual>>, mut rig: ResMut<CameraRig>, params: Res<Params>| {
+                time.set_relative_speed(crate::hud::slowmo(&params));
                 rig.floor = MIN_PX_PER_M;
             });
     }
@@ -526,7 +526,7 @@ fn playback(
     mut time: ResMut<Time<Virtual>>,
     mut fx: ResMut<Effects>,
     mut shields: ResMut<ShieldBubbles>,
-    menu: Res<FlightMenu>,
+    (menu, params): (Res<FlightMenu>, Res<Params>),
 ) {
     if !fight_scene(&scene) {
         return;
@@ -539,8 +539,10 @@ fn playback(
     if act.just_pressed(Action::ReplaySlower) {
         w.speed = w.speed.saturating_sub(1);
     }
-    if time.relative_speed() != SPEEDS[w.speed] {
-        time.set_relative_speed(SPEEDS[w.speed]);
+    // `?slowmo=N` slows every playback speed N times more.
+    let speed = SPEEDS[w.speed] * crate::hud::slowmo(&params);
+    if time.relative_speed() != speed {
+        time.set_relative_speed(speed);
     }
     let now = world.sim.tick();
     let seek = if act.just_pressed(Action::ReplayRestart) || (act.just_pressed(Action::ReplayPause) && w.ended()) {

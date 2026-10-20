@@ -483,19 +483,38 @@ fn pinch(mut rig: ResMut<CameraRig>, touches: Res<Touches>, input: Res<PlayerInp
     rig.pinch_last = Some((dist, mid, moved));
 }
 
-/// Framing every active ship: their centre and the zoom (px per metre, unclamped) that shows them all in a view of
-/// `viewport` logical px, the HUD's title lines and its bottom lines (help, a replay's timeline) kept clear. `None`
-/// without an active ship.
+/// How far (m) a disarmed vessel may be off the armed vessels' box and still be framed ([`frame_fit`]).
+pub const FRAME_STRAY: f32 = 120.0;
+
+/// Framing the fight's live ships: the controlling piece of every active vessel (not the salvage its ship shed: that
+/// drifts where it broke off), the armed ones ([`sim::Ship::is_armed`]) first; a disarmed vessel counts while it is
+/// within [`FRAME_STRAY`] of their box (a fragment that left the fight keeps its off-screen marker only). Their centre
+/// and the zoom (px per metre, unclamped) that shows them all in a view of `viewport` logical px, the HUD's title lines
+/// and its bottom lines (help, a replay's timeline) kept clear. `None` without an active ship.
 pub fn frame_fit(world: &SimWorld, viewport: Vec2) -> Option<(Vec2, f32)> {
+    let vessels = || {
+        world.sim.ships().iter().filter(|s| s.is_active()).filter_map(|s| {
+            let p = s.piece(s.control_piece()?)?;
+            Some((s.is_armed(), v2(p.com_world())))
+        })
+    };
     let (mut min, mut max) = (Vec2::splat(f32::MAX), Vec2::splat(f32::MIN));
-    let mut any = false;
-    for p in world.sim.ships().iter().filter(|s| s.is_active()).flat_map(|s| s.pieces()) {
-        let c = v2(p.com_world());
-        min = min.min(c - Vec2::splat(6.0));
-        max = max.max(c + Vec2::splat(6.0));
-        any = true;
+    for (_, c) in vessels().filter(|(armed, _)| *armed) {
+        min = min.min(c);
+        max = max.max(c);
     }
-    any.then(|| {
+    // No armed vessel: all of them; else the disarmed ones near the armed.
+    let (lo, hi) = if min.x > max.x {
+        (Vec2::splat(f32::MIN), Vec2::splat(f32::MAX))
+    } else {
+        (min - Vec2::splat(FRAME_STRAY), max + Vec2::splat(FRAME_STRAY))
+    };
+    for (_, c) in vessels().filter(|(armed, c)| !armed && c.cmpge(lo).all() && c.cmple(hi).all()) {
+        min = min.min(c);
+        max = max.max(c);
+    }
+    (min.x <= max.x).then(|| {
+        let (min, max) = (min - Vec2::splat(6.0), max + Vec2::splat(6.0));
         let size = (max - min) * 1.15;
         let room = viewport - Vec2::new(0.0, 2.0 * FRAME_HUD_BAND);
         ((min + max) / 2.0, (room.x / size.x).min(room.y.max(1.0) / size.y))

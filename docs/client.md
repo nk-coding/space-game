@@ -164,7 +164,7 @@ variable (`kit::params`). A bare key means 1; `0`, `false`, `off` and `no` turn 
 | `seed=N` | the sim seed (default 42; a whole number, exact up to 2^64) |
 | `hashlog=1`, `hashticks=N` | with `scene=sandbox`: log the per-tick state hash of the load scenario (20 ships unless `load=` is given) to the console, `N` ticks (default 600, at least 1) |
 | `hud=0` | no HUD (screenshots) |
-| `slowmo=N` | the game's clock runs N times slower (1–50; the sim steps the same ticks, only later): for animations such as the voyage's warp in headless screenshots. Real-time parts (screen transitions, the lift after a voyage) keep their speed |
+| `slowmo=N` | the game's clock runs N times slower (1–50; the sim steps the same ticks, only later): for animations such as the voyage's warp in headless screenshots. Real-time parts (screen transitions, the lift after a voyage) keep their speed; in the fight viewer it slows every playback speed too (20 Oct 2026) |
 
 The flight flags (`load`, `hashlog`, `hashticks`, `seed`) need their scene: `?scene=sandbox&load=20`.
 
@@ -238,7 +238,7 @@ generation (its best child's hardest fight); paste one after `fight=`, e.g.
 - **Looks**: side 0 is drawn teal and side 1 coral whatever their designs' faction (`SimWorld::looks`, an owner →
   `ship_model::Look` map; elsewhere a ship looks as its faction does), so an automaton against an automaton shows
   which is which. Ships whose design is a blueprint text are drawn from the setup's blueprints (`SimWorld::adopt`).
-- **Camera**: frames both sides (as the load test; framing keeps 70 px at the top and bottom clear for the HUD and
+- **Camera**: frames both sides (the running vessels' controlling pieces, not the salvage they shed; a disarmed vessel only within 120 m of the armed ones, `camera::frame_fit`, 20 Oct 2026; as the load test; framing keeps 70 px at the top and bottom clear for the HUD and
   eases faster when the replay plays faster). A click on a ship follows it (zoomed in to at least 18 px per metre;
   the HUD then shows its hull, speed and what its behavior targets, as in watch mode); a click on empty space frames
   again; F frees the camera; drag pans, the wheel zooms: out to 6.3 px per metre (flight's default 18 × lock
