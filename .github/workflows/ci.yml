@@ -1,0 +1,55 @@
+# Tests on pull requests and pushes (ADR-0048, docs/client.md "Publishing the web build"): the workspace's tests
+# (content-tool's include the wiki's hand-written pages against the content) and the wiki's build and check. Written
+# on the VM, which has no remote; it runs only where the repo is published. The determinism and balance checks
+# (scripts/determinism-check.sh, scripts/arena-check.sh) stay local for now.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main, dev]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Rust (stable)
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo and target
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: test
+
+      # The client builds without system headers: no audio or gamepads, and winit loads libX11 at runtime.
+      - name: Tests
+        run: cargo test --workspace --locked
+
+      - name: Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: wiki/package-lock.json
+
+      # npm run build runs content-tool wiki-data first (reusing the test build's dependencies), then VitePress;
+      # npm run check checks every page, link and search entry of the result (docs/wiki.md "Checks").
+      - name: Wiki build and check
+        working-directory: wiki
+        run: |
+          npm ci
+          npm run build
+          npm run check

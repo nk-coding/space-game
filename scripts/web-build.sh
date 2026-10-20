@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Web build into crates/client/game/dist, then report its size (compressed sizes only with --full). Serve it with `scripts/web-serve-dist.sh`.
-# The web build is the development platform (not shipped to players). By default it is the everyday build (ADR-0034):
+# The web build is a player platform too (ADR-0048; `--full` is what GitHub Pages gets). By default it is the everyday build (ADR-0034):
 # cargo profile `web-dev` (opt-level 3, no LTO, 16 codegen units, incremental) and no wasm-opt, about 30 s
 # after a change in `game`. `--full` is the optimised build for performance checks: profile `release` (thin LTO,
 # one codegen unit) + wasm-opt -O3, about five minutes (`WASM_PROFILE=<profile>` picks another cargo profile for it).

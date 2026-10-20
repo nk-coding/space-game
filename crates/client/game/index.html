@@ -5,8 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
   <meta name="theme-color" content="#010409" />
   <title>Space Game</title>
-  <!-- Release builds run wasm-opt (tuned for speed: the web build is the development platform, size doesn't
-       matter); the cargo profile comes from the command line (scripts/web-build.sh). -->
+  <!-- Release builds run wasm-opt (tuned for speed; wasm size is a follow-up now that the web is a player platform,
+       ADR-0048); the cargo profile comes from the command line (scripts/web-build.sh, .github/workflows/pages.yml). -->
   <link data-trunk rel="rust" data-bin="game" data-wasm-opt="3" data-wasm-opt-params="--enable-bulk-memory --enable-nontrapping-float-to-int" />
   <!-- The evolution lab's web worker (ADR-0043): a second wasm binary, loaded by world::evolution's workers through
        the loader shim Trunk writes (lab-worker_loader.js). -->

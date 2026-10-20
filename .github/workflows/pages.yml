@@ -1,0 +1,79 @@
+# The web game on GitHub Pages (ADR-0048, docs/client.md "Publishing the web build"): the optimised web build, as
+# `scripts/web-build.sh --full` makes it, on every push to main and by hand. A project page lives under /<repo>/, so
+# trunk gets that public URL. Written on the VM, which has no remote; it runs only where the repo is published.
+name: Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One deployment at a time; a newer push replaces a queued one, a running one finishes.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+  TRUNK_VERSION: "0.21.14" # CLAUDE.md "Development environment"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Rust (stable, wasm32)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Cache cargo and target
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: web-release
+          cache-on-failure: true
+
+      # Trunk fetches the wasm-bindgen CLI matching Cargo.lock's wasm-bindgen (0.2.129) and binaryen's wasm-opt
+      # (index.html's data-wasm-opt) on its own.
+      - name: Install trunk
+        run: |
+          curl -fsSL "https://github.com/trunk-rs/trunk/releases/download/v${TRUNK_VERSION}/trunk-x86_64-unknown-linux-gnu.tar.gz" \
+            | tar -xz -C "$HOME/.cargo/bin" trunk
+          trunk --version
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      # As scripts/web-build.sh --full: profile `release` (thin LTO, one codegen unit) and wasm-opt -O3 from
+      # index.html, for both binaries (the game and the lab's worker).
+      - name: Build the web game
+        working-directory: crates/client/game
+        run: trunk build --release --cargo-profile release --public-url "/${{ github.event.repository.name }}/"
+
+      - name: Check the build holds both binaries
+        working-directory: crates/client/game/dist
+        run: |
+          ls -l
+          ls game-*_bg.wasm game-*.js lab-worker_bg.wasm lab-worker.js lab-worker_loader.js index.html
+
+      - name: Upload the site
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: crates/client/game/dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
