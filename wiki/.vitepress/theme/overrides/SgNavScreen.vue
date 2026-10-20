@@ -1,5 +1,7 @@
 <script setup lang="ts">
 // VitePress's VPNavScreen (1.6.4), the phone menu, scrolling in a ScrollBox (swapped in by config.mts).
+// Modified copy of VitePress 1.6.4 (https://github.com/vuejs/vitepress), MIT License, Copyright (c) 2019-present,
+// Yuxi (Evan) You: see LICENSE-vitepress in this folder.
 import ScrollBox from '../components/ScrollBox.vue'
 import { useScrollLock } from '@vueuse/core'
 import { inBrowser } from 'vitepress'

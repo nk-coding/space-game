@@ -1,5 +1,7 @@
 <script lang="ts" setup>
 // VitePress's VPLocalSearchBox (1.6.4) with its results in a ScrollBox (swapped in by config.mts).
+// Modified copy of VitePress 1.6.4 (https://github.com/vuejs/vitepress), MIT License, Copyright (c) 2019-present,
+// Yuxi (Evan) You: see LICENSE-vitepress in this folder.
 import ScrollBox from '../components/ScrollBox.vue'
 import localSearchIndex from '@localSearchIndex'
 import {

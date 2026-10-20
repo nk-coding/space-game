@@ -1,6 +1,8 @@
 <script lang="ts" setup>
 // VitePress's VPSidebar (1.6.4) with its scrolling in a ScrollBox: the aside no longer scrolls itself, the ScrollBox
 // below the nav bar does. Swapped in for VPSidebar.vue by an alias in config.mts.
+// Modified copy of VitePress 1.6.4 (https://github.com/vuejs/vitepress), MIT License, Copyright (c) 2019-present,
+// Yuxi (Evan) You: see LICENSE-vitepress in this folder.
 import { useScrollLock } from '@vueuse/core'
 import { inBrowser } from 'vitepress'
 import { ref, watch } from 'vue'

@@ -1,5 +1,7 @@
 <script setup lang="ts">
 // VitePress's VPDoc (1.6.4) with the page outline in a ScrollBox (config.mts swaps it in for VPDoc.vue).
+// Modified copy of VitePress 1.6.4 (https://github.com/vuejs/vitepress), MIT License, Copyright (c) 2019-present,
+// Yuxi (Evan) You: see LICENSE-vitepress in this folder.
 import ScrollBox from '../components/ScrollBox.vue'
 import { useRoute } from 'vitepress'
 import { computed } from 'vue'

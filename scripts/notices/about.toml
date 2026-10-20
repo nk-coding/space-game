@@ -1,0 +1,27 @@
+# cargo-about config for THIRD_PARTY_NOTICES.md (ADR-0047). Regenerate with scripts/third-party-notices.sh.
+# The builds that ship: the web build (wasm32) and native desktop (x86_64 Linux). Add the Android targets when that
+# work starts.
+targets = ["wasm32-unknown-unknown", "x86_64-unknown-linux-gnu"]
+# Only what ends up in a build: no dev-dependencies (tests, benches) and no build-dependencies (build scripts).
+ignore-dev-dependencies = true
+ignore-build-dependencies = true
+# Our own crates (publish = false) are not third-party.
+private = { ignore = true }
+# Licences we accept, in order of preference: for an `A OR B` crate the first accepted one is listed.
+accepted = [
+    "MIT",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "Zlib",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "0BSD",
+    "MIT-0",
+    "CC0-1.0",
+    "Unlicense",
+    "Unicode-3.0",
+    "MPL-2.0",
+    "OFL-1.1",
+    "Ubuntu-font-1.0",
+]
