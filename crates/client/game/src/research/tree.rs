@@ -469,7 +469,8 @@ mod tests {
         assert_eq!(at(&tree, "crystal_ward"), ("lattice".into(), 0, 2));
         assert_eq!(at(&tree, "reactive_plating"), ("hull".into(), 1, 1));
         assert_eq!(at(&tree, "capital_drydock"), ("hull".into(), 1, 2)); // under precursor alloy (GDR-0130)
-        assert_eq!(at(&tree, "automaton_forge"), ("logic".into(), 1, 1));
+        assert_eq!(at(&tree, "emp_burst"), ("logic".into(), 1, 1)); // after the ion cannon (GDR-0132)
+        assert_eq!(at(&tree, "automaton_forge"), ("logic".into(), 2, 1));
         assert_eq!(at(&tree, "long_cannon"), ("kinetic".into(), 0, 1));
         assert_eq!(at(&tree, "railgun"), ("kinetic".into(), 0, 2));
         assert_eq!(at(&tree, "burst_laser"), ("energy".into(), 1, 0));
@@ -494,6 +495,7 @@ mod tests {
                 link("jump_calibration_1", "jump_calibration_2"),
                 link("tamed_core", "mind_expansion_1"),
                 link("mind_expansion_1", "mind_expansion_2"),
+                link("ion_cannon", "emp_burst"),
                 link("composite_plating", "cruiser_drydock"),
                 link("composite_plating", "reactive_plating"),
                 link("tamed_core", "automaton_forge"),
@@ -517,7 +519,7 @@ mod tests {
         assert_eq!(at(&tree, "thruster_speed_3"), ("propulsion".into(), 0, 2));
         let rows = |f: &str| match f {
             "kinetic" | "swarm" | "lattice" | "walkers" => 1,
-            "energy" | "propulsion" | "logic" => 3,
+            "energy" | "propulsion" | "logic" | "utility" => 3, // utility: the smelter, the tractor beam (GDR-0131), the ammo feeder
             _ => 2,
         };
         assert!(tree.lanes.iter().all(|l| l.rows == rows(&l.family)), "{:?}", tree.lanes.iter().map(|l| (&l.family, l.rows)).collect::<Vec<_>>());
