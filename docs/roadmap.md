@@ -865,7 +865,14 @@ Next session:
   locally, wasm size and a loading screen, a browser performance pass, save export and import, a mobile browser check.
 - Wasm size ([ADR-0049](adr/0049-web-release-profile-client-for-size-sim-for-speed.md), same evening): the profile
   `web-release` (client opt-level `z`, fat LTO, the sim's crates at 3) for `--full` and Pages: the game's wasm 57.8 to
-  33.1 MiB raw, 15.3 to 10.5 MiB gzip, sim speed unchanged. Still open: the loading screen.
+  33.1 MiB raw, 15.3 to 10.5 MiB gzip, sim speed unchanged.
+- The loading screen and the subpath locally (same evening, `client.md` "Publishing the web build"): `index.html`'s
+  loading screen with `loader.js` as trunk's initializer (the download with MB of MB, "starting" until the game's
+  first frames, which the game signals with `game-ready`; failures for no WebGL2, a failed download and an error
+  while starting), a `post_build` hook writing the shipped wasm's size (trunk 0.21.14 writes the size from before
+  wasm-opt); `scripts/web-build.sh --full --public-url /space-game/` and `scripts/web-serve-dist.sh --base
+  /space-game/ [--wiki]` serve the build as Pages does. Checked headless under `/space-game/` with a throttled
+  network, the lab's workers and the wiki.
 
 ### 20 Oct 2026: save export and import (ADR-0050)
 

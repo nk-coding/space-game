@@ -47,7 +47,8 @@ publishing (ADR-0047), Niklas wants people to play the game in the browser witho
   database is named `space-game`, which another project page of the same user must not reuse.
 - Follow-ups, decided and not built yet: the trunk public URL for local checks of the `/<repo>/` subpath; wasm size
   and a loading screen; a browser performance pass; save export and import (a browser can wipe IndexedDB); a check in
-  mobile browsers.
+  mobile browsers. Built since: the local subpath check and the loading screen (20 Oct 2026, `docs/client.md`
+  "Publishing the web build").
 - ADR-0006's consequences that came from "development platform only" (size never optimised, browser numbers only
   for comfort) no longer hold; its others (Android later, wasm32 everywhere) carry over. Browser-only features that
   ADR-0006 dropped (mods from a zip or URL, WebRTC co-op) stay dropped unless Niklas brings them back.

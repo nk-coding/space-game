@@ -13,6 +13,7 @@ natively). Written 11–13 Oct 2026; split into three crates on 14 Oct 2026
 | Dev build with live reload | `scripts/web-serve.sh` → http://10.77.9.2:8081 (port via `PORT=`) |
 | Optimised build, served | `scripts/web-serve.sh --release` |
 | Optimised build into `crates/client/game/dist` + sizes | `scripts/web-build.sh --full` (cargo `web-release`: the client for size, the sim for speed, ADR-0049; wasm-opt -O3; what GitHub Pages gets), then `scripts/web-serve-dist.sh` |
+| The build as GitHub Pages serves it (under `/space-game/`, the wiki under `/space-game/docs/`) | `scripts/web-build.sh --full --public-url /space-game/`, then `scripts/web-serve-dist.sh --base /space-game/ [--wiki]` → http://10.77.9.2:8081/space-game/ ([Publishing the web build](#publishing-the-web-build)) |
 | Atlas preview / timing | `cargo run --release -p art --example preview [-- <tier> <scratch.png>]` (the game rasterises its atlas at runtime; nothing raster is committed); the longest step and frame of a job as the game spends it: `... --example profile -- <tier> [runs]` |
 | Headless check | `node /home/devbox/workspace/tools/headless/shot.mjs <url> <png> <waitMs>` |
 | One bounded check (build, serve on a free port, headless shot, console, stop) | `scripts/web-check.sh [--release] [--params '?scene=sandbox&load=5'] [--wait MS] [--size WxH] [--out FILE]` |
@@ -23,8 +24,8 @@ Port 8080 is Niklas's copy, served by the lead session from `/home/devbox/worksp
 
 Every web build makes two wasm binaries (ADR-0043): the game (`game-<hash>_bg.wasm`, `game-<hash>.js`) and the
 evolution lab's web worker (`crates/client/lab-worker`: `lab-worker_bg.wasm`, `lab-worker.js` and Trunk's loader
-`lab-worker_loader.js`, not hashed; `index.html`'s second `rel="rust"` link, `data-type="worker"`). A served copy
-needs all of them.
+`lab-worker_loader.js`, not hashed; `index.html`'s second `rel="rust"` link, `data-type="worker"`), plus the
+loading screen's module (`<hash>-loader.js`). A served copy needs all of them.
 
 ## Publishing the web build
 
@@ -56,8 +57,31 @@ published, and were written without a run.
   simulation and what it runs on (`sim`, `arena`, `galaxy`, rapier2d, parry2d, nalgebra, simba, glamx, wide, libm,
   rhai) with opt-level 3, so the sim and the lab's workers keep their speed. `scripts/web-build.sh --full` prints raw,
   gzip and brotli sizes.
-- Not built yet (ADR-0048): checking the `/<repo>/` subpath locally, a loading screen, a browser performance pass,
-  a mobile browser check. Save export and import: built (ADR-0050, "The web's storage").
+- **The loading screen** (20 Oct 2026): `index.html`'s `#loading` over the canvas, in the game's look (the backdrop,
+  the name in wide white capitals, a 2 px teal bar, label grey and white numbers; system fonts, since Barlow is only
+  in the wasm; CSS only). `loader.js` is trunk's initializer for the game's wasm (`data-initializer` on the game's
+  `rel="rust"` link only; the lab's worker has none): **downloading** with the bar and `12.4 / 34.9 MB`, then
+  **starting** (the bar breathes) from the last byte through compiling, main, the IndexedDB preload and building the
+  app, until the game says `game-ready` on `window` (`game`'s `main.rs`: once, after three frames; on wasm a frame
+  renders within its update), when it fades out and is removed. The total is the wasm's size, which trunk writes
+  into the page; `current` counts the bytes after the browser has unpacked them, so the bar is right even though
+  GitHub Pages sends gzip (10.5 MiB over the wire for 33 MiB). Trunk 0.21.14 writes the size from before wasm-opt
+  (70 MB for 35), so a `post_build` hook in `Trunk.toml` writes the shipped file's size instead; without a total
+  the bar would sweep (indeterminate) and show the MB so far. **Failures**: no WebGL2 says so before the game's
+  script fetches the wasm (the page's preload link may still fetch it); a failed download or compile (`onFailure`,
+  e.g. a 404) and an error while starting (a panic before the first frame: `error` / `unhandledrejection`) show
+  a coral title, a line of help, the error and RELOAD. Not covered: the game's script or `loader.js` itself not
+  loading (the page then stays at LOADING). Tested in headless Chromium with the network throttled by CDP
+  (`Network.emulateNetworkConditions`), a routed 404 for the wasm and WebGL2 turned off.
+- **The `/<repo>/` subpath locally** (20 Oct 2026): `scripts/web-build.sh --full --public-url /space-game/` builds as
+  Pages does (the everyday build takes `--public-url` too; `--dist <dir>` builds elsewhere, e.g. beside another
+  agent's), and `scripts/web-serve-dist.sh --base /space-game/` serves it there (a tree of links in
+  `target/serve-base-<port>/`; nothing is copied); `--wiki` also builds the wiki with `WIKI_BASE=/space-game/docs/`
+  into `wiki/.vitepress/dist` (`npm run deploy` builds it again for `/wiki/`) and serves it at `/space-game/docs/`;
+  `--dist <dir>` serves another build. Python's server sends no gzip. Checked 20 Oct 2026: the game with `?dev=1`
+  under `/space-game/`, a QUICK evolution run whose 16 workers loaded `/space-game/lab-worker_loader.js`,
+  `lab-worker.js` and `lab-worker_bg.wasm`, and the wiki at `/space-game/docs/`.
+- Not built yet (ADR-0048): a browser performance pass, a mobile browser check. Save export and import: built (ADR-0050, "The web's storage").
 
 ## Licences and third-party notices
 
