@@ -672,6 +672,7 @@ fn base_locks_follow_the_early_game_kit() {
             "prism_ward", // the Spire's (GDR-0116); the Lattice research's `crystal_ward` unlocks it (GDR-0126)
             "wide_shield_emitter",
             "ion_cannon", // the logic research's (GDR-0125)
+            "emp_emitter", // the logic research's `emp_burst` (GDR-0132)
             "grown_heart",
             "ram_prow",
             "thorn_gun",
@@ -759,6 +760,7 @@ fn base_research_nodes() {
             "mind_expansion_2",
             "simulation_vault",
             "ion_cannon",
+            "emp_burst", // the EMP emitter (GDR-0132)
             "cruiser_drydock",
             "tractor_beam", // the utility family's salvage tool (GDR-0131)
             "reactive_plating",
