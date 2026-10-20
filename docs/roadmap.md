@@ -831,6 +831,16 @@ Next session:
   Archive 8–19 %. The `archive` determinism scenario and the arena fight `archive_warden` are in the determinism
   check; the galaxy hash re-pinned.
 - Open: a radiation shield or armour, the Archive as a place of its own, the forty's other surviving mind.
+### 20 Oct 2026: the tractor beam
+
+- ([GDR-0131](gdr/0131-the-tractor-beam.md), Niklas's design, lead defaults; `results/tractor-2026-10-20.md`) The
+  tractor beam part (`combat/tractor.rs`: pulls salvage and ore within 80 m, never ships, two beams, force over mass),
+  its research node and icons, `sample_salvager`; the `salvage` action and the voyage runner stand off with one; the
+  runner's escorts with one fly `salvager` (320 seeds: haul median 17–18 items against 4–5, goals 222/152 against
+  232/162 of plain escorts). Tests `sim/tests/tractor.rs`; the salvage determinism scenario has a tractor collector
+  (`sample_salvager`).
+- Open: the client's beam look and its screenshots, the native/wasm determinism run with the tractor, whether tractor
+  escorts should fly `escort`, a tractor on enemies.
 
 ### 20 Oct 2026: licences and publishing (ADR-0047, ADR-0048)
 

@@ -8,7 +8,8 @@
 //!
 //! `--design` and `--escort` take a content ship id or a blueprint file (`*.ron`, a saved or exported drydock
 //! design: a ship a player would build that is not content). Escorts start behind the flagship and fly the
-//! `escort` template with the flagship as their leader (they fight its lock); their holds count for the haul.
+//! `escort` template with the flagship as their leader (they fight its lock; one with a mining laser flies `miner`, one
+//! with a tractor beam `salvager`, GDR-0131); their holds count for the haul.
 //! With `--behavior` the ship flies that content behavior in fights, else the closing pilot. `--pack` loads a pack
 //! directory (a mod over the base pack, its `pack.ron` depending on `base`) on top of the content: test voyages built
 //! from the content's encounters for a balance run, never in the game (GDR-0126's runs).
@@ -175,7 +176,7 @@ fn main() {
         if a.escorts.is_empty() {
             String::new()
         } else {
-            format!(" and escorts {} (`escort`)", a.escorts.join(", "))
+            format!(" and escorts {} (`escort`; `miner` with a mining laser, `salvager` with a tractor beam)", a.escorts.join(", "))
         },
         a.seeds.first().unwrap_or(&0),
         a.seeds.last().unwrap_or(&0),

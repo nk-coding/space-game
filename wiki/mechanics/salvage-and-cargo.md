@@ -1,6 +1,6 @@
 ---
 title: "Salvage and cargo"
-description: "What counts as salvage, how your ships collect it by flying slowly over it, cargo holds and what they spill, mining ore from rock, the fragments destroyed cores leave, why most parts break, and how the workshop turns a haul into stock, research data and materials."
+description: "What counts as salvage, how your ships collect it by flying slowly over it or pulling it in with a tractor beam, cargo holds and what they spill, mining ore from rock, the fragments destroyed cores leave, why most parts break, and how the workshop turns a haul into stock, research data and materials."
 ---
 
 # Salvage and cargo
@@ -86,6 +86,17 @@ is, and [[behavior_node:leader_near]] whether its leader is still close. The [[b
 wrecks between fights this way, only while its leader is near and no enemy is, and keeps near its leader otherwise.
 An escort busy with a wreck still helps a little less in the next fight than one that only escorts, so salvaging
 escorts bring home more salvage and clear a voyage's goal a little less often.
+
+### Tractor beams
+
+A [[part:tractor_beam]] (the utility research's [[research:tractor_beam]]) saves flying over every piece. It works on
+its own while its ship runs and the hold has room: it takes hold of the nearest salvage within
+[[part:tractor_beam.tractor_range]] (loose fragments, spilled cargo, mined ore and wreck pieces, never a ship, yours
+or an enemy's), [[part:tractor_beam.tractor_beams]] pieces at once, and pulls them towards the ship at up to
+[[part:tractor_beam.tractor_speed]], slowing them as they reach the hull, which then collects them as above. Each beam
+pulls with [[part:tractor_beam.tractor_force]], so a fragment comes at once and a heavy wreck piece slowly. With one
+aboard, the [[behavior_node:salvage]] action stops short of the wreck and lets the beam do the rest, and on a voyage
+escorts that carry one fly the [[behavior:salvager]] behavior. The [[ship:sample_salvager]] is a drydock sample with one.
 
 ## Cargo holds
 

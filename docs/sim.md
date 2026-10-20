@@ -2556,6 +2556,30 @@ after): salvage seed 1 21 → 26 items (`5e5f19c9f6a52559` → `4aa1e9d8e9089bd6
 (`b27b59cd96f41f17` → `e3c6d1d7df8e6ff4`); voyage seed 1 7 → 8 (`e51add61e9e4465f` → `1af36d348b10dac0`), seed 42
 12 → 13 (`708bc0c46ea3bb53` → `ec9d31c4fda326d7`); core seed 1 17 → 14, seed 42 23 → 27.
 
+### Tractor beams (`combat/tractor.rs`, 20 Oct 2026, [GDR-0131](gdr/0131-the-tractor-beam.md))
+
+A part with a content `tractor` block (`data::TractorSpec`: `range` m, `force` kN a beam, `speed` m/s, `beams`;
+`ShipDesign::tractors`) pulls salvage towards its vessel; collecting itself is unchanged (above).
+
+- **When**: every tick, after the collect pass and the blinks, before the physics step (`Sim::tractor_step`), for each
+  running vessel of an owner that collects, in ship order, with a free hold unit and alive tractors on its controlling
+  piece that work (`PartState::work` above 0: a steady Low-tier draw, scaled by power).
+- **What**: loose items that fit the free hold and salvage pieces with something that fits (`Ship::has_salvage`),
+  never a vessel; within the tractor's reach of the controlling piece's centre of mass (a piece by its bounding
+  circle); nearest first, ties loose items (id order) then ship and piece order; each tractor (ascending part) takes
+  the nearest not yet held, up to its `beams`.
+- **How**: a velocity goal: the ship's velocity plus a closing speed towards its centre of mass, `min(speed,
+  max(1, sqrt(2 × 0.5 × a × gap)))` with `a = force × work / mass` and `gap` between the two bounding circles (so it
+  brakes in time at the hull); the change capped at `a × DT`, and never pushing the salvage away from the ship beyond
+  braking its own motion towards it. Loose items (1 t a cargo unit, `tractor::tuning::LOOSE_MASS`) change velocity at
+  once; pieces get `Δv × mass / DT` as a force at the centre of mass in the physics step (`TractorState::forces`,
+  summed if two vessels hold one). Held salvage does not settle. The puller feels nothing back.
+- **Hash**: nothing new; the pull lives in hashed velocities, and `Sim::tractor_beams` (ship, part, `Pulled`) is worked
+  out each tick for the client. Worlds without tractors run as before.
+- **Behaviors and the runner**: `salvage` with a tractor holds `tractor::tuning::STANDOFF` (half) of the shortest
+  reach short of the salvage (`tractor::short_of`; where the ship is, once that close); the voyage runner's pilot
+  does the same, and its escorts with a tractor fly `salvager`.
+
 ## Voyages
 
 The voyage director (13 Oct 2026; GDR-0062, ADR-0033, track 7E of the first playable loop,
