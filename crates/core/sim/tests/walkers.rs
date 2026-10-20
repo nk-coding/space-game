@@ -296,3 +296,27 @@ fn blinks_and_lances_are_deterministic() {
     };
     assert_eq!(run(), run());
 }
+
+#[test]
+fn the_design_report_warns_when_the_drives_cannot_carry_the_ship() {
+    let c = content();
+    let cfg = sim::SimConfig::default();
+    // A core, a reactor and a thruster in steel, about 30 t: one drive carries 22 t, two 44.
+    let report = |drives: &[(i32, i32)]| {
+        let mut parts = vec![("phase_core", 1, 1, 0u8, false, None), ("fission_reactor", 1, 2, 0, false, None), ("thruster", 1, 4, 0, false, None)];
+        for (x, y) in [(0, 0), (1, 0), (2, 0), (0, 1), (0, 2), (2, 2), (0, 3), (1, 3), (2, 3)] {
+            parts.push(("armor_block", x, y, 0, false, Some("steel")));
+        }
+        for &(x, y) in drives {
+            parts.push(("blink_drive", x, y, 0, false, None));
+        }
+        sim::design_report(&c, &blueprint(&parts), &cfg).unwrap()
+    };
+    let too_heavy = |r: &sim::DesignReport| r.issues.iter().any(|i| matches!(i, sim::report::Issue::BlinkTooHeavy { .. }));
+    assert!(!too_heavy(&report(&[])));
+    assert!(too_heavy(&report(&[(2, 1)])));
+    assert!(!too_heavy(&report(&[(2, 1), (3, 1)])));
+    for id in ["walker_skirmisher", "walker_striker", "walker_colossus"] {
+        assert!(!too_heavy(&sim::design_report(&c, c.ships.get(id).unwrap(), &cfg).unwrap()), "{id}");
+    }
+}

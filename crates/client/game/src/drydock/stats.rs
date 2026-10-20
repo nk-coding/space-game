@@ -218,6 +218,8 @@ fn warnings(content: &Content, r: &DesignReport) -> Vec<(u8, Tone, String)> {
                 out.push((3, Tone::Gold, format!("POWER SHORT BY {}", with_unit(&short(*deficit, decimals), &unit).to_uppercase())));
             }
             Issue::ControlOverCapacity { .. } => out.push((4, Tone::Gold, "OVER CONTROL CAPACITY".into())),
+            // GDR-0127: the blink drives cannot carry the ship.
+            Issue::BlinkTooHeavy { .. } => out.push((4, Tone::Gold, "TOO HEAVY TO BLINK".into())),
             _ => {}
         }
     }

@@ -377,6 +377,9 @@ fn apply_events(
             }
             SimEvent::ShotFired { ship, gun, kind, from, to, .. } => Act::Shot(*ship, *gun, *kind, v2(*from), v2(*to)),
             SimEvent::Blinded { ship, .. } => Act::Blinded(*ship),
+            SimEvent::Blinked { from, to, .. } => Act::Blinked(v2(*from), v2(*to)),
+            SimEvent::BlinkBlocked { at, .. } => Act::BlinkBlocked(v2(*at)),
+            SimEvent::Lanced { from, to, .. } => Act::Lanced(v2(*from), v2(*to)),
             SimEvent::Hit { point, normal, family, damage, .. } => Act::Hit(v2(*point), v2(*normal), *family, *damage),
             SimEvent::Ricochet { point, vel, .. } => Act::Ricochet(v2(*point), v2(*vel)),
             SimEvent::Refracted { point, to, .. } => Act::Refracted(v2(*point), v2(*to)),
@@ -493,9 +496,17 @@ fn apply_events(
             Act::Shot(ship, gun, kind, from, to) => {
                 // Disruption fires in the logic colour, the cores it goes for (GDR-0125); every other gun in its
                 // ship's weapon colour.
-                let ion = world.sim.ship(ship).and_then(|s| s.design().parts.get(gun as usize).and_then(|p| p.weapon))
-                    == Some(data::WeaponFamily::Disruption);
-                let color = if ion { style.system_color("logic") } else { weapon_color(world, ship, &style) };
+                let spec = world.sim.ship(ship).and_then(|s| s.design().parts.get(gun as usize));
+                let ion = spec.and_then(|p| p.weapon) == Some(data::WeaponFamily::Disruption);
+                // A lance in the Phase walkers' colour (GDR-0127).
+                let lance = spec.is_some_and(|p| p.lance.is_some());
+                let color = if ion {
+                    style.system_color("logic")
+                } else if lance {
+                    style.system_color("phase")
+                } else {
+                    weapon_color(world, ship, &style)
+                };
                 fx.muzzle(from, color);
                 if kind == sim::ShotKind::Pulse {
                     fx.pulse(from, to, color);
@@ -534,6 +545,12 @@ fn apply_events(
                     }
                 }
             }
+            // GDR-0127: a blink flashes out where the ship was and in where it lands, a faint streak between; a fizzle
+            // flickers where it stays. The charge's shimmer is drawn in `fx`.
+            Act::Blinked(from, to) => fx.blink(from, to, style.system_color("phase")),
+            Act::BlinkBlocked(at) => fx.flash(at, style.system_color("phase"), 2.0, 0.25),
+            // GDR-0127: a lance's line through the hull it pierced, bright at the exit.
+            Act::Lanced(from, to) => fx.lanced(from, to, style.system_color("phase")),
             // Static blinded a mind (GDR-0125): a violet flash over the vessel (the crackle that lasts is drawn
             // in `fx`).
             Act::Blinded(ship) => {
@@ -598,6 +615,11 @@ enum Act {
     Shot(ShipId, sim::PartIdx, sim::ShotKind, Vec2, Vec2),
     /// Static blinded this vessel's mind (GDR-0125).
     Blinded(ShipId),
+    /// GDR-0127: a blink jumped a ship (from, to), or fizzled where it is.
+    Blinked(Vec2, Vec2),
+    BlinkBlocked(Vec2),
+    /// GDR-0127: a lance went through a hull (entry, exit).
+    Lanced(Vec2, Vec2),
     Hit(Vec2, Vec2, data::WeaponFamily, f32),
     Ricochet(Vec2, Vec2),
     /// An energy shot glanced off refractive crystal here and went on to there (GDR-0126).

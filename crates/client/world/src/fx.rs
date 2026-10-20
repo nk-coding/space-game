@@ -217,6 +217,31 @@ impl Effects {
         self.lines.push(Line { from: point, to, age: 0.0, life: 0.12, color });
     }
 
+    /// A blink (GDR-0127): the ship flashes out where it was with a ring snapping inwards, and in where it lands
+    /// with a ring going out; a faint streak joins them for a moment.
+    pub fn blink(&mut self, from: Vec2, to: Vec2, color: Color) {
+        let white = Color::srgb(1.0, 0.94, 0.99);
+        self.flash(from, color, 7.0, 0.35);
+        self.flash(from, white, 2.5, 0.12);
+        self.flash(to, color, 8.0, 0.45);
+        self.flash(to, white, 3.0, 0.16);
+        if self.rings.len() < 32 {
+            self.rings.push(Ring { pos: to, radius: 9.0, age: 0.0, life: 0.5, color });
+        }
+        self.lines.push(Line { from, to, age: 0.0, life: 0.18, color: color.with_alpha(0.35) });
+        self.spray(from, Vec2::Y, std::f32::consts::PI, 10, (2.0, 6.0), (0.2, 0.45), 0.08, color);
+    }
+
+    /// A lance went through a hull (GDR-0127): its line from where it entered to where it left, lingering a little
+    /// longer than a pulse, and a glint at the exit.
+    pub fn lanced(&mut self, from: Vec2, to: Vec2, color: Color) {
+        self.lines.push(Line { from, to, age: 0.0, life: 0.3, color });
+        self.lines.push(Line { from, to, age: 0.0, life: 0.12, color: Color::srgb(1.0, 0.94, 0.99) });
+        self.flash(to, color, 1.6, 0.2);
+        let dir = (to - from).normalize_or_zero();
+        self.spray(to, dir, 0.4, 5, (6.0, 14.0), (0.12, 0.3), 0.06, color);
+    }
+
     #[allow(clippy::too_many_arguments)]
     fn spray(&mut self, pos: Vec2, dir: Vec2, spread: f32, n: usize, speed: (f32, f32), life: (f32, f32), size: f32, color: Color) {
         let base = dir.y.atan2(dir.x);
@@ -573,6 +598,35 @@ fn draw_ships_fx(
         if fx.trail.len() < 2048 {
             let drift = Vec2::new(fx.rng.range(-0.8, 0.8), fx.rng.range(-0.8, 0.8));
             fx.trail.push(Spark { pos: at, vel: drift, age: 0.0, life: 0.45, size: 0.09, color: hot });
+        }
+    }
+
+    // A blink drive charging (GDR-0127): the hull shimmers in the walkers' colour, a broken ring round it that tightens
+    // and brightens as the charge fills, and a ghost of the outline flickering a little off the hull.
+    let phase = style.system_color("phase");
+    for ship in world.sim.ships() {
+        let Some(c) = ship.blink_charge() else { continue };
+        let Some(piece) = ship.control_piece().and_then(|c| ship.piece(c)) else { continue };
+        let centre = v2(piece.com_world());
+        let flicker = 0.55 + 0.45 * (t * 33.0 + ship.id().0 as f32 * 2.1).sin().abs();
+        let r = piece.radius + 2.5 * (1.0 - c) + 0.4;
+        let spin = -t * 2.6 + ship.id().0 as f32;
+        for k in 0..16 {
+            if fx.rng.range(0.0, 1.0) < 0.3 {
+                continue;
+            }
+            let a0 = spin + k as f32 * (std::f32::consts::TAU / 16.0);
+            let a1 = a0 + 0.22;
+            let p0 = centre + Vec2::new(a0.cos(), a0.sin()) * r;
+            let p1 = centre + Vec2::new(a1.cos(), a1.sin()) * r;
+            queue.line(&regions.halo, p0, p1, 0.6, phase.with_alpha((0.35 + 0.55 * c) * flicker), Z_SPARKS);
+            queue.line(&regions.white, p0, p1, 0.08, core_tint(phase).with_alpha((0.3 + 0.6 * c) * flicker), Z_SPARKS + 0.1);
+        }
+        queue.dot(&regions.soft, centre, piece.radius * (1.4 + 0.8 * c), phase.with_alpha(0.18 + 0.35 * c * flicker), Z_SPARKS);
+        if fx.trail.len() < 2048 && fx.rng.range(0.0, 1.0) < 0.5 + c {
+            let a = fx.rng.range(-std::f32::consts::PI, std::f32::consts::PI);
+            let at = centre + Vec2::new(a.cos(), a.sin()) * piece.radius * fx.rng.range(0.4, 1.1);
+            fx.trail.push(Spark { pos: at, vel: (centre - at) * 1.5, age: 0.0, life: 0.35, size: 0.1, color: phase });
         }
     }
 

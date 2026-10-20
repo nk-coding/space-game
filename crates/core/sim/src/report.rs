@@ -461,6 +461,8 @@ pub enum Issue {
     /// Destroyed, this part's blast destroys these logic cores, guns and parts that explode in turn (a chain):
     /// GDR-0084's warning about a reactor beside a core or a gun.
     BlastTakes { part: PartIdx, parts: Vec<PartIdx> },
+    /// The main piece's blink drives carry `load` t of its `mass` t (GDR-0127): too heavy, it never blinks.
+    BlinkTooHeavy { load: f32, mass: f32 },
 }
 
 impl Issue {
@@ -1163,6 +1165,12 @@ fn issues(r: &DesignReport, ship: &Ship) -> Vec<Issue> {
         });
     }
     let d = &*ship.design;
+    if let Some(p) = main {
+        let load: f32 = d.blinks.iter().filter(|m| p.parts.contains(&m.part)).map(|m| m.spec.mass).sum();
+        if load > 0.0 && load < p.mass.mass {
+            out.push(Issue::BlinkTooHeavy { load, mass: p.mass.mass });
+        }
+    }
     for b in &r.blasts {
         let parts: Vec<PartIdx> = b
             .hits
