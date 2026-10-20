@@ -118,6 +118,12 @@ pub enum ShipCommand {
     /// Release flares (`combat/flare.rs`; in flight the FLARE key): the first ready launcher on the controlling
     /// piece throws out its decoys. Ignored while none is charged and cool.
     Flare,
+    /// Release an EMP burst (`combat/emp.rs`, GDR-0132; in flight the EMP key): the first recharged emitter on the
+    /// controlling piece. Ignored while none is ready.
+    Emp,
+    /// Drive the ship into overdrive (`ship/overdrive.rs`, GDR-0132; in flight the OVERDRIVE key). Ignored while it
+    /// cannot (overdriven, cooling down, not running).
+    Overdrive,
     /// Blink along a world direction (`flight/blink.rs`, GDR-0127; in flight the BLINK key): the drives charge, then
     /// jump the controlling piece. Ignored while no blink can start (`Ship::can_blink`).
     Blink(Vec2),
@@ -494,6 +500,8 @@ impl Sim {
                 s.start_scan();
             }
             ShipCommand::Flare => s.ask_flare(),
+            ShipCommand::Emp => s.ask_emp(),
+            ShipCommand::Overdrive => s.ask_overdrive(),
             ShipCommand::Blink(dir) => s.ask_blink(crate::flight::blink::BlinkAim::Dir(dir)),
             ShipCommand::Focus | ShipCommand::Wake => {}
         }
@@ -799,6 +807,17 @@ impl Sim {
                     let at = s.control_piece().and_then(|c| s.piece(c)).or(s.pieces().first());
                     at.map_or(0.0, |p| st.heat_at(p.com_world()))
                 });
+            match s.overdrive_tick() {
+                crate::ship::overdrive::OverdriveTick::Started => self.events.push(SimEvent::Overdrive {
+                    ship: s.id(),
+                    seconds: crate::ship::overdrive::tuning::SECONDS,
+                }),
+                crate::ship::overdrive::OverdriveTick::Ended => self.events.push(SimEvent::OverdriveEnded {
+                    ship: s.id(),
+                    cooldown: crate::ship::overdrive::tuning::COOLDOWN,
+                }),
+                crate::ship::overdrive::OverdriveTick::Nothing => {}
+            }
             s.update_systems(heat);
             if let Some(sw) = s.advance_scan() {
                 self.events.push(SimEvent::Scanned {

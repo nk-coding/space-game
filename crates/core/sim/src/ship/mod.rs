@@ -11,6 +11,7 @@
 mod caches;
 pub mod drones;
 mod living;
+pub mod overdrive;
 mod piece;
 mod scan;
 mod systems;
@@ -329,6 +330,15 @@ pub struct Ship {
     pub(crate) blink: crate::flight::blink::Blink,
     /// A blink was asked this tick (started and cleared in the blink step).
     pub(crate) blink_asked: Option<crate::flight::blink::BlinkAim>,
+    /// Seconds of recharge at full power each EMP emitter (`ShipDesign::emps`) still needs (`combat/emp.rs`,
+    /// GDR-0132; 0: ready).
+    pub(crate) emp_cool: Vec<f32>,
+    /// A burst was asked this tick (handled and cleared in the weapons step).
+    pub(crate) emp_asked: bool,
+    /// Overdriven or cooling down from it (`overdrive.rs`, GDR-0132).
+    pub(crate) overdrive: overdrive::Overdrive,
+    /// An overdrive was asked this tick (started in the systems pass).
+    pub(crate) overdrive_asked: bool,
 }
 
 impl Ship {
@@ -403,11 +413,16 @@ impl Ship {
             blink_cool: Vec::new(),
             blink: Default::default(),
             blink_asked: None,
+            emp_cool: Vec::new(),
+            emp_asked: false,
+            overdrive: Default::default(),
+            overdrive_asked: false,
         };
         ship.hull_base = ship.design.hp_total;
         ship.regrowth = vec![0.0; ship.design.hearts.len()];
         ship.bays = ship.design.hangars.iter().map(|h| drones::Bay::full(h.capacity)).collect();
         ship.blink_cool = vec![0.0; ship.design.blinks.len()];
+        ship.emp_cool = vec![0.0; ship.design.emps.len()];
         ship.flares = ship.design.flares.iter().map(|f| crate::combat::flare::FlareSlot { charges: f.spec.charges, cooldown: 0.0 }).collect();
         let all: Vec<PartIdx> = (0..n as u32).collect();
         for &p in &all {
@@ -813,6 +828,13 @@ impl StateHash for Ship {
         }
         if self.blink != crate::flight::blink::Blink::Ready {
             self.blink.hash_state(h);
+        }
+        // Nothing for a ship without EMP emitters, and its overdrive only while one runs or cools down (GDR-0132).
+        for &c in &self.emp_cool {
+            h.f32(c);
+        }
+        if !self.overdrive.is_clear() {
+            self.overdrive.hash_state(h);
         }
         self.cargo.hash_state(h);
         h.u32(self.parts.len() as u32);

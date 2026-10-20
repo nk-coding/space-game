@@ -51,6 +51,8 @@ pub enum ConsumerKind {
     Scanner,
     /// Blink drives: while a blink charges on it (`flight/blink.rs`, GDR-0127).
     Blink,
+    /// EMP emitters: while it recharges after a burst (`combat/emp.rs`, GDR-0132).
+    Emp,
     /// Anything else that draws power: always on.
     Other,
 }
@@ -352,6 +354,16 @@ pub struct BlinkMount {
     pub spec: data::BlinkSpec,
 }
 
+/// An EMP emitter's static mount (GDR-0132, `combat/emp.rs`): the burst's centre.
+#[derive(Clone, Copy, Debug)]
+pub struct EmpMount {
+    pub part: PartIdx,
+    /// Centre of the part, blueprint frame.
+    pub centre: [f32; 2],
+    /// Its numbers (content `emp`).
+    pub spec: data::EmpSpec,
+}
+
 /// A tractor beam's static mount (GDR-0131, `combat/tractor.rs`).
 #[derive(Clone, Copy, Debug)]
 pub struct TractorMount {
@@ -416,6 +428,8 @@ pub struct ShipDesign {
     pub blinks: Vec<BlinkMount>,
     /// Tractor beams, ascending part (`combat/tractor.rs`, GDR-0131).
     pub tractors: Vec<TractorMount>,
+    /// EMP emitters, ascending part (`combat/emp.rs`, GDR-0132).
+    pub emps: Vec<EmpMount>,
     /// Parts that heal (`PartSpec::heal` above 0), ascending.
     pub healing: Vec<PartIdx>,
     /// Parts that block each gun's line of fire (cells straight ahead, to the grid edge), per gun slot.
@@ -552,6 +566,8 @@ impl ShipDesign {
                     ConsumerKind::Scanner
                 } else if def.blink.is_some() {
                     ConsumerKind::Blink
+                } else if def.emp.is_some() {
+                    ConsumerKind::Emp
                 } else {
                     ConsumerKind::Other
                 }
@@ -718,6 +734,7 @@ impl ShipDesign {
         let mut flares = Vec::new();
         let mut blinks = Vec::new();
         let mut tractors = Vec::new();
+        let mut emps = Vec::new();
         let mut plume_lanes = Vec::new();
         let mut plume_path = Vec::new();
         for (i, spec) in parts.iter().enumerate() {
@@ -764,6 +781,9 @@ impl ShipDesign {
             }
             if let Some(t) = defs[i].tractor {
                 tractors.push(TractorMount { part: i as u32, spec: t });
+            }
+            if let Some(e) = defs[i].emp {
+                emps.push(EmpMount { part: i as u32, centre: shape.center(), spec: e });
             }
             if let Some(hs) = &defs[i].hangar {
                 let bp = content
@@ -827,6 +847,7 @@ impl ShipDesign {
             flares,
             blinks,
             tractors,
+            emps,
             healing,
             gun_blockers: Csr::from_lists(gun_blockers),
             plume_lanes,

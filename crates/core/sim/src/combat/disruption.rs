@@ -125,8 +125,18 @@ impl Sim {
         }
         let spec = &s.design.parts[part as usize];
         let factor = if spec.logic || spec.sensor > 0.0 { tuning::CORE_HIT } else { 1.0 };
+        self.add_static(by, k, amount * factor);
+    }
+
+    /// Ship `k` takes `amount` static from `by` (a disruption hit's, or an EMP burst's, GDR-0132): nothing while it is
+    /// no vessel, blinded or immune; at its limit it is blinded.
+    pub(crate) fn add_static(&mut self, by: ShipId, k: usize, amount: f32) {
+        let s = &mut self.ships[k];
+        if amount <= 0.0 || !s.is_vessel() || s.jam.blind > 0.0 || s.jam.immune > 0.0 {
+            return;
+        }
         let limit = s.static_limit();
-        s.jam.charge += amount * factor;
+        s.jam.charge += amount;
         if s.jam.charge >= limit {
             s.jam = Jam { charge: 0.0, blind: tuning::BLIND, immune: 0.0 };
             let ship = s.id;

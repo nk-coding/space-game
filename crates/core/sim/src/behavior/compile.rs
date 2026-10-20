@@ -164,6 +164,10 @@ pub enum Action {
     Salvage,
     /// Release flares, then step aside for the next rule (`RuleStatus::Flare`, GDR-0115).
     Flare,
+    /// Release an EMP burst, then step aside for the next rule (`RuleStatus::Emp`, GDR-0132).
+    Emp,
+    /// Go into overdrive, then step aside for the next rule (`RuleStatus::Overdrive`, GDR-0132).
+    Overdrive,
     /// Start a blink relative to the target, then step aside for the next rule (`RuleStatus::Blink`, GDR-0127).
     Blink(BlinkTo),
 }
@@ -182,14 +186,14 @@ pub enum BlinkTo {
 /// (`RuleStatus::NoTarget`), so only an `always` rule whose action needs none and decides ([`action_decides`]) ends
 /// the list; the BEHAVIOR screen marks the rules below that one.
 pub fn action_needs_target(id: &str) -> bool {
-    !matches!(id, "hold" | "escort" | "scan" | "flare" | "mine" | "salvage")
+    !matches!(id, "hold" | "escort" | "scan" | "flare" | "emp" | "overdrive" | "mine" | "salvage")
 }
 
 /// Whether the behavior action `id` decides the maneuver when its rule holds: all but `scan`, `flare` and `blink`,
 /// which start a scan, release flares or start a blink and let the next rule fly the ship (`RuleStatus::Scan`,
 /// `RuleStatus::Flare`, `RuleStatus::Blink`).
 pub fn action_decides(id: &str) -> bool {
-    !matches!(id, "scan" | "flare" | "blink")
+    !matches!(id, "scan" | "flare" | "emp" | "overdrive" | "blink")
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -460,6 +464,8 @@ pub(crate) fn compile(program: &Program, vocab: &Vocab) -> Result<Code, Vec<Line
             "escort" => Action::Escort(dist(args[0])),
             "scan" => Action::Scan,
             "flare" => Action::Flare,
+            "emp" => Action::Emp,
+            "overdrive" => Action::Overdrive,
             "blink" => Action::Blink(match choice_id(node, 0, args[0]) {
                 "away" => BlinkTo::Away,
                 _ => BlinkTo::Behind,

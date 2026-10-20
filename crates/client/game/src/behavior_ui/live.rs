@@ -104,6 +104,8 @@ pub fn live_panel(watch: &BehaviorWatch, labels: &[String]) -> Option<LivePanel>
                 | RuleStatus::NoTarget
                 | RuleStatus::Scan { .. }
                 | RuleStatus::Flare { .. }
+                | RuleStatus::Emp { .. }
+                | RuleStatus::Overdrive { .. }
                 | RuleStatus::Blink { .. } => {
                     RowState::Failed
                 }

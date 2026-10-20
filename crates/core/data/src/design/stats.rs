@@ -63,6 +63,9 @@ pub const BUILTIN_STATS: &[&str] = &[
     "tractor_force",
     "tractor_speed",
     "tractor_beams",
+    "emp_radius",
+    "emp_static",
+    "emp_cooldown",
     "lance_keep",
     "lance_armor",
     "flare_charges",
@@ -385,6 +388,11 @@ impl Content {
             v.push(("tractor_force", x.force));
             v.push(("tractor_speed", x.speed));
             v.push(("tractor_beams", x.beams as f32));
+        }
+        if let Some(x) = &part.emp {
+            v.push(("emp_radius", x.radius));
+            v.push(("emp_static", x.charge));
+            v.push(("emp_cooldown", x.cooldown));
         }
         if let Some(x) = &part.countermeasure {
             v.push(("flare_charges", x.charges as f32));

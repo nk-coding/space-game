@@ -106,6 +106,8 @@ actions! {
     Scan = "scan",
     Flare = "flare",
     Blink = "blink",
+    Emp = "emp",
+    Overdrive = "overdrive",
     Drift = "drift",
     FocusNext = "focus_next",
     FocusPrevious = "focus_previous",

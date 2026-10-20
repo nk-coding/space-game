@@ -392,6 +392,7 @@ impl Sim {
         self.jam_step();
         self.collect_bubbles();
         self.flares_step();
+        self.emp_step();
         self.advance_projectiles();
         self.fire_guns();
         self.plumes();

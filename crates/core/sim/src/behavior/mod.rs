@@ -199,6 +199,8 @@ pub const BUILTIN_NODES: &[NodeSig] = {
         node("mine", Action, None, &[]),
         node("salvage", Action, None, &[]),
         node("flare", Action, None, &[]),
+        node("emp", Action, None, &[]),
+        node("overdrive", Action, None, &[]),
         node("blink", Action, None, &[ParamSig::Choice(&["behind", "away"])]),
         pilot(
             "auto_lock",

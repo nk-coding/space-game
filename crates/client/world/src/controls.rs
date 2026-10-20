@@ -9,7 +9,8 @@
 //!   enemy, then the next by distance (`sim::flight::next_lock`), Esc = unlock (not while
 //!   the ABANDON VOYAGE? panel is open: Esc closes it, `voyage.rs`), X = drift toggle, G (SCAN) = a scan with the
 //!   flown ship's scanner (`ShipCommand::Scan`; the HUD's SCAN pill does the same), N (FLARES) = its flare launcher
-//!   (`ShipCommand::Flare`, GDR-0115). V / Shift+V = next / previous
+//!   (`ShipCommand::Flare`, GDR-0115), U (EMP BURST) = its EMP emitter, O (OVERDRIVE) = the whole ship past its limits
+//!   (`ShipCommand::Emp`, `ShipCommand::Overdrive`, GDR-0132). V / Shift+V = next / previous
 //!   vessel of the player (the sim's vessel list); clicking a friendly vessel switches to it. Both send
 //!   `ShipCommand::Focus`; the sim moves the focus and `scene::PilotFocus` mirrors it on the next tick. F1–F4 (ASSIST
 //!   TOGGLE 1–4) and Z (ALL ASSISTS) switch the flown ship's pilot assists for the mission
@@ -317,6 +318,18 @@ fn keyboard(
         && let Some(me) = focus.0
     {
         world.inputs.commands.push((me, ShipCommand::Flare));
+    }
+    // EMP BURST and OVERDRIVE (GDR-0132): the flown ship's EMP emitter, the whole ship past its limits (the sim
+    // ignores them while not ready).
+    if act.just_pressed(Action::Emp)
+        && let Some(me) = focus.0
+    {
+        world.inputs.commands.push((me, ShipCommand::Emp));
+    }
+    if act.just_pressed(Action::Overdrive)
+        && let Some(me) = focus.0
+    {
+        world.inputs.commands.push((me, ShipCommand::Overdrive));
     }
     // BLINK: the flown ship's blink drives (the sim ignores it while none can blink, GDR-0127).
     if act.just_pressed(Action::Blink)

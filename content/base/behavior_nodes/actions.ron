@@ -110,6 +110,23 @@
         tags: ["defence"],
         role: Action,
     ),
+    // EMP burst and overdrive (GDR-0132); like `flare` they need no target and never decide the maneuver.
+    (
+        id: "emp",
+        name: "EMP burst",
+        summary: "Release a ring of static from the ship's EMP emitter, then let the next rule fly the ship.",
+        description: "Needs no target and never decides the maneuver: while its conditions hold it releases a burst whenever an [[part:emp_emitter]] on the ship is recharged, and the next rule that holds flies the ship meanwhile. Every enemy vessel in reach takes static; drones fall apart. The recharge is long, so keep it for a crowd: `when enemies_near(150m) >= 4 -> emp` at the top of the list. A ship without a working emitter skips it.",
+        tags: ["defence", "disruption"],
+        role: Action,
+    ),
+    (
+        id: "overdrive",
+        name: "Overdrive",
+        summary: "Drive every part past its limits for a few seconds, then let the next rule fly the ship.",
+        description: "Needs no target and never decides the maneuver: while its conditions hold it starts an overdrive whenever the ship is not overdriven or cooling down from one, and the next rule that holds flies the ship. For a few seconds every part works harder (thrust, power, fire, shield regeneration), but heat climbs fast and parts past their heat limit burn; a burning reactor can blow. Pair it with [[behavior_node:heat]] so a hot ship does not cook itself: `when heat < 40% and target_in_range(100%) -> overdrive`.",
+        tags: ["defence"],
+        role: Action,
+    ),
     // Blink (GDR-0127); like `flare` it never decides the maneuver, but it needs a target to jump by.
     (
         id: "blink",

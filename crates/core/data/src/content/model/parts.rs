@@ -473,6 +473,19 @@ pub struct BlinkSpec {
     pub mass: f32,
 }
 
+/// An EMP emitter (GDR-0018's second disruption weapon, GDR-0132): asked (the EMP key, the `emp` behavior action), it
+/// releases a ring of static `radius` metres round itself: every enemy vessel whose controlling piece's centre lies
+/// inside takes `static` (its shield bubbles take it first, point for point, as they take a shot). Then it recharges
+/// for `cooldown` seconds at full power, drawing its power only then.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct EmpSpec {
+    pub radius: f32,
+    #[serde(rename = "static")]
+    pub charge: f32,
+    pub cooldown: f32,
+}
+
 /// A tractor beam (GDR-0131; GDR-0018's utility family, GDR-0025's loose debris): while its vessel runs and its hold
 /// has room, it pulls up to `beams` pieces of salvage within `range` metres (loose items, wreck pieces, mined ore;
 /// never a vessel) towards the ship, nearest first, with at most `force` kN each (a heavy wreck piece comes slower),
@@ -664,6 +677,9 @@ pub struct Part {
     /// Pulls salvage towards its vessel (GDR-0131).
     #[serde(default)]
     pub tractor: Option<TractorSpec>,
+    /// Releases a ring of static round its vessel (the EMP burst, GDR-0132).
+    #[serde(default)]
+    pub emp: Option<EmpSpec>,
     #[serde(default)]
     pub gyro: Option<GyroSpec>,
     #[serde(default)]

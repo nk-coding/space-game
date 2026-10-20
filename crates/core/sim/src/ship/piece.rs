@@ -98,6 +98,25 @@ pub struct ThrustAuthority {
     pub speed: [f32; 4],
 }
 
+impl ThrustAuthority {
+    /// Every force and torque times `k` (an overdrive's boost, GDR-0132); the rated speeds stay.
+    pub(crate) fn scale(&mut self, k: f32) {
+        for v in [
+            &mut self.forward,
+            &mut self.backward,
+            &mut self.right,
+            &mut self.left,
+            &mut self.torque_ccw,
+            &mut self.torque_cw,
+            &mut self.torque_pure,
+            &mut self.couple_ccw,
+            &mut self.couple_cw,
+        ] {
+            *v *= k;
+        }
+    }
+}
+
 /// Can this actuator push or turn now? Alive, not overheated, not idle (GDR-0044) and powered (its last power
 /// level above 0). Rows and torque sources that cannot are left out of the flight computer's authority and
 /// allocation.

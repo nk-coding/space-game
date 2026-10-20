@@ -25,4 +25,24 @@
         salvage: (family: "logic", data: 3),
         recipe: (materials: {"copper": 2, "crystal": 3, "steel": 1}), // pulses: no workshop upgrade, like point defence
     ),
+    // The EMP emitter (GDR-0132): a panic button against swarms. A ring of static round the ship; drones fall apart.
+    (
+        id: "emp_emitter",
+        name: "EMP emitter",
+        summary: "Releases a ring of static round the ship on command: nearby enemy minds fill with static, drones fall apart.",
+        description: "Fires when asked (the EMP key, or the `emp` behavior action): every enemy vessel within its radius takes a load of static at once, your own ships and fleet never. A shield bubble takes the static first, point for point, as it takes a shot. A vessel is blinded at 2 static per logic core, so a burst blinds a one-core raider whose bubble is down and half fills a two-core ship; a drone's tiny mind is its carrier's relay, and a drone blinded by static falls apart. Then the emitter recharges for a long while, drawing its power only then.",
+        tags: ["disruption"],
+        locked: true, // the logic research's `emp_burst` unlocks it
+        category: "defense",
+        icon: "emp-emitter",
+        size: (1, 1),
+        build_points: 4,
+        mass: 2,
+        hp: 1.5,
+        power: (draw: 4, tier: Low),
+        heat: (output: 1.5, limit: 4),
+        emp: (radius: 150, static: 3, cooldown: 25),
+        salvage: (family: "logic", data: 4),
+        recipe: (materials: {"copper": 3, "crystal": 4, "steel": 1}),
+    ),
 ]

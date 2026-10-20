@@ -225,6 +225,12 @@ impl Ship {
             blink_cool: self.blink_cool.clone(),
             blink: Default::default(),
             blink_asked: None,
+            // The emitters keep their recharge (the parts are the same, GDR-0132).
+            emp_cool: self.emp_cool.clone(),
+            emp_asked: false,
+            // The parts stay overdriven or cooling down with it (GDR-0132).
+            overdrive: self.overdrive,
+            overdrive_asked: false,
         };
         for i in 0..self.parts.len() {
             if !self.parts[i].alive {

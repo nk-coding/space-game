@@ -125,6 +125,18 @@
         cost: (data: {"logic": 5, "energy": 3}),
         unlocks: [Part("ion_cannon")],
     ),
+    // The EMP burst (GDR-0132): the ion cannon's area cousin, a panic button against drone floods. PLACEHOLDER COST.
+    (
+        id: "emp_burst",
+        name: "EMP burst",
+        summary: "A ring of static round the ship on command: blinds nearby minds, breaks drone floods.",
+        description: "Unlocks the [[part:emp_emitter]]: on command it fills every enemy vessel within its radius with static at once. Drones fall apart; a one-core ship whose shields are down goes blind. A long recharge after each burst.",
+        family: "logic",
+        kind: NewPart,
+        cost: (data: {"logic": 10, "energy": 4}),
+        requires: ["ion_cannon"],
+        unlocks: [Part("emp_emitter")],
+    ),
     (
         id: "cruiser_drydock",
         name: "Cruiser drydock",

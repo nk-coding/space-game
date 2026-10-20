@@ -12,7 +12,7 @@
 //! * **Leash**: the behavior condition `off_leash` is true while a drone's controlling piece is more than its
 //!   hangar's `leash` from the carrier's (the drone behaviors fly back then).
 //! * **Death**: a drone whose hangar stops being one (destroyed, its carrier lost or no vessel, the hangar on a
-//!   piece that broke off) dies with it, and so does a drone that lost its core: it is removed at once without a
+//!   piece that broke off) dies with it, and so does a drone that lost its core or was blinded by static (GDR-0132): it is removed at once without a
 //!   wreck (`SimEvent::DroneLost`), so a flood never leaves a field of debris. A dormant or dark carrier keeps its
 //!   drones.
 //! * **Not the fleet**: drones take no mind capacity, never go dormant and are never their owner's focus;
@@ -127,7 +127,8 @@ impl Sim {
         for s in &self.ships {
             let Some(t) = s.drone else { continue };
             let holds = self.ship(t.carrier).is_some_and(|c| c.hangar_holds(t.hangar as usize));
-            if holds && s.is_vessel() {
+            // A blinded drone's relay to its carrier breaks and it falls apart (GDR-0132: an EMP burst or ion static).
+            if holds && s.is_vessel() && !s.blinded() {
                 ties.push(t);
             } else {
                 let at = s.control.and_then(|c| s.piece(c)).or(s.pieces.first()).map_or(Vec2::ZERO, |p| p.com_world());

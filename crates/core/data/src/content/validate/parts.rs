@@ -348,6 +348,14 @@ impl<'a> Validator<'a> {
                 self.err(p, "blink", "a blink drive draws power while it charges (`power.draw`)");
             }
         }
+        if let Some(x) = &p.emp {
+            self.reach(p, "emp.radius", x.radius);
+            self.number(p, "emp.static", x.charge, 0.0, true);
+            self.number(p, "emp.cooldown", x.cooldown, 0.0, true);
+            if !p.draws_power() {
+                self.err(p, "emp", "an EMP emitter draws power while it recharges (`power.draw`)");
+            }
+        }
         if let Some(x) = &p.tractor {
             self.reach(p, "tractor.range", x.range);
             self.number(p, "tractor.force", x.force, 0.0, true);

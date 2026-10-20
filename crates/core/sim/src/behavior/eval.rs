@@ -62,6 +62,10 @@ pub enum RuleStatus {
     Flare { released: bool },
     /// A `blink` rule held and stepped aside for the next rule: `started` a blink, or none could start (GDR-0127).
     Blink { started: bool },
+    /// An `emp` rule held and stepped aside for the next rule: `released` a burst, or no emitter was ready (GDR-0132).
+    Emp { released: bool },
+    /// An `overdrive` rule held and stepped aside for the next rule: `started` an overdrive, or it could not (GDR-0132).
+    Overdrive { started: bool },
     /// Beyond the ship's working rule slots: inactive.
     NoSlot,
 }
@@ -192,6 +196,10 @@ impl BehaviorState {
             RuleStatus::Scan { started: false } => "the scanner is not ready".into(),
             RuleStatus::Flare { released: true } => "released flares".into(),
             RuleStatus::Flare { released: false } => "no flare launcher is ready".into(),
+            RuleStatus::Emp { released: true } => "released an EMP burst".into(),
+            RuleStatus::Emp { released: false } => "no EMP emitter is ready".into(),
+            RuleStatus::Overdrive { started: true } => "went into overdrive".into(),
+            RuleStatus::Overdrive { started: false } => "overdriven or cooling down".into(),
             RuleStatus::Blink { started: true } => "started a blink".into(),
             RuleStatus::Blink { started: false } => "no blink drive is ready".into(),
             RuleStatus::Failed { cond, why } => {
@@ -277,6 +285,9 @@ pub(crate) struct Out {
     scan: bool,
     /// A `flare` rule released flares.
     flare: bool,
+    /// An `emp` rule released a burst, an `overdrive` rule started one (GDR-0132).
+    emp: bool,
+    overdrive: bool,
     /// A `blink` rule started a blink (GDR-0127).
     blink: Option<crate::flight::blink::BlinkAim>,
     /// The rock a deciding `mine` rule cuts (GDR-0114).
@@ -297,6 +308,8 @@ impl Default for Out {
             script_error: None,
             scan: false,
             flare: false,
+            emp: false,
+            overdrive: false,
             blink: None,
             mine: None,
         }
@@ -432,6 +445,12 @@ pub(crate) fn think_all(
         }
         if std::mem::take(&mut out.flare) {
             ships[k].ask_flare();
+        }
+        if std::mem::take(&mut out.emp) {
+            ships[k].ask_emp();
+        }
+        if std::mem::take(&mut out.overdrive) {
+            ships[k].ask_overdrive();
         }
         if let Some(aim) = out.blink.take() {
             ships[k].ask_blink(aim);
@@ -833,6 +852,16 @@ impl Ctx<'_> {
                     out.flare |= released;
                     RuleStatus::Flare { released }
                 }
+                None if rule.action == Action::Emp => {
+                    let released = !out.emp && me.can_emp();
+                    out.emp |= released;
+                    RuleStatus::Emp { released }
+                }
+                None if rule.action == Action::Overdrive => {
+                    let started = !out.overdrive && me.can_overdrive();
+                    out.overdrive |= started;
+                    RuleStatus::Overdrive { started }
+                }
                 None if matches!(rule.action, Action::Blink(_)) && focus_id.is_none() => RuleStatus::NoTarget,
                 None if let (Action::Blink(to), Some(t)) = (rule.action, focus_id) => {
                     let started = out.blink.is_none() && me.can_blink();
@@ -1018,6 +1047,8 @@ impl Ctx<'_> {
             | Action::Escort(_)
             | Action::Scan
             | Action::Flare
+            | Action::Emp
+            | Action::Overdrive
             | Action::Blink(_)
             | Action::Mine
             | Action::Salvage => {

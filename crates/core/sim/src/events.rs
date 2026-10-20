@@ -181,6 +181,25 @@ pub enum SimEvent {
         at: Vec2,
         decoys: u32,
     },
+    /// An EMP emitter (`part`) of `ship` released its ring of static `radius` m round `at` (GDR-0132,
+    /// `combat/emp.rs`); `struck` enemy vessels were in reach (blindings follow as `Blinded`).
+    EmpBurst {
+        ship: ShipId,
+        part: crate::ship::design::PartIdx,
+        at: Vec2,
+        radius: f32,
+        struck: u32,
+    },
+    /// `ship` was driven into overdrive for `seconds` (GDR-0132, `ship/overdrive.rs`).
+    Overdrive {
+        ship: ShipId,
+        seconds: f32,
+    },
+    /// `ship`'s overdrive ended; it cools down for `cooldown` seconds.
+    OverdriveEnded {
+        ship: ShipId,
+        cooldown: f32,
+    },
     /// A blink drive jumped `ship`'s controlling piece `piece` (GDR-0127, `flight/blink.rs`): its centre of mass from
     /// `from` to `to` (the out and in flashes).
     Blinked {
@@ -204,7 +223,7 @@ pub enum SimEvent {
         to: Vec2,
         parts: u32,
     },
-    /// Static from `by`'s disruption guns blinded `ship`'s mind for `seconds` (GDR-0125, `combat/disruption.rs`).
+    /// Static from `by`'s disruption guns or EMP burst blinded `ship`'s mind for `seconds` (GDR-0125, `combat/disruption.rs`).
     Blinded {
         by: ShipId,
         ship: ShipId,

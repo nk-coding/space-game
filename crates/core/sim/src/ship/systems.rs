@@ -20,9 +20,18 @@ impl Ship {
             dormant,
             scan,
             blink,
+            emp_cool,
+            overdrive,
             ..
         } = self;
         let d = &**design;
+        // Overdrive (GDR-0132): every output times the boost, heat times more, nothing shuts down for heat.
+        let overdriven = overdrive.left > 0.0;
+        let (boost, heat_mult) = if overdriven {
+            (super::overdrive::tuning::BOOST, super::overdrive::tuning::HEAT)
+        } else {
+            (1.0, 1.0)
+        };
         let activity = &mut scratch.activity;
         if activity.len() != parts.len() {
             activity.clear();
@@ -34,7 +43,7 @@ impl Ship {
             // when its vessel is not dormant and it has a working core and some power.
             let running = piece.controlled && !*dormant;
             crate::ship::control::update(piece, parts, d, running);
-            let supply = reactor_supply(piece, parts);
+            let supply = reactor_supply(piece, parts) * boost;
             let core_ok = piece.cores.iter().any(|&c| {
                 let ps = &parts[c as usize];
                 ps.alive && !ps.overheated
@@ -72,8 +81,23 @@ impl Ship {
                 active,
                 |slot| controls.gun_fires(slot),
                 controls.shields,
-                |part| scan.charging() == Some(part) || crate::flight::blink::blink_charging(blink, d, part),
+                |part| {
+                    scan.charging() == Some(part)
+                        || crate::flight::blink::blink_charging(blink, d, part)
+                        || crate::combat::emp::recharging(emp_cool, d, part)
+                },
             );
+            if overdriven {
+                for c in &piece.consumers {
+                    parts[c.part as usize].work *= boost;
+                }
+                for r in &piece.reactors {
+                    parts[r.part as usize].work *= boost;
+                }
+                for &h in &piece.heaters {
+                    parts[h as usize].work *= boost;
+                }
+            }
             // Shield bubbles recharge while their emitter works.
             for &e in &piece.shields {
                 let ps = &mut parts[e as usize];
@@ -104,7 +128,7 @@ impl Ship {
                 level.push(if active && producing(ps) { ps.power } else { 0.0 });
             }
             fmax.extend(piece.thrusters.iter().enumerate().map(|(i, t)| {
-                t.max_force * level[i] * piece.falloff.get(i).copied().unwrap_or(1.0)
+                t.max_force * level[i] * piece.falloff.get(i).copied().unwrap_or(1.0) * boost
             }));
             let full = &mut scratch.full;
             full.clear();
@@ -113,14 +137,14 @@ impl Ship {
                     .thrusters
                     .iter()
                     .zip(level.iter())
-                    .map(|(t, &l)| t.max_force * l),
+                    .map(|(t, &l)| t.max_force * l * boost),
             );
             let tmax = &mut scratch.tmax;
             tmax.clear();
             tmax.extend(piece.torque_sources.iter().map(|src| {
                 let ps = &parts[src.part as usize];
                 if active && producing(ps) {
-                    src.max * ps.power
+                    src.max * ps.power * boost
                 } else {
                     0.0
                 }
@@ -155,7 +179,7 @@ impl Ship {
         if 2 * owned >= parts.len() {
             for ((ps, k), e) in parts.iter().zip(heat_k.iter()).zip(e.iter_mut()) {
                 if ps.alive {
-                    *e = heat_energy(ps, k, sun);
+                    *e = heat_energy(ps, k, sun, heat_mult);
                 }
             }
             for l in &d.links {
@@ -163,7 +187,7 @@ impl Ship {
             }
             for ((ps, k), &e) in parts.iter_mut().zip(heat_k.iter()).zip(e.iter()) {
                 if ps.alive {
-                    settle_heat(ps, k, e);
+                    settle_heat(ps, k, e, overdriven);
                 }
             }
         } else {
@@ -171,7 +195,7 @@ impl Ship {
                 for &p in &piece.parts {
                     let ps = &parts[p as usize];
                     if ps.alive {
-                        e[p as usize] = heat_energy(ps, &heat_k[p as usize], sun);
+                        e[p as usize] = heat_energy(ps, &heat_k[p as usize], sun, heat_mult);
                     }
                 }
                 for &l in &piece.heat_links {
@@ -180,7 +204,7 @@ impl Ship {
                 for &p in &piece.parts {
                     let ps = &mut parts[p as usize];
                     if ps.alive {
-                        settle_heat(ps, &heat_k[p as usize], e[p as usize]);
+                        settle_heat(ps, &heat_k[p as usize], e[p as usize], overdriven);
                     }
                 }
             }
@@ -189,15 +213,21 @@ impl Ship {
         // What the flight computer may plan with next tick (idle, unpowered and overheated actuators out).
         for piece in pieces.iter_mut() {
             refresh_authority(piece, parts);
+            if overdriven {
+                piece.authority.scale(boost);
+            }
         }
+        // Overdriven parts past their heat limit burn (GDR-0132).
+        self.overdrive_burn();
     }
 }
 
 /// Heat step, generation: a part's heat energy this tick before conduction and loss, with `sun` (a hot star's heat
-/// this tick per side open to space; 0 adds exactly nothing) through each of its open sides.
+/// this tick per side open to space; 0 adds exactly nothing) through each of its open sides; its work's heat times
+/// `mult` (1 but while overdriven, GDR-0132).
 #[inline]
-pub(super) fn heat_energy(ps: &PartState, k: &HeatK, sun: f32) -> f32 {
-    ps.heat * k.cap + k.out * ps.work * DT + sun * ps.open_sides as f32
+pub(super) fn heat_energy(ps: &PartState, k: &HeatK, sun: f32, mult: f32) -> f32 {
+    ps.heat * k.cap + k.out * ps.work * mult * DT + sun * ps.open_sides as f32
 }
 
 /// Heat step, conduction over one link between alive parts (explicit, from the heat before this tick's step).
@@ -212,12 +242,15 @@ pub(super) fn conduct(l: &crate::ship::design::Link, parts: &[PartState], e: &mu
     e[b] += q;
 }
 
-/// Heat step, loss to space (implicit) and the overheat hysteresis, from the part's energy `e`.
+/// Heat step, loss to space (implicit) and the overheat hysteresis, from the part's energy `e`. While `overdriven`
+/// nothing shuts down for heat (GDR-0132: it burns instead, `overdrive.rs`).
 #[inline]
-pub(super) fn settle_heat(ps: &mut PartState, k: &HeatK, e: f32) {
+pub(super) fn settle_heat(ps: &mut PartState, k: &HeatK, e: f32, overdriven: bool) {
     let h = e / (k.cap + k.loss * DT);
     ps.heat = if h > 0.0 { h } else { 0.0 };
-    if ps.heat > k.limit {
+    if overdriven {
+        ps.overheated = false;
+    } else if ps.heat > k.limit {
         ps.overheated = true;
     } else if ps.overheated && ps.heat < k.limit * tuning::OVERHEAT_RESUME {
         ps.overheated = false;
@@ -305,7 +338,7 @@ pub(crate) fn consumer_activity(
         match kind {
             ConsumerKind::Engine => mover.clamp(0.0, 1.0),
             ConsumerKind::Weapon => fires as u8 as f32,
-            ConsumerKind::Scanner | ConsumerKind::Blink => charging as u8 as f32,
+            ConsumerKind::Scanner | ConsumerKind::Blink | ConsumerKind::Emp => charging as u8 as f32,
             ConsumerKind::Shield => shields as u8 as f32,
             ConsumerKind::Logic | ConsumerKind::Other => 1.0,
         }
