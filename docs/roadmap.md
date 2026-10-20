@@ -766,6 +766,21 @@ Next session:
   `zoom`, `planet`, `touch`, and with them the practice runs. Touch is auto-detected only; `web-drive.mjs` is a
   mouse unless `--touch` or `--dpr=N`, `tools/headless/shot.mjs` got `--touch` and `--phone`.
 
+### 20 Oct 2026: the Lattice
+
+- ([GDR-0126](gdr/0126-the-lattice-prism-relays-and-refractive-crystal.md), Niklas's design, lead numbers;
+  `results/lattice-balance-2026-10-20.md`) The prism relay (a part's `prism`: the first part in a laser's line of
+  fire relays its beam from its front, up to four, +25 % reach and +15 % damage each; `data::ShipGrid::beam_path`
+  shared by the drydock, validation and the sim), refractive crystal (an armour's `refract`: half of an energy shot
+  glances off as nobody's shot, `SimEvent::Refracted`) and a wary faction's territory (warns, then wakes:
+  `SimEvent::SiteWarned`). The Lattice fill the inner band beside the walkers (no longer a stub): needles, lances,
+  guards and the anchored resonator, two cluster types in the band's weighted list, crystal rock, a research family
+  with the crystal annealer and the Spire's prism ward. The client draws relayed beams through their prisms, glances
+  and glints, the territory's warning ring, and the drydock's ARCS the relay path. Keeper-capable fleets clear a
+  Lattice voyage 37–50 %, a crystal site 72–77 %, the resonator 25–33 %. The voyage example loads test voyages with
+  `--pack dir`.
+- Open: standing with the Lattice, a resonator that rebuilds its prisms, refraction off shields.
+
 ## Phase 4: measurement
 
 Status 12 Oct 2026 (new VM): `results/spike-summary.md` written. Determinism native vs wasm IDENTICAL on the new VM

@@ -1834,6 +1834,42 @@ second, beam and pulse guns only) compiles to `PartSpec::disrupt` / `GunMount::d
 
 Numbers (`content/base/parts/disruption.ron`, `combat::disruption::tuning`, placeholders): see GDR-0125.
 
+### Prisms, refraction and territory (GDR-0126)
+
+20 Oct 2026, the Lattice (lead rules and numbers on Niklas's design).
+
+- **The beam path** (`data::ShipGrid::beam_path`, shared with the drydock and validation through
+  `Content::beam_path`): from a gun's facing side, the first part in line on every cell of that side (to the grid's
+  edge). None: the line is clear, the shot leaves there. One part over the whole front that is a prism whose `target`
+  picks the gun (`Part::matches`), entered by any side but its front: the beam goes on from the prism's front, and the
+  walk repeats. Anything else blocks: another part, a prism facing back at the beam, a prism met twice, a fifth prism
+  (`data::design::geometry::MAX_PRISMS`, 4), parts in front of a wider gun that differ. `counts` decides who stands
+  in the way: the sim passes alive parts of the gun's piece only (a destroyed prism's cell is a gap the beam crosses;
+  a prism split off with another piece is passed), the drydock every part.
+- **Compile and rebuild**: `GunSpec::prisms` lists the design's prisms that take the gun (empty: the old line of fire,
+  `gun_blockers`, unchanged). For a gun with prisms `Ship::rebuild_piece` walks `Ship::beam_path` for `clear` and the
+  mount: `GunMount::muzzle`/`dir` are the last prism's front, `range × (1 + Σ prism range)`, `dps` and `shot_damage
+  × (1 + Σ prism damage)` (`PartSpec::relay`), `GunMount::relay` (the gun's own muzzle and the prisms in order) for
+  drawing. Everything downstream (aim, fire at will, reach conditions, firepower) reads the mount, so relays need no
+  other code. The design report's `GunReport` has `relay` and `from`; its `muzzle`/`facing` are the exit's.
+- **Refraction** (`combat/weapons.rs`, `Sim::refraction`, `Sim::refract`): in `hitscan`, when an energy shot's first
+  part is a hull part with `PartSpec::refract` (its armour's), that share of what passed the shields leaves the hit
+  point along `dir − 2 (dir·n) n` (n the ray's surface normal; `−dir` where the ray walked through destroyed parts)
+  for the rest of the shot's reach as nobody's shot (`team: None`): `shot_cast` passes only the ship it glanced off,
+  `shield_pass` lets every other bubble take it, the first part met queues a `GunHit` (by the crystal ship) with the
+  guns' hits; a refractive part met again turns its share away again, at most `MAX_REFRACTIONS` (2) glances.
+  `SimEvent::Refracted { ship, point, to, hit }` per glance (a beam glances every tick it rests on crystal). Kinetic,
+  missile and disruption shots never glance. Cost: one ray cast and one shield pass per glance.
+- **Territory** (`voyage/mod.rs`): `SitePlan::territory` is set for a wary encounter whose every ship's faction keeps
+  one (the largest `wake` and `warn` among them). An asleep site warns once when a player vessel is within `warn`
+  (`SimEvent::SiteWarned`, `Site::warned`) and wakes within `wake`, besides the wary wake rules (hit, rammed, scanned,
+  stripped). Hashed only for such sites (`h.u8(4)`, the radii and `warned`), so other plans keep their hashes.
+- Determinism: the grown scenario has a Lattice needle's site beside the fleet's way (it warns, wakes and fights with
+  its relayed beam), and `crates/core/arena/fights/lattice_lances.ron` puts a lance, a guard and a needle against the
+  Runner and two skiffs (relays, glances, gaps).
+
+Numbers (`content/base/parts/lattice.ron`, `materials/lattice.ron`, `factions/lattice.ron`, placeholders): see GDR-0126.
+
 ### Aiming and leading
 
 - `flight::intercept_time(r, v, speed)` / `lead_point(shooter, shooter_vel, target, target_vel, speed)`:

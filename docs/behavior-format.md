@@ -106,7 +106,7 @@ out take the node's default: `orbit` = `orbit(60%, auto)`.
 | Kind | Write | Notes |
 |---|---|---|
 | Distance | `45m` or `45` | metres |
-| Distance | `60%` | a share of **your weapon reach** (the range of your longest working gun: a clear line of fire, intact, not overheated or idle), so one behavior fits ships with different guns |
+| Distance | `60%` | a share of **your weapon reach** (the range of your longest working gun: a clear line of fire, intact, not overheated or idle; a laser relayed by prisms counts with its relayed reach, GDR-0126), so one behavior fits ships with different guns |
 | Percentage | `30%` | always with `%` (`hull < 30` is an error, to avoid mixing up 30% and 0.3) |
 | Time | `5s` or `5` | seconds |
 | Count | `3` | whole numbers |
