@@ -379,6 +379,8 @@ fn apply_events(
             SimEvent::Blinded { ship, .. } => Act::Blinded(*ship),
             SimEvent::Hit { point, normal, family, damage, .. } => Act::Hit(v2(*point), v2(*normal), *family, *damage),
             SimEvent::Ricochet { point, vel, .. } => Act::Ricochet(v2(*point), v2(*vel)),
+            SimEvent::Refracted { point, to, .. } => Act::Refracted(v2(*point), v2(*to)),
+            SimEvent::SiteWarned { site } => Act::Warned(*site),
             SimEvent::Warhead { by, at, radius, damage, .. } => Act::Warhead(*by, v2(*at), *radius, *damage),
             SimEvent::ProjectileGone { pos, reason: sim::GoneReason::ShotDown | sim::GoneReason::Decoyed, .. } => Act::ShotDown(v2(*pos)),
             SimEvent::DroneLaunched { ship, .. } => Act::Launched(*ship),
@@ -497,6 +499,17 @@ fn apply_events(
                 fx.muzzle(from, color);
                 if kind == sim::ShotKind::Pulse {
                     fx.pulse(from, to, color);
+                    // Relayed by prisms (GDR-0126): the pulse runs through them first, each glinting.
+                    let path = world.sim.ship(ship).and_then(|s| {
+                        s.pieces().iter().find_map(|p| {
+                            let g = p.guns.iter().find(|g| g.part == gun && g.relay.len > 0)?;
+                            Some(crate::fx::relay_points(s, p, g, p.body.pos, p.body.angle))
+                        })
+                    });
+                    for w in path.as_deref().unwrap_or(&[]).windows(2) {
+                        fx.pulse(w[0], w[1], color);
+                        fx.flash(w[1], style.system_color("lattice"), 1.0, 0.12);
+                    }
                 }
             }
             Act::Hit(point, normal, family, damage) => {
@@ -508,6 +521,19 @@ fn apply_events(
                 fx.hit(point, normal, color, damage);
             }
             Act::Ricochet(point, vel) => fx.ricochet(point, vel),
+            // GDR-0126: an energy shot glanced off refractive crystal.
+            Act::Refracted(point, to) => fx.refracted(point, to, style.system_color("lattice")),
+            // A wary site warns the fleet off its territory (GDR-0126): each of its ships rings out a ping in the
+            // Lattice's colour, as wide as the ground it keeps.
+            Act::Warned(site) => {
+                let ships: Vec<ShipId> = world.sim.voyage().and_then(|v| v.sites().get(site as usize)).map_or(Vec::new(), |s| s.ships().to_vec());
+                for id in ships {
+                    if let Some(at) = world.sim.ship(id).and_then(|s| s.piece(s.control_piece()?)).map(|p| v2(p.com_world())) {
+                        fx.flash(at, style.system_color("lattice"), 6.0, 0.6);
+                        fx.ping(at, 60.0, style.system_color("lattice"));
+                    }
+                }
+            }
             // Static blinded a mind (GDR-0125): a violet flash over the vessel (the crackle that lasts is drawn
             // in `fx`).
             Act::Blinded(ship) => {
@@ -574,6 +600,10 @@ enum Act {
     Blinded(ShipId),
     Hit(Vec2, Vec2, data::WeaponFamily, f32),
     Ricochet(Vec2, Vec2),
+    /// An energy shot glanced off refractive crystal here and went on to there (GDR-0126).
+    Refracted(Vec2, Vec2),
+    /// A wary site (its index) warned the fleet off its territory (GDR-0126).
+    Warned(u32),
     /// A vessel collected salvage that was at this point.
     Collected(ShipId, Vec2),
     /// An engine's plume (ship, engine part) burns a part at a point.

@@ -130,6 +130,7 @@ struct Pen {
     weapons: Color,
     propulsion: Color,
     swarm: Color,
+    lattice: Color,
     shield: Color,
     shield_core: Color,
     ink: Color,
@@ -146,6 +147,7 @@ impl Pen {
             weapons: style.system_color("weapons"),
             propulsion: style.system_color("propulsion"),
             swarm: style.system_color("swarm"),
+            lattice: style.system_color("lattice"),
             shield: style.shield.color,
             shield_core: style.shield.core,
             ink: style.seam,
@@ -510,6 +512,19 @@ fn draw(m: &mut MeshBuf, pen: &Pen, r: &DesignReport, shapes: &[PlacedShape], ma
         }
         for g in &r.guns {
             let (o, d) = (world(g.muzzle), dir_world(g.facing));
+            // GDR-0126: a beam relayed by prisms runs from the gun through each prism (a diamond) to where it leaves.
+            if !g.relay.is_empty() {
+                let mut at = world(g.from);
+                for &p in &g.relay {
+                    let c = world(shapes[p as usize].center());
+                    pen.seg(m, at, c, 0.045, pen.lattice.with_alpha(0.95));
+                    let diamond = |s: f32| [c + Vec2::new(0.0, s), c + Vec2::new(-s, 0.0), c + Vec2::new(0.0, -s), c + Vec2::new(s, 0.0)];
+                    pen.fill(m, &diamond(0.2), pen.ink.with_alpha(0.9));
+                    pen.fill(m, &diamond(0.13), pen.lattice);
+                    at = c;
+                }
+                pen.seg(m, at, o, 0.045, pen.lattice.with_alpha(0.95));
+            }
             if g.clear {
                 let end = o + d * g.range;
                 pen.dashed(m, (o, end), (0.45, 0.3), frame, view, 0.03, pen.weapons.with_alpha(0.85));

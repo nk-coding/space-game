@@ -544,7 +544,9 @@ changes (never per frame); sizes are in cells, so it zooms with the ship. Bottom
   rim in the shield colour, the emitter's centre dotted.
 - **ARCS**: every gun's line of fire to its range (clear: dashed weapons cyan with an end tick, plus faint edges of
   the cone a missile launcher launches within and, for a point-defence turret, the edges of its arc and the arc at
-  its reach, GDR-0115; blocked: coral up to the first blocker, a cross there, the blockers outlined); every engine's plume lanes to their reach (a soft
+  its reach, GDR-0115; blocked: coral up to the first blocker, a cross there, the blockers outlined; a laser relayed by
+  prisms, GDR-0126: a solid line in the Lattice's colour from the gun through each prism, a diamond on each, and the
+  line of fire from the last prism with the relayed reach); every engine's plume lanes to their reach (a soft
   propulsion-teal lane, dashed centre line and end tick; a lane that burns an own part: coral, a cross where it
   hits, the part outlined). Ranges reach far beyond a frigate frame (45–75 m): outside the frame the lines fade
   to 30 %, and they end at the grid viewport's edge (before 13 Oct 2026 they ran on under the veil, through the

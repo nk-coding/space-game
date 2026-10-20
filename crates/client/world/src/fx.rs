@@ -131,6 +131,16 @@ struct Flash {
     color: Color,
 }
 
+/// An expanding ring (a wary site's warning ping, GDR-0126).
+#[derive(Clone, Copy)]
+struct Ring {
+    pos: Vec2,
+    radius: f32,
+    age: f32,
+    life: f32,
+    color: Color,
+}
+
 #[derive(Clone, Copy)]
 struct Line {
     from: Vec2,
@@ -146,6 +156,7 @@ pub struct Effects {
     sparks: Vec<Spark>,
     flashes: Vec<Flash>,
     lines: Vec<Line>,
+    rings: Vec<Ring>,
     trail: Vec<Spark>,
     blasts: Vec<blast::Blast>,
     rng: Rng,
@@ -171,6 +182,7 @@ impl Default for Effects {
             sparks: Vec::with_capacity(512),
             flashes: Vec::with_capacity(256),
             lines: Vec::with_capacity(128),
+            rings: Vec::new(),
             trail: Vec::with_capacity(1024),
             blasts: Vec::new(),
             rng: Rng::new(0xF0F0_1234),
@@ -184,9 +196,25 @@ impl Effects {
         self.sparks.clear();
         self.flashes.clear();
         self.lines.clear();
+        self.rings.clear();
         self.trail.clear();
         self.blasts.clear();
         self.burns.clear();
+    }
+
+    /// A ring that grows from the point out to `radius` and fades (a warning ping, GDR-0126).
+    pub fn ping(&mut self, pos: Vec2, radius: f32, color: Color) {
+        if self.rings.len() < 32 {
+            self.rings.push(Ring { pos, radius, age: 0.0, life: 1.1, color });
+        }
+    }
+
+    /// An energy shot glanced off refractive crystal (GDR-0126): a glint where it struck and the turned-away shot in
+    /// the Lattice's colour.
+    pub fn refracted(&mut self, point: Vec2, to: Vec2, color: Color) {
+        self.flash(point, Color::srgb(0.95, 0.99, 1.0), 0.8, 0.1);
+        self.flash(point, color, 1.4, 0.18);
+        self.lines.push(Line { from: point, to, age: 0.0, life: 0.12, color });
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -448,6 +476,7 @@ fn draw_ships_fx(
     };
 
     // Beams: attached to the gun at the render pose, with the tick's length.
+    let lattice = style.system_color("lattice");
     for b in world.sim.beams() {
         let Some(ship) = world.sim.ship(b.ship) else { continue };
         let Some(piece) = ship.piece(b.piece) else { continue };
@@ -459,11 +488,44 @@ fn draw_ships_fx(
         let to = from + dir * len;
         let c = weapon_color(b.ship);
         let pulse = 0.85 + 0.15 * (t * 40.0).sin();
+        // Relayed by prisms (GDR-0126): the beam runs from the gun through each prism, which glints, to the exit.
+        let path = relay_points(ship, piece, gun, pos, angle);
+        for w in path.windows(2) {
+            queue.line(&regions.halo, w[0], w[1], 0.6, c.with_alpha(0.7 * pulse), Z_WEAPONS);
+            queue.line(&regions.white, w[0], w[1], 0.07, core_tint(c).with_alpha(0.95), Z_WEAPONS + 0.1);
+        }
+        for &p in path.iter().skip(1).take(gun.relay.len as usize) {
+            queue.dot(&regions.soft, p, 1.3 * pulse, lattice.with_alpha(0.75), Z_WEAPONS + 0.2);
+            queue.dot(&regions.hard, p, 0.22, Color::WHITE.with_alpha(0.9), Z_WEAPONS + 0.3);
+        }
         queue.line(&regions.halo, from, to, 0.9, c.with_alpha(0.9 * pulse), Z_WEAPONS);
         queue.line(&regions.white, from, to, 0.08, core_tint(c).with_alpha(0.95), Z_WEAPONS + 0.1);
         if b.hit {
             queue.dot(&regions.soft, to, 1.1 * pulse, c.with_alpha(0.8), Z_WEAPONS + 0.2);
             queue.dot(&regions.hard, to, 0.18, Color::WHITE, Z_WEAPONS + 0.3);
+        }
+    }
+
+    // Refractive crystal (GDR-0126): now and then a glint runs over a crystal hull part, about twice a second a piece.
+    for ship in world.sim.ships() {
+        let d = ship.design();
+        for piece in ship.pieces() {
+            if fx.rng.range(0.0, 1.0) > dt * 2.0 {
+                continue;
+            }
+            let crystal = piece.parts.iter().filter(|&&p| d.parts[p as usize].refract > 0.0 && ship.parts()[p as usize].alive);
+            let n = crystal.clone().count();
+            if n == 0 {
+                continue;
+            }
+            let pick = (fx.rng.range(0.0, n as f32) as usize).min(n - 1);
+            let Some(&p) = crystal.clone().nth(pick) else { continue };
+            let (pos, angle) = piece.render_pose(alpha);
+            let [cx, cy] = d.parts[p as usize].shape.center();
+            let jitter = Vec2::new(fx.rng.range(-0.35, 0.35), fx.rng.range(-0.35, 0.35));
+            let at = world_of(pos, angle, Vec2::new(cx - piece.origin[0], piece.origin[1] - cy) + jitter);
+            fx.flash(at, Color::srgb(0.9, 0.97, 1.0), 0.55, 0.4);
+            fx.flash(at, lattice, 1.1, 0.5);
         }
     }
 
@@ -587,6 +649,7 @@ fn draw_effects(
         fx.sparks.clear();
         fx.flashes.clear();
         fx.lines.clear();
+        fx.rings.clear();
         fx.trail.clear();
         fx.blasts.clear();
         fx.burns.clear();
@@ -640,6 +703,39 @@ fn draw_effects(
         queue.line(&regions.halo, l.from, l.to, 0.7, l.color.with_alpha(0.9 * k), Z_WEAPONS);
         queue.line(&regions.white, l.from, l.to, 0.07, core_tint(l.color).with_alpha(k), Z_WEAPONS + 0.1);
     }
+    fx.rings.retain_mut(|r| {
+        r.age += dt;
+        r.age < r.life
+    });
+    for r in &fx.rings {
+        let k = r.age / r.life;
+        let rad = r.radius * (0.15 + 0.85 * (1.0 - (1.0 - k) * (1.0 - k)));
+        let a = (1.0 - k) * 0.8;
+        const N: usize = 48;
+        for i in 0..N {
+            let (a0, a1) = (i as f32 * std::f32::consts::TAU / N as f32, (i + 1) as f32 * std::f32::consts::TAU / N as f32);
+            let p0 = r.pos + Vec2::new(a0.cos(), a0.sin()) * rad;
+            let p1 = r.pos + Vec2::new(a1.cos(), a1.sin()) * rad;
+            queue.line(&regions.halo, p0, p1, 1.2, r.color.with_alpha(0.5 * a), Z_SPARKS);
+            queue.line(&regions.white, p0, p1, 0.12, core_tint(r.color).with_alpha(a), Z_SPARKS + 0.1);
+        }
+    }
+}
+
+/// The world points a relayed gun's beam passes inside its ship (GDR-0126): the gun's own muzzle, each prism's centre,
+/// the exit muzzle; empty for a gun no prism relays.
+pub fn relay_points(ship: &sim::Ship, piece: &sim::Piece, g: &sim::GunMount, pos: sim::Vec2, angle: f32) -> Vec<Vec2> {
+    if g.relay.len == 0 {
+        return Vec::new();
+    }
+    let mut v = Vec::with_capacity(g.relay.len as usize + 2);
+    v.push(world_of(pos, angle, v2(g.relay.from)));
+    for &p in g.relay.prisms() {
+        let [cx, cy] = ship.design().parts[p as usize].shape.center();
+        v.push(world_of(pos, angle, Vec2::new(cx - piece.origin[0], piece.origin[1] - cy)));
+    }
+    v.push(world_of(pos, angle, v2(g.muzzle)));
+    v
 }
 
 /// Writes the queue into the three layer meshes (in place).

@@ -451,7 +451,7 @@ mod tests {
         let content = data::base_content();
         let tree = Tree::new(&content);
         let lanes: Vec<&str> = tree.lanes.iter().map(|l| l.family.as_str()).collect();
-        assert_eq!(lanes, ["hull", "power", "energy", "kinetic", "missiles", "shields", "thermal", "propulsion", "logic", "utility", "grown", "swarm", "walkers"]);
+        assert_eq!(lanes, ["hull", "power", "energy", "kinetic", "missiles", "shields", "thermal", "propulsion", "logic", "utility", "grown", "swarm", "lattice", "walkers"]);
         assert_eq!(tree.columns, 3);
         assert_eq!(tree.cards.len(), content.research.len());
         assert_eq!(at(&tree, "composite_plating"), ("hull".into(), 0, 0));
@@ -466,6 +466,7 @@ mod tests {
         assert_eq!(at(&tree, "grown_heart"), ("grown".into(), 0, 2));
         assert_eq!(at(&tree, "spore_lining"), ("grown".into(), 1, 2));
         assert_eq!(at(&tree, "drone_bay"), ("swarm".into(), 0, 2));
+        assert_eq!(at(&tree, "crystal_ward"), ("lattice".into(), 0, 2));
         assert_eq!(at(&tree, "reactive_plating"), ("hull".into(), 1, 1));
         assert_eq!(at(&tree, "capital_drydock"), ("hull".into(), 0, 2));
         assert_eq!(at(&tree, "automaton_forge"), ("logic".into(), 1, 1));
@@ -478,6 +479,8 @@ mod tests {
                 link("regrowing_tissue", "living_weapons"),
                 link("living_weapons", "grown_heart"),
                 link("living_weapons", "spore_lining"),
+                link("crystal_plating", "prism_relay"),
+                link("prism_relay", "crystal_ward"),
                 link("rocket_pod", "torpedo"),
                 link("point_defence", "flares"),
                 link("jump_calibration_1", "jump_calibration_2"),
@@ -505,7 +508,7 @@ mod tests {
         assert_eq!(at(&tree, "pulse_rate_1"), ("energy".into(), 2, 0));
         assert_eq!(at(&tree, "thruster_speed_3"), ("propulsion".into(), 0, 2));
         let rows = |f: &str| match f {
-            "kinetic" | "swarm" | "walkers" => 1,
+            "kinetic" | "swarm" | "lattice" | "walkers" => 1,
             "energy" | "propulsion" | "logic" => 3,
             _ => 2,
         };

@@ -393,7 +393,10 @@ PostUpdate            ship_view::sync_piece_views (render_pose(alpha) → Transf
 - **Events** (`apply_events`): `ShipSpawned` / `PieceChanged` / `Split` (re)build views, `VesselFormed` with a
   parent moves a split-off piece's view to its new ship, `PieceDestroyed` / `ShipRemoved` despawn them;
   `PartDestroyed`, `Explosion`, `ShotFired`, `Hit`, `Ricochet` become effects; `ShieldHit` starts a ripple in the
-  bubble (and its shatter when it emptied it).
+  bubble (and its shatter when it emptied it). The Lattice (GDR-0126): a beam or pulse relayed by prisms is drawn from
+  the gun through each prism (a glint on each, `fx::relay_points`) to the exit; `Refracted` flashes where the shot
+  glanced and draws the turned-away shot in the Lattice's colour; `SiteWarned` rings a 60 m ping round each of the
+  site's ships; crystal hull parts glint now and then (about twice a second a piece).
 - **Vessels** (`scene.rs`, 12 Oct 2026): the sim owns owners, vessels and the focus (`docs/sim.md` "Vessels").
   The player is `scene::PLAYER` (`Owner(0)`), the raiders `scene::ENEMY` (`Owner(1)`). The sandbox gives every
   vessel its default behavior and sends `ShipCommand::Focus` for the runner; `PilotFocus` mirrors

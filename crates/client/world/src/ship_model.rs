@@ -82,7 +82,8 @@ pub fn design_visual(content: &Content, ship: &Blueprint, style: &Style) -> Resu
             };
             let color = style.system_color(color_key.unwrap_or("weapons"));
             weapon_color = color;
-            GunVisual { clear: true, barrel, muzzle_radius, color }
+            // At rest: its line of fire, or its beam's through the prisms that relay it (GDR-0126).
+            GunVisual { clear: content.beam_path(&ship.parts, &grid, i).clear(), barrel, muzzle_radius, color }
         });
         parts.push(PartVisual {
             index: i as u32,
@@ -158,17 +159,14 @@ pub fn piece_visual(dv: &DesignVisual, ship: &Ship, piece: &Piece) -> ShipVisual
 
 /// A whole blueprint at rest, in the blueprint frame (pivot at the blueprint origin, so local = `(x, −y)`):
 /// every part, with the tiles, icons and glows of flight. What the sim would decide is taken from the grid: a
-/// gun's line of fire ([`ShipGrid::line_of_fire_clear`]), the hull edge around all parts, the content's shield
+/// gun's line of fire (the design's, [`Content::beam_path`]: through the prisms that relay it), the hull edge around all parts, the content's shield
 /// radius, nav lights on the main piece (the one with a logic core). No aura: the drydock is not space.
 pub fn blueprint_visual(dv: &DesignVisual, grid: &ShipGrid) -> ShipVisual {
     let mut parts = Vec::with_capacity(dv.parts.len());
     let mut min = Vec2::splat(f32::MAX);
     let mut max = Vec2::splat(f32::MIN);
-    for (i, p) in dv.parts.iter().enumerate() {
-        let mut p = p.clone();
-        if let Some(g) = p.gun.as_mut() {
-            g.clear = grid.line_of_fire_clear(i);
-        }
+    for p in &dv.parts {
+        let p = p.clone();
         for q in &p.polygon {
             min = min.min(*q);
             max = max.max(*q);
