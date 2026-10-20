@@ -84,3 +84,15 @@ cargo build --release -p sim --example voyage
 target/release/examples/voyage --pack <dir> --voyage t_watch --design halvex_runner \
   --escort <skiff_cannon.ron>,<skiff_cannon.ron> --seeds 1..60
 ```
+
+## Screenshots (20 Oct 2026, web build of commit d6fe96b, headless SwiftShader)
+
+- `lattice-relayed-beam-2026-10-20.png`: a needle in the fight viewer (an arena fight of two rim skiffs against a
+  guard and a needle, seed 1, paused at 0:05, zoomed and following the needle): its focus emitter's beam runs through
+  both prisms (a glint on each) and out of the notch in its nose.
+- `lattice-refraction-2026-10-20.png`: the same fight at 0:03, following the guard: the skiffs' laser pulses strike
+  its crystal side and glance off in the Lattice's ice blue, fanning back past the skiffs.
+- `lattice-drydock-arcs-2026-10-20.png`: the drydock (`?dev=1`, 1280×720, 195 %) with a test design imported (two
+  pulse lasers in refractive crystal, one relayed straight through three prisms, one turned up by its first prism)
+  and ARCS on: the relay paths in the Lattice's colour with a diamond on each prism, the lines of fire from the last
+  prisms. At 2560×1440 the design draws the same (crisp prism icons, crystal tiles); ARCS there was not caught.
