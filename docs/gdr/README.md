@@ -133,6 +133,7 @@ overview and links to both series. Format and status rules: `CLAUDE.md`, section
 | [0122](0122-the-balance-check.md) | The balance check: seven fixed fights (1696 seeded runs, about 6 s) against a stored baseline, flagged past ±0.15 win rate, ±0.12 score or ±15 % time | Accepted (provisional, lead) | 2026-10-20 |
 | [0123](0123-behavior-words-for-salvage.md) | Behavior words for salvage: a `salvage` action (fly slowly over the nearest wreck that fits the hold), `wreck_in_range` and `cargo_full`, a `salvager` escort template; the voyage runner's escorts keep `escort` | Accepted (provisional, lead) | 2026-10-20 |
 | [0124](0124-ratings-and-part-reports.md) | Ratings and part reports: a round robin rated by Bradley–Terry on the Elo scale; per part its pick rate among the top half, win rate and score when used; DOMINANT, UNDERUSED, NEVER PICKED by placeholder thresholds | Accepted (provisional, lead) | 2026-10-20 |
+| [0125](0125-disruption-ion-static-blinds-minds.md) | Disruption: the ion cannon's pulses carry static past armour (not shields) into a vessel's cores; at 2 per core its mind is blinded 3 s (no target, no enemies seen), then immune 4 s | Accepted (provisional, lead) | 2026-10-20 |
 <!-- index:end -->
 
 ## How to add, supersede and deprecate
@@ -151,7 +152,7 @@ Not decided yet, so no record. Write one when Niklas decides.
 - **Engine plume** numbers and the v1 defaults ([GDR-0049](0049-engine-plume-v1.md): damage and heat scale with output, blocked plumes keep thrust, enemy bubbles absorb plumes) (`docs/sim.md` design question 16). No push and the faint reach are decided ([GDR-0055](0055-slower-crisper-turning.md)).
 - **Other research sources** besides salvage and scans ([GDR-0025](0025-research-from-salvage.md)).
 - **Tree size per family** that stays fun instead of tedious ([GDR-0024](0024-tech-trees-no-mk-levels.md)).
-- **Overdrive** details ([GDR-0004](0004-grid-ship-building-no-wiring.md)); **disruption** and repair drones are not built yet ([GDR-0018](0018-weapon-families.md); missiles and flares since 19 Oct 2026, [GDR-0115](0115-missiles-and-point-defence.md); drones since 19 Oct 2026, [GDR-0117](0117-drones-and-the-swarm.md)).
+- **Overdrive** details ([GDR-0004](0004-grid-ship-building-no-wiring.md)); the **EMP** and repair drones are not built yet ([GDR-0018](0018-weapon-families.md); missiles and flares since 19 Oct 2026, [GDR-0115](0115-missiles-and-point-defence.md); drones since 19 Oct 2026, [GDR-0117](0117-drones-and-the-swarm.md); disruption's ion cannon since 20 Oct 2026, [GDR-0125](0125-disruption-ion-static-blinds-minds.md), its numbers and whether enemies carry it open).
 - **New game+** (what carries over) and the **working title**.
 
 Parked (maybe later): location-based play (light version: your real location seeds your home region), co-op

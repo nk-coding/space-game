@@ -81,6 +81,7 @@ the runner, the scenarios); at the root what everything uses.
 | `combat::plume` | engine exhaust plumes (crate-private): lanes, the own-hull path, ray casts against other bodies, shields, `SimEvent::PlumeHit` |
 | `ship::living` | living parts (GDR-0099, GDR-0102): `Ship::heal`, the hearts' timers (`Ship::regrowth`), the regrowth candidates and `Ship::regrow` (the reverse of `remove_part`), `Sim::living` (the pass, asking the physics for overlaps) |
 | `ship::breakage` | `Ship::apply_damage`, `Ship::remove_part` (the destroy path without the destruction), `Ship::resolve_breakage`, `DamageTarget`, `DamageOutcome` |
+| `combat::disruption` | disruption (GDR-0125): `Jam` (static, blinded, immune), `Sim::disrupt`, `Sim::jam_step`, `Ship::blinded`, `tuning` |
 | `combat::chain` | chain reactions (GDR-0084, GDR-0085): the world's blast queue, the reach scan of other pieces and ships, armour cover (`cover`, `in_reach`, shared with the design's compiled lists), shields (`BLAST_FAMILY`) |
 | `combat::salvage` | `Item`, `Cargo`, `Stack`, `Loose`, `LooseId`, `Salvaged`; the collect pass, fragments, `Sim::spawn_wreck`, `Sim::loose` (see [Salvage](#salvage)) |
 | `voyage` | `VoyagePlan` (`roll`), `SitePlan`, `Spawn`, `Voyage`, `Site`, `SiteState`, `VoyageTuning`, `PLAN_STREAM`; `Sim::start_voyage`, `voyage`, `can_recall`, `fleet_disarmed`, `awake_enemy`, `armed_enemy` and the director's pass (see [Voyages](#voyages)) |
@@ -1690,6 +1691,9 @@ example runs found": evolved designs shutter their cannons behind reactors that 
 | `Projectile(rate, speed, penetration, recoil)` | same cooldown; a `Projectile` entity at the muzzle with the muzzle's velocity (`v + ω × r`) plus `speed`, living `range / speed` s |
 | `Missile(rate, salvo, speed, accel, turn, life, hp, radius)` | same cooldown; a salvo of homing missiles ([below](#missiles-and-point-defence-gdr-0115)) |
 
+A beam or pulse gun with `disrupt` (static per second) also carries static into the vessel it hits
+([Disruption](#disruption-gdr-0125)).
+
 - **Lasers** (beam, pulse) burn the first block only.
 - **Simultaneous fire** (ADR-0037, 14 Oct 2026): the guns of all ships fire at once within a tick. Every beam
   and pulse is traced (ray cast, shield bubbles along the path) against the state at the start of the fire
@@ -1737,6 +1741,7 @@ Events (in `Sim::events()`, for visuals and sound):
 | `PlumeHit { by, engine, ship, piece, part, point, damage, heat, absorbed }` | an engine plume burned a part, one per lane and part per tick ([Engine plumes](#engine-plumes)) |
 | `Explosion { ship, piece, part, at, radius, damage }` | a destroyed part exploded (a chain reaction, after its `PartDestroyed`; [Damage and breakage](#damage-and-breakage)) |
 | `Warhead { by, id, at, radius, damage }` | a missile's warhead went off where it struck (its `Hit`s right before, its `ProjectileGone` after; [Missiles](#missiles-and-point-defence-gdr-0115)) |
+| `Blinded { by, ship, seconds }` | static from `by`'s disruption guns blinded `ship`'s mind ([Disruption](#disruption-gdr-0125)) |
 
 ### Missiles and point defence (GDR-0115)
 
@@ -1800,6 +1805,34 @@ deals `damage / rate / salvo` (`GunMount::shot_damage`).
   for a ship again.
 
 Numbers (`content/base/parts/missiles.ron`, placeholders): see GDR-0115 and `docs/results/missiles-2026-10-19.md`.
+
+### Disruption (GDR-0125)
+
+`combat/disruption.rs`, 20 Oct 2026 (GDR-0018's ion and EMP family; lead defaults). A gun's `weapon.disrupt` (static per
+second, beam and pulse guns only) compiles to `PartSpec::disrupt` / `GunMount::disrupt`, static per point of damage.
+
+- **Static**: a gun hit (`GunHit::disrupt`, applied with the hits after every gun has fired) adds `damage × disrupt`
+  of what passed the shields to the struck ship (`Sim::disrupt`), if the part is on its controlling piece and the ship
+  is a vessel; `CORE_HIT` (2) times as much on a logic or automaton core or a sensor part. Armour takes the hit's
+  damage as usual but does not stop the static. Bubbles take disruption shots by their `absorb[Disruption]` (the base
+  content's emitters 1.0), so a fully absorbed pulse carries nothing.
+- **Blinding**: at `Ship::static_limit` (`STATIC_PER_CORE` 2 per alive core on the controlling piece, at least one
+  core's worth) the ship is blinded for `BLIND` (3 s, `SimEvent::Blinded`), its static cleared, then immune for
+  `IMMUNE` (4 s): no static builds up while blinded or immune. Static bleeds at `BLEED` (0.4/s). `Sim::jam_step`, at
+  the start of the weapons step, runs the timers; a ship that is no vessel any more is cleared; a split-off vessel
+  starts clear. State: `Ship::jam()` (`Jam { charge, blind, immune }`), `Ship::blinded()`.
+- **What a blinded mind sees**: `Ship::sensor_range` is 0; `select` picks no target (every selector, `locked` too); the
+  conditions `enemies_near` (0), `under_attack` (false) and `missiles_incoming` (0) see nothing, target conditions fail
+  with `NoTarget`, Rhai's `me.enemies` is 0; so fire at will holds (no aim point) and the first rule that needs no target
+  decides. Pilot assists of a blinded flown ship see no lock (`assist::think`); the pilot's own stick, lock and trigger
+  are untouched.
+- **Hash**: a ship's `Jam` is hashed only while it is not clear, so worlds without disruption keep their hashes. The
+  flight and assists scenarios spawn an ion ship (`fixtures::ion_blueprint`, two ion cannons) by the first raider under
+  the ship-mind's default behavior; their stats count `blinded`.
+- Cost: one branch per ship per tick (`Jam::is_clear`), a few operations per disruption hit; a branch per selection and
+  condition in a think.
+
+Numbers (`content/base/parts/disruption.ron`, `combat::disruption::tuning`, placeholders): see GDR-0125.
 
 ### Aiming and leading
 
@@ -3157,7 +3190,7 @@ Galaxy track E3, 16 Oct 2026 ([GDR-0093](gdr/0093-galaxy-exploration-decisions-1
 
 - **Sensors** (content `sensor: (range)`, on logic and automaton cores, 800 m): `Ship::sensor_range()` is the
   longest range of the working sensor parts (alive, not overheated, not idle) on the controlling piece while it is
-  active, at least `ship::sensor_tuning::ALWAYS_SEEN` (150 m). A think (behaviors and pilot assists) prepares it once;
+  active, at least `ship::sensor_tuning::ALWAYS_SEEN` (150 m); 0 while static blinds it ([Disruption](#disruption-gdr-0125)). A think (behaviors and pilot assists) prepares it once;
   `select` skips enemies farther away (the `locked` selector, the leader's lock, is not limited). Cost: a pass over
   the sensor parts per think.
 - **Scans** (content `scanner: (range, charge, cooldown, wake)`, power drawn only while charging:
@@ -3246,7 +3279,8 @@ Open:
    range (45 m); tune in the browser with the weapon range and damage sliders.
 5. **Missiles, disruption, drones** are not built yet (`absorb` already lists missiles: bubbles stop them).
    Missiles and flares built 19 Oct 2026 ([Missiles and point defence](#missiles-and-point-defence-gdr-0115), GDR-0115),
-   drones the same day ([Drones](#drones-gdr-0117), GDR-0117); disruption and repair drones are not built yet.
+   drones the same day ([Drones](#drones-gdr-0117), GDR-0117); disruption on 20 Oct 2026 (the ion cannon,
+   [Disruption](#disruption-gdr-0125), GDR-0125); the EMP and repair drones are not built yet.
 
 Rated speed (GDR-0041, 12 Oct 2026):
 

@@ -6,6 +6,7 @@
   2026-10-19: missiles are built (lead, [GDR-0115](0115-missiles-and-point-defence.md)): the rocket pod and the torpedo, homing, shot down by the point-defence turret; flares are not built yet
   2026-10-19: flares are built (lead, [GDR-0115](0115-missiles-and-point-defence.md) status line): the flare launcher, three releases of decoys a fight that pull enemy missiles off
   2026-10-19: drones are built (lead, [GDR-0117](0117-drones-and-the-swarm.md)): a hangar part launches drones (small vessels with a nerve node for a core) while its ship has a target; they fight what the carrier aims at on a leash, take no mind capacity and die with their hangar; the Swarm's brood hangar and the player's drone bay. Repair drones are not built yet
+  2026-10-20: disruption is built (lead, [GDR-0125](0125-disruption-ion-static-blinds-minds.md)): the ion cannon's pulses carry static past armour (not past shields) into the struck vessel's cores; a full charge (2 per core) blinds its mind for 3 s (no target, no enemies seen, fire at will holds), then 4 s immune. The EMP is not built yet
 - Date: concept phase (families; exact day not recorded, settled by 2026-10-11); 2026-10-11 (capacitor, facing)
 - Decided by: Niklas
 - Related: [GDR-0004](0004-grid-ship-building-no-wiring.md), [GDR-0016](0016-combat-pace-and-aiming.md), [GDR-0019](0019-damage-model.md), [GDR-0020](0020-damage-v1-defaults.md), [GDR-0021](0021-shields.md), `docs/content-model.md` "Adjacency bonuses"
@@ -38,4 +39,4 @@ question of where they shoot.
 ## Consequences
 
 - Content gives the capacitor bonus to parts tagged `laser`.
-- Missiles, disruption and drones are not built yet (shield bubbles already stop missiles, GDR-0021). Note of 19 Oct 2026: missiles, flares and drones are built since ([GDR-0115](0115-missiles-and-point-defence.md), [GDR-0117](0117-drones-and-the-swarm.md)); disruption and repair drones are not.
+- Missiles, disruption and drones are not built yet (shield bubbles already stop missiles, GDR-0021). Note of 19 Oct 2026: missiles, flares and drones are built since ([GDR-0115](0115-missiles-and-point-defence.md), [GDR-0117](0117-drones-and-the-swarm.md)); disruption and repair drones are not. Note of 20 Oct 2026: disruption is built since ([GDR-0125](0125-disruption-ion-static-blinds-minds.md), the ion cannon); the EMP and repair drones are not.

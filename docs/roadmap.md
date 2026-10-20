@@ -740,6 +740,19 @@ Next session:
   carried by no content ship. No balance change.
 - Open: a report over evolved designs from one palette (the thresholds revisited then); TrueSkill for team fights.
 
+### 20 Oct 2026: disruption (the ion cannon)
+
+- ([GDR-0125](gdr/0125-disruption-ion-static-blinds-minds.md), lead defaults; GDR-0018's fourth family) the ion
+  cannon (1×1, 0.3 damage/s in 1.5 pulses/s, 50 m, 1.2 static/s): its hits carry static past armour, not past shields,
+  into the struck vessel's cores (twice on a core); at 2 static per alive core the vessel is blinded for 3 s (sensors 0,
+  no target, `enemies_near` 0, fire at will holds), then immune for 4 s (`combat/disruption.rs`, `SimEvent::Blinded`).
+  The logic research's `ion_cannon` node, the plain workshop's recipe, the wiki's Disruption section; violet pulses
+  and a crackle of static on a blinded vessel. The starter with two ion cannons for its nose slopes is a mild
+  sidegrade in the arena (2 gunners 27 / 27 / 6 of 60, lasers 21 / 33 / 6); the balance check unchanged; the flight and
+  assists scenarios fly an ion ship (native = wasm). Screenshots: `results/ion-cannon-drydock-2026-10-20.png`,
+  `results/ion-blinded-raider-2026-10-20.png`.
+- Open: the EMP, enemies with disruption, a `blinded` condition, all numbers.
+
 ## Phase 4: measurement
 
 Status 12 Oct 2026 (new VM): `results/spike-summary.md` written. Determinism native vs wasm IDENTICAL on the new VM

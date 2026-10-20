@@ -48,6 +48,9 @@ There is no `end`, no `or` and no nesting. For "this **or** that", write two rul
 - **Salvage** (added 20 Oct 2026, GDR-0123): `wreck_in_range(250m)` holds while salvage with anything left to take (a
   wreck, a broken-off piece, a loose fragment, drifting slower than 6 m/s) lies within the distance, whatever the
   hold; `cargo_full` while the hold has no free unit (a ship without a hold is always full).
+- **Blinded** (disruption, GDR-0125): while static from an enemy's ion guns blinds a ship (3 s), its target line picks
+  nothing, `enemies_near` reads 0, `under_attack` is false, `missiles_incoming` 0, and conditions about the target fail
+  with no target; the first rule that needs no target decides (often `always -> hold` or an `escort`).
 - `not` in front turns a condition around: `not target_in_range(100%)`.
 - A condition about the target (`target_in_range`, `target_hull`, `target_on_me`, `cycle`, `target_time`, ...) is
   **false while there is no target**, with or without `not`. An action that needs a target does not run without
