@@ -100,7 +100,11 @@ pub fn live_panel(watch: &BehaviorWatch, labels: &[String]) -> Option<LivePanel>
             let status = watch.rules.get(i).copied().filter(|_| watch.running).unwrap_or(RuleStatus::Skipped);
             let state = match status {
                 RuleStatus::Active => RowState::Active,
-                RuleStatus::Failed { .. } | RuleStatus::NoTarget | RuleStatus::Scan { .. } | RuleStatus::Flare { .. } => {
+                RuleStatus::Failed { .. }
+                | RuleStatus::NoTarget
+                | RuleStatus::Scan { .. }
+                | RuleStatus::Flare { .. }
+                | RuleStatus::Blink { .. } => {
                     RowState::Failed
                 }
                 RuleStatus::Skipped => RowState::Waiting,

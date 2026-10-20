@@ -229,13 +229,13 @@ impl StateHash for Projectile {
 
 /// A straight walk through the blueprint grid cells of a piece (a DDA), for damage that carries on through the
 /// hull: penetrating shots and ram crush. Blueprint frame (y down).
-struct GridWalk {
+pub(crate) struct GridWalk {
     x: f32,
     y: f32,
     dx: f32,
     dy: f32,
-    cx: i32,
-    cy: i32,
+    pub(crate) cx: i32,
+    pub(crate) cy: i32,
     sx: i32,
     sy: i32,
     tx: f32,
@@ -247,7 +247,7 @@ struct GridWalk {
 impl GridWalk {
     /// From the piece-frame point `local` of a piece whose frame origin is the blueprint point `origin`, along
     /// the piece-frame direction `dir` (unit); the walk starts just inside the cell under the point.
-    fn new(origin: [f32; 2], local: Vec2, dir: Vec2) -> GridWalk {
+    pub(crate) fn new(origin: [f32; 2], local: Vec2, dir: Vec2) -> GridWalk {
         let (dx, dy) = (dir.x, -dir.y);
         let (mut x, mut y) = (origin[0] + local.x, origin[1] - local.y);
         x += dx * 1e-3;
@@ -287,7 +287,7 @@ impl GridWalk {
     }
 
     /// Steps into the next cell: the cell, and the distance along the walk where it is entered.
-    fn step(&mut self) -> ((i32, i32), f32) {
+    pub(crate) fn step(&mut self) -> ((i32, i32), f32) {
         let travelled;
         if self.tx < self.ty {
             self.cx += self.sx;
@@ -302,7 +302,7 @@ impl GridWalk {
     }
 
     /// The piece-frame point at distance `t` along the walk.
-    fn local_at(&self, origin: [f32; 2], t: f32) -> Vec2 {
+    pub(crate) fn local_at(&self, origin: [f32; 2], t: f32) -> Vec2 {
         Vec2::new(
             self.x + self.dx * t - origin[0],
             origin[1] - (self.y + self.dy * t),
@@ -371,6 +371,8 @@ pub(crate) struct GunHit {
     absorbed: f32,
     /// Static per point of `damage` (disruption, GDR-0125; 0: none).
     disrupt: f32,
+    /// A lance's fall-off through the struck piece (GDR-0127; `None`: the first block only).
+    lance: Option<data::LanceSpec>,
 }
 
 /// Where a shot went, and the asteroid rock it stopped on, if any (mining, GDR-0114).
@@ -718,9 +720,9 @@ impl Sim {
         })
     }
 
-    /// A hit-scan shot (beam tick or pulse): shields along the way, then the first block only. The block's
-    /// damage (and the static it carries, `disrupt` per point: disruption, GDR-0125) waits in `gun_hits` until
-    /// every gun has fired ([`Sim::fire_guns`]).
+    /// A hit-scan shot (beam tick or pulse): shields along the way, then the first block only (a lance: every part
+    /// on its line through that piece, GDR-0127). The block's damage (and the static it carries, `disrupt` per point:
+    /// disruption, GDR-0125) waits in `gun_hits` until every gun has fired ([`Sim::fire_guns`]).
     #[allow(clippy::too_many_arguments)]
     fn hitscan(
         &mut self,
@@ -732,6 +734,7 @@ impl Sim {
         range: f32,
         damage: f32,
         disrupt: f32,
+        lance: Option<data::LanceSpec>,
     ) -> ShotEnd {
         let hit = self.shot_cast(owner, team, from, dir, range);
         let len = hit.map_or(range, |h| h.distance());
@@ -760,6 +763,7 @@ impl Sim {
                     damage: left,
                     absorbed: damage - left,
                     disrupt,
+                    lance,
                 });
                 ShotEnd {
                     to: h.hit.point,
@@ -1033,6 +1037,10 @@ impl Sim {
                     None => continue,
                 }
             }
+            if let Some(spec) = g.lance {
+                self.lance(g.by, g.family, &h, g.dir, g.damage, g.absorbed, spec);
+                continue;
+            }
             self.damage_part(
                 g.by,
                 g.family,
@@ -1073,7 +1081,7 @@ impl Sim {
         let com_local = piece.mass.com;
         match g.delivery {
             Delivery::Beam => {
-                let end = self.hitscan(owner, team, g.family, from, dir, g.range, g.output * DT, g.disrupt);
+                let end = self.hitscan(owner, team, g.family, from, dir, g.range, g.output * DT, g.disrupt, None);
                 // A mining beam cuts the rock it rests on (GDR-0114), as hard as the gun works.
                 if let Some(rock) = end.rock.filter(|_| g.cut > 0.0) {
                     self.mine(k, rock, g.cut * work * DT, end.to, dir);
@@ -1106,7 +1114,7 @@ impl Sim {
                                     let off = at - from;
                                     let aim = off * (1.0 / off.length().max(1e-6));
                                     let shot = g.shot_damage;
-                                    self.hitscan(owner, team, g.family, from, aim, g.range, shot, 0.0).to
+                                    self.hitscan(owner, team, g.family, from, aim, g.range, shot, 0.0, None).to
                                 }
                                 None => {
                                     self.ships[k].gun_cooldown[slot] = 0.0;
@@ -1141,6 +1149,7 @@ impl Sim {
                                 g.range,
                                 g.shot_damage,
                                 g.disrupt,
+                                g.lance,
                             );
                             self.events.push(SimEvent::ShotFired {
                                 ship: owner,

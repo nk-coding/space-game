@@ -168,6 +168,7 @@ pub const BUILTIN_NODES: &[NodeSig] = {
         node("can_stop_straight", Condition, None, &[]),
         node("wreck_in_range", Condition, None, DIST),
         node("cargo_full", Condition, None, &[]),
+        node("blink_ready", Condition, None, &[]),
         pilot("lock_held", Condition, None, &[]),
         pilot(
             "idle",
@@ -195,6 +196,7 @@ pub const BUILTIN_NODES: &[NodeSig] = {
         node("mine", Action, None, &[]),
         node("salvage", Action, None, &[]),
         node("flare", Action, None, &[]),
+        node("blink", Action, None, &[ParamSig::Choice(&["behind", "away"])]),
         pilot(
             "auto_lock",
             Action,

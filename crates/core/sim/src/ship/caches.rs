@@ -355,6 +355,7 @@ impl Ship {
                     }),
                     cut: spec.cut,
                     disrupt: spec.disrupt,
+                    lance: spec.lance,
                 });
             }
         }

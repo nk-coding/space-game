@@ -118,6 +118,9 @@ pub enum ShipCommand {
     /// Release flares (`combat/flare.rs`; in flight the FLARE key): the first ready launcher on the controlling
     /// piece throws out its decoys. Ignored while none is charged and cool.
     Flare,
+    /// Blink along a world direction (`flight/blink.rs`, GDR-0127; in flight the BLINK key): the drives charge, then
+    /// jump the controlling piece. Ignored while no blink can start (`Ship::can_blink`).
+    Blink(Vec2),
 }
 
 /// Everything from outside that affects one tick. Applied in list order.
@@ -439,6 +442,7 @@ impl Sim {
             ShipCommand::Pilot(p) => p.is_finite(),
             ShipCommand::Maneuver { maneuver, .. } => maneuver.is_finite(),
             ShipCommand::Goal { goal, .. } => goal.is_finite(),
+            ShipCommand::Blink(d) => d.x.is_finite() && d.y.is_finite(),
             _ => true,
         };
         if !finite {
@@ -487,6 +491,7 @@ impl Sim {
                 s.start_scan();
             }
             ShipCommand::Flare => s.ask_flare(),
+            ShipCommand::Blink(dir) => s.ask_blink(crate::flight::blink::BlinkAim::Dir(dir)),
             ShipCommand::Focus | ShipCommand::Wake => {}
         }
     }
@@ -807,6 +812,8 @@ impl Sim {
         self.weapons_step();
         self.resolve_breakage();
         self.collect();
+        // Blink drives charge and jump (GDR-0127), so the physics step starts from the new poses.
+        self.blinks_step();
 
         // Physics: ghosts expire, this tick's wrenches replace the last ones (world force at the centre of
         // mass; the speed governor cuts what would pass the top speed, salvage pieces settle,

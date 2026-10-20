@@ -55,6 +55,12 @@ pub const BUILTIN_STATS: &[&str] = &[
     "scan_charge",
     "scan_cooldown",
     "scan_wake",
+    "blink_range",
+    "blink_charge",
+    "blink_cooldown",
+    "blink_mass",
+    "lance_keep",
+    "lance_armor",
     "flare_charges",
     "flare_cooldown",
     "flare_decoys",
@@ -318,6 +324,10 @@ impl Content {
             if w.disrupt > 0.0 {
                 v.push(("disrupt", w.disrupt));
             }
+            if let Some(l) = &w.lance {
+                v.push(("lance_keep", l.keep * 100.0));
+                v.push(("lance_armor", l.armor * 100.0));
+            }
         }
         if let Some(e) = &part.engine {
             v.push(("thrust", e.thrust));
@@ -356,6 +366,12 @@ impl Content {
             v.push(("scan_charge", x.charge));
             v.push(("scan_cooldown", x.cooldown));
             v.push(("scan_wake", x.wake));
+        }
+        if let Some(x) = &part.blink {
+            v.push(("blink_range", x.range));
+            v.push(("blink_charge", x.charge));
+            v.push(("blink_cooldown", x.cooldown));
+            v.push(("blink_mass", x.mass));
         }
         if let Some(x) = &part.countermeasure {
             v.push(("flare_charges", x.charges as f32));

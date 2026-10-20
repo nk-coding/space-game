@@ -19,6 +19,7 @@ impl Ship {
             scratch,
             dormant,
             scan,
+            blink,
             ..
         } = self;
         let d = &**design;
@@ -71,7 +72,7 @@ impl Ship {
                 active,
                 |slot| controls.gun_fires(slot),
                 controls.shields,
-                |part| scan.charging() == Some(part),
+                |part| scan.charging() == Some(part) || crate::flight::blink::blink_charging(blink, d, part),
             );
             // Shield bubbles recharge while their emitter works.
             for &e in &piece.shields {
@@ -304,7 +305,7 @@ pub(crate) fn consumer_activity(
         match kind {
             ConsumerKind::Engine => mover.clamp(0.0, 1.0),
             ConsumerKind::Weapon => fires as u8 as f32,
-            ConsumerKind::Scanner => charging as u8 as f32,
+            ConsumerKind::Scanner | ConsumerKind::Blink => charging as u8 as f32,
             ConsumerKind::Shield => shields as u8 as f32,
             ConsumerKind::Logic | ConsumerKind::Other => 1.0,
         }

@@ -133,7 +133,8 @@ pub struct PowerSpec {
     pub min_level: f32,
     /// The draw comes in short bursts, not in steady use (a scanner draws only while a scan charges): when, in a
     /// few words ("while scanning"). The design report's full use leaves it out, and the drydock shows it beside
-    /// the power figure ("+3 WHILE SCANNING"). Only scanners: the sim draws their power only while they charge.
+    /// the power figure ("+3 WHILE SCANNING"). Only scanners and blink drives (GDR-0127): the sim draws their power
+    /// only while they charge.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub intermittent: Option<String>,
 }
@@ -250,6 +251,20 @@ pub struct WeaponSpec {
     /// itself); enough static blinds its mind for a while. Hit-scan guns only (beam, pulse). 0 (default): none.
     #[serde(default)]
     pub disrupt: f32,
+    /// A lance (GDR-0127, the Phase walkers): the shot goes on through the struck piece along its line, and every
+    /// part on it takes what is left of the shot's strength, which drops with each cell it crosses. Pulse guns
+    /// only.
+    #[serde(default)]
+    pub lance: Option<LanceSpec>,
+}
+
+/// How a lance's strength drops through a hull (GDR-0127): after each cell of a machine part it keeps `keep` of
+/// what it had, after each cell of a hull part (armour) `armor`; so thick armour still helps a little.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct LanceSpec {
+    pub keep: f32,
+    pub armor: f32,
 }
 
 /// A point-defence gun's targeting (GDR-0115).
@@ -440,6 +455,19 @@ pub struct CountermeasureSpec {
     pub lure: f32,
 }
 
+/// A blink drive (GDR-0127, the Phase walkers): asked (the BLINK key, the `blink` behavior action), it charges for
+/// `charge` seconds at full power (drawing its power only then), then jumps its vessel's controlling piece up to
+/// `range` metres, keeping its speed and heading; then it cools down for `cooldown` seconds. A drive carries
+/// `mass` tonnes: a blink takes as many ready drives as the piece's mass needs, and all of them cool down.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct BlinkSpec {
+    pub range: f32,
+    pub charge: f32,
+    pub cooldown: f32,
+    pub mass: f32,
+}
+
 /// A scanner (GDR-0080, GDR-0093): a scan (SCAN in flight, the `scan` behavior action) charges for `charge` seconds,
 /// drawing the part's power only then, and sweeps: on a voyage every site within `range` shows, every trail place
 /// beyond it gets a bearing, and sleeping sites within `wake` wake up. Then it cools down for `cooldown` seconds.
@@ -595,6 +623,9 @@ pub struct Part {
     /// Releases decoys that lure missiles (flares, GDR-0115).
     #[serde(default)]
     pub countermeasure: Option<CountermeasureSpec>,
+    /// Jumps its vessel a short way (the Phase walkers' blink, GDR-0127).
+    #[serde(default)]
+    pub blink: Option<BlinkSpec>,
     #[serde(default)]
     pub gyro: Option<GyroSpec>,
     #[serde(default)]

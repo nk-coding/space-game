@@ -22,6 +22,7 @@
 //! * The plan runs on the state at the end of the last tick, so every ship sees the same world (order-free).
 
 mod aim;
+pub mod blink;
 mod controllers;
 mod pilot;
 

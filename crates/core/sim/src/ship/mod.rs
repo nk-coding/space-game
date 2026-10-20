@@ -323,6 +323,12 @@ pub struct Ship {
     pub(crate) flare_asked: bool,
     /// Static from disruption guns and its blinding (`combat/disruption.rs`, GDR-0125).
     pub(crate) jam: crate::combat::disruption::Jam,
+    /// Seconds until each blink drive (`ShipDesign::blinks`) is cool (`flight/blink.rs`, GDR-0127).
+    pub(crate) blink_cool: Vec<f32>,
+    /// The blink charging, if any.
+    pub(crate) blink: crate::flight::blink::Blink,
+    /// A blink was asked this tick (started and cleared in the blink step).
+    pub(crate) blink_asked: Option<crate::flight::blink::BlinkAim>,
 }
 
 impl Ship {
@@ -394,10 +400,14 @@ impl Ship {
             flares: Vec::new(),
             flare_asked: false,
             jam: Default::default(),
+            blink_cool: Vec::new(),
+            blink: Default::default(),
+            blink_asked: None,
         };
         ship.hull_base = ship.design.hp_total;
         ship.regrowth = vec![0.0; ship.design.hearts.len()];
         ship.bays = ship.design.hangars.iter().map(|h| drones::Bay::full(h.capacity)).collect();
+        ship.blink_cool = vec![0.0; ship.design.blinks.len()];
         ship.flares = ship.design.flares.iter().map(|f| crate::combat::flare::FlareSlot { charges: f.spec.charges, cooldown: 0.0 }).collect();
         let all: Vec<PartIdx> = (0..n as u32).collect();
         for &p in &all {
@@ -784,6 +794,13 @@ impl StateHash for Ship {
         // Nothing while it holds no static and runs no blinding, likewise (GDR-0125).
         if !self.jam.is_clear() {
             self.jam.hash_state(h);
+        }
+        // Nothing for a ship without blink drives, and its blink only while one charges, likewise (GDR-0127).
+        for &c in &self.blink_cool {
+            h.f32(c);
+        }
+        if self.blink != crate::flight::blink::Blink::Ready {
+            self.blink.hash_state(h);
         }
         self.cargo.hash_state(h);
         h.u32(self.parts.len() as u32);

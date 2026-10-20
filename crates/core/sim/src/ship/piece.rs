@@ -198,6 +198,8 @@ pub struct GunMount {
     pub cut: f32,
     /// Static carried per point of damage that reaches a part (disruption, GDR-0125; 0: none).
     pub disrupt: f32,
+    /// A lance (GDR-0127): its shots strike every part on their line through the struck piece.
+    pub lance: Option<data::LanceSpec>,
 }
 
 /// A point-defence gun's targeting, compiled (`data::DefenceSpec`).

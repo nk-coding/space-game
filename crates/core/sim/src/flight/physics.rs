@@ -581,6 +581,22 @@ impl Physics {
         qp.intersect_shape(pose_of(body), &*shape).next().is_some()
     }
 
+    /// Is the circle of `radius` round `centre` free of every body (ships, salvage, rocks) but those of ship `own`? A
+    /// blink's landing test (`flight/blink.rs`, GDR-0127).
+    pub(crate) fn circle_clear(&self, own: ShipId, centre: Vec2, radius: f32) -> bool {
+        let shape = SharedShape::ball(radius);
+        let w = &self.world;
+        let keep = |_: ColliderHandle, c: &rapier2d::prelude::Collider| key_of(c.user_data).ship != own;
+        let filter = QueryFilter::default().predicate(&keep);
+        let qp = w.broad_phase.as_query_pipeline(
+            w.narrow_phase.query_dispatcher(),
+            &w.bodies,
+            &w.colliders,
+            filter,
+        );
+        qp.intersect_shape(pose_of(&Body::at(centre, 0.0)), &*shape).next().is_none()
+    }
+
     /// First hit along a ray from `origin` in unit direction `dir`, up to `max_distance`, ignoring the bodies
     /// of `exclude`. A ray that starts inside a body hits it at distance 0.
     pub fn raycast(

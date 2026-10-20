@@ -181,6 +181,29 @@ pub enum SimEvent {
         at: Vec2,
         decoys: u32,
     },
+    /// A blink drive jumped `ship`'s controlling piece `piece` (GDR-0127, `flight/blink.rs`): its centre of mass from
+    /// `from` to `to` (the out and in flashes).
+    Blinked {
+        ship: ShipId,
+        piece: PieceId,
+        from: Vec2,
+        to: Vec2,
+    },
+    /// A blink found no clear landing spot towards `to` and fizzled where the ship is (`at`).
+    BlinkBlocked {
+        ship: ShipId,
+        at: Vec2,
+        to: Vec2,
+    },
+    /// A lance (GDR-0127, `combat/lance.rs`) of `by` went through `ship` from `from` to `to` (where it left the piece
+    /// or ran out), striking `parts` parts (each its own `Hit`).
+    Lanced {
+        by: ShipId,
+        ship: ShipId,
+        from: Vec2,
+        to: Vec2,
+        parts: u32,
+    },
     /// Static from `by`'s disruption guns blinded `ship`'s mind for `seconds` (GDR-0125, `combat/disruption.rs`).
     Blinded {
         by: ShipId,

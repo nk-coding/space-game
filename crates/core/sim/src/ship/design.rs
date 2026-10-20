@@ -49,6 +49,8 @@ pub enum ConsumerKind {
     Weapon,
     /// Scanners: while a scan charges on it (`Ship::start_scan`).
     Scanner,
+    /// Blink drives: while a blink charges on it (`flight/blink.rs`, GDR-0127).
+    Blink,
     /// Anything else that draws power: always on.
     Other,
 }
@@ -165,6 +167,8 @@ pub struct PartSpec {
     /// Disruption (GDR-0125, `combat/disruption.rs`): static carried per point of damage that reaches a part
     /// (content `weapon.disrupt / weapon.damage`; 0: none).
     pub disrupt: f32,
+    /// A lance (GDR-0127, `combat/lance.rs`): the shot strikes every part on its line through the struck piece.
+    pub lance: Option<data::LanceSpec>,
     /// Shield bubbles: share of each family's damage absorbed (indexed by [`family_index`]).
     pub absorb: [f32; FAMILIES],
     pub is_engine: bool,
@@ -332,6 +336,14 @@ pub struct FlareMount {
     pub spec: data::CountermeasureSpec,
 }
 
+/// A blink drive's static mount (GDR-0127, `flight/blink.rs`).
+#[derive(Clone, Copy, Debug)]
+pub struct BlinkMount {
+    pub part: PartIdx,
+    /// Its numbers (content `blink`).
+    pub spec: data::BlinkSpec,
+}
+
 /// An engine's static mount.
 #[derive(Clone, Debug)]
 pub struct EngineSpec {
@@ -384,6 +396,8 @@ pub struct ShipDesign {
     pub hangars: Vec<HangarMount>,
     /// Flare launchers, ascending part (`combat/flare.rs`, GDR-0115).
     pub flares: Vec<FlareMount>,
+    /// Blink drives, ascending part (`flight/blink.rs`, GDR-0127).
+    pub blinks: Vec<BlinkMount>,
     /// Parts that heal (`PartSpec::heal` above 0), ascending.
     pub healing: Vec<PartIdx>,
     /// Parts that block each gun's line of fire (cells straight ahead, to the grid edge), per gun slot.
@@ -518,6 +532,8 @@ impl ShipDesign {
                     ConsumerKind::Weapon
                 } else if def.scanner.is_some() {
                     ConsumerKind::Scanner
+                } else if def.blink.is_some() {
+                    ConsumerKind::Blink
                 } else {
                     ConsumerKind::Other
                 }
@@ -556,6 +572,7 @@ impl ShipDesign {
                     .as_ref()
                     .filter(|w| w.disrupt > 0.0 && w.damage > 0.0)
                     .map_or(0.0, |w| w.disrupt / w.damage),
+                lance: def.weapon.as_ref().and_then(|w| w.lance),
                 absorb,
                 is_engine: def.engine.is_some(),
                 is_rcs: def.rcs.is_some(),
@@ -679,6 +696,7 @@ impl ShipDesign {
         let mut gun_blockers = Vec::new();
         let mut hangars = Vec::new();
         let mut flares = Vec::new();
+        let mut blinks = Vec::new();
         let mut plume_lanes = Vec::new();
         let mut plume_path = Vec::new();
         for (i, spec) in parts.iter().enumerate() {
@@ -715,6 +733,9 @@ impl ShipDesign {
             }
             if let Some(c) = defs[i].countermeasure {
                 flares.push(FlareMount { part: i as u32, centre: shape.center(), facing, spec: c });
+            }
+            if let Some(b) = defs[i].blink {
+                blinks.push(BlinkMount { part: i as u32, spec: b });
             }
             if let Some(hs) = &defs[i].hangar {
                 let bp = content
@@ -776,6 +797,7 @@ impl ShipDesign {
             hearts,
             hangars,
             flares,
+            blinks,
             healing,
             gun_blockers: Csr::from_lists(gun_blockers),
             plume_lanes,

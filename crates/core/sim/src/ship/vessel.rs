@@ -221,6 +221,10 @@ impl Ship {
             flare_asked: false,
             // Its own cores, its own mind: a split-off vessel starts without static (GDR-0125).
             jam: Default::default(),
+            // The drives keep their cooldowns (the parts are the same); a charge was the parent's (GDR-0127).
+            blink_cool: self.blink_cool.clone(),
+            blink: Default::default(),
+            blink_asked: None,
         };
         for i in 0..self.parts.len() {
             if !self.parts[i].alive {

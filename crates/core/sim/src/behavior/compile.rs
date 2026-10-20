@@ -73,6 +73,8 @@ pub enum Flag {
     OffLeash,
     /// No free unit in the hold (GDR-0123).
     CargoFull,
+    /// A blink could start now (GDR-0127).
+    BlinkReady,
 }
 
 /// What the pilot's `idle` condition times (pilot assists only).
@@ -156,6 +158,17 @@ pub enum Action {
     Salvage,
     /// Release flares, then step aside for the next rule (`RuleStatus::Flare`, GDR-0115).
     Flare,
+    /// Start a blink relative to the target, then step aside for the next rule (`RuleStatus::Blink`, GDR-0127).
+    Blink(BlinkTo),
+}
+
+/// Where a `blink` rule jumps, relative to the target (GDR-0127).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum BlinkTo {
+    /// Towards a spot behind the target's tail.
+    Behind,
+    /// Straight away from the target.
+    Away,
 }
 
 /// Whether the behavior action `id` needs a target to fly: all but `hold`, `escort` (it flies relative to the
@@ -166,10 +179,11 @@ pub fn action_needs_target(id: &str) -> bool {
     !matches!(id, "hold" | "escort" | "scan" | "flare" | "mine" | "salvage")
 }
 
-/// Whether the behavior action `id` decides the maneuver when its rule holds: all but `scan` and `flare`, which start
-/// a scan or release flares and let the next rule fly the ship (`RuleStatus::Scan`, `RuleStatus::Flare`).
+/// Whether the behavior action `id` decides the maneuver when its rule holds: all but `scan`, `flare` and `blink`,
+/// which start a scan, release flares or start a blink and let the next rule fly the ship (`RuleStatus::Scan`,
+/// `RuleStatus::Flare`, `RuleStatus::Blink`).
 pub fn action_decides(id: &str) -> bool {
-    !matches!(id, "scan" | "flare")
+    !matches!(id, "scan" | "flare" | "blink")
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -382,6 +396,7 @@ fn conditions(rule: &data::behavior::Rule, line: LineRef, vocab: &Vocab, conds: 
                 "under_attack" => Test::Flag(Flag::UnderAttack),
                 "off_leash" => Test::Flag(Flag::OffLeash),
                 "cargo_full" => Test::Flag(Flag::CargoFull),
+                "blink_ready" => Test::Flag(Flag::BlinkReady),
                 "wreck_in_range" => Test::WreckInRange(dist(args[0])),
                 "can_stop_straight" => Test::Flag(Flag::CanStopStraight),
                 "lock_held" => Test::Flag(Flag::LockHeld),
@@ -436,6 +451,10 @@ pub(crate) fn compile(program: &Program, vocab: &Vocab) -> Result<Code, Vec<Line
             "escort" => Action::Escort(dist(args[0])),
             "scan" => Action::Scan,
             "flare" => Action::Flare,
+            "blink" => Action::Blink(match choice_id(node, 0, args[0]) {
+                "away" => BlinkTo::Away,
+                _ => BlinkTo::Behind,
+            }),
             "mine" => Action::Mine,
             "salvage" => Action::Salvage,
             _ => return Err(fail(line, &r.action, "no implementation in the sim")),

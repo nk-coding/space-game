@@ -10,7 +10,7 @@ use std::sync::Arc;
 use data::{Delivery, Quantity};
 use rhai::Scope;
 
-use super::compile::{Action, AimAt, Cond, Flag, OrbitDir, SelectorKind, Sensor, Test};
+use super::compile::{Action, AimAt, BlinkTo, Cond, Flag, OrbitDir, SelectorKind, Sensor, Test};
 use super::script::{ScriptFault, ShipView};
 use super::{Behavior, BehaviorId, BehaviorLibrary, tuning};
 use crate::DT;
@@ -60,6 +60,8 @@ pub enum RuleStatus {
     Scan { started: bool },
     /// A `flare` rule held and stepped aside for the next rule: `released` flares, or no launcher was ready.
     Flare { released: bool },
+    /// A `blink` rule held and stepped aside for the next rule: `started` a blink, or none could start (GDR-0127).
+    Blink { started: bool },
     /// Beyond the ship's working rule slots: inactive.
     NoSlot,
 }
@@ -190,6 +192,8 @@ impl BehaviorState {
             RuleStatus::Scan { started: false } => "the scanner is not ready".into(),
             RuleStatus::Flare { released: true } => "released flares".into(),
             RuleStatus::Flare { released: false } => "no flare launcher is ready".into(),
+            RuleStatus::Blink { started: true } => "started a blink".into(),
+            RuleStatus::Blink { started: false } => "no blink drive is ready".into(),
             RuleStatus::Failed { cond, why } => {
                 let c = &rule.when[cond as usize];
                 let measure = self
@@ -273,6 +277,8 @@ pub(crate) struct Out {
     scan: bool,
     /// A `flare` rule released flares.
     flare: bool,
+    /// A `blink` rule started a blink (GDR-0127).
+    blink: Option<crate::flight::blink::BlinkAim>,
     /// The rock a deciding `mine` rule cuts (GDR-0114).
     mine: Option<(u32, Vec2)>,
 }
@@ -291,6 +297,7 @@ impl Default for Out {
             script_error: None,
             scan: false,
             flare: false,
+            blink: None,
             mine: None,
         }
     }
@@ -425,6 +432,9 @@ pub(crate) fn think_all(
         }
         if std::mem::take(&mut out.flare) {
             ships[k].ask_flare();
+        }
+        if let Some(aim) = out.blink.take() {
+            ships[k].ask_blink(aim);
         }
     }
 }
@@ -823,6 +833,18 @@ impl Ctx<'_> {
                     out.flare |= released;
                     RuleStatus::Flare { released }
                 }
+                None if matches!(rule.action, Action::Blink(_)) && focus_id.is_none() => RuleStatus::NoTarget,
+                None if let (Action::Blink(to), Some(t)) = (rule.action, focus_id) => {
+                    let started = out.blink.is_none() && me.can_blink();
+                    if started {
+                        use crate::flight::blink::BlinkAim;
+                        out.blink = Some(match to {
+                            BlinkTo::Behind => BlinkAim::Behind(t),
+                            BlinkTo::Away => BlinkAim::Away(t),
+                        });
+                    }
+                    RuleStatus::Blink { started }
+                }
                 None if rule.action == Action::Mine => match self.rock_to_mine(rocks) {
                     Some(m) => {
                         out.mine = Some(m);
@@ -984,7 +1006,13 @@ impl Ctx<'_> {
             },
             Action::Flee => Maneuver::Flee { from: target },
             Action::Ram => Maneuver::Ram { target },
-            Action::Hold | Action::Escort(_) | Action::Scan | Action::Flare | Action::Mine | Action::Salvage => {
+            Action::Hold
+            | Action::Escort(_)
+            | Action::Scan
+            | Action::Flare
+            | Action::Blink(_)
+            | Action::Mine
+            | Action::Salvage => {
                 Maneuver::Brake
             }
         }
@@ -1119,6 +1147,7 @@ impl Ctx<'_> {
             Test::Flag(Flag::UnderAttack) => Ok((self.under_attack(), None)),
             Test::Flag(Flag::OffLeash) => Ok((self.off_leash(), None)),
             Test::Flag(Flag::CargoFull) => Ok((self.me.cargo().used() >= self.me.cargo_capacity(), None)),
+            Test::Flag(Flag::BlinkReady) => Ok((self.me.can_blink(), None)),
             Test::WreckInRange(d) => match self.salvage_near(u32::MAX) {
                 Some((dist, _)) => Ok((dist <= d.metres(self.reach), Some(dist))),
                 None => Ok((false, None)),

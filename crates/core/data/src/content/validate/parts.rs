@@ -123,8 +123,8 @@ impl<'a> Validator<'a> {
                 if words.trim().is_empty() {
                     self.err(p, "power.intermittent", "say when it draws, in a few words (\"while scanning\")");
                 }
-                if p.scanner.is_none() || x.draw <= 0.0 {
-                    self.err(p, "power.intermittent", "only a scanner's draw comes in bursts (while a scan charges)");
+                if (p.scanner.is_none() && p.blink.is_none()) || x.draw <= 0.0 {
+                    self.err(p, "power.intermittent", "only a scanner's or a blink drive's draw comes in bursts (while it charges)");
                 }
             }
         }
@@ -151,6 +151,19 @@ impl<'a> Validator<'a> {
                     crate::content::model::Delivery::Beam | crate::content::model::Delivery::Pulse { .. }
                 ) {
                     self.err(p, "weapon.disrupt", "only hit-scan guns (Beam, Pulse) carry static");
+                }
+            }
+            if let Some(l) = &x.lance {
+                self.number(p, "weapon.lance.keep", l.keep, 0.0, true);
+                self.number(p, "weapon.lance.armor", l.armor, 0.0, true);
+                if l.keep > 1.0 || l.armor > 1.0 {
+                    self.err(p, "weapon.lance", "a lance only loses strength through a hull: `keep` and `armor` at most 1");
+                }
+                if !matches!(x.delivery, crate::content::model::Delivery::Pulse { .. }) {
+                    self.err(p, "weapon.lance", "only pulse guns strike as lances");
+                }
+                if x.disrupt > 0.0 || x.cut > 0.0 || x.defence.is_some() {
+                    self.err(p, "weapon.lance", "a lance carries no static, cuts no ore and is no point defence");
                 }
             }
             match x.delivery {
@@ -310,6 +323,15 @@ impl<'a> Validator<'a> {
             self.number(p, "scanner.cooldown", x.cooldown, 0.0, false);
             if !p.draws_power() {
                 self.err(p, "scanner", "a scanner draws power while it charges (`power.draw`)");
+            }
+        }
+        if let Some(x) = &p.blink {
+            self.reach(p, "blink.range", x.range);
+            self.number(p, "blink.charge", x.charge, 0.0, true);
+            self.number(p, "blink.cooldown", x.cooldown, 0.0, false);
+            self.number(p, "blink.mass", x.mass, 0.0, true);
+            if !p.draws_power() {
+                self.err(p, "blink", "a blink drive draws power while it charges (`power.draw`)");
             }
         }
         if let Some(x) = &p.countermeasure {
