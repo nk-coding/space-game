@@ -1,6 +1,6 @@
 // The Phase walkers' tactics (GDR-0027: "blink strikes with armour-piercing lances"; GDR-0127, Niklas 20 Oct 2026: wary
 // hit-and-run: calm until provoked, then they blink in, strike with lances, blink out, and come back when the drive is
-// ready again; they avoid long fights). Every rule list fits the phase core's four slots. A blink drive cools 7 s, so a
+// ready again; they avoid long fights). Every rule list fits the phase core's four slots. A blink drive cools 4 s, so a
 // walker fights about that long after it blinked in, then leaves, and waits about as long before the next strike.
 // PLACEHOLDER (lead defaults, 20 Oct 2026; docs/results/walkers-balance-2026-10-20.md).
 [

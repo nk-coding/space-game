@@ -1,0 +1,13 @@
+// The Phase walkers (GDR-0127) against the Halvex Runner and two rim skiffs, 200 m apart: a striker and two skirmishers
+// blink in behind them, run their lances through the hulls and blink out again once their drives have cooled. One of
+// the fights in the determinism check (`scripts/determinism-check.sh --fight walker_strike`): blinks, fizzles and
+// lances native against wasm.
+(
+    seed: 1,
+    sides: [
+        (entries: [(design: Ship("halvex_runner")), (design: Ship("rim_skiff"), count: 2)]),
+        (entries: [(design: Ship("walker_striker")), (design: Ship("walker_skirmisher"), count: 2)]),
+    ],
+    start_distance: 200.0,
+    time_limit: 90.0,
+)

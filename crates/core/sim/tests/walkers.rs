@@ -50,8 +50,8 @@ fn a_blink_charges_then_jumps_the_full_reach_and_cools_down() {
     assert!(w.ship(s).unwrap().can_blink());
     let start = com(&w, s);
     w.command(s, ShipCommand::Blink(Vec2::new(1.0, 0.0)));
-    // It charges for 0.8 s (24 ticks at full power), shimmering, and has not moved yet.
-    for _ in 0..20 {
+    // It charges for 0.6 s (18 ticks at full power), shimmering, and has not moved yet.
+    for _ in 0..15 {
         tick(&mut w);
     }
     let ship = w.ship(s).unwrap();
@@ -67,10 +67,10 @@ fn a_blink_charges_then_jumps_the_full_reach_and_cools_down() {
     // Speed and heading kept (it was standing still, facing +y).
     let p = w.ship(s).unwrap().pieces()[0].body;
     assert!(p.linvel.length() < 0.1 && p.angle.abs() < 0.01);
-    // It cools down 7 s.
+    // It cools down 4 s.
     let ship = w.ship(s).unwrap();
-    assert!(!ship.can_blink() && ship.blink_cooldown() > 6.5);
-    for _ in 0..(7 * 30) {
+    assert!(!ship.can_blink() && ship.blink_cooldown() > 3.5);
+    for _ in 0..(4 * 30) {
         tick(&mut w);
     }
     assert!(w.ship(s).unwrap().can_blink());
@@ -115,7 +115,7 @@ fn a_blocked_landing_spot_shortens_the_jump_and_a_full_line_fizzles() {
     assert!((com(&w, s) - start).length() < 1.0);
     // The drive cools down half its cooldown.
     let cool = w.ship(s).unwrap().blink_cooldown();
-    assert!(cool > 2.5 && cool <= 3.5, "{cool}");
+    assert!(cool > 1.0 && cool <= 2.0, "{cool}");
 }
 
 #[test]
@@ -141,7 +141,7 @@ fn a_ship_heavier_than_its_drives_carry_cannot_blink() {
     w.command(two, ShipCommand::Blink(Vec2::new(-1.0, 0.0)));
     assert_eq!(blinks(&mut w, two, 40, |_| {}).len(), 1);
     let ship = w.ship(two).unwrap();
-    assert!(!ship.can_blink() && ship.blink_cooldown() > 5.0);
+    assert!(!ship.can_blink() && ship.blink_cooldown() > 3.0);
 }
 
 #[test]
@@ -205,9 +205,9 @@ fn the_walker_rules_blink_in_behind_the_target_then_out_again() {
     let target = com(&w, t);
     let (_, _, to) = jumps[0];
     assert!((to - target).length() < 40.0, "landed {to:?}, target {target:?}");
-    // Out: about 150 m straight away from the target, at least 7 s later.
+    // Out: about 150 m straight away from the target, once the drive has cooled (4 s).
     let (t1, from, to) = jumps[1];
-    assert!(t1 - jumps[0].0 >= 7 * 30);
+    assert!(t1 - jumps[0].0 >= 4 * 30);
     assert!((to - target).length() > (from - target).length() + 100.0);
 }
 
@@ -228,8 +228,8 @@ fn lance_hits(column: &[P<'static>]) -> (Vec<(String, f32)>, u32, bool) {
     let mut hits = Vec::new();
     let mut lanced = 0;
     let mut behind_hit = false;
-    // Guns start staggered over one firing period (1.25 s).
-    for _ in 0..60 {
+    // Guns start staggered over one firing period (2 s).
+    for _ in 0..90 {
         w.step(&inputs(s, controls(0, 0.0, true, true)));
         for e in w.events() {
             match e {
@@ -261,9 +261,9 @@ fn a_lance_strikes_every_part_on_its_line_weaker_after_each_cell() {
     assert_eq!(lanced, 4, "{hits:?}");
     let names: Vec<&str> = hits.iter().map(|h| h.0.as_str()).collect();
     assert_eq!(names, ["armor_block", "armor_block", "fission_reactor", "logic_core"]);
-    // Shot damage 1 / 0.8 = 1.25; after each armour cell half of it, after the reactor 80 %.
+    // Shot damage 1.6 / 0.5 = 3.2; after each armour cell half of it, after the reactor 80 %.
     let d: Vec<f32> = hits.iter().map(|h| h.1).collect();
-    let want = [1.25, 0.625, 0.3125, 0.25];
+    let want = [3.2, 1.6, 0.8, 0.64];
     for (a, b) in d.iter().zip(want) {
         assert!((a - b).abs() < 1e-4, "{d:?}");
     }

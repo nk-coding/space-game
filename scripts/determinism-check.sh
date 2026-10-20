@@ -15,7 +15,7 @@
 # recall check), grown (the Grown's mechanics: hearts re-growing parts, tissue, ram prows, thorn guns, a hot star, a wary
 # grove).
 # `--fight NAME` runs arena's `fight_hashes` example instead: the fight spec crates/core/arena/fights/NAME.ron
-# (runner_vs_raiders, skiff_mirror, hive_flood, lattice_lances; or the rules probes crates/core/arena/probes/close_quarters|warden.ron, whose
+# (runner_vs_raiders, skiff_mirror, hive_flood, lattice_lances, walker_strike; or the rules probes crates/core/arena/probes/close_quarters|warden.ron, whose
 # fingerprint seeds are 1 and 2) with the seed replaced, until the fight ends or --ticks have run (default 2700:
 # the 90 s time limit). A fight code (`--fight SGF1:…`) runs its own spec and seed to its end and says whether it
 # ends as recorded (`# record=as recorded`); its files are named after a short hash of the code.
