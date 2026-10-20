@@ -229,6 +229,10 @@ impl<'a> Validator<'a> {
             self.err(t, "sources", "a trail needs at least one signal source");
         }
         self.ids(t, "sources", &t.sources, Kind::SignalSource);
+        self.ids(t, "ends_in", &t.ends_in, Kind::ClusterType);
+        if t.reward == Reward::Gate && !t.ends_in.is_empty() {
+            self.err(t, "ends_in", "a gate's trail ends at its gate");
+        }
         if t.hint.trim().is_empty() {
             self.err(t, "hint", "hint must not be empty");
         }

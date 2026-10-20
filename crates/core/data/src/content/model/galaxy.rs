@@ -252,6 +252,10 @@ pub struct Trail {
     pub sources: Vec<String>,
     /// What its signals say they lead to, the map's first line: "Something old" (GDR-0093: "SIGNAL · SOMETHING OLD").
     pub hint: String,
+    /// The cluster types (ids) its end may lie in (GDR-0127: a faction's boss in a cluster of its own); empty: any
+    /// cluster of the band. With none of them free in the band, the trail is left out of that galaxy.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub ends_in: Vec<String>,
     /// What following it to its end gives besides what lies there: a cache's research data and materials, kept like
     /// every find of a voyage, lost or not.
     #[serde(default)]

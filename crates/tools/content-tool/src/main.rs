@@ -1075,13 +1075,13 @@ mod tests {
         // sentinel, the memory wreck, the gunners' pair and den and the outpost, lying as a wreck in some; in the
         // outer reach only among the stragglers (the six and the outer reach's nine without it: Grown sites, the
         // scorched wrecks, the outpost garrison and the bastion's; the Keeper's and the Spire's; the middle band's
-        // six Swarm sites, GDR-0117).
+        // six Swarm sites, GDR-0117; the inner band's Lattice sites, GDR-0126, and four Phase walker sites, GDR-0127).
         assert_eq!(
             find("ships", "automaton_raider")["in_encounters"]
                 .as_array()
                 .unwrap()
                 .len(),
-            c.encounters.len() - 23
+            c.encounters.len() - 23 - c.encounters.iter().filter(|e| e.source.file.contains("lattice") || e.source.file.contains("walkers")).count()
         );
         assert_eq!(
             find("ships", "automaton_gunner")["in_encounters"],

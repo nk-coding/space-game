@@ -39,7 +39,13 @@ pub(crate) fn trails(c: &Content, g: &Galaxy, bands: &[&Band], s: &Skeleton) -> 
             let end = match fixed {
                 Some(k) => k,
                 None => {
-                    let free: Vec<u32> = open.iter().copied().filter(|k| !ends.contains(k)).collect();
+                    // Only clusters of the types the trail ends in, if it names any (GDR-0127); none of them in the
+                    // band: no such trail in this galaxy.
+                    let fits = |k: &u32| t.ends_in.is_empty() || t.ends_in.contains(&s.clusters[*k as usize].kind);
+                    let free: Vec<u32> = open.iter().copied().filter(|k| !ends.contains(k) && fits(k)).collect();
+                    if free.is_empty() && !t.ends_in.is_empty() {
+                        continue;
+                    }
                     if free.is_empty() {
                         return Err(GenError(format!("band `{}` has no cluster left for the end of a `{}` trail", band.id, t.id)));
                     }

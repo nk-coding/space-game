@@ -1,0 +1,30 @@
+// The inner band's Phase walker clusters (GDR-0026, GDR-0027; Niklas, 20 Oct 2026: each cluster of the inner band
+// belongs to one faction, the Lattice (`inner.ron`, GDR-0126) or the Phase walkers, mixed across the band cluster by
+// cluster, the walkers the rarer). PLACEHOLDER NUMBERS (lead defaults, 20 Oct 2026; counts tuned with the headless
+// voyage runner, docs/results/walkers-balance-2026-10-20.md).
+[
+    // Rifts where their packs wait out of step with the world (GDR-0127).
+    (
+        id: "phase_rift",
+        name: "Phase rift",
+        summary: "A rift the Phase walkers keep: skirmisher packs waiting unseen, a strike group, and their dead.",
+        radius: (2200, 3000),
+        spacing: (700, 1500),
+        words: ["Rift", "Shimmer"],
+        sites: [
+            (encounter: "walker_pack", count: (1, 2)),
+            (encounter: "walker_strike", count: (0, 1)),
+            (encounter: "walker_dead", count: (0, 1)),
+        ],
+        scenery: (
+            rocks: [
+                (rock: "iron_rock", layout: Field(radius: 180), count: (1, 2), rocks: (10, 16)),
+                (rock: "ice_rock", layout: Scatter, count: (1, 1), rocks: (12, 20)),
+            ],
+            dust: 0.9,
+            debris: 0.7,
+            derelicts: (1, 2),
+            landmarks: [(landmark: "silent_beacon", chance: 0.3)],
+        ),
+    ),
+]

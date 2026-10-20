@@ -1,0 +1,52 @@
+// What waits in the inner band's walker clusters (GDR-0027: the Phase walkers, wary; GDR-0127): skirmisher packs,
+// strikes led by a striker, their own dead, and the phase colossi, their bosses, at the end of trails of their own.
+// The walkers are wary like the Grown: a site of theirs wakes only when provoked (shot at, rammed, scanned close by,
+// its wrecks stripped), never on sight. PLACEHOLDER NUMBERS (lead defaults, 20 Oct 2026; counts tuned with the
+// headless voyage runner, docs/results/walkers-balance-2026-10-20.md).
+[
+    (
+        id: "walker_pack",
+        name: "Walker pack",
+        summary: "Two or three walker skirmishers waiting out of step with the world, until something provokes them.",
+        description: "Shoot one and they all blink in behind you, run their lances through your hulls and blink out again. Each comes back once its drive has cooled.",
+        tags: ["walkers"],
+        ships: [(ship: "walker_skirmisher", count: (2, 3))],
+        wake_radius: 250,
+    ),
+    (
+        id: "walker_strike",
+        name: "Walker strike",
+        summary: "A walker striker and its skirmishers: a strike group at rest.",
+        description: "The [[ship:walker_striker]] stays in the fight a little longer than its skirmishers; its two drives jump it together, so one shot off grounds it.",
+        tags: ["walkers"],
+        ships: [
+            (ship: "walker_striker", count: (1, 1)),
+            (ship: "walker_skirmisher", count: (1, 2)),
+        ],
+        wake_radius: 300,
+    ),
+    (
+        id: "walker_dead",
+        name: "Walker dead",
+        summary: "Walker wrecks drifting in the rift, their drives still shimmering faintly.",
+        tags: ["walkers", "wrecks"],
+        wrecks: [
+            (ship: "walker_skirmisher", count: (1, 2), damage: 0.3),
+            (ship: "walker_striker", count: (0, 1), damage: 0.4),
+        ],
+        wake_radius: 200,
+    ),
+    (
+        id: "colossus_site",
+        name: "Phase colossus",
+        summary: "One of the walkers' giant phase ships, resting deep in the inner band with two skirmishers.",
+        description: "The [[ship:walker_colossus]] blinks whole while all four of its drives live; shoot its bridges through and every section blinks in on its own. Take the drives first. Beaten, it is the richest walker salvage there is.",
+        lore: "The rift round it is quiet the way a held breath is quiet.",
+        tags: ["boss", "walkers"],
+        ships: [
+            (ship: "walker_colossus", count: (1, 1)),
+            (ship: "walker_skirmisher", count: (2, 2)),
+        ],
+        wake_radius: 400,
+    ),
+]
