@@ -46,3 +46,6 @@ did not count as being over a `UiBlock` panel, and could not scroll any list (th
 - Mouse-only interactions in screens (drydock painting and panning, the camera's drag, the replay's scrubber,
   `list.rs`'s chip drag, tooltips) still need touch, per screen, through `UiPointer::position` / `finger`.
 - Phone layouts for each screen are follow-up work (`docs/client.md` "Phones" lists them).
+- 20 Oct 2026 (mobile browser check, `docs/results/mobile-check-2026-10-20.md`): `compact_scale`'s floor went from 0.9
+  to 0.75 (*placeholder*): at 0.9 the 844 × 390 layouts lost their right edge on a 667 × 375 phone and their bottom
+  in a phone's browser, whose toolbars take 30 to 60 dp of the height.

@@ -384,8 +384,10 @@ pub enum LayoutClass {
 pub const COMPACT_HEIGHT: f32 = 500.0;
 /// The size the phone layouts are made for (a phone in landscape, dp: the mockups' 844 × 390).
 pub const COMPACT_SIZE: Vec2 = Vec2::new(844.0, 390.0);
-/// [`compact_scale`]'s range (*placeholder*).
-pub const COMPACT_SCALE: (f32, f32) = (0.9, 1.3);
+/// [`compact_scale`]'s range (*placeholder*). Its floor lets the 844 × 390 layouts fit the smaller phones and a
+/// phone's browser, whose toolbars take 30 to 60 dp of the height (667 × 375, an iPhone SE: 0.79; 844 × 340, an
+/// iPhone's Safari in landscape: 0.87); 0.9 until 20 Oct 2026 cut their right and bottom edges off.
+pub const COMPACT_SCALE: (f32, f32) = (0.75, 1.3);
 
 impl LayoutClass {
     /// The class of a window `size` logical px big.
@@ -398,7 +400,7 @@ impl LayoutClass {
     }
 }
 
-/// The UI scale of a phone layout in a window `size` logical px big: min(w / 844, h / 390), 0.9 to 1.3.
+/// The UI scale of a phone layout in a window `size` logical px big: min(w / 844, h / 390), 0.75 to 1.3.
 pub fn compact_scale(size: Vec2) -> f32 {
     (size.x / COMPACT_SIZE.x).min(size.y / COMPACT_SIZE.y).clamp(COMPACT_SCALE.0, COMPACT_SCALE.1)
 }
@@ -573,9 +575,19 @@ mod tests {
 
     /// Phones in landscape (Chrome DevTools' Pixel 7, Pixel 5, the mockups' 844 × 390) are compact and their phone
     /// layout's scale stays near 1; a 1280 × 720 window and larger keep today's layouts (docs/plans/android.md 4.1).
+    /// A small phone (667 × 375) and a phone's browser with its toolbars (844 × 340) scale the layout down until it
+    /// fits; below the floor it no longer does.
     #[test]
     fn phones_are_compact() {
-        for (w, h, k) in [(915.0, 412.0, 1.0564), (851.0, 393.0, 1.0077), (844.0, 390.0, 1.0), (740.0, 360.0, 0.9)] {
+        for (w, h, k) in [
+            (915.0, 412.0, 1.0564),
+            (851.0, 393.0, 1.0077),
+            (844.0, 390.0, 1.0),
+            (740.0, 360.0, 0.8768),
+            (667.0, 375.0, 0.7903),
+            (844.0, 340.0, 0.8718),
+            (568.0, 300.0, 0.75),
+        ] {
             let size = Vec2::new(w, h);
             assert_eq!(LayoutClass::of(size), LayoutClass::Compact, "{size}");
             assert!((compact_scale(size) - k).abs() < 1e-3, "{size}: {}", compact_scale(size));
