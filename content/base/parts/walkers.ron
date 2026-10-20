@@ -36,7 +36,7 @@
         id: "blink_drive",
         name: "Blink drive",
         summary: "Charges for a moment, shimmering, then jumps the ship up to 150 m and cools down for a while.",
-        description: "A blink keeps the ship's speed and heading and passes through anything on the way, but it lands only where nothing is: with rocks or ships at the spot it lands short, or not at all. Each drive carries so many tonnes; a heavier ship needs several, and a blink takes them all. It draws its power only while it charges. Fly it with the BLINK key (along your stick or thrust, else straight ahead) or a behavior's [[behavior_node:blink]] rule. Destroyed, it leaves [[material:phase_residue]].",
+        description: "A blink keeps the ship's speed and heading and passes through anything on the way, but it lands only where nothing is: with rocks or ships at the spot it lands short, or not at all. Each drive carries so many tonnes; a heavier ship needs several, and a blink takes them all. It draws its power only while it charges. Fly it with the BLINK key or, on a touch screen, the BLINK button above FIRE (along your stick or thrust, else straight ahead) or a behavior's [[behavior_node:blink]] rule. Destroyed, it leaves [[material:phase_residue]].",
         lore: "The walkers do not fly between two points. They are at one, and then they have always been at the other.",
         tags: ["walkers", "drive"],
         locked: true, // the walkers' research family unlocks it (`blink_drive`)

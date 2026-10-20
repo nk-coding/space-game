@@ -27,8 +27,8 @@ A [[part:blink_drive]] jumps its ship a short way, keeping its speed, heading an
 - **On the controlling piece.** Only the drives on the piece with the vessel's cores count. A piece that breaks away
   with a core and a drive of its own blinks on its own.
 
-Fly it with [[control:blink]] ([[control:blink.keys]]): the ship jumps along your stick or the thrust keys you hold,
-else straight ahead. A behavior's [[behavior_node:blink|blink]] rule jumps `behind` the target (to a spot
+Fly it with [[control:blink]] ([[control:blink.keys]], or the BLINK button above FIRE on a touch screen): the ship
+jumps along your stick or the thrust keys you hold, else straight ahead. A behavior's [[behavior_node:blink|blink]] rule jumps `behind` the target (to a spot
 [[sim:blink_behind]] past its tail, as far as the drives reach) or `away` from it; pair it with
 [[behavior_node:blink_ready]], so the rule holds only when it can act, as the walkers do:
 

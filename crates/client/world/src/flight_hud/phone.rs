@@ -5,7 +5,7 @@
 //! keeps one line and a fight viewer's long title two. Wide windows keep the 1280 × 720 HUD at the plain UI size.
 //!
 //! On a touch screen (`TouchScreen`) the target panel is a button: a tap locks the next target, as the lock key does
-//! (the nearest enemy first); the ring top left opens the flight menu (`go_home`). The stick, FIRE and FLARE are
+//! (the nearest enemy first); the ring top left opens the flight menu (`go_home`). The stick, FIRE, FLARE and BLINK are
 //! `controls.rs`'s.
 
 use bevy::ui::UiScale;

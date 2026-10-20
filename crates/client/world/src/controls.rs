@@ -18,7 +18,8 @@
 //!   the ABANDON VOYAGE? panel) are theirs, never the world's.
 //! * **Touch** (landscape; docs/plans/android.md 4.2, GDR-0120): a floating stick (where the left thumb lands in the
 //!   left 45 % of the window under the speed block; push distance = speed, a dead zone of 6 % of its radius), FIRE
-//!   bottom right (held: every group), FLARE beside it for a ship with a flare launcher, tap a ship = lock (2 m +
+//!   bottom right (held: every group), FLARE beside it for a ship with a flare launcher, BLINK above it for a ship
+//!   with a blink drive (GDR-0129: along the stick while it is pushed, else ahead), tap a ship = lock (2 m +
 //!   24 dp of slack), tap empty space = unlock, a tap on the target panel = LOCK TARGET (`flight_hud/phone.rs`), two
 //!   fingers = zoom and pan (`camera.rs`). A tap is shorter than 0.3 s and moves less than 10 dp. The touch widgets
 //!   show from the start on a touch screen (`kit::ui_kit::TouchScreen`: Android, a coarse pointer in the browser,
@@ -64,8 +65,9 @@ const STICK_ZONE: f32 = 0.45;
 const FIRE_SIZE: f32 = 76.0;
 const FIRE_HIT: f32 = 96.0;
 const FIRE_EDGE: f32 = 32.0;
-/// An ability's slot beside FIRE (FLARE; dp).
+/// An ability's slot beside FIRE (FLARE left of it, BLINK above it; dp) and its gap to FIRE.
 const SLOT: f32 = 44.0;
+const SLOT_GAP: f32 = 14.0;
 /// A tap: shorter than this (s), and moved less than [`FINGER_SLOP`].
 const TAP_TIME: f32 = 0.3;
 /// How far (dp) a finger moves before it drags (pans) instead of tapping (the kit's and the drydock's 10 dp).
@@ -211,6 +213,8 @@ struct StickKnob;
 struct FireButton;
 #[derive(Component)]
 struct FlareButton;
+#[derive(Component)]
+struct BlinkButton;
 
 pub struct ControlsPlugin;
 
@@ -218,7 +222,7 @@ impl Plugin for ControlsPlugin {
     fn build(&self, app: &mut App) {
         add_input_systems(app);
         app.add_systems(Startup, spawn_touch_ui.after(kit::ui_kit::load_fonts))
-            .add_systems(Update, (touch_ui, flare_tap.after(kit::ui_kit::UiInputSet)).run_if(in_state(AppMode::Flight)));
+            .add_systems(Update, (touch_ui, (flare_tap, blink_tap).after(kit::ui_kit::UiInputSet)).run_if(in_state(AppMode::Flight)));
     }
 }
 
@@ -524,7 +528,8 @@ pub fn pick(world: &SimWorld, player: Option<ShipId>, at: Vec2, slack: f32, alph
     best.map(|b| b.1)
 }
 
-/// The touch widgets: the stick's ring (at rest bottom left, faint), FIRE bottom right, FLARE beside it.
+/// The touch widgets: the stick's ring (at rest bottom left, faint), FIRE bottom right, FLARE beside it, BLINK above
+/// it.
 fn spawn_touch_ui(mut commands: Commands, style: Res<Style>, fonts: Res<HudFonts>) {
     let teal = style.glow_player;
     let coral = style.glow_enemy;
@@ -568,10 +573,19 @@ fn spawn_touch_ui(mut commands: Commands, style: Res<Style>, fonts: Res<HudFonts
     commands
         .spawn((
             FlightUi,
-            Node { position_type: PositionType::Absolute, right: px(FIRE_EDGE + FIRE_SIZE + 14.0), bottom: px(FIRE_EDGE + (FIRE_SIZE - SLOT) / 2.0), ..default() },
+            Node { position_type: PositionType::Absolute, right: px(FIRE_EDGE + FIRE_SIZE + SLOT_GAP), bottom: px(FIRE_EDGE + (FIRE_SIZE - SLOT) / 2.0), ..default() },
         ))
         .with_children(|p| {
             p.spawn((FlareButton, HudButton, HudZone, Visibility::Hidden, ring_node(SLOT))).with_child(label(&fonts, "FLARE", 8.0, ui_color(style.ui.label, 1.0)));
+        });
+    // BLINK (GDR-0129): a ring above FIRE, centred over it (a HUD button: a tap is the BLINK action, `blink_dir`).
+    commands
+        .spawn((
+            FlightUi,
+            Node { position_type: PositionType::Absolute, right: px(FIRE_EDGE + (FIRE_SIZE - SLOT) / 2.0), bottom: px(FIRE_EDGE + FIRE_SIZE + SLOT_GAP), ..default() },
+        ))
+        .with_children(|p| {
+            p.spawn((BlinkButton, HudButton, HudZone, Visibility::Hidden, ring_node(SLOT))).with_child(label(&fonts, "BLINK", 8.0, ui_color(style.ui.label, 1.0)));
         });
 }
 
@@ -594,25 +608,38 @@ fn flare_tap(mut clicks: MessageReader<UiClick>, button: Query<(), With<FlareBut
     }
 }
 
+/// A tap on BLINK: the flown ship's blink drives (the BLINK action; along the stick while the other thumb pushes it).
+fn blink_tap(mut clicks: MessageReader<UiClick>, button: Query<(), With<BlinkButton>>, mut taps: ResMut<ActionTaps>) {
+    if clicks.read().any(|c| button.contains(c.0)) {
+        taps.tap(Action::Blink);
+    }
+}
+
 /// The widgets on a touch screen while a ship is flown: the stick's ring at rest, or under the thumb with its knob
-/// where the thumb is; FIRE lit while held; FLARE for a ship with a flare launcher.
+/// where the thumb is; FIRE lit while held; FLARE for a ship with a flare launcher, BLINK for one with a blink drive.
 #[allow(clippy::type_complexity, clippy::too_many_arguments)]
 fn touch_ui(
     input: Res<PlayerInput>,
     focus: Res<PilotFocus>,
     touches: Res<Touches>,
     (screen, layer, ui_scale, world): (Res<TouchScreen>, Res<SettingsLayer>, Res<UiScale>, Res<SimWorld>),
-    mut base: Query<(&mut Visibility, &mut Node, &mut BorderColor), (With<StickBase>, Without<FireButton>, Without<StickKnob>, Without<FlareButton>)>,
-    mut fire: Query<(&mut Visibility, &mut BackgroundColor), (With<FireButton>, Without<StickBase>, Without<FlareButton>)>,
-    mut flare: Query<&mut Visibility, (With<FlareButton>, Without<StickBase>, Without<FireButton>)>,
+    mut base: Query<(&mut Visibility, &mut Node, &mut BorderColor), (With<StickBase>, Without<FireButton>, Without<StickKnob>, Without<FlareButton>, Without<BlinkButton>)>,
+    mut fire: Query<(&mut Visibility, &mut BackgroundColor), (With<FireButton>, Without<StickBase>, Without<FlareButton>, Without<BlinkButton>)>,
+    mut flare: Query<&mut Visibility, (With<FlareButton>, Without<StickBase>, Without<FireButton>, Without<BlinkButton>)>,
+    mut blink: Query<&mut Visibility, (With<BlinkButton>, Without<StickBase>, Without<FireButton>, Without<FlareButton>)>,
     mut knob: Query<(&mut Node, &mut BorderColor, &mut BackgroundColor), (With<StickKnob>, Without<StickBase>, Without<FireButton>)>,
     style: Res<Style>,
 ) {
     let show = screen.on() && focus.0.is_some() && !layer.open;
     let want = if show { Visibility::Inherited } else { Visibility::Hidden };
-    let flares = focus.0.and_then(|id| world.sim.ship(id)).is_some_and(|s| !s.design().flares.is_empty());
+    let flown = focus.0.and_then(|id| world.sim.ship(id));
+    let flares = flown.is_some_and(|s| !s.design().flares.is_empty());
     for mut v in &mut flare {
         v.set_if_neq(if show && flares { Visibility::Inherited } else { Visibility::Hidden });
+    }
+    let blinks = flown.is_some_and(|s| !s.design().blinks.is_empty());
+    for mut v in &mut blink {
+        v.set_if_neq(if show && blinks { Visibility::Inherited } else { Visibility::Hidden });
     }
     for (mut v, mut bg) in &mut fire {
         v.set_if_neq(want);

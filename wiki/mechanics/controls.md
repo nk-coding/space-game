@@ -103,6 +103,9 @@ The touch controls appear after your first touch.
 - **The stick**, bottom left: "fly that way". The ship turns onto the stick and flies that way; how far you push
   sets the speed. Under a lock the stick strafes instead.
 - **FIRE**, bottom right: fires every weapon group.
+- **FLARE**, left of FIRE, on a vessel with a [[part:flare_launcher]]: releases flares.
+- **BLINK**, above FIRE, on a vessel with a [[part:blink_drive]]: blinks along the stick while your other thumb pushes
+  it, else straight ahead ([blinks](/mechanics/phase-walkers#the-blink-drive)).
 - **Tap** a ship to lock it, one of your vessels to fly it, empty space to unlock.
 - **Two fingers** zoom (and pan a free camera).
 
