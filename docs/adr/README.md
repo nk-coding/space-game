@@ -59,6 +59,7 @@ is the overview and links to both series. Format and status rules: `CLAUDE.md`, 
 | [0048](0048-the-web-build-is-a-player-platform.md) | The web build is a player platform beside native and Android, published on GitHub Pages by a GitHub Actions workflow | Accepted | 2026-10-20 |
 | [0049](0049-web-release-profile-client-for-size-sim-for-speed.md) | The published web build compiles the client for size and the simulation for speed (profile `web-release`) | Accepted (provisional, lead) | 2026-10-20 |
 | [0050](0050-save-export-and-import.md) | Saves are exported and imported as one RON backup file in SETTINGS › SAVES; an import checks everything first and replaces | Accepted (provisional, lead) | 2026-10-20 |
+| [0051](0051-egui-without-default-fonts-reflect-auto-register-kept.md) | egui runs on Barlow alone (no default fonts, −0.74 MiB gzip); Bevy's `reflect_auto_register` stays (no saving on wasm) | Accepted (provisional, lead) | 2026-10-21 |
 <!-- index:end -->
 
 ## How to add, supersede and deprecate

@@ -57,6 +57,10 @@ published, and were written without a run.
   simulation and what it runs on (`sim`, `arena`, `galaxy`, rapier2d, parry2d, nalgebra, simba, glamx, wide, libm,
   rhai) with opt-level 3, so the sim and the lab's workers keep their speed. `scripts/web-build.sh --full` prints raw,
   gzip and brotli sizes.
+  egui has no default fonts (ADR-0051): `bevy_egui` without `default_fonts` saves 1.32 MiB raw, 0.74 MiB gzip;
+  `game::behavior_ui::text_view::install_fonts` gives egui Barlow for every family on every screen (arrows and emoji
+  in the TEXT view show as `?`). Bevy's `reflect_auto_register` stays: leaving it out saved nothing (+6 KB), since
+  wasm-ld runs the inventory constructors from every export, so each derived type's registration stays linked anyway.
 - **The loading screen** (20 Oct 2026): `index.html`'s `#loading` over the canvas, in the game's look (the backdrop,
   the name in wide white capitals, a 2 px teal bar, label grey and white numbers; system fonts, since Barlow is only
   in the wasm; CSS only). `loader.js` is trunk's initializer for the game's wasm (`data-initializer` on the game's
@@ -2240,7 +2244,7 @@ target and auto-fire in the graph and as text; checked at 1280 × 720 and 2560 �
   scrolled parent (`CalculatedClip`). The screen keeps the camera rig's viewport in step with the window, so
   `ui_icons` and the dot grid sit right.
 - **TEXT view** (`text_view.rs`): bevy_ui has no text input, so the editor is an egui multi-line `TextEdit` over
-  the graph area's node, styled to the look: Barlow (added to egui as the `barlow` family, egui's fonts as fallback),
+  the graph area's node, styled to the look: Barlow (egui's only font, `install_fonts`, ADR-0051; no fallback: `→` and emoji show as `?`),
   no frame, the names coloured like the graph (`highlight`), dim line numbers in a gutter, each error in coral
   after its line (wrapped to the room there, or over the line's end on the backdrop's colour) with the column
   underlined, `no rule slot` after rules beyond the slots and `never reached` after rules below an `always` rule that
