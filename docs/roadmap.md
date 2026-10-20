@@ -867,6 +867,15 @@ Next session:
   `web-release` (client opt-level `z`, fat LTO, the sim's crates at 3) for `--full` and Pages: the game's wasm 57.8 to
   33.1 MiB raw, 15.3 to 10.5 MiB gzip, sim speed unchanged. Still open: the loading screen.
 
+### 20 Oct 2026: save export and import (ADR-0050)
+
+- SETTINGS › SAVES (home only): EXPORT writes one RON backup file of everything the game keeps (lab runs WITH or
+  WITHOUT); IMPORT checks a file in full, shows what it holds and replaces, saves a copy of the current saves, then
+  replaces them and restarts the game (the web reloads). `world::backup` (format, gather, check, plan, the import's
+  steps), `Storage` raw access by key and a freeze; the web's file chooser now knows what a file is picked for.
+  Lead defaults for Niklas: the format, lab runs in by default, replace not merge, the place in SETTINGS.
+- Open: a reminder to export (e.g. when the browser didn't grant persistent storage), Android's file picker.
+
 ## Phase 4: measurement
 
 Status 12 Oct 2026 (new VM): `results/spike-summary.md` written. Determinism native vs wasm IDENTICAL on the new VM

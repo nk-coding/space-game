@@ -57,7 +57,7 @@ published, and were written without a run.
   rhai) with opt-level 3, so the sim and the lab's workers keep their speed. `scripts/web-build.sh --full` prints raw,
   gzip and brotli sizes.
 - Not built yet (ADR-0048): checking the `/<repo>/` subpath locally, a loading screen, a browser performance pass,
-  save export and import, a mobile browser check.
+  a mobile browser check. Save export and import: built (ADR-0050, "The web's storage").
 
 ## Licences and third-party notices
 
@@ -362,6 +362,23 @@ modules). Desktop keeps files, unchanged (`docs/drydock.md` "Storage and sharing
   Browsers give `navigator.storage` only to secure addresses (https, localhost): on `http://10.77.9.2:8080` there is
   no estimate and no persistence request, and the storage works all the same.
 - **Looking at it**: the browser's developer tools, Application → IndexedDB → `space-game` → `docs`.
+- **Backups** (ADR-0050, 20 Oct 2026; `world::backup`, SETTINGS › SAVES in `game/src/settings/saves.rs`): a browser
+  may clear its IndexedDB, so EXPORT writes everything this game keeps into one RON file (a download,
+  `space-game-<save>-<yyyy-mm-dd-hhmm>.ron`; desktop `<data dir>/exports/`): `(backup: 1, game, commit, exported,
+  date, save, left_out, documents: { "<key>": r#"<stored text>"#, … })`, each document as stored, in a raw string.
+  It holds every document of a known kind (`BackupKinds`: designs, the drydock's drafts, behaviors, settings, the
+  lab's runs with their parts unless WITHOUT, THE LADDER's ratings) that reads in this build, and only the save the
+  game uses (`saves/career`, or with `?dev=1` `saves/dev`); documents that don't read are left out and named. IMPORT
+  (the web's file chooser; desktop a file dropped onto the window) checks the whole file first (size, backup format,
+  every key and document as the game reads it; a dev-mode save never becomes the career), shows what it holds and
+  what it replaces; REPLACE saves a copy of what is there (`…-before-import-….ron`; no copy, no import), freezes the
+  storage (`Storage::freeze`: the running game's writes are refused), writes the file's documents (one transaction:
+  a failure leaves the stored saves as they were), and only once they committed deletes the documents the file
+  doesn't hold (the namespaces it left out stay); then the page reloads (without `newgame`). The commit in the file
+  comes from `SPACE_GAME_COMMIT` or `GITHUB_SHA` at build time. Checked in the headless browser: an export, then an
+  import into a fresh dev save brought its settings back after the reload; a broken file and a dev save offered to
+  the career are refused with the reason. Screenshots: `docs/results/settings-saves-import.png` (a file checked,
+  1280 × 720), `docs/results/settings-saves-phone.png` (844 × 390, touch). Tests: `cargo test -p world -- backup storage`.
 - **Tests** (native, `world::storage`): writing behind keeps each key's last state (the last write wins, a delete
   after a write deletes, deletes first, two batches out commit in order), lists keep a document's parts apart, a
   failed batch waits and goes out again (not twice while out; deletes still go), a failed write behind reaches the
