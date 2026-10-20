@@ -3,6 +3,10 @@
 - Status: Accepted (provisional, lead), 20 Oct 2026, for Niklas to review: who lives in the core, the Archive and its
   warden, the lore canon and radiation as heat are Niklas's (20 Oct 2026); every layout, rule detail, text and number
   is a lead default.
+  20 Oct 2026 (later, Niklas): the core's lore direction (the warden reads your name off your hull; every name on the
+  list of forty crossed out but the warden's, "keeping", and yours, "expected, or late"; the codex's hint at what you
+  were made to carry) and the end-game reward (the archive key pays for the codex: one more core at once, mind
+  capacity up to 5, and the sentinel core) are confirmed.
 - Date: 2026-10-20
 - Decided by: Niklas (the four points under Decision, 20 Oct 2026); lead session (the rest, defaults for him to review)
 - Related: [GDR-0026](0026-procedural-galaxy-and-bands.md) (the core: the precursor archive, the final gate, the best
