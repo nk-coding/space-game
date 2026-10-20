@@ -174,3 +174,23 @@ fn disruption_fights_are_deterministic() {
     };
     assert_eq!(hashes(), hashes());
 }
+
+#[test]
+fn the_blinded_flag_holds_while_static_blinds_the_mind() {
+    // GDR-0129: `blinded` lets a rule fly something on purpose while the mind is blind.
+    let (mut w, s, t) = duel(None, 0, Some("target nearest\nwhen blinded -> hold\nwhen enemies_near(100m) >= 1 -> face\nalways -> hold"));
+    let (mut clear, mut blind) = (false, false);
+    for _ in 0..240 {
+        step(&mut w, s, t);
+        let ship = w.ship(t).unwrap();
+        let rule = ship.behavior().unwrap().active_rule();
+        // A think runs every 3 ticks: judge only once the state has held for one.
+        if ship.blinded() && ship.jam().blind <= tuning::BLIND - 0.2 {
+            assert_eq!(rule, Some(0));
+            blind = true;
+        } else if !ship.blinded() && rule == Some(1) {
+            clear = true;
+        }
+    }
+    assert!(clear && blind, "it faced the ion ship before, and held while blinded");
+}

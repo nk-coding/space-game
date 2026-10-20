@@ -1095,6 +1095,17 @@ impl Ctx<'_> {
         (ts.pos - self.kin().pos).length_squared() > leash * leash
     }
 
+    /// Metres from this ship's centre of mass to its leader's (`ShipCommand::Leader`, GDR-0065), while the leader
+    /// is a vessel other than this one, as `escort` follows it (GDR-0129); blind or not.
+    fn leader_distance(&self) -> Option<f32> {
+        let me = self.me;
+        let l = me.leader.and_then(|l| find_ship(self.world, l))?;
+        if l.id() == me.id() || !l.is_vessel() {
+            return None;
+        }
+        Some((centre(l)?.pos - self.kin().pos).length())
+    }
+
     fn under_attack(&mut self) -> bool {
         if let Some(v) = self.lazy.under_attack {
             return v;
@@ -1148,6 +1159,12 @@ impl Ctx<'_> {
             Test::Flag(Flag::OffLeash) => Ok((self.off_leash(), None)),
             Test::Flag(Flag::CargoFull) => Ok((self.me.cargo().used() >= self.me.cargo_capacity(), None)),
             Test::Flag(Flag::BlinkReady) => Ok((self.me.can_blink(), None)),
+            Test::Flag(Flag::Blinded) => Ok((self.me.blinded(), None)),
+            Test::LeaderNear(d) => match self.leader_distance() {
+                Some(dist) => Ok((dist <= d.metres(self.reach), Some(dist))),
+                // No leader to fall behind: always near (GDR-0129).
+                None => Ok((true, None)),
+            },
             Test::WreckInRange(d) => match self.salvage_near(u32::MAX) {
                 Some((dist, _)) => Ok((dist <= d.metres(self.reach), Some(dist))),
                 None => Ok((false, None)),
@@ -1242,6 +1259,11 @@ impl Ctx<'_> {
                 kin.vel.length() / kin.top_speed
             }
             Sensor::Idle(c) => self.pilot.ok_or(Why::NoValue)?.idle[c as usize],
+            // A ship without a hold reads full, as `cargo_full` holds for it (GDR-0129).
+            Sensor::Cargo => match self.me.cargo_capacity() {
+                0 => 1.0,
+                cap => self.me.cargo().used() as f32 / cap as f32,
+            },
         })
     }
 

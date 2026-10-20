@@ -169,6 +169,9 @@ pub const BUILTIN_NODES: &[NodeSig] = {
         node("wreck_in_range", Condition, None, DIST),
         node("cargo_full", Condition, None, &[]),
         node("blink_ready", Condition, None, &[]),
+        node("blinded", Condition, None, &[]),
+        node("cargo", Condition, Some(Percent), &[]),
+        node("leader_near", Condition, None, DIST),
         pilot("lock_held", Condition, None, &[]),
         pilot(
             "idle",

@@ -859,3 +859,30 @@ fn the_salvager_strips_the_nearest_wreck_until_its_hold_is_full_the_same_every_r
     assert_eq!(a.3, Some(3), "then the salvage rule steps aside for `escort`");
     assert_eq!(a, b, "deterministic");
 }
+
+#[test]
+fn cargo_reads_the_holds_share_and_leader_near_the_leaders_distance() {
+    // GDR-0129: `cargo` (no hold reads full) and `leader_near` (true without a leader).
+    let c = common::content();
+    let (mut w, me) = salvage_world(Vec2::new(0.0, 400.0));
+    let text = "when cargo >= 50% -> hold\nwhen leader_near(50m) -> hold\nwhen leader_near(150m) -> hold\nalways -> hold";
+    let b = w.behaviors_mut().add_text("probe", text).unwrap();
+    let bare = w.spawn_ship(
+        custom(&c, &[("logic_core", 0, 0, 0, false, None), ("fission_reactor", 1, 0, 0, false, None)]),
+        Owner::PLAYER,
+        Body::at(Vec2::new(-200.0, 0.0), 0.0),
+    );
+    let wing = w.spawn_ship(design(&c, "rim_skiff"), Owner::PLAYER, Body::at(Vec2::new(100.0, 0.0), 0.0));
+    let alone = w.spawn_ship(design(&c, "rim_skiff"), Owner::PLAYER, Body::at(Vec2::new(0.0, -300.0), 0.0));
+    w.command(wing, sim::ShipCommand::Leader(Some(me)));
+    for s in [me, bare, wing, alone] {
+        w.command(s, sim::ShipCommand::Behavior(Some(b)));
+    }
+    w.command(me, sim::ShipCommand::Leader(Some(alone)));
+    w.step(&TickInputs::default());
+    let rule = |s| w.ship(s).unwrap().behavior().unwrap().active_rule();
+    assert_eq!(rule(bare), Some(0), "no hold: reads 100%");
+    assert_eq!(rule(wing), Some(2), "an empty hold, the leader about 100 m off");
+    assert_eq!(rule(alone), Some(1), "no leader: always near");
+    assert_eq!(rule(me), Some(3), "its leader 300 m off");
+}

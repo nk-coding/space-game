@@ -172,6 +172,35 @@
         tags: ["self", "salvage"],
         role: Condition,
     ),
+    // GDR-0129: how full the hold is, how far the leader is, and static.
+    (
+        id: "cargo",
+        name: "Cargo",
+        summary: "How full your hold is, as a share of its units.",
+        description: "A ship without a working [[part:cargo_bay|cargo bay]] has no hold and reads 100%, as [[behavior_node:cargo_full]] holds for it. Stop stripping a little early with `cargo < 80%`.",
+        tags: ["self", "salvage"],
+        role: Condition,
+        value: Percent,
+    ),
+    (
+        id: "leader_near",
+        name: "Leader near",
+        summary: "Your leader is within the given distance.",
+        description: "Measures between the centres of mass, to the leader an [[behavior_node:escort]] keeps near. A ship without a leader (the flagship, a ship on its own) is always near, so `not leader_near` never holds for it. Keep a salvager from falling behind: `when wreck_in_range(250m) and not cargo_full and leader_near(300m) -> salvage`.",
+        tags: ["surroundings", "escort"],
+        role: Condition,
+        params: [
+            (id: "range", name: "Range", summary: "Metres, or a share of your weapon reach.", type: Distance, default: "300m", min: 0, max: 5000),
+        ],
+    ),
+    (
+        id: "blinded",
+        name: "Blinded",
+        summary: "Static has blinded your mind: you see no ship and pick no target until it clears.",
+        description: "Holds while an [[part:ion_cannon|ion cannon's]] static blinds the ship. Rules that need a target fail meanwhile anyway; ask this to fly something on purpose, such as `when blinded -> escort(30m)`.",
+        tags: ["self", "disruption"],
+        role: Condition,
+    ),
     // The pilot's own conditions (`pilot: true`): only in a design's PILOT ASSISTS (GDR-0088).
     (
         id: "lock_held",

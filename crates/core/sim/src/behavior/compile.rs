@@ -75,6 +75,8 @@ pub enum Flag {
     CargoFull,
     /// A blink could start now (GDR-0127).
     BlinkReady,
+    /// Static has blinded the ship's mind (GDR-0125).
+    Blinded,
 }
 
 /// What the pilot's `idle` condition times (pilot assists only).
@@ -101,6 +103,8 @@ pub enum Sensor {
     TargetTime,
     /// Speed as a share of the top speed.
     Speed,
+    /// The hold's used share (GDR-0129; no hold reads full).
+    Cargo,
     /// Seconds since the pilot last used a control (pilot assists only).
     Idle(Control),
 }
@@ -111,6 +115,8 @@ pub enum Test {
     InRange(Dist),
     /// Salvage with something left to take within this distance (GDR-0123).
     WreckInRange(Dist),
+    /// The leader within this distance (GDR-0129; true without a leader).
+    LeaderNear(Dist),
     Value {
         sensor: Sensor,
         op: CmpOp,
@@ -376,6 +382,7 @@ fn conditions(rule: &data::behavior::Rule, line: LineRef, vocab: &Vocab, conds: 
                 }
                 "target_time" => Sensor::TargetTime,
                 "speed" => Sensor::Speed,
+                "cargo" => Sensor::Cargo,
                 "idle" => Sensor::Idle(match choice_id(node, 0, args[0]) {
                     "turn" => Control::Turn,
                     "thrust" => Control::Thrust,
@@ -397,7 +404,9 @@ fn conditions(rule: &data::behavior::Rule, line: LineRef, vocab: &Vocab, conds: 
                 "off_leash" => Test::Flag(Flag::OffLeash),
                 "cargo_full" => Test::Flag(Flag::CargoFull),
                 "blink_ready" => Test::Flag(Flag::BlinkReady),
+                "blinded" => Test::Flag(Flag::Blinded),
                 "wreck_in_range" => Test::WreckInRange(dist(args[0])),
+                "leader_near" => Test::LeaderNear(dist(args[0])),
                 "can_stop_straight" => Test::Flag(Flag::CanStopStraight),
                 "lock_held" => Test::Flag(Flag::LockHeld),
                 "target_in_range" => Test::InRange(dist(args[0])),
@@ -405,7 +414,7 @@ fn conditions(rule: &data::behavior::Rule, line: LineRef, vocab: &Vocab, conds: 
             }
         };
         let measure = match test {
-            Test::InRange(_) | Test::WreckInRange(_) => Some(Quantity::Distance),
+            Test::InRange(_) | Test::WreckInRange(_) | Test::LeaderNear(_) => Some(Quantity::Distance),
             Test::Value { .. } => node.value,
             _ => None,
         };
