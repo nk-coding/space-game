@@ -1,15 +1,15 @@
 // The balance check's baseline (`docs/arena.md` "The balance check"): written by
 // `scripts/arena-check.sh --update` after an intended change. Do not edit by hand.
 (
-    rules: "7c0506ada3ea6305",
+    rules: "af8ba463c1febc9a",
     fights: [
         (
             fight: "runner_vs_raiders",
             seeds: 300,
-            won: (143, 76),
-            score: 0.625,
-            time: 59.6,
-            hashes: "fea5e8aaeb817f85",
+            won: (143, 77),
+            score: 0.624,
+            time: 59.4,
+            hashes: "cfc218f1440098de",
         ),
         (
             fight: "skiff_mirror",
@@ -30,34 +30,34 @@
         (
             fight: "mid_vs_warden",
             seeds: 200,
-            won: (17, 159),
-            score: 0.149,
-            time: 42.1,
-            hashes: "acb08069e2c22c49",
+            won: (21, 159),
+            score: 0.153,
+            time: 40.2,
+            hashes: "1b695df929fed6b1",
         ),
         (
             fight: "runner_vs_rammers",
             seeds: 300,
-            won: (28, 156),
-            score: 0.261,
-            time: 54.1,
-            hashes: "e5c5911c1a998e46",
+            won: (28, 161),
+            score: 0.258,
+            time: 52.4,
+            hashes: "9fdccbfbd0f58847",
         ),
         (
             fight: "runner_gauntlet",
             seeds: 300,
             won: (13, 178),
             score: 0.309,
-            time: 126.7,
-            hashes: "c435298ef7f7bdaa",
+            time: 126.6,
+            hashes: "2648516c750d2d48",
         ),
         (
             fight: "hive_flood",
             seeds: 96,
             won: (12, 2),
             score: 0.345,
-            time: 113.1,
-            hashes: "e68b09b4b491f539",
+            time: 112.7,
+            hashes: "96bf5d404ef3d02f",
         ),
     ],
 )
