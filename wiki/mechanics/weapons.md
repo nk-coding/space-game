@@ -1,6 +1,6 @@
 ---
 title: "Weapons"
-description: "How guns fire - beams, pulses, projectiles and missiles, point defence and flares, range and the line of fire, ricochets, aiming and leading, weapon groups, fire at will, firepower, and what power, heat and capacitors do to guns."
+description: "How guns fire - beams, pulses, projectiles and missiles, point defence and flares, ion guns that blind, range and the line of fire, ricochets, aiming and leading, weapon groups, fire at will, firepower, and what power, heat and capacitors do to guns."
 ---
 
 # Weapons
@@ -17,9 +17,10 @@ Each weapon belongs to a **family**, and shields treat the families differently
 ([shields](/mechanics/damage#shields)). The lasers are energy weapons; the [[part:automaton_cannon]] is a kinetic
 gun (research builds you a slower copy, the [[part:reverse_engineered_cannon]]); the [[part:rocket_pod]] and the
 [[part:torpedo_launcher]] fire missiles ([below](#missiles)); the [[part:point_defence]] is an energy gun that aims
-itself ([point defence](#point-defence)). The [[part:mining_laser]] is a utility gun: its beam barely scratches a
-ship but cuts ore from asteroid rock ([mining](/mechanics/salvage-and-cargo#mining)). The game knows more families (disruption,
-drones) that have no guns yet.
+itself ([point defence](#point-defence)); the [[part:ion_cannon]] is a disruption gun that blinds an enemy's mind
+([disruption](#disruption)). The [[part:mining_laser]] is a utility gun: its beam barely scratches a
+ship but cuts ore from asteroid rock ([mining](/mechanics/salvage-and-cargo#mining)). Drones fly from hangars, not
+guns ([drones](/mechanics/drones)).
 
 <StatTable stats="damage,range,shot_rate,shot_speed,penetration,recoil" />
 
@@ -107,6 +108,22 @@ A launcher has [[part:flare_launcher.flare_charges]] releases per fight and need
 [[control:flare]] ([[control:flare.keys]]) releases them from the vessel you fly; a behavior's
 [[behavior_node:flare|flare]] action and the [[behavior_node:auto_flare|auto-flare]] assist do it on their own, best
 under `when missiles_incoming >= 1`. A launcher works only on the vessel's controlling piece and needs no power.
+
+## Disruption
+
+The [[part:ion_cannon]] fires slow pulses that burn only [[part:ion_cannon.damage]] but carry
+[[part:ion_cannon.disrupt]] of [[stat:disrupt|static]] into the logic cores of the vessel they hit: every pulse that
+reaches its hull adds its share, [[sim:static_core_hit]] as much when it lands on a core itself. Armour does not stop
+the static, but a shield bubble takes the pulse whole, static and all, so knock the shields down first or come from
+where they do not cover.
+
+A vessel holds [[sim:static_per_core]] static for each logic or automaton core of its main piece, so bigger minds take
+longer to fill; it sheds [[sim:static_bleed]]. When it is full, the vessel's mind is **blinded** for
+[[sim:blind_time]]: its sensors see nothing, its behavior drops its target and holds its fire, and its conditions
+see no enemies (`enemies_near` is 0, `under_attack` false, `missiles_incoming` 0; rules that need a target fail).
+It flies on by the rules that need none, so a blinded raider brakes or drifts. Then it shakes the static off and
+takes none for [[sim:blind_immune]], so it cannot be held blind for good. The ship you fly yourself keeps its stick,
+lock and trigger while blinded; only its assists lose sight.
 
 ## The line of fire
 
@@ -253,6 +270,8 @@ own damage and shots per second after its bonuses, boosted numbers in gold. For 
   damage. A cannon whose penetration is above 1 also carries on through the blocks it breaks.
 - **Missiles** need no aim and hit big, slow ships hard, but shields absorb them whole and point defence shoots
   them down. Rockets hit everything around where they strike, so they strip machines off a lightly plated hull.
+- **Ion cannons** do almost no damage, but a few seconds of a blinded enemy are a few seconds it does not shoot
+  back: pair them with guns that kill, against ships with few cores and no shields up.
 - **Point defence** pays off against a missile-heavy enemy: one or two turrets facing the threat turn most rockets
   away.
 - **Facing**: a forward battery suits a ship that turns well; broadside guns suit a behavior that circles its target.

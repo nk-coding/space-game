@@ -219,6 +219,7 @@ to the charge it has left, and the rest flies on.
 | Energy (lasers) | [[part:shield_emitter.absorb.energy]] |
 | Kinetic (cannons, rams) | [[part:shield_emitter.absorb.kinetic]] |
 | Missile (and blasts from other ships) | [[part:shield_emitter.absorb.missile]] |
+| Disruption (ion guns, and their static) | [[part:shield_emitter.absorb.disruption]] |
 
 - **Overlapping bubbles stack**: a shot crosses them one after the other, and each takes its share of what reaches
   it.

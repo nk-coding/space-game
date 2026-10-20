@@ -954,7 +954,7 @@ mod tests {
         assert_eq!(logic["text_keys"]["name"], json!("family.logic.name"));
         assert_eq!(
             logic["salvaged_from_parts"],
-            json!(["automaton_core", "logic_core", "scanner"])
+            json!(["automaton_core", "ion_cannon", "logic_core", "scanner"])
         );
         // The Grown's family takes their parts' salvage (GDR-0103).
         assert_eq!(
@@ -963,7 +963,7 @@ mod tests {
         );
         assert_eq!(
             logic["research"],
-            json!(["tamed_core", "mind_expansion_1", "mind_expansion_2", "simulation_vault", "automaton_forge"])
+            json!(["ion_cannon", "tamed_core", "mind_expansion_1", "mind_expansion_2", "simulation_vault", "automaton_forge"])
         );
         assert_eq!(
             find("families", "hull")["salvaged_from_materials"],
