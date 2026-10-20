@@ -14,7 +14,7 @@
 use data::behavior::{CmpOp, ListKind, MAX_RULES, Value, parse_value};
 use data::behavior::edit::{BehaviorEditor, CondId, NodeRef, ParamView, Refusal, RuleId};
 use data::{Behavior, BehaviorNode, NodeRole, ParamType, Table};
-use kit::ui_kit::Tone;
+use kit::ui_kit::{Tone, TouchScreen};
 
 use super::actions::BehaviorAction;
 use super::edit::Edit;
@@ -195,26 +195,26 @@ fn number_of(v: &Value) -> Option<f32> {
 
 /// The behavior itself (nothing selected): its name, its content summary and a hint.
 /// The inspector with nothing selected on the PILOT ASSISTS tab (GDR-0088): what assists are and how they run.
-pub fn assists_inspection(rules: usize) -> Inspection {
+pub fn assists_inspection(rules: usize, touch: TouchScreen) -> Inspection {
     Inspection {
         kicker: format!("PILOT ASSISTS  ·  {rules} RULE{}", if rules == 1 { "" } else { "S" }),
         name: super::draft::ASSISTS_NAME.into(),
         role: None,
         rhai: false,
         summary: "They help you fly this design. Each assist works one channel (your lock, thrust or a weapon group's trigger) whenever its rule matches and you leave that channel free; the first matching rule per channel decides. What needs a target acts on your lock. Its TOGGLE key switches it on and off in flight, ALL ASSISTS every one.".into(),
-        controls: vec![Control::Hint("CLICK A NODE OR A RULE TO EDIT IT  ·  + ASSIST ADDS ONE  ·  SAVED WITH THE DESIGN".into())],
+        controls: vec![Control::Hint(format!("{} A NODE OR A RULE TO EDIT IT  ·  + ASSIST ADDS ONE  ·  SAVED WITH THE DESIGN", touch.says("CLICK", "TAP")))],
         script: None,
     }
 }
 
-pub fn behavior_inspection(name: &str, source: Option<&Behavior>, rules: usize) -> Inspection {
+pub fn behavior_inspection(name: &str, source: Option<&Behavior>, rules: usize, touch: TouchScreen) -> Inspection {
     Inspection {
         kicker: format!("BEHAVIOR  ·  {rules} RULE{}", if rules == 1 { "" } else { "S" }),
         name: name.to_string(),
         role: None,
         rhai: false,
         summary: source.map_or_else(String::new, |b| b.summary.clone()),
-        controls: vec![Control::Hint("CLICK A NODE OR A RULE TO EDIT IT  ·  + RULE ADDS ONE".into())],
+        controls: vec![Control::Hint(format!("{} A NODE OR A RULE TO EDIT IT  ·  + RULE ADDS ONE", touch.says("CLICK", "TAP")))],
         script: None,
     }
 }
@@ -674,7 +674,10 @@ mod tests {
         assert!(matches!(k.controls.last(), Some(Control::Hint(h)) if h.contains("ITS ACTION")));
         assert!(inspect(&ed, &Selection::Vocabulary("warp".into()), &cx()).is_none());
         // Nothing selected: the behavior.
-        let b = behavior_inspection("Skirmisher", data::base_content().behaviors.get("skirmisher"), 4);
+        let b = behavior_inspection("Skirmisher", data::base_content().behaviors.get("skirmisher"), 4, TouchScreen(false));
+        assert!(matches!(&b.controls[0], Control::Hint(h) if h.starts_with("CLICK A NODE")));
+        let t = behavior_inspection("Skirmisher", None, 4, TouchScreen(true));
+        assert!(matches!(&t.controls[0], Control::Hint(h) if h.starts_with("TAP A NODE")));
         assert_eq!(b.kicker, "BEHAVIOR  ·  4 RULES");
         assert!(b.summary.starts_with("Attack nose first"));
     }

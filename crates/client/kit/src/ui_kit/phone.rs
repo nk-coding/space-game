@@ -19,6 +19,11 @@ impl TouchScreen {
     pub fn on(self) -> bool {
         self.0
     }
+
+    /// The words for this pointer: `mouse`'s (CLICK, POINT AT) or, on a touch screen, `touch`'s (TAP, HOLD).
+    pub fn says<T>(self, mouse: T, touch: T) -> T {
+        if self.0 { touch } else { mouse }
+    }
 }
 
 /// The part of the window no cutout, rounded corner or system bar covers (logical px, Android's dp), which every

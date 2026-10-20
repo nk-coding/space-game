@@ -39,6 +39,7 @@ pub(super) fn sync_shelf(
     mut pills: Query<(&ShelfButton, &mut Pill)>,
     mut boxes: Query<(&mut BorderColor, &mut BackgroundColor, Has<CodeBox>, &Hot), Or<(With<CodeBox>, With<PasteBox>)>>,
     mut texts: Query<(&ShelfText, &mut Text, &mut TextColor)>,
+    touch: Res<kit::ui_kit::TouchScreen>,
 ) {
     let want = if shelf.page.is_some() { Visibility::Inherited } else { Visibility::Hidden };
     if **root != want {
@@ -197,7 +198,8 @@ pub(super) fn sync_shelf(
             }
             ShelfText::CodeNote => {
                 s.push_str(&format!(
-                    "CLICK THE CODE, THEN CTRL+C, OR COPY  ·  IMPORT IT IN BLUEPRINTS  ·  {} CHARACTERS  ·  MADE WITH {}",
+                    "{}  ·  IMPORT IT IN BLUEPRINTS  ·  {} CHARACTERS  ·  MADE WITH {}",
+                    touch.says("CLICK THE CODE, THEN CTRL+C, OR COPY", "COPY TAKES IT"),
                     shelf.export.code.len(),
                     shelf.export.made_with
                 ));
@@ -205,10 +207,10 @@ pub(super) fn sync_shelf(
             }
             ShelfText::Paste => {
                 if shelf.paste_armed {
-                    s.push_str("PASTE NOW: CTRL+V");
+                    s.push_str(touch.says("PASTE NOW: CTRL+V", "PASTE NOW"));
                     Tone::Teal
                 } else {
-                    s.push_str("CLICK HERE, THEN PASTE A SHARE CODE OR BLUEPRINT TEXT (CTRL+V)");
+                    s.push_str(touch.says("CLICK HERE, THEN PASTE A SHARE CODE OR BLUEPRINT TEXT (CTRL+V)", "TAP HERE, THEN PASTE A SHARE CODE OR BLUEPRINT TEXT"));
                     Tone::Dim
                 }
             }

@@ -128,7 +128,7 @@ pub(super) fn draw(
     focus: Res<PilotFocus>,
     regions: Option<Res<FxRegions>>,
     style: Res<Style>,
-    controls: Res<crate::settings::Controls>,
+    (controls, touch): (Res<crate::settings::Controls>, Res<kit::ui_kit::TouchScreen>),
     numbers: Res<super::minimap::Minimap>,
     hud: Query<&ScreenFx, With<HudRoot>>,
     mut title: Query<(&mut Node, &mut Visibility, &Children), With<OverviewTitle>>,
@@ -153,7 +153,11 @@ pub(super) fn draw(
         node.top = Val::Px(top);
     }
     let key = controls.0.inputs(Action::ClusterMap).next().map_or_else(|| "—".to_string(), |c| c.label());
-    let closes = if map.pinned { format!("ESC, {key} OR A CLICK CLOSES") } else { format!("LET GO OF {key} TO CLOSE") };
+    let closes = match (map.pinned, touch.on()) {
+        (true, true) => "A TAP CLOSES".to_string(),
+        (true, false) => format!("ESC, {key} OR A CLICK CLOSES"),
+        (false, _) => format!("LET GO OF {key} TO CLOSE"),
+    };
     if let Some(mut t) = children.first().and_then(|c| texts.get_mut(*c).ok()) {
         set_text(&mut t, &format!("CLUSTER MAP  ·  {}  ·  {:.1} KM ACROSS  ·  {closes}", v.id().to_uppercase(), v.radius() * 2.0 / 1000.0));
     }

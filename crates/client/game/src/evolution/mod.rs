@@ -45,7 +45,7 @@ use kit::clipboard::Clipboard;
 use kit::style::{Style, ui_color};
 use bevy::window::PrimaryWindow;
 use kit::ui_kit::{
-    CompactText, Edge, HudFonts, LayoutClass, Pill, PillText, ScreenFx, ScreenPart, Scrollbar, TextField, Tip, Tone, UiClick, UiInputSet, UiStyleSet, crumb, frame, label, set_color, set_text, show_screen, snap_screen, spawn_back, spawn_close,
+    CompactText, Edge, HudFonts, LayoutClass, Pill, PillText, ScreenFx, ScreenPart, Scrollbar, TextField, Tip, Tone, TouchScreen, UiClick, UiInputSet, UiStyleSet, crumb, frame, label, set_color, set_text, show_screen, snap_screen, spawn_back, spawn_close,
     spawn_pill, title, top_pill,
 };
 use world::career::{EscortDesigns, Granted, PlayerCareer};
@@ -531,6 +531,7 @@ fn sync(
     style: Res<Style>,
     mut texts: Query<(&LayerText, &mut Text, &mut TextColor)>,
     mut pills: Query<(&TopPill, &mut Node)>,
+    touch: Res<TouchScreen>,
 ) {
     if !layer.open || !(layer.is_changed() || lab.is_changed()) {
         return;
@@ -550,7 +551,7 @@ fn sync(
             (LayerText::Status, _) => match (&layer.say, &lab.trouble) {
                 (Some((s, tone)), _) => (s.clone(), *tone),
                 (None, Some(t)) => (t.to_uppercase(), Tone::Coral),
-                (None, None) => (default_status(layer.page).into(), Tone::Label),
+                (None, None) => (default_status(layer.page, *touch).into(), Tone::Label),
             },
         };
         set_text(&mut text, &s);
@@ -584,11 +585,11 @@ pub(crate) fn watch(ctx: &mut Ctx, code: String) {
 }
 
 /// What the status line says while nothing happened.
-fn default_status(page: Page) -> &'static str {
+fn default_status(page: Page, touch: TouchScreen) -> &'static str {
     match page {
         Page::Runs => "A RUN BREEDS YOUR DESIGNS AGAINST ENEMIES AND KEEPS THE BEST OF EACH KIND  ·  ONE COMPUTES AT A TIME, AT HOME AND ON EVERY SCREEN, NEVER IN FLIGHT",
         Page::Setup => "SAME SEED, SAME SETUP, SAME RULES: THE SAME RUN",
-        Page::Run => "CLICK A DESIGN IN THE ARCHIVE  ·  EVERY FIGHT CAN BE WATCHED AGAIN",
+        Page::Run => touch.says("CLICK A DESIGN IN THE ARCHIVE  ·  EVERY FIGHT CAN BE WATCHED AGAIN", "TAP A DESIGN IN THE ARCHIVE  ·  EVERY FIGHT CAN BE WATCHED AGAIN"),
         Page::Ladder => "THE SAME RUNGS AND SEEDS FOR EVERY DESIGN: RATINGS COMPARE  ·  A RUN WAITS WHILE THE LAB RATES",
     }
 }
@@ -618,18 +619,18 @@ pub(crate) fn column(gap: f32) -> Node {
     Node { flex_direction: FlexDirection::Column, row_gap: px(gap), ..default() }
 }
 
-fn spawn(commands: Commands, window: Single<&Window, With<PrimaryWindow>>, fonts: Res<HudFonts>, style: Res<Style>) {
-    build(commands, LayoutClass::of(window.size()).is_compact(), &fonts, &style);
+fn spawn(commands: Commands, window: Single<&Window, With<PrimaryWindow>>, fonts: Res<HudFonts>, style: Res<Style>, touch: Res<TouchScreen>) {
+    build(commands, LayoutClass::of(window.size()).is_compact(), &fonts, &style, *touch);
 }
 
 /// The window changed its layout class: the layer is built again for the new one (open at once when it was, its
 /// pages filled again).
-fn relayout(mut commands: Commands, class: Res<LayoutClass>, root: Single<(Entity, &LayerRoot)>, fonts: Res<HudFonts>, style: Res<Style>, mut layer: ResMut<EvolutionLayer>) {
+fn relayout(mut commands: Commands, class: Res<LayoutClass>, root: Single<(Entity, &LayerRoot)>, fonts: Res<HudFonts>, style: Res<Style>, mut layer: ResMut<EvolutionLayer>, touch: Res<TouchScreen>) {
     if root.1.0 == class.is_compact() {
         return;
     }
     commands.entity(root.0).despawn();
-    build(commands, class.is_compact(), &fonts, &style);
+    build(commands, class.is_compact(), &fonts, &style, *touch);
     layer.dirty = true;
 }
 
@@ -642,7 +643,7 @@ fn reopen(mode: Res<State<AppMode>>, layer: Res<EvolutionLayer>, mut roots: Quer
     }
 }
 
-fn build(mut commands: Commands, compact: bool, fonts: &HudFonts, style: &Style) {
+fn build(mut commands: Commands, compact: bool, fonts: &HudFonts, style: &Style, touch: TouchScreen) {
     let ui = style.ui;
     let c = |tone: Tone, a: f32| ui_color(tone.color(&ui), a);
     let stage_size = if compact { COMPACT_STAGE } else { STAGE };
@@ -683,7 +684,7 @@ fn build(mut commands: Commands, compact: bool, fonts: &HudFonts, style: &Style)
                         p.with_children(|p| {
                             p.spawn((PageBody(page), body)).with_children(|p| match page {
                                 Page::Runs => runs::spawn(p, fonts, &c),
-                                Page::Setup => setup::spawn(p, fonts, &c, &ui),
+                                Page::Setup => setup::spawn(p, fonts, &c, &ui, touch),
                                 Page::Run => run::spawn(p, fonts, &c),
                                 Page::Ladder => ladder::spawn(p, fonts, &c),
                             });

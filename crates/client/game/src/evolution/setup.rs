@@ -48,7 +48,7 @@ use data::Content;
 use data::behavior::Program;
 use kit::style::{Style, UiPalette, ui_color};
 use kit::ui_icons::Glyph;
-use kit::ui_kit::{HudFonts, Hot, Pill, Scrollbar, TextField, Tone, field_text, label, number, prose, ring_glyph, ring_node, spawn_pill, sub_tone, tracked};
+use kit::ui_kit::{HudFonts, Hot, Pill, Scrollbar, TextField, Tone, TouchScreen, field_text, label, number, prose, ring_glyph, ring_node, spawn_pill, sub_tone, tracked};
 use world::career::fleet_cores;
 use world::evolution::{Flier, Lab, Setup, Size, StartDesign, StartPick, sources, templates};
 use world::player::PlayerDesign;
@@ -256,7 +256,7 @@ pub(super) enum Section {
 #[derive(Component)]
 pub(super) struct NameField;
 
-pub(super) fn spawn(p: &mut ChildSpawnerCommands, fonts: &HudFonts, c: &impl Fn(Tone, f32) -> Color, ui: &UiPalette) {
+pub(super) fn spawn(p: &mut ChildSpawnerCommands, fonts: &HudFonts, c: &impl Fn(Tone, f32) -> Color, ui: &UiPalette, touch: TouchScreen) {
     let (lx, lw) = LEFT;
     let (rx, rw) = RIGHT;
     let head = |p: &mut ChildSpawnerCommands, at: Vec2, words: &str| {
@@ -276,7 +276,7 @@ pub(super) fn spawn(p: &mut ChildSpawnerCommands, fonts: &HudFonts, c: &impl Fn(
     let lists = 162.0 + LIST_H;
     let picks = 162.0 + PICK_H;
     // The left column: the starts, the limits, what may change, the size and the seed.
-    head(p, Vec2::new(lx, 90.0), "START FROM  ·  PICK 1 TO 4  ·  A CLICK ON A START SHOWS ITS LOCKS");
+    head(p, Vec2::new(lx, 90.0), touch.says("START FROM  ·  PICK 1 TO 4  ·  A CLICK ON A START SHOWS ITS LOCKS", "START FROM  ·  PICK 1 TO 4  ·  A TAP ON A START SHOWS ITS LOCKS"));
     section(p, Section::Chips, Vec2::new(lx, 108.0), Vec2::new(lw, 30.0));
     head(p, Vec2::new(lx, 146.0), "YOUR DESIGNS");
     list(p, Section::Designs, Vec2::new(lx, 162.0), 300.0, PICK_H);
@@ -567,6 +567,7 @@ pub(super) fn fill(
     style: Res<Style>,
     sections: Query<(Entity, &Section)>,
     mut field: Single<&mut TextField, With<NameField>>,
+    touch: Res<TouchScreen>,
 ) {
     let (content, granted, escorts, design, lab) = ctx;
     if !layer.open || layer.page != Page::Setup {
@@ -618,7 +619,7 @@ pub(super) fn fill(
             Section::Genes => genes(p, fonts, &c, content, page),
             Section::Size => size(p, fonts, &c, content, page),
             Section::LocksHead => locks_head(p, fonts, &c, content, page),
-            Section::Grid => grid(p, &c, content, page),
+            Section::Grid => grid(p, &c, content, page, touch.says("A CLICK", "A TAP")),
             Section::Parts => parts(p, fonts, &c, content, page),
             Section::ListsHead => {
                 for (list, words) in [(Lists::Rules, "RULES"), (Lists::Assists, "ASSISTS")] {
@@ -864,7 +865,7 @@ fn parts(p: &mut ChildSpawnerCommands, fonts: &HudFonts, c: &impl Fn(Tone, f32) 
 
 /// The locks' grid: the selected start's cells and [`MARGIN`] around them, a part's cells gold while it is locked (by
 /// itself or with its category), else light; KEEP EMPTY cells coral; each a button with a tip that names it.
-fn grid(p: &mut ChildSpawnerCommands, c: &impl Fn(Tone, f32) -> Color, content: &Content, page: &SetupPage) {
+fn grid(p: &mut ChildSpawnerCommands, c: &impl Fn(Tone, f32) -> Color, content: &Content, page: &SetupPage, click: &str) {
     let Some(Ok(start)) = page.resolved.get(page.selected) else { return };
     let l = page.setup.starts.get(page.selected).map(|(_, l)| l.clone()).unwrap_or_default();
     let mut owner = std::collections::BTreeMap::new();
@@ -891,11 +892,11 @@ fn grid(p: &mut ChildSpawnerCommands, c: &impl Fn(Tone, f32) -> Color, content: 
                             if kept || l.parts.contains(&(k as u32)) {
                                 (Tone::Gold, 0.85, format!("{name}  ·  LOCKED{}", if kept { " WITH ITS CATEGORY" } else { "" }))
                             } else {
-                                (Tone::Label, 0.45, format!("{name}  ·  A CLICK LOCKS IT"))
+                                (Tone::Label, 0.45, format!("{name}  ·  {click} LOCKS IT"))
                             }
                         }
-                        None if l.cells.contains(&(x, y)) => (Tone::Coral, 0.6, "KEPT EMPTY  ·  A CLICK FREES IT".to_string()),
-                        None => (Tone::Dim, 0.12, "EMPTY  ·  A CLICK KEEPS IT EMPTY".to_string()),
+                        None if l.cells.contains(&(x, y)) => (Tone::Coral, 0.6, format!("KEPT EMPTY  ·  {click} FREES IT")),
+                        None => (Tone::Dim, 0.12, format!("EMPTY  ·  {click} KEEPS IT EMPTY")),
                     };
                     r.spawn((
                         LabButton::Setup(SetupButton::Cell(x, y)),

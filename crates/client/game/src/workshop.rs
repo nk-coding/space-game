@@ -47,7 +47,7 @@ use data::{Career, Content};
 use kit::style::{Style, ui_color};
 use kit::ui_icons::{Glyph, UiIcon};
 use kit::ui_kit::{
-    CompactText, Edge, Hot, HudFonts, ListRow, ListSpec, Pill, Ring, ScreenFx, ScreenPart, Scrollbar, Tip, Tone, UiClick, UiInputSet, UiPointer, UiStyleSet, fill_list, frame, label, number, prose,
+    CompactText, Edge, Hot, HudFonts, ListRow, ListSpec, Pill, Ring, ScreenFx, ScreenPart, Scrollbar, Tip, Tone, TouchScreen, UiClick, UiInputSet, UiPointer, UiStyleSet, fill_list, frame, label, number, prose,
     ring_glyph, ring_node, show_screen, spawn_close, spawn_grouped_list, spawn_head, spawn_pill, tracked,
 };
 use world::career::{EscortDesigns, Note, PlayerCareer};
@@ -374,6 +374,7 @@ struct Fill<'w> {
     escorts: Res<'w, EscortDesigns>,
     fonts: Res<'w, HudFonts>,
     style: Res<'w, Style>,
+    touch: Res<'w, TouchScreen>,
 }
 
 /// The workshop (W): open, with the lists as they are now.
@@ -523,7 +524,7 @@ fn hover(mut commands: Commands, rows: Query<(&PartRowOf, &Hot)>, buttons: Query
         let ui = fill.style.ui;
         let mats = *lists.1;
         commands.entity(mats).despawn_children();
-        commands.entity(mats).with_children(|p| fill_materials(p, &fill.fonts, &ui, &fill.content.0, career.career(), layer.shown.as_ref()));
+        commands.entity(mats).with_children(|p| fill_materials(p, &fill.fonts, &ui, &fill.content.0, career.career(), layer.shown.as_ref(), *fill.touch));
     }
 }
 
@@ -553,7 +554,7 @@ fn refill(commands: &mut Commands, lists: &Lists, fill: &Fill, career: &Career, 
         spawn_part_row(p, &cx, r)
     });
     commands.entity(mats).despawn_children();
-    commands.entity(mats).with_children(|p| fill_materials(p, fonts, &ui, content, career, layer.shown.as_ref()));
+    commands.entity(mats).with_children(|p| fill_materials(p, fonts, &ui, content, career, layer.shown.as_ref(), *fill.touch));
     commands.entity(line).despawn_children();
     if let Some((words, tone)) = &layer.said {
         commands.entity(line).with_child(tracked(fonts, words, 9.5, ui_color(tone.color(&ui), 1.0), 0.18));
@@ -587,9 +588,9 @@ fn spawn_strip(p: &mut ChildSpawnerCommands, fonts: &HudFonts, style: &Style, s:
     let n = s.choice.n;
     p.spawn(Node { flex_direction: FlexDirection::Column, row_gap: px(6), padding: UiRect { left: px(44), bottom: px(10), ..default() }, ..default() }).with_children(|col| {
         col.spawn(Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(8), ..default() }).with_children(|r| {
-            r.spawn((ring_node(22.0), Do::Less, Tip::new("ONE LESS  ·  SHIFT: FIVE"))).insert(Ring { disabled: n <= 1, active: false }).with_child(ring_glyph(Glyph::Minus, 10.0));
+            r.spawn((ring_node(22.0), Do::Less, Tip::key("ONE LESS", "SHIFT: FIVE"))).insert(Ring { disabled: n <= 1, active: false }).with_child(ring_glyph(Glyph::Minus, 10.0));
             r.spawn((number(fonts, &n.to_string(), 14.0, c(Tone::Number)), Node { min_width: px(26), justify_content: JustifyContent::Center, ..default() }));
-            r.spawn((ring_node(22.0), Do::More, Tip::new("ONE MORE  ·  SHIFT: FIVE"))).insert(Ring { disabled: n >= s.top, active: false }).with_child(ring_glyph(Glyph::Plus, 10.0));
+            r.spawn((ring_node(22.0), Do::More, Tip::key("ONE MORE", "SHIFT: FIVE"))).insert(Ring { disabled: n >= s.top, active: false }).with_child(ring_glyph(Glyph::Plus, 10.0));
             spawn_pill(r, fonts, "MAX", 8.5, 22.0, None, Pill { disabled: n >= s.top, ..Pill::new(Tone::Teal) }, (Do::Max, Tip::new(format!("AS MANY AS CAN BE  ·  {}", s.top))));
             r.spawn(Node { flex_grow: 1.0, ..default() });
             spawn_pill(r, fonts, &format!("{verb} {n}"), 9.0, 26.0, None, Pill { active: true, disabled: s.top == 0, ..Pill::new(tone) }, (Do::Confirm, Tip::new("CONFIRM")));
@@ -677,7 +678,7 @@ fn spawn_part_row(p: &mut ChildSpawnerCommands, cx: &Rows, r: &MakeRow) -> Entit
 
 /// The materials column: a row per material in store (and per one the shown part needs), and what that part needs
 /// beside each, coral where the store is short; the others dim while a part is shown.
-fn fill_materials(p: &mut ChildSpawnerCommands, fonts: &HudFonts, ui: &kit::style::UiPalette, content: &Content, career: &Career, shown: Option<&(String, u32)>) {
+fn fill_materials(p: &mut ChildSpawnerCommands, fonts: &HudFonts, ui: &kit::style::UiPalette, content: &Content, career: &Career, shown: Option<&(String, u32)>, touch: TouchScreen) {
     let c = |tone: Tone| ui_color(tone.color(ui), 1.0);
     p.spawn((label(fonts, "MATERIALS IN STORE", 9.5, c(Tone::Label)), Node { margin: UiRect::bottom(px(4)), flex_shrink: 0.0, ..default() }));
     let head = match shown {
@@ -689,7 +690,7 @@ fn fill_materials(p: &mut ChildSpawnerCommands, fonts: &HudFonts, ui: &kit::styl
                 None => (format!("{name}  ·  NO RECIPE"), Tone::Dim),
             }
         }
-        None => ("POINT AT A PART FOR WHAT IT NEEDS".into(), Tone::Dim),
+        None => (touch.says("POINT AT A PART FOR WHAT IT NEEDS", "HOLD A PART FOR WHAT IT NEEDS").into(), Tone::Dim),
     };
     p.spawn((label(fonts, &head.0, 8.5, c(head.1)), Node { margin: UiRect::bottom(px(8)), flex_shrink: 0.0, ..default() }));
     let rows = material_rows(content, career, shown.map(|(p, n)| (p.as_str(), *n)));

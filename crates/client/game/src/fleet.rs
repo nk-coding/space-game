@@ -30,7 +30,7 @@ use data::{Blueprint, Content};
 use kit::style::{Style, ui_color};
 use kit::ui_icons::{Glyph, Stroke, UiIcon};
 use kit::ui_kit::{
-    CompactText, LayoutClass, HudFonts, Edge, Hot, Pill, ScreenFx, ScreenPart, ScrollRows, Scrollbar, Tip, Tone, UiClick, UiInputSet, show_screen, UiStyleSet, label, number, prose, set_color, set_text,
+    CompactText, LayoutClass, HudFonts, Edge, Hot, Pill, ScreenFx, ScreenPart, ScrollRows, Scrollbar, Tip, Tone, TouchScreen, UiClick, UiInputSet, show_screen, UiStyleSet, label, number, prose, set_color, set_text,
     spawn_brackets, spawn_close, spawn_head, spawn_pill, frame, tracked,
 };
 use world::career::{EscortDesigns, Granted, PlayerCareer, readiness_words, voyage_line};
@@ -759,7 +759,7 @@ fn sync(
     mut nodes: Query<(&FleetNode, &mut Node, Option<&mut BackgroundColor>)>,
     mut veils: Query<(&PreviewVeil, &mut Node), Without<FleetNode>>,
     mut pills: Query<(&FleetButton, &mut Pill)>,
-    class: Res<LayoutClass>,
+    (class, touch): (Res<LayoutClass>, Res<TouchScreen>),
 ) {
     if !fleet.open
         || !(fleet.is_changed() || class.is_changed() || career.is_changed() || granted.is_changed() || escorts.is_changed() || design.is_changed() || behaviors.is_changed())
@@ -809,7 +809,7 @@ fn sync(
             FleetText::SlotSub(k) => match (previewed.filter(|_| previewing(k)), escorts.0.get(k)) {
                 (Some(d), _) => match card_state(content, &granted, d, ids.contains(&d.id), free(picked)) {
                     (why, Tone::Coral) => (why, Tone::Coral),
-                    (_, tone) => ("PREVIEW  ·  ENTER ADDS IT".into(), if tone == Tone::Gold { Tone::Gold } else { Tone::Teal }),
+                    (_, tone) => (touch.says("PREVIEW  ·  ENTER ADDS IT", "PREVIEW  ·  A TAP AGAIN ADDS IT").into(), if tone == Tone::Gold { Tone::Gold } else { Tone::Teal }),
                 },
                 (None, Some(b)) => {
                     let behavior = flies(content, &behaviors, b).unwrap_or("no behavior").to_uppercase();
@@ -839,8 +839,9 @@ fn sync(
             },
             FleetText::Status => match (&fleet.say, previewed.zip(preview_pick.as_ref())) {
                 (Some((s, tone)), _) => (s.clone(), *tone),
-                (None, Some((d, Ok(_)))) => (format!("ENTER ADDS {} AS ESCORT {}", d.blueprint.name.to_uppercase(), picked + 1), Tone::Teal),
+                (None, Some((d, Ok(_)))) => (format!("{} {} AS ESCORT {}", touch.says("ENTER ADDS", "A TAP AGAIN ADDS"), d.blueprint.name.to_uppercase(), picked + 1), Tone::Teal),
                 (None, Some((d, Err(r)))) => (refused_words(&d.blueprint.name, r), Tone::Coral),
+                (None, None) if touch.on() => (format!("TAP A DESIGN TO PREVIEW IT AS ESCORT {}", picked + 1), Tone::Label),
                 (None, None) => (format!("CLICK A DESIGN TO PREVIEW IT AS ESCORT {}  ·  THE ARROW KEYS STEP THROUGH THEM", picked + 1), Tone::Label),
             },
         };

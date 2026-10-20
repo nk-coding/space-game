@@ -31,7 +31,7 @@ use kit::params::{Params, RenderToggles};
 use kit::style::{Style, ui_color};
 use kit::ui_icons::Glyph;
 use kit::ui_kit::{
-    CompactText, LayoutClass, compact_scale, Edge, HudFonts, Pill, PillText, ScreenFx, ScreenPart, Scrollbar, Tip, Tone, UiClick, UiInputSet, UiPointer, UiSize, UiStyleSet, label, prose, ring_glyph,
+    CompactText, LayoutClass, compact_scale, Edge, HudFonts, Pill, PillText, ScreenFx, ScreenPart, Scrollbar, Tip, Tone, TouchScreen, UiClick, UiInputSet, UiPointer, UiSize, UiStyleSet, label, prose, ring_glyph,
     ring_node, set_text, show_screen, spawn_pill, ui_scale_for, crumb, frame, spawn_back, spawn_close, title, top_pill,
 };
 use world::mode::AppMode;
@@ -178,6 +178,7 @@ fn input(
     mut size: ResMut<UiSize>,
     mut storage: ResMut<Storage>,
     content: Res<GameContent>,
+    touch: Res<TouchScreen>,
 ) {
     if !layer.open {
         clicks.clear();
@@ -205,7 +206,8 @@ fn input(
                 ui.capture = if ui.capture == Some((a, slot)) { None } else { Some((a, slot)) };
                 ui.lone = None;
                 let name = content.0.controls.get(a.id()).map_or(a.id().to_string(), |c| c.name.to_uppercase());
-                ui.say = ui.capture.map(|_| (format!("{name}  ·  PRESS A KEY OR A MOUSE BUTTON  ·  ESC CANCELS"), Tone::Teal));
+                let how = touch.says("PRESS A KEY OR A MOUSE BUTTON  ·  ESC CANCELS", "PRESS A KEY ON A KEYBOARD  ·  A TAP ON IT AGAIN CANCELS");
+                ui.say = ui.capture.map(|_| (format!("{name}  ·  {how}"), Tone::Teal));
             }
             SettingsButton::Clear => {
                 if let Some((a, slot)) = ui.capture.take() {
@@ -325,6 +327,7 @@ fn sync(
     mut texts: Query<(&SettingsText, &mut Text, &mut TextColor), Without<PillText>>,
     mut panes: Query<(&Pane, &mut Node)>,
     style: Res<Style>,
+    touch: Res<TouchScreen>,
 ) {
     if !(ui.is_changed() || controls.is_changed() || display.is_changed() || layer.is_changed() || mode.is_changed()) {
         return;
@@ -365,7 +368,7 @@ fn sync(
             }
             SettingsText::Status => {
                 let (words, tone) = ui.say.clone().unwrap_or_else(|| match ui.tab {
-                    Tab::Controls => ("CLICK AN INPUT, THEN PRESS A KEY OR A MOUSE BUTTON".into(), Tone::Dim),
+                    Tab::Controls => (touch.says("CLICK AN INPUT, THEN PRESS A KEY OR A MOUSE BUTTON", "TAP AN INPUT, THEN PRESS A KEY ON A KEYBOARD").into(), Tone::Dim),
                     Tab::Display => ("CHANGES SHOW AT ONCE AND ARE SAVED ON THIS DEVICE".into(), Tone::Dim),
                 });
                 set_text(&mut text, &words);
@@ -430,7 +433,7 @@ fn fit(
     }
 }
 
-fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>, content: Res<GameContent>) {
+fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>, content: Res<GameContent>, touch: Res<TouchScreen>) {
     let ui = style.ui;
     let c = |tone: Tone, a: f32| ui_color(tone.color(&ui), a);
     let fonts = &*fonts;
@@ -488,7 +491,7 @@ fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>, conten
                                         r.spawn((prose(fonts, &e.summary, 11.0, c(Tone::Label, 1.0)), Node { flex_grow: 1.0, flex_shrink: 1.0, ..default() }));
                                         for slot in 0..MAX_INPUTS {
                                             r.spawn(by_class(width(wl.chip_w), width(cl.chip_w))).with_children(|w| {
-                                                let chip = spawn_pill(w, fonts, "—", 10.0, 26.0, None, Pill::new(Tone::Teal), (SettingsButton::Chip(action, slot), Tip::new("CLICK, THEN PRESS A KEY")));
+                                                let chip = spawn_pill(w, fonts, "—", 10.0, 26.0, None, Pill::new(Tone::Teal), (SettingsButton::Chip(action, slot), Tip::new(touch.says("CLICK, THEN PRESS A KEY", "TAP, THEN PRESS A KEY"))));
                                                 // Every chip as wide as its column, so the inputs line up.
                                                 w.commands().entity(chip).entry::<Node>().and_modify(|mut n| n.width = percent(100));
                                             });

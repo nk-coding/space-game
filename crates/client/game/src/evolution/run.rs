@@ -552,6 +552,7 @@ pub(super) fn fill(
     fonts: Res<HudFonts>,
     style: Res<Style>,
     panels: Query<(Entity, &Panel)>,
+    touch: Res<kit::ui_kit::TouchScreen>,
 ) {
     if !layer.open || layer.page != Page::Run {
         return;
@@ -569,15 +570,16 @@ pub(super) fn fill(
     let c = |tone: Tone, a: f32| ui_color(tone.color(&ui), a);
     let (fonts, content) = (&*fonts, &content.0);
     let picked = shown(&layer.run, l);
+    let click = touch.says("A CLICK", "A TAP");
     for (e, panel) in &panels {
         commands.entity(e).despawn_children();
         commands.entity(e).with_children(|p| match panel {
-            Panel::Chart => chart(p, &c, l, layer.run.generation),
+            Panel::Chart => chart(p, &c, l, layer.run.generation, click),
             Panel::Camps => camps(p, fonts, l, layer.run.camp),
             Panel::Grid => grid(p, fonts, &c, l, picked, layer.run.camp),
             Panel::Picked => match layer.run.generation {
                 Some(n) => generation(p, fonts, &c, content, l, n, layer.run.camp),
-                None => picked_design(p, fonts, &c, content, &storage, &lab, l, picked, &layer.run),
+                None => picked_design(p, fonts, &c, content, &storage, &lab, l, picked, &layer.run, click),
             },
         });
     }
@@ -601,7 +603,7 @@ type ChartLine = (fn(&GenerationStats) -> f32, Tone, f32);
 /// mean; 0 at the bottom, 1 at the top; an arms race's enemy archive best and PAST CHAMPIONS too) and a bar per
 /// generation for the children that took a cell; a click on a generation (a column over its lines and bar, `open`
 /// lit) opens GENERATION n.
-fn chart(p: &mut ChildSpawnerCommands, c: &impl Fn(Tone, f32) -> Color, l: &Loaded, open: Option<u32>) {
+fn chart(p: &mut ChildSpawnerCommands, c: &impl Fn(Tone, f32) -> Color, l: &Loaded, open: Option<u32>, click: &str) {
     let (_, size) = CHART;
     let state = l.run.state();
     // The grid lines at 0, 0.5 and 1.
@@ -630,7 +632,7 @@ fn chart(p: &mut ChildSpawnerCommands, c: &impl Fn(Tone, f32) -> Color, l: &Load
             Node { position_type: PositionType::Absolute, left: px(left), top: px(0), width: px(column_w), height: px(size.y + 6.0 + BARS_H), border: UiRect::all(px(1.0)), border_radius: BorderRadius::all(px(3)), ..default() },
             BorderColor::all(Color::NONE),
             BackgroundColor(Color::NONE),
-            kit::ui_kit::Tip::new(format!("GENERATION {g}  ·  BEST {}  ·  MEAN {}  ·  A CLICK LISTS ITS CHILDREN", score(Some(h.best)), score(Some(h.mean)))),
+            kit::ui_kit::Tip::new(format!("GENERATION {g}  ·  BEST {}  ·  MEAN {}  ·  {click} LISTS ITS CHILDREN", score(Some(h.best)), score(Some(h.mean)))),
         ));
     }
     let most = history.iter().map(|g| g.evaluated).max().unwrap_or(1).max(1) as f32;
@@ -747,7 +749,7 @@ fn grid(p: &mut ChildSpawnerCommands, fonts: &HudFonts, c: &impl Fn(Tone, f32) -
 /// THE PICKED DESIGN: its drawing and numbers, the tabs, the tab's rows, SAVE AS DESIGN and REPLACE <START> (when
 /// its start is one of YOUR DESIGNS), and while saving TIDY's line and REPLACE's question.
 #[allow(clippy::too_many_arguments)]
-fn picked_design(p: &mut ChildSpawnerCommands, fonts: &HudFonts, c: &impl Fn(Tone, f32) -> Color, content: &Content, storage: &Storage, lab: &Lab, l: &Loaded, picked: Option<u32>, page: &RunPage) {
+fn picked_design(p: &mut ChildSpawnerCommands, fonts: &HudFonts, c: &impl Fn(Tone, f32) -> Color, content: &Content, storage: &Storage, lab: &Lab, l: &Loaded, picked: Option<u32>, page: &RunPage, click: &str) {
     let run = &l.run;
     p.spawn(label(fonts, "THE PICKED DESIGN", 9.0, c(Tone::Dim, 1.0)));
     let Some(g) = picked else {
@@ -822,7 +824,7 @@ fn picked_design(p: &mut ChildSpawnerCommands, fonts: &HudFonts, c: &impl Fn(Ton
         .with_children(|rows| match page.tab {
             Tab::Scores => scores(rows, fonts, c, content, lab, l, g, record.as_ref().map(|(generation, child, rec)| (*generation, *child, rec))),
             Tab::Fights => fights(rows, fonts, c, content, l, record.as_ref().map(|(generation, child, rec)| (*generation, *child, rec))),
-            Tab::Lineage => lineage(rows, fonts, c, content, l, g),
+            Tab::Lineage => lineage(rows, fonts, c, content, l, g, click),
             Tab::Compare => compare(rows, fonts, c, content, l, &genome),
         });
     let Some(saving) = page.saving else { return };
@@ -1102,7 +1104,7 @@ fn short(w: f32) -> String {
 }
 
 /// LINEAGE: its line from its start, each ancestor a small card with its generation, score and what changed.
-fn lineage(p: &mut ChildSpawnerCommands, fonts: &HudFonts, c: &impl Fn(Tone, f32) -> Color, content: &Content, l: &Loaded, g: u32) {
+fn lineage(p: &mut ChildSpawnerCommands, fonts: &HudFonts, c: &impl Fn(Tone, f32) -> Color, content: &Content, l: &Loaded, g: u32, click: &str) {
     let run = &l.run;
     let line = run.lineage(g);
     let mut shown: Vec<u32> = line.clone();
@@ -1111,7 +1113,7 @@ fn lineage(p: &mut ChildSpawnerCommands, fonts: &HudFonts, c: &impl Fn(Tone, f32
         shown.truncate(1);
         shown.extend(tail);
     }
-    p.spawn(label(fonts, &format!("{} GENERATIONS OF ANCESTORS  ·  A CLICK PICKS ONE", line.len().saturating_sub(1)), 8.0, c(Tone::Dim, 1.0)));
+    p.spawn(label(fonts, &format!("{} GENERATIONS OF ANCESTORS  ·  {click} PICKS ONE", line.len().saturating_sub(1)), 8.0, c(Tone::Dim, 1.0)));
     let mut before: Option<data::Blueprint> = None;
     for (k, id) in shown.iter().enumerate() {
         let Some(genome) = run.genome(*id) else { continue };

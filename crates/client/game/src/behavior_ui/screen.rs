@@ -848,6 +848,7 @@ pub(super) fn rebuild_inspector(
     behaviors: Res<PlayerBehaviors>,
     fonts: Res<HudFonts>,
     style: Res<Style>,
+    touch: Res<kit::ui_kit::TouchScreen>,
     body: Single<(Entity, &mut ScrollPosition), With<InspectorBody>>,
     mut built: Local<Option<InspectorKey>>,
 ) {
@@ -875,10 +876,10 @@ pub(super) fn rebuild_inspector(
     }
     *built = Some(key);
     let i = ui.selected.as_ref().and_then(|s| inspect(ed, s, &cx)).unwrap_or_else(|| match ed.kind() {
-        ListKind::Assists => assists_inspection(ed.rules().len()),
+        ListKind::Assists => assists_inspection(ed.rules().len(), *touch),
         ListKind::Behavior => {
             let source = draft.source.as_deref().and_then(|id| behaviors.behavior(&content.0, id));
-            behavior_inspection(&draft.name, source, ed.rules().len())
+            behavior_inspection(&draft.name, source, ed.rules().len(), *touch)
         }
     });
     let kit = Kit { fonts: &fonts, ui: style.ui, class: *class };
