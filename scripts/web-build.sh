@@ -5,12 +5,20 @@
 # after a change in `game`. `--full` is the published build: profile `web-release` (the client compiled for size, the
 # sim for speed, fat LTO; ADR-0049) + wasm-opt -O3, about ten minutes cold (`WASM_PROFILE=<profile>` picks another
 # cargo profile for it, e.g. `release` for the all-speed build).
-# Other arguments go to trunk.
+# Other arguments go to trunk, e.g. `--public-url /space-game/` (the path GitHub Pages serves it under; serve it there
+# with `scripts/web-serve-dist.sh --base /space-game/`) or `--dist <dir>` (another output directory).
 set -euo pipefail
 source "$HOME/.cargo/env" 2>/dev/null || true
 cd "$(dirname "$0")/../crates/client/game"
 export CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-6}"
 full=0
+dist=dist
+prev=""
+for a in "$@"; do
+  [[ "$prev" == "--dist" ]] && dist="$a"
+  [[ "$a" == --dist=* ]] && dist="${a#--dist=}"
+  prev="$a"
+done
 if [[ "${1:-}" == "--full" ]]; then
   shift
   full=1
@@ -19,8 +27,8 @@ else
   # Without --release trunk runs no wasm-opt (index.html's data-wasm-opt applies to release builds only).
   trunk build --cargo-profile web-dev "$@"
 fi
-wasm=$(ls dist/*.wasm | head -1)
-js=$(ls dist/*.js | head -1)
+wasm=$(ls "$dist"/game-*_bg.wasm | head -1)
+js=$(ls "$dist"/game-*.js | head -1)
 mib() { echo "scale=2; $1/1048576" | bc; }
 raw=$(stat -c %s "$wasm")
 if [[ $full == 0 ]]; then
