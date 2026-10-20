@@ -832,6 +832,22 @@ Next session:
   check; the galaxy hash re-pinned.
 - Open: a radiation shield or armour, the Archive as a place of its own, the forty's other surviving mind.
 
+### 20 Oct 2026: licences and publishing (ADR-0047, ADR-0048)
+
+- Niklas's decisions of the same day. Licences ([ADR-0047](adr/0047-licences-code-mit-or-apache-content-cc-by.md)):
+  `LICENSE` (the split), `LICENSE-MIT`, `LICENSE-APACHE`, `content/LICENSE` (CC BY 4.0), `THIRD_PARTY_NOTICES.md`
+  (cargo-about over the web and desktop builds' 417 crates, `scripts/third-party-notices.sh`, `scripts/notices/`;
+  fonts, MPL, Unicode, BSD and the wiki's npm packages by hand in its template), the VitePress notice on the wiki's
+  five theme copies, `README.md` with the AI disclosure, `license = "MIT OR Apache-2.0"` in the workspace and the
+  wiki's `package.json`, notes where the docs name the local-only sibling repos and private artifact pages.
+- The web is a player platform ([ADR-0048](adr/0048-the-web-build-is-a-player-platform.md)), published on GitHub
+  Pages: `.github/workflows/pages.yml` (the optimised build with the public URL `/<repo>/`, both wasm binaries) and
+  `ci.yml` (the workspace's tests, the wiki's build and check), written, not run (the VM's repository keeps no
+  remote; it is published from elsewhere). Every path the game loads is relative or under trunk's public URL.
+- Open (Niklas): the author identity in the copyright lines and the git history, the final title and its trademark
+  search, a `license` field for content packs (a schema change). Next (decided, not built): the `/<repo>/` subpath
+  locally, wasm size and a loading screen, a browser performance pass, save export and import, a mobile browser check.
+
 ## Phase 4: measurement
 
 Status 12 Oct 2026 (new VM): `results/spike-summary.md` written. Determinism native vs wasm IDENTICAL on the new VM
