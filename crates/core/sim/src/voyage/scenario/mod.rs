@@ -36,6 +36,10 @@
 //!   (a heart of its own) on the voyage script without its kills; random hits and blasts, a ram run every
 //!   [`grown::GROWN_RAM_EVERY`] ticks: regrowth, healing, prow rams, thorns, star heat and the wary wake rules; and a
 //!   Lattice needle's site beside the way (GDR-0126): its territory's warning and wake, its prism-relayed beam.
+//! * [`ScenarioKind::Archive`]: the core (`archive.rs`, GDR-0130): a radiated cluster with the Archive's warden and a
+//!   sentry at its goal site, the player's ship-mind ships with a hold on the voyage script without its kills; random
+//!   hits and blasts, and one of the warden's bridges shot through every 240 ticks, so
+//!   its sections split off and its behavior switches phase (`ScenarioStats::warden_rules`).
 //! * [`ScenarioKind::Voyage`]: the voyage director (`voyage/mod.rs`): the content's first voyage rolled from the seed
 //!   and started, one player ship per ship-mind blueprint with a hold entering at its edge. Each flies random
 //!   pilot input locked on the nearest armed awake enemy (`Sim::armed_enemy`) within reach of a fight, else to the
@@ -47,6 +51,7 @@
 //!
 //! The state hash includes the physics (Rapier) state, so the native-vs-wasm check covers the engine too.
 
+mod archive;
 mod fixtures;
 mod grown;
 mod salvage;
@@ -69,10 +74,10 @@ use crate::ship::vessel::Owner;
 use crate::world::{DamageCommand, ShipCommand, Sim, TickInputs};
 
 /// Content ships with one of these tags (past the rim: the outer reach's Grown and bastion, the middle band's
-/// keeper, the inner band's spire) are left out of the scenarios that spawn every blueprint: the `grown` scenario
-/// flies the Grown's mechanics, and two of each would outnumber the player's ships two to one (GDR-0103), so those
-/// scenarios run as before them.
-pub const DEEP_TAGS: [&str; 3] = ["outer", "middle", "inner"];
+/// keeper, the inner band's spire, the core's precursor defences, GDR-0130) are left out of the scenarios that spawn
+/// every blueprint: the `grown` and `archive` scenarios fly theirs, and two of each would outnumber the player's ships
+/// two to one (GDR-0103), so those scenarios run as before them.
+pub const DEEP_TAGS: [&str; 4] = ["outer", "middle", "inner", "core"];
 
 /// The blueprints the scenarios spawn "every blueprint" of: the content's in load order, but [`DEEP_TAGS`]'.
 pub(super) fn scenario_blueprints(content: &Content) -> impl Iterator<Item = &data::Blueprint> {
@@ -85,6 +90,7 @@ use fixtures::{
     nth_alive,
 };
 use salvage::{SALVAGE_RETARGET, destroy_parts, salvage_scenario, salvage_target};
+use archive::archive_scenario;
 use grown::{GROWN_RAM_EVERY, grown_scenario};
 use voyage::voyage_scenario;
 
@@ -114,6 +120,8 @@ pub enum ScenarioKind {
     Voyage,
     /// The Grown's mechanics: regrowth, healing, ram prows, thorn guns, a hot star, a wary grove.
     Grown,
+    /// The core (GDR-0130): radiation, the Archive's warden breaking apart and switching its tactics.
+    Archive,
 }
 
 impl ScenarioKind {
@@ -127,6 +135,7 @@ impl ScenarioKind {
             "salvage" => Some(ScenarioKind::Salvage),
             "voyage" => Some(ScenarioKind::Voyage),
             "grown" => Some(ScenarioKind::Grown),
+            "archive" => Some(ScenarioKind::Archive),
             _ => None,
         }
     }
@@ -139,7 +148,7 @@ impl ScenarioKind {
             ScenarioKind::Behavior => 0.06,
             ScenarioKind::Salvage => 0.04,
             ScenarioKind::Voyage => 0.03,
-            ScenarioKind::Grown => 0.05,
+            ScenarioKind::Grown | ScenarioKind::Archive => 0.05,
             ScenarioKind::Load(_) => 0.0,
         }
     }
@@ -149,7 +158,7 @@ impl ScenarioKind {
         match self {
             ScenarioKind::Core => 75,
             ScenarioKind::Flight | ScenarioKind::Assists | ScenarioKind::Behavior => 150,
-            ScenarioKind::Salvage | ScenarioKind::Voyage | ScenarioKind::Grown => 300,
+            ScenarioKind::Salvage | ScenarioKind::Voyage | ScenarioKind::Grown | ScenarioKind::Archive => 300,
             ScenarioKind::Load(_) => u64::MAX,
         }
     }
@@ -159,7 +168,7 @@ impl ScenarioKind {
         match self {
             ScenarioKind::Core => 20,
             ScenarioKind::Flight | ScenarioKind::Assists | ScenarioKind::Behavior => 45,
-            ScenarioKind::Salvage | ScenarioKind::Voyage | ScenarioKind::Grown => SALVAGE_RETARGET,
+            ScenarioKind::Salvage | ScenarioKind::Voyage | ScenarioKind::Grown | ScenarioKind::Archive => SALVAGE_RETARGET,
             ScenarioKind::Load(_) => u64::MAX,
         }
     }
@@ -216,6 +225,8 @@ pub struct ScenarioStats {
     pub rock_hits: u32,
     /// Vessels blinded by static (`Blinded`, disruption, GDR-0125).
     pub blinded: u32,
+    /// The archive scenario (GDR-0130): a bit per rule the Archive warden's vessels ran (bit `k`: rule `k`).
+    pub warden_rules: u32,
 }
 
 pub struct Scenario {
@@ -252,6 +263,9 @@ impl Scenario {
         }
         if kind == ScenarioKind::Grown {
             return grown_scenario(content, seed);
+        }
+        if kind == ScenarioKind::Archive {
+            return archive_scenario(content, seed);
         }
         let mut config = crate::SimConfig::default();
         if kind == ScenarioKind::Behavior {
@@ -404,7 +418,10 @@ impl Scenario {
             }
         }
         self.stats.script_evals = self.sim.script_evaluations();
-        if matches!(self.kind, ScenarioKind::Voyage | ScenarioKind::Grown) && self.sim.can_recall(Owner::PLAYER) {
+        if self.kind == ScenarioKind::Archive {
+            self.note_warden();
+        }
+        if matches!(self.kind, ScenarioKind::Voyage | ScenarioKind::Grown | ScenarioKind::Archive) && self.sim.can_recall(Owner::PLAYER) {
             self.stats.recall_ticks += 1;
         }
         self.sim.state_hash()
@@ -428,8 +445,11 @@ impl Scenario {
         if kind == ScenarioKind::Salvage {
             self.salvage_run(tick);
         }
-        if kind == ScenarioKind::Voyage || kind == ScenarioKind::Grown {
+        if matches!(kind, ScenarioKind::Voyage | ScenarioKind::Grown | ScenarioKind::Archive) {
             self.voyage_run(tick);
+        }
+        if kind == ScenarioKind::Archive {
+            self.archive_run(tick);
         }
         if kind == ScenarioKind::Grown && tick % GROWN_RAM_EVERY == GROWN_RAM_EVERY / 2 {
             self.ram_run(tick / GROWN_RAM_EVERY);
@@ -528,7 +548,7 @@ impl Scenario {
                 }
                 // The collectors fly to salvage (`salvage_run`) or through the voyage (`voyage_run`), enemies
                 // their behavior.
-                ScenarioKind::Salvage | ScenarioKind::Voyage | ScenarioKind::Grown => {}
+                ScenarioKind::Salvage | ScenarioKind::Voyage | ScenarioKind::Grown | ScenarioKind::Archive => {}
             }
         }
 

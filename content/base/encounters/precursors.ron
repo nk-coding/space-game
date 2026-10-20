@@ -1,0 +1,65 @@
+// What waits in the core (GDR-0130, lead defaults 20 Oct 2026): the precursor defences' patrols and sentry stations,
+// fragments of a megastructure under guard, a sealed vault, and at the galaxy's centre the Archive and its warden, at the
+// end of a trail of their own. Not wary: they wake on sight. PLACEHOLDER NUMBERS (counts tuned with the headless voyage
+// runner, docs/results/core-band-2026-10-20.md).
+[
+    (
+        id: "sentry_patrol",
+        name: "Sentry patrol",
+        summary: "Two or three precursor sentries and an aegis, flying the loop they were given.",
+        description: "The [[ship:precursor_sentry|sentries]] pick your weakest ship together and hold off at the reach of their long cannons; the [[ship:precursor_aegis|aegis]] wards them against lasers and missiles.",
+        tags: ["precursors"],
+        ships: [
+            (ship: "precursor_sentry", count: (2, 3)),
+            (ship: "precursor_aegis", count: (1, 1)),
+        ],
+        wake_radius: 300,
+    ),
+    (
+        id: "sentry_post",
+        name: "Sentry post",
+        summary: "An anchored precursor sentry station holding an approach to the centre.",
+        description: "The [[ship:precursor_station|station]] never moves, but its long cannons and torpedoes reach far and two of its cannons face back.",
+        tags: ["precursors", "station"],
+        ships: [(ship: "precursor_station", count: (1, 1))],
+        wake_radius: 300,
+    ),
+    (
+        id: "megastructure_fragment",
+        name: "Megastructure fragment",
+        summary: "A length of a precursor ring's hull drifting in the radiation, with a sentry or two still guarding it.",
+        description: "Rich salvage: [[material:precursor_alloy]] plating and dead [[part:sentinel_core|sentinel cores]]. The sentries wake when you come close.",
+        lore: "The fragment's inner face is covered in the same forty marks, over and over, too worn to read.",
+        tags: ["precursors", "wrecks"],
+        ships: [(ship: "precursor_sentry", count: (1, 2))],
+        wrecks: [
+            (ship: "precursor_fragment", count: (1, 1), damage: 0.2),
+            (ship: "precursor_sentry", count: (1, 2), damage: 0.4),
+        ],
+        wake_radius: 300,
+    ),
+    // The spare cache of the core (GDR-0128's pattern): sealed, with a sentry left on watch.
+    (
+        id: "sealed_vault",
+        name: "Sealed vault",
+        summary: "A precursor vault, sealed and still guarded by one sentry.",
+        description: "What it holds goes into store when the sentry is beaten: research data and [[material:programmable_matter]].",
+        tags: ["precursors", "cache"],
+        ships: [(ship: "precursor_sentry", count: (1, 1))],
+        wake_radius: 250,
+    ),
+    (
+        id: "archive_site",
+        name: "The Archive",
+        summary: "The precursors' archive at the galaxy's centre, and the warden that keeps it, with three sentries and an aegis.",
+        description: "The [[ship:archive_warden]] changes its tactics as it breaks: whole, it holds off at long reach; with a section shot off it closes in; down to half it charges. Three [[ship:precursor_sentry|sentries]] and an [[ship:precursor_aegis|aegis]] fly with it. Beaten, it gives the [[material:archive_key]] and the Archive's records.",
+        lore: "The warden does not hail you. It reads your name off your hull, as if checking it against a list.",
+        tags: ["boss", "precursors"],
+        ships: [
+            (ship: "archive_warden", count: (1, 1)),
+            (ship: "precursor_sentry", count: (3, 3)),
+            (ship: "precursor_aegis", count: (1, 1)),
+        ],
+        wake_radius: 400,
+    ),
+]

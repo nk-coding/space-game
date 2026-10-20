@@ -383,6 +383,7 @@ fn hot_world(heat: f32) -> Sim {
             entry: Body::at(Vec2::new(0.0, -3000.0), 0.0),
             sites: Vec::new(),
             star: Some(Star { pos: Vec2::new(1000.0, 0.0), heat, reach: 1000.0 }),
+            radiation: 0.0,
             rocks: Vec::new(),
         },
         Owner::PLAYER,

@@ -1,0 +1,42 @@
+// Precursor sentry: the core's light patrol ship (GDR-0130, lead default 20 Oct 2026). Two long cannons on a sentinel
+// core and a fission reactor, a shield emitter and point defence, four radiators along its flanks for the core's
+// radiation, plated in precursor alloy. Precursor defences fly in order: they pick the weakest ship together and hold
+// their distance. PLACEHOLDER layout.
+(
+    id: "precursor_sentry",
+    name: "Precursor sentry",
+    summary: "A small precursor patrol ship: two long cannons, a shield and point defence, cooled for the core's radiation.",
+    description: "It keeps its distance and fires its [[part:long_cannon|long cannons]] from further than most guns reach, falling back while its [[part:shield_emitter|shield]] recharges. Sentries pick the weakest ship of a fleet together. Their [[part:radiator|radiators]] keep them cool in the core's radiation; their plating is [[material:precursor_alloy]].",
+    lore: "It flies the patrol it was given, the same loop, for as long as anyone has watched.",
+    tags: ["core"],
+    faction: "precursors",
+    size: (5, 6),
+    parts: [
+        (part: "slope_1x1", x: 0, y: 0, flip: true, material: "precursor_alloy"),
+        (part: "long_cannon", x: 1, y: 0),
+        (part: "point_defence", x: 2, y: 0),
+        (part: "long_cannon", x: 3, y: 0),
+        (part: "slope_1x1", x: 4, y: 0, material: "precursor_alloy"),
+        (part: "armor_block", x: 0, y: 1, material: "precursor_alloy"),
+        (part: "sentinel_core", x: 2, y: 1),
+        (part: "armor_block", x: 4, y: 1, material: "precursor_alloy"),
+        (part: "radiator", x: 0, y: 2),
+        (part: "armor_block", x: 1, y: 2, material: "precursor_alloy"),
+        (part: "fission_reactor", x: 2, y: 2),
+        (part: "armor_block", x: 3, y: 2, material: "precursor_alloy"),
+        (part: "radiator", x: 4, y: 2),
+        (part: "radiator", x: 0, y: 3),
+        (part: "shield_emitter", x: 1, y: 3),
+        (part: "armor_block", x: 2, y: 3, material: "precursor_alloy"),
+        (part: "armor_block", x: 3, y: 3, material: "precursor_alloy"),
+        (part: "radiator", x: 4, y: 3),
+        (part: "slope_1x1", x: 0, y: 4, rot: 2, material: "precursor_alloy"),
+        (part: "armor_block", x: 1, y: 4, material: "precursor_alloy"),
+        (part: "armor_block", x: 2, y: 4, material: "precursor_alloy"),
+        (part: "armor_block", x: 3, y: 4, material: "precursor_alloy"),
+        (part: "slope_1x1", x: 4, y: 4, rot: 2, flip: true, material: "precursor_alloy"),
+        (part: "thruster", x: 1, y: 5),
+        (part: "armor_block", x: 2, y: 5, material: "precursor_alloy"),
+        (part: "thruster", x: 3, y: 5),
+    ],
+)

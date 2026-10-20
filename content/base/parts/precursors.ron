@@ -1,0 +1,33 @@
+// Parts of the precursor defences, the core's guardians (GDR-0130, lead defaults 20 Oct 2026). Precursor work like the
+// rim's automatons, in the enemy colour, pale alloy round a coral light. Their ships are otherwise built from parts the
+// player knows (beams, long cannons, torpedoes, wards, radiators), plated in precursor alloy. PLACEHOLDER NUMBERS.
+// `salvage`: research data to the logic family and programmable matter, as the automatons' cores.
+[
+    // Their mind and power: four rules and room for a heavy section's controls; built for the core's radiation, it
+    // runs hotter than an automaton core before it shuts down.
+    (
+        id: "sentinel_core",
+        name: "Sentinel core",
+        summary: "The mind and power plant of a precursor defence: orderly, patient, and still following its orders.",
+        description: "A precursor defence is a vessel while one of its sentinel cores runs. It thinks four rules, feeds the guns beside it and stands more heat than other cores, for the core's radiation. The [[research:archive_codex|Archive's codex]] lets you build it. Salvaged, it gives logic data and more [[material:programmable_matter]] than an [[part:automaton_core]]; destroyed, it leaves a fragment of it.",
+        lore: "It answers to an order signed long ago, and it has never been told to stop.",
+        tags: ["precursors", "core"],
+        locked: true, // the Archive's codex unlocks it (`archive_codex`, the final goal's reward)
+        category: "logic",
+        icon: "sentinel-core",
+        color: "enemy",
+        size: (1, 1),
+        build_points: 6,
+        mass: 3,
+        hp: 3,
+        power: (output: 10),
+        heat: (output: 0.8, limit: 5),
+        logic: (rule_slots: 4, control_capacity: 12),
+        sensor: (range: 900),
+        gyro: (torque: 320),
+        // A power plant, as an automaton core.
+        explosion: (damage: 1.5, radius: 1.5),
+        salvage: (family: "logic", data: 6, fragment: {"programmable_matter": 2}),
+        recipe: (materials: {"copper": 2, "crystal": 2, "programmable_matter": 4}, needs: "automaton_forge"),
+    ),
+]

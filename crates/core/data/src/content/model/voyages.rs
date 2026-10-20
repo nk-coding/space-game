@@ -42,6 +42,10 @@ pub struct Voyage {
     /// as the Warden's gate shard, GDR-0031). Left out of the serde form when empty, like `scenery`.
     #[serde(default, skip_serializing_if = "ResearchCost::is_empty")]
     pub gives: ResearchCost,
+    /// Radiation everywhere in it (GDR-0130): heat per second for each side of a part open to space, as a core
+    /// cluster's. Left out of the serde form when none, like `scenery`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub radiation: Option<f32>,
     #[serde(skip_deserializing)]
     pub source: Source,
 }

@@ -326,6 +326,7 @@ fn an_enemy_scan_calls_its_own_factions_sleeping_sites_within_range() {
             site("automaton_raider", Vec2::new(1250.0, -100.0)),
         ],
         star: None,
+        radiation: 0.0,
         rocks: Vec::new(),
     };
     let mut w = Sim::new(3);
@@ -384,6 +385,7 @@ fn called_ships_out_of_sight_rally_where_the_scanner_saw_its_target() {
             called: false,
         }],
         star: None,
+        radiation: 0.0,
         rocks: Vec::new(),
     };
     let mut w = Sim::new(3);
@@ -440,6 +442,7 @@ fn a_pickets_first_call_warps_its_group_in_thirty_seconds_later() {
             sim::SitePlan { called: true, ..site(vec![spawn("automaton_raider", edge)], edge) },
         ],
         star: None,
+        radiation: 0.0,
         rocks: Vec::new(),
     };
     let mut w = Sim::new(3);

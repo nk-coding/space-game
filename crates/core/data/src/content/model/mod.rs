@@ -17,7 +17,7 @@ use serde::{Deserialize, Serialize};
 use crate::content::kind::Kind;
 
 pub use controls::Control;
-pub use galaxy::{Band, ClusterSite, ClusterType, Galaxy, Gates, LoreFragment, NameParts, Reward, STAR_HEAT_CAP, SetPiece, SignalArea, SignalSource, SourceForm, StarSpec, Trail, TrailCount, Weighted};
+pub use galaxy::{Band, Centre, ClusterSite, ClusterType, Galaxy, Gates, LoreFragment, NameParts, RadiationSpec, Reward, STAR_HEAT_CAP, SetPiece, SignalArea, SignalSource, SourceForm, StarSpec, Trail, TrailCount, Weighted};
 pub use lab::{Duty, EnemyPalette, GENES, GOALS, GenePreset, GoalPreset, Lab, LabAxis, LabBudget, LabGene, LabGoal, LabKind, LabMeasure, LabPilot, LabShips, LabSize, LabSpread, MAX_DUTY_SECONDS, MAX_LAB_WEIGHT, MAX_PRESET_BEST, MAX_PRESET_SEEDS, MAX_PRESET_SHIPS, MAX_PRESET_WAVES, MEASURES, SPREADS, StandIn, TRIAL_KINDS, TrialPreset, TrialPresetKind};
 pub use behaviors::{Behavior, BehaviorNode, ChoiceOption, NodeParam, NodeRole, ParamType, Quantity};
 pub use parts::{ArmorSpec, BarrelArt, BlinkSpec, Bonus, CargoSpec, Condition, CountermeasureSpec, DefenceSpec, Delivery, Effect, EngineSpec, ExplosionSpec, GyroSpec, HangarSpec, HeartSpec, HeatSpec, HullSalvageSpec, LanceSpec, LogicSpec, MAX_CONTROL_COST, MAX_HANGAR, MAX_POWER_WEIGHT, Material, Part, PlumeSpec, PrismSpec, PowerOverride, PowerSpec, PowerTier, RadiatorSpec, RamSpec, RcsSpec, Recipe, SalvageSpec, ScannerSpec, Selector, SensorSpec, Shape, ShieldSpec, WeaponFamily, WeaponSpec};

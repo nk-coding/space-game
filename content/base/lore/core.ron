@@ -1,0 +1,22 @@
+// Lore fragments of the core (GDR-0080, GDR-0128, GDR-0130): found at the ends of the band's lore trails, kept in the
+// memory log. In the rim's voice, light (GDR-0002): the forty minds who signed the gate order (lore/outer.ron), the
+// forty names with yours the last (lore/inner.ron), and the warden at the centre who is one of them. They pay the
+// thread off a little and close nothing. Lead defaults (20 Oct 2026, GDR-0130).
+[
+    (
+        id: "the_order_kept",
+        name: "The order kept",
+        summary: "A sentry station's log from the core, the same report filed every day since the precursors went quiet.",
+        band: "core",
+        trail: "memory",
+        text: "A sentry station's log. Every entry is the same report, filed every day since the voices stopped: nothing has come through, the gates face inwards, the order stands. The order is signed by forty minds. The station has never asked which of them is still awake to read it.",
+    ),
+    (
+        id: "two_names_left",
+        name: "Two names left",
+        summary: "The list of forty again, near the centre, with every name crossed out but two.",
+        band: "core",
+        trail: "memory",
+        text: "The list of forty names again, written near the centre. Thirty-eight are crossed out, each in a different hand. One is not crossed out, and beside it is a single word: keeping. The last name, yours, has a mark beside it you have not seen before. It might mean expected. It might mean late.",
+    ),
+]

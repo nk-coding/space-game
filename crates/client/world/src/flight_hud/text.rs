@@ -174,6 +174,10 @@ pub(super) fn update_text(
                             if let (Some(star), Some(p)) = (v.star(), control) {
                                 let _ = write!(s, "  ·  STAR HEAT {:.1} A SIDE", star.heat_at(p.com_world()));
                             }
+                            // A core cluster's radiation (GDR-0130), the same everywhere in it.
+                            if v.radiation() > 0.0 {
+                                let _ = write!(s, "  ·  RADIATION {:.2} A SIDE", v.radiation());
+                            }
                         }
                     }
                     SceneKind::Fight => {

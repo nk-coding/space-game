@@ -786,13 +786,16 @@ impl Sim {
         self.plans = plans;
 
         mark(StepPhase::Systems);
-        // A hot star heats each ship by where its controlling (else first) piece is (GDR-0102).
+        // A hot star heats each ship by where its controlling (else first) piece is (GDR-0102); a core cluster's
+        // radiation everywhere alike (GDR-0130).
         let star = self.voyage.as_deref().and_then(|v| v.star().copied());
+        let radiation = self.voyage.as_deref().map_or(0.0, |v| v.radiation());
         for s in &mut self.ships {
-            let heat = star.map_or(0.0, |st| {
-                let at = s.control_piece().and_then(|c| s.piece(c)).or(s.pieces().first());
-                at.map_or(0.0, |p| st.heat_at(p.com_world()))
-            });
+            let heat = radiation
+                + star.map_or(0.0, |st| {
+                    let at = s.control_piece().and_then(|c| s.piece(c)).or(s.pieces().first());
+                    at.map_or(0.0, |p| st.heat_at(p.com_world()))
+                });
             s.update_systems(heat);
             if let Some(sw) = s.advance_scan() {
                 self.events.push(SimEvent::Scanned {

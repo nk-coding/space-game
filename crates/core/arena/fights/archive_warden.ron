@@ -1,0 +1,14 @@
+// The Archive's warden (GDR-0130) and a sentry against the Halvex Runner, a mid-game sample and two rim skiffs, 250 m
+// apart: the warden holds off at its torpedoes' reach, closes in once a section is shot off and charges when it is down
+// to about half; each section fights on alone. For the fight viewer and the determinism check
+// (`scripts/determinism-check.sh --fight archive_warden`): sections splitting into vessels and the phase switch, native
+// against wasm. No radiation here: arena fights have no cluster.
+(
+    seed: 1,
+    sides: [
+        (entries: [(design: Ship("halvex_runner")), (design: Ship("sample_mid")), (design: Ship("rim_skiff"), count: 2)]),
+        (entries: [(design: Ship("archive_warden")), (design: Ship("precursor_sentry"))]),
+    ],
+    start_distance: 250.0,
+    time_limit: 90.0,
+)

@@ -1,0 +1,24 @@
+// The core's materials (GDR-0130, lead defaults 20 Oct 2026): precursor alloy, the plating of the precursors' own
+// defences, and the archive key that the Archive's warden keeps. PLACEHOLDER NUMBERS. What gives them lives in the
+// trails and research that name them.
+[
+    (
+        id: "precursor_alloy",
+        name: "Precursor alloy",
+        summary: "The pale plating of the precursors' own defences: tougher than reactive plate and lighter than composite.",
+        description: "The best armour there is: more hit points a cell than [[material:reactive]], a little more mass than [[material:composite]], and it lets less than a third of a blast through. Dear in build points. The core's defences are plated in it; [[research:precursor_alloy|research]] unlocks it for your hull parts.",
+        tags: ["precursors"],
+        locked: true, // the hull research's `precursor_alloy` unlocks it (GDR-0130)
+        icon: "armor-alloy",
+        armor: (tone: "alloy", mass_per_cell: 1.7, hp_per_cell: 2.3, build_point_factor: 2.2, blast_factor: 0.3),
+        salvage: (family: "hull", data: 2.4),
+    ),
+    (
+        id: "archive_key",
+        name: "Archive key",
+        summary: "A key to the precursors' archive, taken from the warden that kept it.",
+        description: "The [[encounter:archive_site|Archive's warden]] gives one when it is beaten at the end of the Archive's trail, at the galaxy's centre. One in a galaxy. The [[research:archive_codex|Archive's codex]] takes it.",
+        tags: ["precursors"],
+        icon: "archive-key",
+    ),
+]

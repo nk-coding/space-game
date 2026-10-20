@@ -458,7 +458,7 @@ mod tests {
         assert_eq!(at(&tree, "cruiser_drydock"), ("hull".into(), 0, 1));
         assert_eq!(at(&tree, "tamed_core"), ("logic".into(), 0, 0));
         assert_eq!(at(&tree, "mind_expansion_1"), ("logic".into(), 0, 1));
-        assert_eq!(at(&tree, "mind_expansion_2"), ("logic".into(), 0, 2));
+        assert_eq!(at(&tree, "mind_expansion_2"), ("logic".into(), 1, 2)); // under the Archive's codex (GDR-0130)
         assert_eq!(at(&tree, "simulation_vault"), ("logic".into(), 1, 0));
         assert_eq!(at(&tree, "ion_cannon"), ("logic".into(), 2, 0));
         assert_eq!(at(&tree, "jump_calibration_1"), ("propulsion".into(), 1, 0));
@@ -468,10 +468,13 @@ mod tests {
         assert_eq!(at(&tree, "drone_bay"), ("swarm".into(), 0, 2));
         assert_eq!(at(&tree, "crystal_ward"), ("lattice".into(), 0, 2));
         assert_eq!(at(&tree, "reactive_plating"), ("hull".into(), 1, 1));
-        assert_eq!(at(&tree, "capital_drydock"), ("hull".into(), 0, 2));
+        assert_eq!(at(&tree, "capital_drydock"), ("hull".into(), 1, 2)); // under precursor alloy (GDR-0130)
         assert_eq!(at(&tree, "automaton_forge"), ("logic".into(), 1, 1));
         assert_eq!(at(&tree, "long_cannon"), ("kinetic".into(), 0, 1));
         assert_eq!(at(&tree, "burst_laser"), ("energy".into(), 1, 0));
+        // The core's two nodes (GDR-0130), beside the nodes they follow.
+        assert_eq!(at(&tree, "precursor_alloy"), ("hull".into(), 0, 2));
+        assert_eq!(at(&tree, "archive_codex"), ("logic".into(), 0, 2));
         let link = |a: &str, b: &str| Link { from: tree.card_of(a).unwrap(), to: tree.card_of(b).unwrap() };
         assert_eq!(
             tree.links,
@@ -483,6 +486,9 @@ mod tests {
                 link("prism_relay", "crystal_ward"),
                 link("rocket_pod", "torpedo"),
                 link("point_defence", "flares"),
+                link("reactive_plating", "precursor_alloy"),
+                link("mind_expansion_1", "archive_codex"),
+                link("automaton_forge", "archive_codex"),
                 link("jump_calibration_1", "jump_calibration_2"),
                 link("tamed_core", "mind_expansion_1"),
                 link("mind_expansion_1", "mind_expansion_2"),

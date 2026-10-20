@@ -687,6 +687,7 @@ fn base_locks_follow_the_early_game_kit() {
             "flare_launcher",
             "fusion_reactor",
             "compact_reactor",
+            "sentinel_core", // the core's defences' (GDR-0130); the Archive's codex unlocks it
             "torch_drive",
             "swarm_node", // the Swarm's own (GDR-0117), like the ganglion, the jet and the brood hangar
             "swarm_jet",
@@ -711,7 +712,7 @@ fn base_locks_follow_the_early_game_kit() {
         .collect();
     assert_eq!(
         locked_materials,
-        ["composite", "reactive", "automaton_plate", "grown_tissue", "refractive_crystal", "chitin"]
+        ["composite", "reactive", "automaton_plate", "grown_tissue", "precursor_alloy", "refractive_crystal", "chitin"]
     );
     let open_frames: Vec<&str> = c
         .frames
@@ -741,6 +742,8 @@ fn base_research_nodes() {
             "point_defence",
             "torpedo",
             "flares",
+            "precursor_alloy", // the core's (GDR-0130)
+            "archive_codex",
             "automaton_cannon",
             "composite_plating",
             "beam_laser",
@@ -845,7 +848,8 @@ fn base_start() {
             _ => 0,
         })
         .sum();
-    assert_eq!(s.mind_capacity + more, 4);
+    // The Archive's codex, the final goal's reward, adds one more (GDR-0130).
+    assert_eq!(s.mind_capacity + more, 5);
     // The starter is built from the early-game kit, carries salvage home and a scanner (GDR-0093: in place of a
     // cargo bay).
     let skiff = c.ships.get("rim_skiff").unwrap();

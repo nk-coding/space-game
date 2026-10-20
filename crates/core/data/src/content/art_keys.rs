@@ -20,7 +20,7 @@ pub const SYSTEM_COLORS: &[&str] = &[
 ];
 
 /// `ship.armor` in `art/tokens.json`: armour tile tones.
-pub const ARMOR_TONES: &[&str] = &["steel", "composite", "reactive", "enemy", "tissue", "chitin", "crystal"];
+pub const ARMOR_TONES: &[&str] = &["steel", "composite", "reactive", "enemy", "tissue", "chitin", "crystal", "alloy"];
 
 /// `world.rock` in `art/tokens.json`: asteroid rock tones, each with `shadow`, `mid`, `lit` and `edge` (GDR-0104).
 pub const ROCK_TONES: &[&str] = &["iron", "ice", "slag", "crystal"];

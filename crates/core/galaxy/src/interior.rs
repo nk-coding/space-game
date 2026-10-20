@@ -22,6 +22,10 @@ pub struct Interior {
     /// one hash as before.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub star: Option<InteriorStar>,
+    /// Radiation everywhere in it (GDR-0130, its type's `radiation` at the cluster's distance from the galaxy's
+    /// centre): heat per second per side open to space. Left out of the RON when none, as `star`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub radiation: Option<f32>,
 }
 
 /// A cluster's hot star (the type's `star`): where it lies, whole metres from the cluster's centre, in a direction
@@ -66,5 +70,10 @@ pub fn interior(c: &Content, s: &Skeleton, cluster: u32) -> Result<Interior, Gen
         let d = radius as f64 * st.distance as f64;
         InteriorStar { x: libm::round(d * libm::cos(a)) as f32, y: libm::round(d * libm::sin(a)) as f32, heat: st.heat }
     });
-    Ok(Interior { kind: t.id.clone(), radius, spacing: t.spacing, sites, star })
+    // No draw: types without radiation roll as before.
+    let radiation = t.radiation.as_ref().map(|r| {
+        let edge = c.bands.get(&k.band).map_or(0.0, |b| b.edge as f64);
+        r.at(libm::sqrt(k.at.r2() as f64) / crate::UNITS_PER_S as f64, edge)
+    });
+    Ok(Interior { kind: t.id.clone(), radius, spacing: t.spacing, sites, star, radiation })
 }

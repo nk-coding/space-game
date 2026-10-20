@@ -454,10 +454,10 @@ fn career_pages_link_both_ways() {
         node,
         "<h2>Requires</h2>\n<table class=\"list\">\n<tr><td class=\"name\"><a href=\"../research/tamed_core.html\">",
     );
-    has(
-        node,
-        "<h2>Required by</h2>\n<table class=\"list\">\n<tr><td class=\"name\"><a href=\"../research/mind_expansion_2.html\">",
-    );
+    // Required by: the second expansion and the Archive's codex (GDR-0130).
+    has(node, "<h2>Required by</h2>\n<table class=\"list\">\n<tr><td class=\"name\"><a href=\"../research/");
+    has(node, "<a href=\"../research/mind_expansion_2.html\">");
+    has(node, "<a href=\"../research/archive_codex.html\">");
     has(node, "Mind capacity +1");
     has(node, "The ship-mind runs 1 more logic core at once.");
     has(
@@ -493,7 +493,7 @@ fn career_pages_link_both_ways() {
     );
     has(start, "<dt>Mind capacity</dt><dd>2 logic cores</dd>");
     has(start, "href=\"../research/mind_expansion_2.html\"");
-    has(start, "(<strong>4</strong> in all)");
+    has(start, "(<strong>5</strong> in all)"); // the Archive's codex adds one (GDR-0130)
     has(
         start,
         "<h2>Open voyages</h2>\n<table class=\"list\">\n<tr><td class=\"name\"><a href=\"../voyages/yard_approach.html\">Shipyard approach</a>",
@@ -532,11 +532,15 @@ fn galaxy_pages_link_both_ways() {
     has("galaxy/galaxy.html", "<p class=\"note\">Seed 1: ");
     has("bands/rim.html", "<a href=\"../cluster_types/wreck_drift.html\">Wreck drift</a>");
     has("bands/rim.html", "<a href=\"../trails/rim_gate.html\">A rim gate</a></td><td>A band gate</td><td class=\"num\">2 (one per gate but the first)</td>");
-    has("bands/core.html", "<span class=\"tag\">stub</span>");
+    // The core (GDR-0130): no stub any more; its centre and the Archive's trail, its radiation.
+    has("bands/core.html", "<dt>Centre</dt><dd><a href=\"../cluster_types/archive_heart.html\">");
+    has("bands/core.html", "<a href=\"../trails/archive.html\">The Archive</a></td><td>A precursor cache</td><td class=\"num\">1, to the band's cluster nearest the galaxy's centre</td>");
+    has("cluster_types/sentry_reach.html", "<dt>Radiation</dt><dd>0.25 heat a second per open side on its band's outer edge, up to 0.35 at the galaxy's centre</dd>");
+    has("cluster_types/archive_heart.html", "<a href=\"../bands/core.html\">");
     has("bands/middle.html", "<a href=\"../cluster_types/swarm_reach.html\">Swarm reach</a>");
     has("bands/outer.html", "<a href=\"../cluster_types/grove_reach.html\">Grove reach</a>");
     has("trails/outer_gate.html", "<dt>At its end</dt><dd><a href=\"../encounters/bastion_gate.html\">Bastion gate</a></dd>");
-    has("bands/index.html", "<span class=\"badge stub\"");
+    assert!(!page(&site, "bands/index.html").contains("badge stub"), "no band is a stub (GDR-0130)");
     has("cluster_types/wreck_drift.html", "<dt>Radius</dt><dd>2000–2600 m</dd>");
     has("cluster_types/wreck_drift.html", "<a href=\"../encounters/derelict_field.html\">Derelict field</a>");
     has("trails/rim_gate.html", "<dt>At its end</dt><dd><a href=\"../encounters/gate_sentinel.html\">Gate sentinel</a></dd>");

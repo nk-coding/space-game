@@ -119,10 +119,25 @@ pub struct Band {
     /// The sky behind its content voyages and behind clusters whose type has none (GDR-0105).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sky: Option<Sky>,
+    /// Its cluster nearest the galaxy's centre and the trail that ends there (GDR-0130: the core's Archive).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub centre: Option<Centre>,
     #[serde(skip_deserializing)]
     pub source: Source,
 }
 entry!(Band, Kind::Band);
+
+/// A band's centre ([`Band::centre`], GDR-0130): its cluster nearest the galaxy's centre is of the type `cluster`
+/// (whatever its band's weights roll) and holds the end of a `trail` of its own, placed before the band's other
+/// trails; no other trail passes through it.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Centre {
+    /// The trail (id) that ends there: a cache or rich salvage, its target the place's boss.
+    pub trail: String,
+    /// The cluster type (id) of the centre's cluster.
+    pub cluster: String,
+}
 
 /// An id with a weight (a band's cluster types).
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -184,6 +199,9 @@ pub struct ClusterType {
     /// A hot star near the cluster (GDR-0099 A5, GDR-0102): parts open to space take its heat.
     #[serde(default)]
     pub star: Option<StarSpec>,
+    /// Radiation everywhere in the cluster (GDR-0130, the core): parts open to space take its heat, as a star's.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub radiation: Option<RadiationSpec>,
     /// What fills its space between the sites: rocks, dust, debris, derelicts, landmarks (GDR-0104).
     #[serde(default)]
     pub scenery: Scenery,
@@ -205,6 +223,28 @@ pub struct StarSpec {
     pub heat: f32,
     /// How far from the centre it lies, in cluster radii (above 1: outside the cluster).
     pub distance: f32,
+}
+
+/// Radiation in a cluster (GDR-0130): every part takes heat per second for each of its sides open to space, the same
+/// everywhere in the cluster (as a hot star's heat, GDR-0102), more the nearer the cluster lies to the galaxy's centre:
+/// `edge` for a cluster on its band's outer edge, `centre` at the galaxy's centre, linear in between.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RadiationSpec {
+    /// Heat per second per open side for a cluster on the band's outer edge (the units of `heat.output`).
+    pub edge: f32,
+    /// The same at the galaxy's centre.
+    pub centre: f32,
+}
+
+impl RadiationSpec {
+    /// The heat per open side of a cluster `r` from the galaxy's centre in a band whose outer edge lies at `edge`
+    /// (both in the same unit), rounded to thousandths so every platform reads it the same.
+    pub fn at(&self, r: f64, edge: f64) -> f32 {
+        let t = if edge > 0.0 { (r / edge).clamp(0.0, 1.0) } else { 0.0 };
+        let h = self.centre as f64 + (self.edge as f64 - self.centre as f64) * t;
+        ((h * 1000.0).round() / 1000.0) as f32
+    }
 }
 
 /// Near a hot star the heat grows with the inverse square of the distance, but never past this many times its heat

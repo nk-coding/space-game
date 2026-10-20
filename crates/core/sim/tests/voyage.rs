@@ -651,6 +651,7 @@ fn one_site(ships: Vec<sim::Spawn>, wake_radius: f32) -> VoyagePlan {
             called: false,
         }],
         star: None,
+        radiation: 0.0,
         rocks: Vec::new(),
     }
 }
@@ -745,6 +746,7 @@ fn a_site_of_wary_ships_rolls_wary_and_a_hot_cluster_its_star() {
             .map(|e| galaxy::InteriorSite { encounter: Some((*e).into()), place: None })
             .collect(),
         star: Some(galaxy::InteriorStar { x: 3600.0, y: 0.0, heat: 0.3 }),
+        radiation: None,
     };
     let plan = VoyagePlan::roll_interior(&c, "test", &interior, &Default::default(), 5).unwrap();
     assert!(plan.sites[0].wary && !plan.sites[1].wary);
@@ -775,6 +777,7 @@ fn a_near_star_site_lies_by_the_hot_star() {
                 .map(|e| galaxy::InteriorSite { encounter: Some((*e).into()), place: None })
                 .collect(),
             star: Some(galaxy::InteriorStar { x: at.x.round(), y: at.y.round(), heat: 0.3 }),
+            radiation: None,
         };
         let plan = VoyagePlan::roll_interior(&c, "test", &interior, &Default::default(), seed).unwrap();
         let star = plan.star.unwrap();

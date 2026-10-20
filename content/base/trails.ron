@@ -210,4 +210,29 @@
         hint: "A graveyard",
         ends_in: ["phase_rift"],
     ),
+    // The core (GDR-0130, lead defaults 20 Oct 2026). The Archive: the band's centre trail, ending at the galaxy's
+    // centre (`bands.ron`'s `centre`), the final goal; its warden beaten, the Archive gives its key, which the
+    // Archive's codex takes (research/precursors.ron), and its records. The sealed vault is the band's spare cache.
+    (
+        id: "archive",
+        name: "The Archive",
+        summary: "The trail to the precursors' archive at the galaxy's centre, and the warden mind that keeps it.",
+        reward: Cache,
+        length: (2, 3),
+        target: "archive_site",
+        sources: ["precursor_log", "old_beacon"],
+        hint: "The Archive",
+        gives: (data: {"logic": 30, "hull": 20, "shields": 12}, materials: {"archive_key": 1, "programmable_matter": 16}),
+    ),
+    (
+        id: "sealed_vault",
+        name: "A sealed vault",
+        summary: "A sealed precursor vault in the core, one sentry still on watch: research data and programmable matter, straight into store.",
+        reward: Cache,
+        length: (2, 3),
+        target: "sealed_vault",
+        sources: ["precursor_log", "old_beacon"],
+        hint: "A cache",
+        gives: (data: {"logic": 16, "hull": 12, "thermal": 10}, materials: {"programmable_matter": 10}),
+    ),
 ]

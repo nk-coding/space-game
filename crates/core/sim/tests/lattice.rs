@@ -167,6 +167,7 @@ fn a_lattice_site_warns_then_wakes_inside_its_territory() {
         entry: Body::at(me_at, 0.0),
         sites: vec![site],
         star: None,
+        radiation: 0.0,
         rocks: Vec::new(),
     };
     let mut w = Sim::new(3);

@@ -4,8 +4,8 @@
 // `trails` adds caches, graveyards and the bosses' sites (lore trails come from `lore/`; a `spare` trail comes after
 // them, in the clusters they leave free, GDR-0128). The rim and
 // the outer reach are real (the outer reach's Grown, guardians and elders 18 Oct 2026, GDR-0103), and so is the
-// middle band (the Swarm, 19 Oct 2026, GDR-0117) and the inner band (the Lattice, 20 Oct 2026, GDR-0126; the Phase
-// walkers, GDR-0127); the core is a stub (tag `stub`) until its race and guardians exist. PLACEHOLDER NUMBERS (lead,
+// middle band (the Swarm, 19 Oct 2026, GDR-0117), the inner band (the Lattice, 20 Oct 2026, GDR-0126; the Phase
+// walkers, GDR-0127) and the core (the precursor defences and the Archive, 20 Oct 2026, GDR-0130). PLACEHOLDER NUMBERS (lead,
 // 16 Oct 2026, GDR-0094; the outer reach's 18 Oct 2026, GDR-0103; the middle band's 19 Oct 2026, GDR-0117; the inner
 // band's 20 Oct 2026, GDR-0126).
 [
@@ -120,9 +120,25 @@
     (
         id: "core",
         name: "The core",
-        summary: "The bright heart of the galaxy. Uncharted.",
-        tags: ["stub"],
+        summary: "The bright heart of the galaxy: radiation everywhere, the precursors' own defences, and their Archive at the very centre.",
         edge: 1.1,
-        clusters: [(id: "uncharted_deep", weight: 1)],
+        // The precursor defences (GDR-0130, decided by Niklas 20 Oct 2026; details lead defaults): patrols and sentry
+        // posts, a megastructure's fragments; every cluster radiates (its type's `radiation`).
+        clusters: [(id: "sentry_reach", weight: 3), (id: "fragment_deep", weight: 2)],
+        // The Archive at the galaxy's centre: the band's cluster nearest it, the end of its own trail (GDR-0130).
+        centre: (trail: "archive", cluster: "archive_heart"),
+        // Its lore after the Archive, then a spare vault where a cluster is left (GDR-0128).
+        trails: [(trail: "sealed_vault", count: 1, spare: true)],
+        sky: (
+            planets: [
+                (kind: "rock", weight: 3), (kind: "desert", weight: 3), (kind: "eyeball", weight: 2), (kind: "jovian", weight: 1),
+            ],
+            moons: [(kind: "grey_moon", weight: 3), (kind: "rubble_moon", weight: 2), (kind: "geyser_moon", weight: 1)],
+            nebula: ("#c89a4a", "#d0603a"),
+            nebula_core: "#fff0c8",
+            nebula_strength: 1.0,
+            galaxy: 1.0,
+            backlit: true,
+        ),
     ),
 ]

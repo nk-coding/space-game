@@ -15,6 +15,10 @@ const HOME_TRIES: u32 = 64;
 /// Name rolls before a name gets a number.
 const NAME_TRIES: u32 = 32;
 
+/// A band with a centre (GDR-0130) holds at least this many clusters, or the attempt starts again: the centre, and
+/// two more for the centre's trail to walk back through and the band's lore to end in.
+const CENTRE_MIN_CLUSTERS: usize = 3;
+
 /// Where the clusters lie, sorted (band, then angle), with home, the set pieces and the gates.
 pub(crate) struct Layout {
     points: Vec<Point>,
@@ -131,6 +135,10 @@ pub(crate) fn layout(g: &Galaxy, bands: &[&Band], pieces: &[Piece], seed: u64, a
     if let Some(b) = (0..bands.len()).find(|&b| !band.contains(&b)) {
         return fail(format!("band `{}` holds no cluster", bands[b].id));
     }
+    // A band with a centre (GDR-0130) needs room round it for the centre's trail and the band's story.
+    if let Some(b) = (0..bands.len()).find(|&b| bands[b].centre.is_some() && band.iter().filter(|&&x| x == b).count() < CENTRE_MIN_CLUSTERS) {
+        return fail(format!("band `{}` holds fewer than {CENTRE_MIN_CLUSTERS} clusters round its centre", bands[b].id));
+    }
     let band_ref = &band;
     let of = |b: usize| (0..points.len()).filter(move |&k| band_ref[k] == b);
     let jump2 = units(g.jump_range).pow(2);
@@ -199,6 +207,8 @@ pub(crate) fn skeleton(c: &Content, g: &Galaxy, bands: &[&Band], pieces: &[Piece
         (stream(seed, Stream::Kinds, 0), stream(seed, Stream::Seeds, 0), stream(seed, Stream::Names, 0));
     let mut taken: BTreeSet<String> = pieces.iter().map(|p| p.name.clone()).collect();
     let mut clusters = Vec::with_capacity(l.points.len());
+    // Each band's centre (GDR-0130): its cluster nearest the galaxy's centre, of the centre's type.
+    let centres: Vec<Option<usize>> = (0..bands.len()).map(|b| centre_of(&l.points, &l.band, b)).collect();
     for (k, &at) in l.points.iter().enumerate() {
         let band = bands[l.band[k]];
         // A type with a `border` only within that many S of the band's outer edge.
@@ -215,7 +225,12 @@ pub(crate) fn skeleton(c: &Content, g: &Galaxy, bands: &[&Band], pieces: &[Piece
                 hit
             })
             .ok_or_else(|| GenError(format!("band `{}` has no cluster types", band.id)))?;
-        let t = c.cluster_types.get(&kind.id).ok_or_else(|| GenError(format!("unknown cluster type `{}`", kind.id)))?;
+        // The centre's type replaces the roll (rolled all the same, so the other clusters keep theirs).
+        let kind_id = match &band.centre {
+            Some(centre) if centres[l.band[k]] == Some(k) => &centre.cluster,
+            _ => &kind.id,
+        };
+        let t = c.cluster_types.get(kind_id).ok_or_else(|| GenError(format!("unknown cluster type `{kind_id}`")))?;
         let mut pick = |parts: &[String]| parts[names.below(parts.len() as u32) as usize].clone();
         let mut roll_name = || format!("{}{} {}", pick(&g.names.starts), pick(&g.names.ends), pick(&t.words));
         let mut name = roll_name();
@@ -238,7 +253,7 @@ pub(crate) fn skeleton(c: &Content, g: &Galaxy, bands: &[&Band], pieces: &[Piece
         clusters.push(Cluster {
             name,
             band: band.id.clone(),
-            kind: kind.id.clone(),
+            kind: kind_id.clone(),
             at,
             seed: seeds.next_u64(),
             gate: l.gate[k],
@@ -253,4 +268,9 @@ pub(crate) fn skeleton(c: &Content, g: &Galaxy, bands: &[&Band], pieces: &[Piece
         pieces: pieces.iter().zip(&l.pieces).map(|(p, &k)| (p.voyage.clone(), k as u32)).collect(),
         trails: Vec::new(),
     })
+}
+
+/// Band `b`'s cluster nearest the galaxy's centre (ties: the lower id), `None` for an empty band (GDR-0130).
+pub(crate) fn centre_of(points: &[Point], band: &[usize], b: usize) -> Option<usize> {
+    (0..points.len()).filter(|&k| band[k] == b).min_by_key(|&k| (points[k].r2(), k))
 }

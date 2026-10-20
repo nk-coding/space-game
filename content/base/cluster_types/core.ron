@@ -1,0 +1,70 @@
+// The core's clusters (GDR-0026: the precursor archive, the best tech, rising radiation; GDR-0130, decided by Niklas
+// 20 Oct 2026, details lead defaults): the precursor defences' patrols and sentry posts, fragments of a megastructure,
+// and at the galaxy's centre the Archive (the band's `centre`). Radiation everywhere in them (`radiation`): every part
+// takes heat through each side open to space, as beside a hot star (GDR-0102) but the same all over the cluster, more
+// the nearer the cluster lies to the galaxy's centre. PLACEHOLDER NUMBERS (lead defaults; radiation and counts tuned
+// with the headless voyage runner and the heat test, docs/results/core-band-2026-10-20.md).
+[
+    (
+        id: "sentry_reach",
+        name: "Sentry reach",
+        summary: "Bright, radiant space on the way to the centre, patrolled by precursor sentries and held by their stations.",
+        description: "The radiation heats every part open to space: bring [[part:radiator|radiators]] and [[part:heat_sink|heat sinks]].",
+        radius: (2000, 2800),
+        spacing: (700, 1400),
+        words: ["Reach", "Glare", "Ward"],
+        sites: [
+            (encounter: "sentry_patrol", count: (1, 2)),
+            (encounter: "sentry_post", count: (0, 1)),
+            (encounter: "megastructure_fragment", count: (0, 1)),
+        ],
+        radiation: (edge: 0.25, centre: 0.35),
+        scenery: (
+            rocks: [(rock: "slag_rock", layout: Scatter, count: (1, 1), rocks: (14, 24))],
+            dust: 0.5,
+            debris: 0.6,
+            derelicts: (1, 2),
+            landmarks: [(landmark: "silent_beacon", chance: 0.3)],
+        ),
+    ),
+    (
+        id: "fragment_deep",
+        name: "Fragment deep",
+        summary: "Where pieces of a precursor megastructure drift in the core's glare, still guarded.",
+        description: "Rich salvage in [[material:precursor_alloy]], and the radiation heats every part open to space.",
+        radius: (2200, 3000),
+        spacing: (700, 1500),
+        words: ["Deep", "Span", "Arc"],
+        sites: [
+            (encounter: "megastructure_fragment", count: (1, 2)),
+            (encounter: "sentry_patrol", count: (0, 1)),
+        ],
+        radiation: (edge: 0.25, centre: 0.35),
+        scenery: (
+            rocks: [(rock: "iron_rock", layout: Scatter, count: (1, 1), rocks: (10, 18))],
+            dust: 0.6,
+            debris: 0.9,
+            derelicts: (2, 3),
+            landmarks: [(landmark: "silent_beacon", chance: 0.4)],
+        ),
+    ),
+    // The galaxy's centre (the core band's `centre`): the Archive at the end of its trail, a patrol on the way.
+    (
+        id: "archive_heart",
+        name: "The Archive's heart",
+        summary: "The cluster at the galaxy's centre, where the precursors kept their archive: the strongest radiation of all.",
+        description: "Only the band's cluster nearest the galaxy's centre is of this type. The [[encounter:archive_site|Archive]] lies here, at the end of its trail.",
+        radius: (1800, 2400),
+        spacing: (700, 1200),
+        words: ["Archive"],
+        sites: [(encounter: "sentry_patrol", count: (1, 1))],
+        radiation: (edge: 0.25, centre: 0.35),
+        scenery: (
+            rocks: [],
+            dust: 0.4,
+            debris: 0.7,
+            derelicts: (1, 2),
+            landmarks: [(landmark: "silent_beacon", chance: 0.6)],
+        ),
+    ),
+]

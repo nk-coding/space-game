@@ -21,9 +21,11 @@
 //!    a band's gate piece is its first gate, the sectors turned round it.
 //! 4. **Reachable**: within the starting jump range, hop by hop, every cluster of a band is reachable from its
 //!    entrances (home for the first band, the gates of the band outside it for the others). Steps 1 to 4 start
-//!    again on a new attempt when a band is empty, home or a gate cannot be placed, or a band is not reachable.
-//! 5. **Types, seeds and names** per cluster in id order; a set piece's cluster takes its voyage's name.
-//! 6. **Trails** per band: one per gate but a gate piece's (its voyages are its trail), the band's bosses, caches and
+//!    again on a new attempt when a band is empty (or a band with a centre holds fewer than three clusters, GDR-0130),
+//!    home or a gate cannot be placed, or a band is not reachable.
+//! 5. **Types, seeds and names** per cluster in id order; a set piece's cluster takes its voyage's name; a band's
+//!    centre (GDR-0130), its cluster nearest the galaxy's centre, takes the centre's type instead of the one it rolled.
+//! 6. **Trails** per band: the centre's (GDR-0130), one per gate but a gate piece's (its voyages are its trail), the band's bosses, caches and
 //!    graveyards, one per lore fragment of the band, then its spare caches and graveyards. No trail place lies at
 //!    home or a set piece. A trail's reward goes into a cluster of its own (of its `ends_in` types, if it names any);
 //!    with none left free, the trail is left out of that galaxy. Its earlier places are walked back from there, a

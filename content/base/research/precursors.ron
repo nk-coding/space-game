@@ -1,0 +1,31 @@
+// What the core teaches (GDR-0130, lead defaults 20 Oct 2026): the best tech in the game, kept to two nodes in the
+// families they belong to. Precursor alloy, the defences' plating, for your hull parts (paid with the hull data their
+// salvage gives, a gate shard and programmable matter); and the Archive's codex, the final goal's reward: it takes the
+// archive key the Archive's warden keeps (one in a galaxy), lets the mind run one more core at once and gives you the
+// defences' own sentinel core.
+// PLACEHOLDER NUMBERS: a core patrol's wrecks give about 15-25 hull data, a megastructure fragment more.
+[
+    (
+        id: "precursor_alloy",
+        name: "Precursor alloy",
+        summary: "The core defences' pale plating, for your hull parts: the best armour there is.",
+        description: "Unlocks [[material:precursor_alloy]] for every hull part: tougher than reactive plate, a little heavier than composite, and it lets less than a third of a blast through. Dear in build points. Working it out takes the hull data the core's wrecks give, a [[material:gate_shard]] and [[material:programmable_matter]].",
+        family: "hull",
+        kind: Variant,
+        cost: (data: {"hull": 40, "logic": 8}, materials: {"gate_shard": 1, "programmable_matter": 8}),
+        requires: ["reactive_plating"],
+        unlocks: [Material("precursor_alloy")],
+    ),
+    (
+        id: "archive_codex",
+        name: "The Archive's codex",
+        summary: "What the Archive kept: how the forty ran one mind across many hulls. One more core at once, and the precursors' own sentinel core.",
+        description: "One more logic core runs at once, on top of every [[research:mind_expansion_1|mind expansion]], and the [[part:sentinel_core]] is yours: a tough core that powers itself and stands the core's radiation. It takes the [[material:archive_key]] that the Archive's warden keeps at the galaxy's centre: one in a galaxy.",
+        lore: "Most of the codex is about you. Not the ship-mind: you, by name, the last of the forty, and what you were made to carry.",
+        family: "logic",
+        kind: Refinement,
+        cost: (data: {"logic": 30}, materials: {"archive_key": 1, "programmable_matter": 10}),
+        requires: ["mind_expansion_1", "automaton_forge"], // the forge makes the sentinel core
+        unlocks: [MindCapacity(1), Part("sentinel_core")],
+    ),
+]

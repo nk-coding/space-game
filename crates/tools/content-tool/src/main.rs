@@ -954,7 +954,7 @@ mod tests {
         assert_eq!(logic["text_keys"]["name"], json!("family.logic.name"));
         assert_eq!(
             logic["salvaged_from_parts"],
-            json!(["automaton_core", "ion_cannon", "logic_core", "scanner"])
+            json!(["automaton_core", "ion_cannon", "logic_core", "scanner", "sentinel_core"])
         );
         // The Grown's family takes their parts' salvage (GDR-0103).
         assert_eq!(
@@ -963,11 +963,11 @@ mod tests {
         );
         assert_eq!(
             logic["research"],
-            json!(["tamed_core", "mind_expansion_1", "mind_expansion_2", "simulation_vault", "ion_cannon", "automaton_forge"])
+            json!(["archive_codex", "tamed_core", "mind_expansion_1", "mind_expansion_2", "simulation_vault", "ion_cannon", "automaton_forge"])
         );
         assert_eq!(
             find("families", "hull")["salvaged_from_materials"],
-            json!(["steel", "composite", "reactive", "automaton_plate"])
+            json!(["steel", "composite", "reactive", "automaton_plate", "precursor_alloy"])
         );
         assert_eq!(find("families", "grown")["salvaged_from_materials"], json!(["grown_tissue"]));
         assert_eq!(
@@ -977,7 +977,7 @@ mod tests {
         let node = find("research", "mind_expansion_1");
         assert_eq!(node["kind"], json!("Refinement"));
         assert_eq!(node["requires"], json!(["tamed_core"]));
-        assert_eq!(node["required_by"], json!(["mind_expansion_2"]));
+        assert_eq!(node["required_by"], json!(["archive_codex", "mind_expansion_2"]));
         assert_eq!(node["unlocks"], json!([{"MindCapacity": 1}]));
         assert_eq!(
             node["cost"],
@@ -1077,13 +1077,19 @@ mod tests {
         // scorched wrecks, the outpost garrison and the bastion's; the Keeper's and the Spire's; the middle band's
         // six Swarm sites, GDR-0117; the inner band's Lattice sites, GDR-0126, and four Phase walker sites, GDR-0127;
         // the outer reach's cache, overgrown fleet, watched grove and its call, the middle band's cache, scout patrol
-        // and its call, GDR-0128; the middle band's picked graveyard has raider wrecks).
+        // and its call, GDR-0128; the middle band's picked graveyard has raider wrecks; the core's precursor sites,
+        // GDR-0130).
         assert_eq!(
             find("ships", "automaton_raider")["in_encounters"]
                 .as_array()
                 .unwrap()
                 .len(),
-            c.encounters.len() - 30 - c.encounters.iter().filter(|e| e.source.file.contains("lattice") || e.source.file.contains("walkers")).count()
+            c.encounters.len()
+                - 30
+                - c.encounters
+                    .iter()
+                    .filter(|e| ["lattice", "walkers", "precursors"].iter().any(|f| e.source.file.contains(f)))
+                    .count()
         );
         assert_eq!(
             find("ships", "automaton_gunner")["in_encounters"],

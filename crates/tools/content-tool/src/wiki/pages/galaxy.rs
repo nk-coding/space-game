@@ -37,6 +37,16 @@ pub(crate) fn radius(t: &ClusterType) -> String {
     format!("{}–{}", format_number(t.radius.0, 0), metres(t.radius.1))
 }
 
+/// A cluster type's radiation (GDR-0130): "0.2 heat a second per open side on its band's outer edge, up to 0.4 at the
+/// galaxy's centre".
+pub(crate) fn radiation(r: &data::RadiationSpec) -> String {
+    format!(
+        "{} heat a second per open side on its band's outer edge, up to {} at the galaxy's centre",
+        format_number(r.edge, 2),
+        format_number(r.centre, 2)
+    )
+}
+
 /// A signal's first line as the map shows it: "SIGNAL · A GATE".
 fn signal_line(hint: &str) -> String {
     format!("SIGNAL · {}", hint.to_uppercase())
@@ -200,6 +210,11 @@ impl Wiki<'_> {
         }
         types.push_str("</table>\n");
         let mut trails = Vec::new();
+        // Its centre (GDR-0130): the cluster nearest the galaxy's centre and its trail, before the gates'.
+        if let Some(x) = &b.centre {
+            facts.push(("Centre".into(), format!("{}, at the end of {}", self.a(root, Kind::ClusterType, &x.cluster), self.a(root, Kind::Trail, &x.trail))));
+            trails.push((x.trail.as_str(), "1, to the band's cluster nearest the galaxy's centre".to_string()));
+        }
         if let Some(g) = &b.gates {
             // A gate's set piece has its voyages for a trail.
             let piece = galaxies.iter().flat_map(|x| &x.set_pieces).find(|p| p.gate && c.voyages.get(&p.voyage).is_some_and(|v| v.band == b.id));
@@ -259,6 +274,9 @@ impl Wiki<'_> {
                 ),
             ));
         }
+        if let Some(r) = &t.radiation {
+            facts.push(("Radiation".into(), radiation(r)));
+        }
         let mut sites = String::from(
             "<p>Each cluster of this type rolls its radius and how many of each site it holds from its own seed, when the fleet first warps in; the places of trails the galaxy put there come on top.</p>\n<table class=\"list\">\n<tr><th>Encounter</th><th>Ships</th><th>Wrecks</th><th class=\"num\">Sites</th></tr>\n",
         );
@@ -280,7 +298,7 @@ impl Wiki<'_> {
         let bands: Vec<String> = c
             .bands
             .iter()
-            .filter(|b| b.clusters.iter().any(|w| w.id == t.id))
+            .filter(|b| b.clusters.iter().any(|w| w.id == t.id) || b.centre.as_ref().is_some_and(|x| x.cluster == t.id))
             .map(|b| self.a(root, Kind::Band, &b.id))
             .collect();
         let mut sections = vec![("Sites".to_string(), sites)];

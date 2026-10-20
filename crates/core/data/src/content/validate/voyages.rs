@@ -119,6 +119,9 @@ impl<'a> Validator<'a> {
         }
         self.distance(v, "radius", v.radius);
         self.scenery(v, &v.scenery, v.radius, false);
+        if let Some(r) = v.radiation {
+            self.number(v, "radiation", r, 0.0, true);
+        }
         let (near, far) = v.spacing;
         self.distance(v, "spacing", near);
         self.distance(v, "spacing", far);

@@ -39,6 +39,7 @@ fn plan(at: Vec2, radius: f32, ore: u32) -> VoyagePlan {
         entry: Body::at(Vec2::new(0.0, -1000.0), 0.0),
         sites: Vec::new(),
         star: None,
+        radiation: 0.0,
         rocks: vec![FieldPlan { centre: at, reach: radius, rocks: vec![rock] }],
     }
 }

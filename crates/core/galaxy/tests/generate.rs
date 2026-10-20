@@ -66,7 +66,11 @@ fn check(c: &Content, s: &Skeleton) {
         assert!(a.at.r2() <= outer * outer && a.at.r2() > inner * inner, "seed {seed}: {} outside its band", a.name);
         let band = c.bands.get(&a.band).unwrap();
         let w = band.clusters.iter().find(|w| w.id == a.kind);
-        assert!(w.is_some(), "seed {seed}: {} has a type of another band", a.name);
+        // A band's centre has the centre's type (GDR-0130), the only cluster that has it.
+        let centre = band.centre.as_ref().map(|x| x.cluster.as_str());
+        let nearest = s.band(&a.band).min_by_key(|&j| (s.clusters[j as usize].at.r2(), j)) == Some(i as u32);
+        assert_eq!(centre.is_some_and(|x| x == a.kind), centre.is_some() && nearest, "seed {seed}: {} is a centre or not", a.name);
+        assert!(w.is_some() || centre == Some(a.kind.as_str()), "seed {seed}: {} has a type of another band", a.name);
         // A type with a border only that near the band's outer edge (GDR-0103).
         if let Some(d) = w.and_then(|w| w.border) {
             assert!(a.at.r2() >= units(band.edge - d).pow(2), "seed {seed}: {} ({}) too far in", a.name, a.kind);
@@ -140,6 +144,16 @@ fn check(c: &Content, s: &Skeleton) {
             let tpl = c.trails.get(&l.trail).unwrap();
             assert!(n == 1 || none_free(id, tpl), "seed {seed}: fragment {} left out of {id} with room for it", l.id);
         }
+        // A band's centre (GDR-0130): at least three clusters, its trail ending at the cluster nearest the galaxy's
+        // centre, which no other trail passes through.
+        if let Some(x) = &band.centre {
+            assert!(s.band(id).count() >= 3, "seed {seed}: {id} too small round its centre");
+            let k = s.band(id).min_by_key(|&j| (s.clusters[j as usize].at.r2(), j)).unwrap();
+            let ends: Vec<_> = s.trails.iter().filter(|t| t.trail == x.trail && t.band == *id).collect();
+            assert!(ends.len() == 1 && ends[0].places.last().unwrap().cluster == k, "seed {seed}: the centre's trail");
+            let through = s.trails.iter().flat_map(|t| &t.places).filter(|p| p.cluster == k).count();
+            assert_eq!(through, 1, "seed {seed}: another trail passes the centre");
+        }
         // A band's lore comes before its spare trails (GDR-0128).
         let lore_out = c.lore.iter().any(|l| l.band == *id && !s.trails.iter().any(|t| t.lore.as_deref() == Some(l.id.as_str())));
         let spares = band.trails.iter().filter(|tc| tc.spare).map(|tc| placed(&tc.trail)).sum::<u32>();
@@ -191,6 +205,11 @@ fn interiors_follow_their_cluster_types_and_hold_the_trail_places() {
             let d = (star.x as f64).hypot(star.y as f64);
             assert!((d - (i.radius * spec.distance) as f64).abs() < 1.0 && star.x.fract() == 0.0 && star.heat == spec.heat);
         }
+        // A radiant cluster's radiation lies between its type's edge and centre values (GDR-0130); others have none.
+        assert_eq!(i.radiation.is_some(), t.radiation.is_some());
+        if let (Some(r), Some(spec)) = (i.radiation, &t.radiation) {
+            assert!(r >= spec.edge && r <= spec.centre, "{} radiates {r}", cluster.name);
+        }
         let ordinary = i.sites.iter().filter(|x| x.place.is_none()).count() as u32;
         let (lo, hi) = t.sites.iter().fold((0, 0), |(a, b), x| (a + x.count.0, b + x.count.1));
         assert!((lo..=hi).contains(&ordinary));
@@ -209,5 +228,5 @@ fn interiors_follow_their_cluster_types_and_hold_the_trail_places() {
 #[test]
 fn the_generation_hash_is_pinned() {
     let c = data::base_content();
-    assert_eq!(format!("{:016x}", generate(&c, "galaxy", 1).unwrap().hash()), "af364f2879722a2d");
+    assert_eq!(format!("{:016x}", generate(&c, "galaxy", 1).unwrap().hash()), "7eb322ae41afb209");
 }

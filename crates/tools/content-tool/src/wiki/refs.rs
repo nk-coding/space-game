@@ -286,6 +286,9 @@ impl Refs {
         }
         for t in &c.cluster_types {
             put(format!("cluster_type:{}.radius", t.id), esc(&pages::cluster_radius(t)));
+            if let Some(r) = &t.radiation {
+                put(format!("cluster_type:{}.radiation", t.id), format!("{}–{}", format_number(r.edge, 2), format_number(r.centre, 2)));
+            }
         }
         for r in &c.rocks {
             put(format!("rock:{}.size", r.id), format!("{}–{}", format_number(r.size.0, 1), esc(&pages::metres(r.size.1))));

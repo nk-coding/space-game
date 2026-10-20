@@ -7,8 +7,8 @@ use data::{Band, Content, Galaxy, Trail};
 
 use crate::{Area, GenError, Place, Point, Signal, Skeleton, Stream, TrailPlan, polar, stream, unit, units};
 
-/// The trails of a skeleton whose clusters, home, set pieces and gates are set: per band (rim first) one per gate (but
-/// a gate piece's), then the band's `trails`, then one per lore fragment of the band, then the band's spare `trails`
+/// The trails of a skeleton whose clusters, home, set pieces and gates are set: per band (rim first) its centre's trail
+/// (GDR-0130), one per gate (but a gate piece's), then the band's `trails`, then one per lore fragment of the band, then the band's spare `trails`
 /// (GDR-0128). A trail that finds no cluster free for its end (none of its `ends_in` types, or a small band full) is
 /// left out of that galaxy.
 pub(crate) fn trails(c: &Content, g: &Galaxy, bands: &[&Band], s: &Skeleton) -> Result<Vec<TrailPlan>, GenError> {
@@ -22,6 +22,11 @@ pub(crate) fn trails(c: &Content, g: &Galaxy, bands: &[&Band], s: &Skeleton) -> 
         let mut wanted: Vec<(&Trail, Option<u32>, Option<String>)> = Vec::new();
         // A gate piece's gate has its voyages for a trail.
         let piece = |k: u32| s.pieces.values().any(|&p| p == k);
+        // The band's centre (GDR-0130): its trail first, ending at the band's cluster nearest the galaxy's centre.
+        let centre = band.centre.as_ref().and_then(|x| Some((x, s.band(&band.id).min_by_key(|&k| (s.clusters[k as usize].at.r2(), k))?)));
+        if let Some((x, k)) = centre {
+            wanted.push((get(&x.trail)?, Some(k), None));
+        }
         if let Some(gates) = &band.gates {
             let t = get(&gates.trail)?;
             wanted.extend(s.band(&band.id).filter(|&k| s.clusters[k as usize].gate && !piece(k)).map(|k| (t, Some(k), None)));
@@ -39,8 +44,11 @@ pub(crate) fn trails(c: &Content, g: &Galaxy, bands: &[&Band], s: &Skeleton) -> 
         }
         let entrances: Vec<Point> = s.entrances(&g.bands, b).iter().map(|&k| s.clusters[k as usize].at).collect();
         let from_start = |k: u32| entrances.iter().map(|e| e.dist2(s.clusters[k as usize].at)).min().unwrap_or(0);
-        // Places a trail may use: the band's clusters but home, the gates and the set pieces.
-        let open: Vec<u32> = s.band(&band.id).filter(|&k| k != s.home && !s.clusters[k as usize].gate && !piece(k)).collect();
+        // Places a trail may use: the band's clusters but home, the gates, the set pieces and the centre.
+        let open: Vec<u32> = s
+            .band(&band.id)
+            .filter(|&k| k != s.home && !s.clusters[k as usize].gate && !piece(k) && centre.is_none_or(|(_, c)| c != k))
+            .collect();
         for (t, fixed, lore) in wanted {
             let end = match fixed {
                 Some(k) => k,

@@ -198,6 +198,9 @@ pub struct VoyagePlan {
     pub sites: Vec<SitePlan>,
     /// A hot star beside the cluster (GDR-0102; a generated cluster whose type has one).
     pub star: Option<Star>,
+    /// Radiation everywhere in the cluster (GDR-0130; a core cluster's, or a voyage's `radiation`): heat per second
+    /// per side open to space for every part, on top of a star's. 0: none.
+    pub radiation: f32,
     /// Asteroid rock in spawn groups (GDR-0104, [`rocks::roll`]): the voyage's or the cluster type's scenery.
     pub rocks: Vec<rocks::FieldPlan>,
 }
@@ -246,6 +249,7 @@ impl VoyagePlan {
             list.extend((0..s.count).map(|_| (Some(e), s.goal, false, None)));
         }
         let mut plan = Self::roll_sites(content, &voyage.id, voyage.radius, voyage.spacing, &list, None, seed)?;
+        plan.radiation = voyage.radiation.unwrap_or(0.0);
         plan.roll_rocks(content, &voyage.scenery)?;
         Ok(plan)
     }
@@ -287,6 +291,7 @@ impl VoyagePlan {
             let pos = Vec2::new(s.x, s.y);
             Star { pos, heat: s.heat, reach: pos.length() }
         });
+        plan.radiation = interior.radiation.unwrap_or(0.0);
         let kind = content.cluster_types.get(&interior.kind).ok_or_else(|| format!("cluster `{id}`: unknown cluster type `{}`", interior.kind))?;
         plan.roll_rocks(content, &kind.scenery)?;
         Ok(plan)
@@ -409,6 +414,7 @@ impl VoyagePlan {
             entry: Body::at(entry, 0.0),
             sites,
             star: None,
+            radiation: 0.0,
             rocks: Vec::new(),
         })
     }
@@ -690,6 +696,8 @@ pub struct Voyage {
     enemy: Owner,
     sites: Vec<Site>,
     star: Option<Star>,
+    /// Radiation everywhere in the cluster (GDR-0130), heat per second per open side; 0: none.
+    radiation: f32,
     /// The rocks' spawn groups, each with whether it has spawned (GDR-0104).
     fields: Vec<(rocks::FieldPlan, bool)>,
     /// The rocks spawned so far, in spawn order: rock `k` is the body `BodyKey::rock(k)`.
@@ -741,6 +749,15 @@ impl Voyage {
     }
     pub fn star(&self) -> Option<&Star> {
         self.star.as_ref()
+    }
+    /// Radiation everywhere in the cluster (GDR-0130): heat per second per side open to space; 0 for none.
+    pub fn radiation(&self) -> f32 {
+        self.radiation
+    }
+    /// The heat per second per side open to space at world point `p`: the hot star's and the radiation's
+    /// (GDR-0102, GDR-0130).
+    pub fn heat_at(&self, p: Vec2) -> f32 {
+        self.star.map_or(0.0, |st| st.heat_at(p)) + self.radiation
     }
     /// Every bearing a scan gave to a hidden signal's site, oldest first (one per site and scan).
     pub fn bearings(&self) -> &[Bearing] {
@@ -862,6 +879,10 @@ impl StateHash for Voyage {
         if let Some(star) = &self.star {
             star.hash_state(h);
         }
+        // Only with radiation, so voyages without it hash as before.
+        if self.radiation != 0.0 {
+            h.f32(self.radiation);
+        }
         // Only with rocks, so voyages without any hash as before.
         if !self.fields.is_empty() {
             h.u32(self.fields.len() as u32);
@@ -927,6 +948,7 @@ impl Sim {
             enemy,
             sites,
             star: plan.star,
+            radiation: plan.radiation,
             fields: plan.rocks.into_iter().map(|f| (f, false)).collect(),
             rocks: Vec::new(),
             mined: false,

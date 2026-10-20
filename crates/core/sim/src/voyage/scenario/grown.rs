@@ -139,6 +139,7 @@ pub(super) fn grown_scenario(content: &Content, seed: u64) -> Result<Scenario, S
             called: false,
         }],
         star: Some(crate::voyage::Star { pos: Vec2::new(1400.0, 0.0), heat: 0.4, reach: 1400.0 }),
+        radiation: 0.0,
         rocks: Vec::new(),
     };
     let entry = plan.entry;

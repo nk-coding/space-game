@@ -164,6 +164,12 @@ impl<'a> Validator<'a> {
             self.count(b, "gates.count", gates.count, MAX_GATES);
             self.trail_ref(b, "gates.trail", &gates.trail, &[Reward::Gate]);
         }
+        if let Some(centre) = &b.centre {
+            self.trail_ref(b, "centre.trail", &centre.trail, &[Reward::Cache, Reward::Salvage]);
+            if !c.cluster_types.contains(&centre.cluster) {
+                self.err(b, "centre.cluster", format!("unknown cluster_type `{}`", centre.cluster));
+            }
+        }
         for (k, t) in b.trails.iter().enumerate() {
             self.trail_ref(b, &format!("trails[{k}].trail"), &t.trail, &[Reward::Cache, Reward::Salvage]);
             self.count(b, &format!("trails[{k}].count"), t.count, MAX_BAND_TRAILS);
@@ -201,11 +207,15 @@ impl<'a> Validator<'a> {
                 self.err(t, "star.distance", format!("cluster radii from the centre, above 1 (outside the cluster) and at most {MAX_STAR_DISTANCE}, got {}", star.distance));
             }
         }
+        if let Some(r) = &t.radiation {
+            self.number(t, "radiation.edge", r.edge, 0.0, true);
+            self.number(t, "radiation.centre", r.centre, 0.0, true);
+        }
         self.scenery(t, &t.scenery, t.radius.0, t.star.is_some());
         if let Some(sky) = &t.sky {
             self.sky(t, sky);
         }
-        if !c.bands.iter().any(|b| b.clusters.iter().any(|w| w.id == t.id)) {
+        if !c.bands.iter().any(|b| b.clusters.iter().any(|w| w.id == t.id) || b.centre.as_ref().is_some_and(|x| x.cluster == t.id)) {
             self.warn(t, "id", "no band has clusters of this type");
         }
     }
@@ -240,7 +250,9 @@ impl<'a> Validator<'a> {
         let used = match t.reward {
             Reward::Gate => c.bands.iter().any(|b| b.gates.as_ref().is_some_and(|g| g.trail == t.id)),
             Reward::Lore => c.lore.iter().any(|l| l.trail == t.id),
-            Reward::Cache | Reward::Salvage => c.bands.iter().any(|b| b.trails.iter().any(|x| x.trail == t.id)),
+            Reward::Cache | Reward::Salvage => {
+                c.bands.iter().any(|b| b.trails.iter().any(|x| x.trail == t.id) || b.centre.as_ref().is_some_and(|x| x.trail == t.id))
+            }
         };
         if !used {
             self.warn(t, "id", "no band or lore fragment places this trail");

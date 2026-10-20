@@ -1,0 +1,35 @@
+// The precursor defences' tactics (GDR-0130, lead defaults 20 Oct 2026). Orderly: the sentries and escorts pick the
+// weakest enemy together and hold their distance, falling back while a bubble recharges. The Archive's warden switches
+// tactics as it breaks: `hull` counts the parts lost with sections shot off (behavior_nodes/conditions.ron), so the
+// heart's share drops with every section gone. Every rule list fits one sentinel core's four slots, so a section shot
+// off keeps them all (it reads its own hull, whole again at first, and starts over at range). PLACEHOLDER numbers
+// (docs/results/core-band-2026-10-20.md).
+[
+    (
+        id: "sentry_patrol",
+        name: "Sentry patrol",
+        summary: "Pick the weakest enemy with the rest of the patrol, hold off at the edge of reach, fall back while the shield recharges.",
+        description: "Picks the enemy ship with the least hull left, as every ship of its patrol does, so they fire together. While one of its shield bubbles is down it keeps out beyond its reach; within reach it circles the target at four fifths of it, otherwise it closes to just inside it.",
+        tags: ["precursors", "attack"],
+        target: "weakest",
+        rules: [
+            "when shield_down -> kite(120%)",
+            "when target_in_range(110%) -> orbit(80%)",
+            "always -> approach(90%)",
+        ],
+    ),
+    (
+        id: "archive_warden",
+        name: "Archive warden",
+        summary: "Whole, hold off at long reach; a section lost, close in and circle; down to about half, charge.",
+        description: "Picks the biggest threat. From 88 % hull up it keeps about 95 m off, at the reach of its fore section's cannons and torpedoes, and 120 m while a ward is down. Below 88 % (a section shot off, or the hull badly hurt) it closes in and circles at 35 m, where the heart's beams and the wings' ion cannons bite. Below 55 % it stops minding its shields and charges, nose first.",
+        tags: ["precursors", "attack", "boss"],
+        target: "threat",
+        rules: [
+            "when hull < 55% -> ram",
+            "when hull < 88% -> orbit(35m)",
+            "when shield_down -> kite(120m)",
+            "always -> kite(95m)",
+        ],
+    ),
+]

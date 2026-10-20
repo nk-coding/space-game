@@ -1,0 +1,13 @@
+// The precursor defences (GDR-0130, decided by Niklas 20 Oct 2026; details lead defaults): the core's automated
+// guardians, precursor-built like the rim's automatons but whole, stronger and orderly, still keeping the gate order the
+// forty minds signed (lore/outer.ron). Not wary: they wake on sight, as the automatons do.
+(
+    id: "precursors",
+    name: "Precursor defences",
+    summary: "The core's guardians: precursor machines in pale alloy, whole and orderly, still keeping their old orders.",
+    description: "Unlike the rim's [[faction:automatons|automatons]] they never went feral. Their sentries pick the weakest ship of a fleet together and hold their distance, their escorts ward them, their stations hold the approaches, and at the very centre the [[ship:archive_warden|Archive's warden]] keeps the Archive. They live in the core's radiation and carry the radiators for it.",
+    tags: ["enemy"],
+    glow: "enemy",
+    // Ships without one of their own.
+    behavior: "sentry_patrol",
+)

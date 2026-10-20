@@ -25,16 +25,27 @@ fn has(problems: &[Problem], id: &str, field: &str, needle: &str) {
 }
 
 #[test]
-fn the_base_galaxy_is_the_rim_the_outer_reach_the_middle_and_inner_bands_and_a_stub_core() {
+fn the_base_galaxy_is_the_rim_the_outer_reach_the_middle_and_inner_bands_and_the_core() {
     let c = data::base_content();
     let g = c.galaxies.get("galaxy").unwrap();
     assert_eq!(g.bands, ["rim", "outer", "middle", "inner", "core"]);
     // Niklas, 16 Oct 2026 (GDR-0093): the drive jumps 2.5 S at the start.
     assert_eq!(g.jump_range, 2.5);
     assert!(g.spacing <= 0.9, "the first loop's voyages lie 0.9 S and more apart: they must fit");
-    for b in &g.bands[4..] {
-        assert!(c.bands.get(b).unwrap().tags.iter().any(|t| t == "stub"), "{b} is a stub");
+    // The core (GDR-0130): no stub; every cluster type radiates, more towards the galaxy's centre; the Archive at its
+    // centre, the end of a cache trail whose target holds the Archive's warden and gives the archive key.
+    let core = c.bands.get("core").unwrap();
+    assert!(!c.bands.iter().any(|b| b.tags.iter().any(|t| t == "stub")), "no band is a stub any more");
+    let centre = core.centre.as_ref().expect("the core's centre");
+    let types = core.clusters.iter().map(|w| w.id.as_str()).chain([centre.cluster.as_str()]);
+    for t in types.map(|t| c.cluster_types.get(t).unwrap()) {
+        let r = t.radiation.as_ref().unwrap_or_else(|| panic!("{} radiates", t.id));
+        assert!(r.centre > r.edge && r.edge > 0.0, "{}", t.id);
     }
+    let archive = c.trails.get(&centre.trail).unwrap();
+    assert_eq!((archive.reward, archive.target.as_str()), (Reward::Cache, "archive_site"));
+    assert_eq!(archive.gives.materials.get("archive_key"), Some(&1));
+    assert!(c.encounters.get("archive_site").unwrap().ships.iter().any(|s| s.ship == "archive_warden"));
     // The outer reach (GDR-0103): no stub, a precursor guardian at each gate, the elders at sites of their own.
     let outer = c.bands.get("outer").unwrap();
     assert!(!outer.tags.iter().any(|t| t == "stub"));
@@ -119,12 +130,13 @@ fn validation_refuses_broken_bands_types_trails_sources_and_lore() {
         (
             "bands.ron",
             r#"(id: "odd", name: "Odd", summary: "A band.", edge: 0, clusters: [(id: "nothing", weight: 0, border: -1)],
-                gates: (count: 0, trail: "graveyard"), trails: [(trail: "rim_gate", count: 1)])"#,
+                gates: (count: 0, trail: "graveyard"), trails: [(trail: "rim_gate", count: 1)],
+                centre: (trail: "memory", cluster: "nowhere"))"#,
         ),
         (
             "cluster_types/odd.ron",
             r#"(id: "too_big", name: "Too big", summary: "A cluster.", radius: (3000, 5000), spacing: (7000, 8000),
-                words: [], sites: [(encounter: "nobody", count: (2, 1))])"#,
+                words: [], sites: [(encounter: "nobody", count: (2, 1))], radiation: (edge: -0.1, centre: 0))"#,
         ),
         (
             "trails.ron",
@@ -149,6 +161,10 @@ fn validation_refuses_broken_bands_types_trails_sources_and_lore() {
     has(&p, "odd", "gates.count", "at least one gate");
     has(&p, "odd", "gates.trail", "leads to Salvage");
     has(&p, "odd", "trails[0].trail", "leads to Gate");
+    has(&p, "odd", "centre.trail", "leads to Lore");
+    has(&p, "odd", "centre.cluster", "unknown cluster_type `nowhere`");
+    has(&p, "too_big", "radiation.edge", "must be a finite number > 0");
+    has(&p, "too_big", "radiation.centre", "must be a finite number > 0");
     has(&p, "too_big", "radius", "≤ 4000 m");
     has(&p, "too_big", "spacing", "never fit");
     has(&p, "too_big", "words", "at least one name word");
@@ -163,4 +179,16 @@ fn validation_refuses_broken_bands_types_trails_sources_and_lore() {
     has(&p, "odd_fragment", "band", "unknown band `nowhere`");
     has(&p, "odd_fragment", "trail", "leads to Salvage");
     has(&p, "odd_fragment", "text", "must not be empty");
+}
+
+/// A cluster's radiation (GDR-0130): its type's `edge` on its band's outer edge, `centre` at the galaxy's centre,
+/// linear in between and clamped, in thousandths.
+#[test]
+fn radiation_grows_towards_the_galaxys_centre() {
+    let r = data::RadiationSpec { edge: 0.2, centre: 0.4 };
+    assert_eq!(r.at(1.1, 1.1), 0.2);
+    assert_eq!(r.at(0.0, 1.1), 0.4);
+    assert_eq!(r.at(0.55, 1.1), 0.3);
+    assert_eq!(r.at(2.0, 1.1), 0.2, "outside the band: the edge's");
+    assert_eq!(r.at(0.3333, 1.0), 0.333, "thousandths");
 }
