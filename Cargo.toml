@@ -85,14 +85,16 @@ lto = false
 incremental = true
 
 
-# The published web build (`scripts/web-build.sh --full`, GitHub Pages; ADR-0049): the client compiled for size,
-# the simulation for speed. Size is download time for players; opt-level "z" with fat LTO took the game's wasm
-# from 57.8 to 31.3 MiB (gzip 15.3 to 9.9 MiB, 20 Oct 2026) and the bench sim step 12–78 % slower, Rapier ~50 %.
-# So the sim and what it runs on (physics, maths, Rhai, the arena the lab's workers drive) stay at opt-level 3;
-# opt-level is a per-function attribute, so it survives LTO.
+# The published web build (`scripts/web-build.sh --full`, GitHub Pages; ADR-0049, opt-level "s" since ADR-0052): the
+# client compiled for size, the simulation for speed. Size is download time for players. "s" with fat LTO: 37.4 MiB
+# raw, gzip 11.1 MiB (all at opt 3: 56.7 / 14.6 MiB) with the same frames in Niklas's browser (20-ship load test
+# 16.8 ms against 16.7 ms); "z" was smaller (32.0 / 9.8 MiB) but took 20.5 ms (21 Oct 2026,
+# docs/results/web-profiles-2026-10-21.md). The sim and what it runs on (physics, maths, Rhai, the arena the lab's
+# workers drive) stay at opt-level 3 ("z" made the bench sim step 12–78 % slower); opt-level is a per-function
+# attribute, so it survives LTO.
 [profile.web-release]
 inherits = "release"
-opt-level = "z"
+opt-level = "s"
 lto = "fat"
 
 [profile.web-release.package]

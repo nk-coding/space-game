@@ -21,3 +21,8 @@ three runs each, alternating, one at a time (load average 5–8 from the browser
 - The frame time is SwiftShader's software rendering (about 2.7 fps here), so it cannot show what the client's
   ECS and UI code at `z` costs on a real GPU. That part of ADR-0049's check is still open: Niklas's browser and a phone
   with the overlay of the same load test, both builds.
+
+## In Niklas's browser (same day)
+
+The same load test on his machine (1440×765): `web-release` at `z` 20.5 ms mean frame (p95 24.5), `release` 16.7
+(p95 20.8), the client at `s` 16.8 (p95 20.0) at 11.1 MiB gzip. So the client is at `s` (ADR-0052).

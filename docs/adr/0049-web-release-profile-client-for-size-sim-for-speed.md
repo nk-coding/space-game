@@ -1,6 +1,6 @@
 # ADR-0049: The published web build compiles the client for size and the simulation for speed
 
-- Status: Accepted (provisional, lead)
+- Status: Superseded in part by ADR-0052 (the client's opt-level is "s", not "z"; the rest stands)
 - Date: 2026-10-20
 - Decided by: lead session (default for Niklas to review), on Niklas's request to make the wasm smaller
 - Related: ADR-0048, ADR-0034, `docs/client.md` "Publishing the web build"

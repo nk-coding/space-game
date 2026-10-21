@@ -57,9 +57,10 @@ is the overview and links to both series. Format and status rules: `CLAUDE.md`, 
 | [0046](0046-one-dev-mode-replaces-the-url-flags.md) | One `dev=1` mode (its own save, everything open, the whole galaxy with each cluster's sites, the debug keys) replaces the URL flags; a few tool flags stay for scripts | Accepted | 2026-10-20 |
 | [0047](0047-licences-code-mit-or-apache-content-cc-by.md) | Licences: code MIT OR Apache-2.0, content and art CC BY 4.0; a third-party notices file, an AI disclosure | Accepted | 2026-10-20 |
 | [0048](0048-the-web-build-is-a-player-platform.md) | The web build is a player platform beside native and Android, published on GitHub Pages by a GitHub Actions workflow | Accepted | 2026-10-20 |
-| [0049](0049-web-release-profile-client-for-size-sim-for-speed.md) | The published web build compiles the client for size and the simulation for speed (profile `web-release`) | Accepted (provisional, lead) | 2026-10-20 |
+| [0049](0049-web-release-profile-client-for-size-sim-for-speed.md) | The published web build compiles the client for size and the simulation for speed (profile `web-release`) | Superseded in part by [0052](0052-web-release-client-at-opt-level-s.md) | 2026-10-20 |
 | [0050](0050-save-export-and-import.md) | Saves are exported and imported as one RON backup file in SETTINGS › SAVES; an import checks everything first and replaces | Accepted (provisional, lead) | 2026-10-20 |
 | [0051](0051-egui-without-default-fonts-reflect-auto-register-kept.md) | egui runs on Barlow alone (no default fonts, −0.74 MiB gzip); Bevy's `reflect_auto_register` stays (no saving on wasm) | Accepted (provisional, lead) | 2026-10-21 |
+| [0052](0052-web-release-client-at-opt-level-s.md) | The published web build's client at opt-level `s`, not `z`: the same frames as all-speed, 11.1 MiB gzip | Accepted | 2026-10-21 |
 <!-- index:end -->
 
 ## How to add, supersede and deprecate

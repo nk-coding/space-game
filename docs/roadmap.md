@@ -866,6 +866,9 @@ Next session:
 - Wasm size ([ADR-0049](adr/0049-web-release-profile-client-for-size-sim-for-speed.md), same evening): the profile
   `web-release` (client opt-level `z`, fat LTO, the sim's crates at 3) for `--full` and Pages: the game's wasm 57.8 to
   33.1 MiB raw, 15.3 to 10.5 MiB gzip, sim speed unchanged.
+- The browser performance pass (21 Oct 2026, [ADR-0052](adr/0052-web-release-client-at-opt-level-s.md),
+  `docs/results/web-profiles-2026-10-21.md`): in Niklas's browser `z` made frames 23 % slower; the client is at `s`
+  (11.1 MiB gzip, frames as all-speed).
 - The loading screen and the subpath locally (same evening, `client.md` "Publishing the web build"): `index.html`'s
   loading screen with `loader.js` as trunk's initializer (the download with MB of MB, "starting" until the game's
   first frames, which the game signals with `game-ready`; failures for no WebGL2, a failed download and an error

@@ -53,7 +53,8 @@ published, and were written without a run.
   needs an absolute `/` path. A local build without `--public-url` keeps `/` and is served from the root as before.
 - **IndexedDB on github.io**: every project page of one user shares the origin `<user>.github.io` and so its
   IndexedDB; the game's database is `space-game` (`world::storage`).
-- Size (ADR-0049): the cargo profile `web-release` compiles the client with opt-level `z` and fat LTO, and the
+- Size (ADR-0049, ADR-0052): the cargo profile `web-release` compiles the client with opt-level `s` and fat LTO (`z`
+  was 1.3 MiB gzip smaller but its frames 23 % slower in a real browser), and the
   simulation and what it runs on (`sim`, `arena`, `galaxy`, rapier2d, parry2d, nalgebra, simba, glamx, wide, libm,
   rhai) with opt-level 3, so the sim and the lab's workers keep their speed. `scripts/web-build.sh --full` prints raw,
   gzip and brotli sizes.
