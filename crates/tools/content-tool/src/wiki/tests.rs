@@ -555,7 +555,7 @@ fn galaxy_pages_link_both_ways() {
     let w = Wiki::new(&c);
     let refs = refs::Refs::new(&w);
     assert_eq!(refs.values["galaxy:galaxy.jump_range"], "2.5 S");
-    assert_eq!(refs.values["galaxy:galaxy.warp"], "3 s + 2 s per S");
+    assert_eq!(refs.values["galaxy:galaxy.warp"], "1.5 s + 1 s per S");
     assert_eq!(refs.values["trail:rim_gate.length"], "3–4");
     assert!(refs.check("band:rim").is_ok() && refs.check("lore:a_note_to_myself").is_ok());
 }

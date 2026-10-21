@@ -200,7 +200,7 @@ variable (`kit::params`). A bare key means 1; `0`, `false`, `off` and `no` turn 
 | `seed=N` | the sim seed (default 42; a whole number, exact up to 2^64) |
 | `hashlog=1`, `hashticks=N` | with `scene=sandbox`: log the per-tick state hash of the load scenario (20 ships unless `load=` is given) to the console, `N` ticks (default 600, at least 1) |
 | `hud=0` | no HUD (screenshots) |
-| `slowmo=N` | the game's clock runs N times slower (1–50; the sim steps the same ticks, only later): for animations such as the voyage's warp in headless screenshots. Real-time parts (screen transitions, the lift after a voyage) keep their speed; in the fight viewer it slows every playback speed too (20 Oct 2026) |
+| `slowmo=N` | the game's clock runs N times slower (1–50; the sim steps the same ticks, only later): for animations such as the voyage's warp in headless screenshots; the voyage map's warp (a blind jump's) runs N times longer too (21 Oct 2026). Real-time parts (screen transitions, the lift after a voyage) keep their speed; in the fight viewer it slows every playback speed too (20 Oct 2026) |
 
 The flight flags (`load`, `hashlog`, `hashticks`, `seed`) need their scene: `?scene=sandbox&load=20`.
 
@@ -1175,8 +1175,8 @@ says `OPEN` or `SEALED`. The look is `map.bands.*` in `art/tokens.json` (`kit::s
   middle) or a spot (a blind jump: `Career::blind_target`, the nearest cluster within 1.5 spacings that a jump reaches);
   `jump_blocker` says why one can't launch (another voyage underway, out of jump range, `EMPTY SPACE · NO CLUSTER NEAR
   THIS SPOT`, `BEYOND THE GATE`, the fleet); `place_words` writes the panel for a cluster (`CHARTED CLUSTER · 1.3 S FROM
-  HOME`, its type's summary, the signals leading there, `WARP 6 S`, `FLOWN 1 ×`), a spot (`BLIND JUMP`, `Unknown space`
-  or `Empty space`, the signals whose area holds it, `WARP ≈ 5 S`) or a signal (`SIGNAL · NARROWED`, its hint, its line,
+  HOME`, its type's summary, the signals leading there, `JUMPS AT ONCE`, `FLOWN 1 ×`), a spot (`BLIND JUMP`, `Unknown space`
+  or `Empty space`, the signals whose area holds it, `WARP ≈ 3 S`) or a signal (`SIGNAL · NARROWED`, its hint, its line,
   how many clusters its area holds, how wide it is).
 - **States** (from the career, `map::layout::VoyageState`): **unknown** (not open yet: not drawn at all, no
   marker, label, beacon or click area, not counted), a **new signal** (open because the voyages it `opens_after` were
@@ -1218,10 +1218,13 @@ says `OPEN` or `SEALED`. The look is `map.bands.*` in `art/tokens.json` (`kit::s
 - **Picking** (galaxy plan E5): a click on a cluster's marker or label, or on a signal's label, selects it; a click on
   empty map space (not a drag) picks the spot for a blind jump, or the known cluster a jump there would go to. A jump's
   course shows as a dotted line from where it starts. ←/→ step through the known voyages, then the known clusters.
-- **The warp** (galaxy plan E6, GDR-0093): SET COURSE (or Enter) on a cluster, a spot or a signal runs the warp on the
-  map: a light along the course from the jump's start to the cluster, rings closing on it, the status `WARP · 4 S · ESC
-  ENDS IT`, SET COURSE dimmed; Esc ends it (`WARP ENDED · NOTHING LAUNCHED`). Then `voyage::StartVoyage { to:
-  Destination::Cluster(k) }`.
+- **The warp** (galaxy plan E6, GDR-0093; only for blind jumps since 21 Oct 2026, GDR-0097): SET COURSE (or Enter)
+  on a known cluster launches at once (`voyage::StartVoyage { to: Destination::Cluster(k) }`, the panel says `JUMPS
+  AT ONCE`); on a spot or a signal it runs the warp on the map first: a light from the jump's start to the cluster the
+  jump lands at, rings closing on it, the spot's crosshair hidden meanwhile, the status `WARP · 2 S · ESC ENDS IT`,
+  SET COURSE dimmed; Esc ends it (`WARP ENDED · NOTHING LAUNCHED`). It takes `galaxy.ron`'s `warp`, 1.5 s + 1 s per S
+  (was 3 s + 2 s). Then the launch; the warp holds at its end (the light on the cluster) until the map closes, and
+  ends only if the launch is refused.
 - **SET COURSE** (`map::layout::course_blocker`, `map::known::jump_blocker`): dimmed while the selected voyage can't launch, the status line says
   why (in order: another voyage still underway, `LOCKED · CLEAR HALVEX DRIFT FIRST` (a guard: a voyage not open
   can't be selected), `NOT VOYAGE-READY · <the fleet's

@@ -37,11 +37,11 @@ marker and a label:
 Under each voyage's name, one dot per site: coral for enemies, gold for wrecks, a diamond for the goal.
 
 Besides the voyages: a charted cluster is a small teal ring (CHARTED), a cluster a signal leads to a gold one
-(SIGNAL · … · LOCATED). Click one to see it in the panel: its band and type, how far it lies and how long the warp
-takes, the signals that lead there. Click a signal's words to see the signal; click empty space for a **blind jump**
-(the [galaxy](/mechanics/galaxy) page has the rules). SET COURSE on any of them runs the warp on the map, a light
-running from where the jump starts to the cluster, and then your fleet arrives; Esc ends the warp before anything
-launches.
+(SIGNAL · … · LOCATED). Click one to see it in the panel: its band and type, how far it lies, the signals that lead
+there. Click a signal's words to see the signal; click empty space for a **blind jump** (the [galaxy](/mechanics/galaxy)
+page has the rules). SET COURSE on a voyage or a known cluster launches at once; on a signal or a blind jump's spot it
+first runs the warp on the map, a light running from where the jump starts to the cluster it lands at, and then your
+fleet arrives; Esc ends the warp before anything launches.
 
 Click a voyage (or step through them with [[control:next_voyage.keys]] and [[control:previous_voyage.keys]]) to
 see it in the panel on the right: its band, the factions you will meet, WRECKS if any site holds them, its summary,

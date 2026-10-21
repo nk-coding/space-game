@@ -62,7 +62,7 @@ Home, the shipyard, is a cluster at the rim's outer edge with at least [[galaxy:
 clusters within reach that hold no set piece: somewhere to jump blind from the start. Your drive jumps [[galaxy:galaxy.jump_range]] at the start, from home or from any cluster you
 have charted. A cluster is **charted** once a fleet of yours has arrived there, even if that voyage is lost. Research
 in the propulsion family grows the range: [[research:jump_calibration_1]] and [[research:jump_calibration_2]] add
-[[research:jump_calibration_1.unlocks]] each. A jump takes [[galaxy:galaxy.warp]] of distance.
+[[research:jump_calibration_1.unlocks]] each. A blind jump's warp on the map takes [[galaxy:galaxy.warp]] of distance; a jump to a known cluster starts at once.
 
 Every cluster of a band can be reached from where the band is entered, one jump at a time within the starting range:
 the generator checks it for every galaxy. Jumps reach only the bands a gate has opened: the rim at first.

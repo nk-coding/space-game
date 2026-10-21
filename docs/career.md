@@ -329,7 +329,7 @@ hand-made skeleton, and the `galaxy` crate's `tests/career.rs` for a new game's 
 - **Jumps** (`jump_from(cluster)`): from home or any charted cluster within the jump range (integer distances in
   S/100), the nearest one (the lowest id on a tie), not the cluster itself while another reaches it; `None` beyond them
   all. `band_open(band)`: jumps reach the galaxy's first band and each band past it once a gate of the band outside it
-  is open. `warp_seconds(k)`: the galaxy's `warp`, 3 s + 2 s per S from `jump_from` (GDR-0093). `blind_target(spot)`:
+  is open. `warp_seconds(k)`: the galaxy's `warp`, 1.5 s + 1 s per S from `jump_from` (GDR-0093; halved and only for blind jumps on 21 Oct 2026, GDR-0097). `blind_target(spot)`:
   where a blind jump to a spot goes, the cluster nearest it that a jump reaches, within 1.5 of the galaxy's spacings
   (`BLIND_REACH`), neither home nor a slice voyage's (GDR-0097).
 - **Cluster voyages**: `cluster_seed(k)` is `splitmix64(seed ^ splitmix64(cluster seed ^ launched))`;

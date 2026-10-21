@@ -271,7 +271,7 @@ impl Career {
     }
 
     /// How long the warp to `cluster` takes (s): the galaxy's `warp`, a base plus so much per S from where the jump
-    /// starts ([`Career::jump_from`]; GDR-0093: 3 s + 2 s per S). `None` beyond reach.
+    /// starts ([`Career::jump_from`]; GDR-0093; 1.5 s + 1 s per S since 21 Oct 2026, GDR-0097, and only a blind jump runs it). `None` beyond reach.
     pub fn warp_seconds(&self, content: &Content, cluster: u32) -> Option<f32> {
         let g = self.galaxy.as_ref()?;
         let warp = content.galaxies.get(&g.skeleton.galaxy)?.warp;

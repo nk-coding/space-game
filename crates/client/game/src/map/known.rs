@@ -313,7 +313,7 @@ pub struct PlaceWords {
     /// Over the rows: `SIGNALS · 1`, `INSIDE A SIGNAL'S AREA`; the rows are the signals.
     pub rows_head: String,
     pub rows: Vec<SiteRow>,
-    /// Under them: the warp (`WARP 7 S · RECALL WHEN CLEAR`).
+    /// Under them: the warp (`WARP ≈ 4 S · RECALL WHEN CLEAR`, a known cluster `JUMPS AT ONCE · RECALL WHEN CLEAR`).
     pub warp: String,
     /// The status line when nothing blocks.
     pub status: String,
@@ -355,10 +355,12 @@ fn from_words(content: &Content, career: &Career, known: &Known, p: Point, not: 
     Some(format!("{:.1} S FROM {name}", (d as f64).sqrt() / UNITS_PER_S as f64))
 }
 
-/// The warp's line: `WARP 7 S · RECALL WHEN CLEAR`, nothing out of reach.
-fn warp_words(content: &Content, career: &Career, target: Option<u32>, about: bool) -> String {
+/// The warp's line: a blind jump's `WARP ≈ 3 S · RECALL WHEN CLEAR`, a known cluster's `JUMPS AT ONCE · RECALL WHEN
+/// CLEAR` (no warp since 21 Oct 2026, GDR-0097); nothing out of reach.
+fn warp_words(content: &Content, career: &Career, target: Option<u32>, blind: bool) -> String {
     match target.and_then(|k| career.warp_seconds(content, k)) {
-        Some(w) => format!("WARP {}{:.0} S  ·  RECALL WHEN CLEAR", if about { "≈ " } else { "" }, w.round()),
+        Some(w) if blind => format!("WARP ≈ {:.0} S  ·  RECALL WHEN CLEAR", w.round()),
+        Some(_) => "JUMPS AT ONCE  ·  RECALL WHEN CLEAR".into(),
         None => String::new(),
     }
 }
@@ -524,7 +526,7 @@ mod tests {
         let w = place_words(&content, &c, &k, &Pick::Cluster(to)).unwrap();
         assert!(w.head.starts_with("CHARTED CLUSTER  ·  ") && w.head.ends_with(" S FROM HOME"), "{}", w.head);
         assert_eq!(w.status, "FLOWN 1 ×  ·  NEW SITES EACH TIME");
-        assert!(w.warp.starts_with("WARP ") && w.chips[0].0 == "RIM", "{w:?}");
+        assert!(w.warp.starts_with("JUMPS AT ONCE  ·  ") && w.chips[0].0 == "RIM", "{w:?}");
         let w = place_words(&content, &c, &k, &Pick::Spot(spot)).unwrap();
         assert_eq!((w.title.as_str(), w.chips[1].0.as_str()), ("Unknown space", "UNCHARTED"));
         assert!(w.warp.starts_with("WARP ≈ "), "{}", w.warp);

@@ -18,6 +18,14 @@
   content: set pieces on the outer band's gates, then its gate trail's target), `SEALED`; the top line's next band
   says `OPEN` or `SEALED`. The galaxy's mesh is rebuilt when a band opens. Colours, opacities and sizes are tokens
   (`map.bands.*`). The flight minimap and the cluster map show one cluster and have no bands: unchanged.
+  2026-10-21 (Niklas: "that fly animation which takes multiple seconds is extremely annoying. get rid of it
+  completely unless it is to a blind flight (but still make it a bit faster there)"; decided by Niklas, 21 Oct 2026):
+  the warp on the map runs only for a blind jump (a spot or a signal); a known cluster launches at once, like a slice
+  voyage (its panel says `JUMPS AT ONCE · RECALL WHEN CLEAR`). The warp is half as long, 1.5 s + 1 s per S
+  (`galaxy.ron`'s `warp`, was 3 s + 2 s). The snap at its end is gone: the spot's crosshair hides while the light
+  runs to the cluster the jump lands at (it stayed at the clicked spot, away from where the light ended), and the
+  launched warp holds at its end until the map closes (it was cleared at the launch, so for the frames before
+  flight the dotted course to the spot came back).
 - Date: 2026-10-16
 - Decided by: lead session (defaults for Niklas to review, galaxy tracks E5 and E6)
 - Related: [GDR-0078](0078-galaxy-exploration-v1.md), [GDR-0080](0080-exploration-searching-and-story.md), [GDR-0091](0091-log-building-and-voyage-history.md), [GDR-0093](0093-galaxy-exploration-decisions-16-oct.md), [GDR-0095](0095-sensors-hidden-sites-and-scans.md), [GDR-0096](0096-career-galaxy-format-3.md), [GDR-0065](0065-phase-7-screens-and-escort-action.md), `docs/plans/galaxy-voyages.md` (E5, E6, 4.1–4.5), `docs/client.md` "Voyage map", "Voyages", "LOG"

@@ -263,7 +263,7 @@ fn the_galaxy_is_saved_and_a_voyage_underway_is_lost_at_load() {
 /// scanned is heard; a scan narrows the signals whose area holds the cluster, once a voyage; its site seen is found,
 /// cleared done; blind jumps go to the nearest cluster in reach, never home or a slice voyage's, launching only into
 /// an open band;
-/// the warp takes 3 s + 2 s per S.
+/// the warp takes 1.5 s + 1 s per S (GDR-0097, 21 Oct 2026).
 #[test]
 fn beacons_scans_finds_and_blind_jumps() {
     let c = content();
@@ -315,7 +315,7 @@ fn beacons_scans_finds_and_blind_jumps() {
     assert_eq!(career.cluster_launched(&c, 6), Err(Refusal::BandClosed(6)));
     assert!(career.open_gate(4));
     assert!(career.band_open(&c, "outer"));
-    assert_eq!(career.warp_seconds(&c, 5).map(|s| (s * 100.0).round()), Some(724.0));
+    assert_eq!(career.warp_seconds(&c, 5).map(|s| (s * 100.0).round()), Some(362.0));
     assert_eq!(career.warp_seconds(&c, 3), None, "out of reach");
     assert_eq!(career.blind_target(&c, Point { x: -400, y: -400 }), None, "empty space: no cluster near");
 }

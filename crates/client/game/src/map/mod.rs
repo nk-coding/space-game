@@ -40,9 +40,11 @@
 //!   through the gate; not while the portal is on its way out), or ends a warp. SET COURSE is dimmed while the
 //!   selection can't launch (`layout::course_blocker`, `known::jump_blocker`: not open or out of reach, another
 //!   voyage underway, the fleet not ready); a click then says why, as does a launch `voyage.rs` refuses.
-//! * **The warp** (galaxy plan E6, GDR-0093: 3 s + 2 s per S): SET COURSE on a cluster, a signal or a spot runs a
-//!   light from where the jump starts to the cluster it goes to, the status counting down (`WARP · 5 S`); then the
-//!   launch. Esc ends it on the way, nothing launched. A slice voyage launches at once, as before.
+//! * **The warp** (galaxy plan E6, GDR-0093; only blind jumps since 21 Oct 2026, GDR-0097: 1.5 s + 1 s per S): SET
+//!   COURSE on a signal or a spot runs a light from where the jump starts to the cluster it goes to (the spot's
+//!   crosshair hidden meanwhile: the light ends where the fleet lands), the status counting down (`WARP · 2 S`);
+//!   then the launch, the light held at its end until the map closes. Esc ends it on the way, nothing launched. A
+//!   slice voyage or a known cluster launches at once.
 //! * **Entering** selects the first open voyage whose goal is not cleared (`voyage::default_voyage`): after a voyage
 //!   that found a signal, that one. The debrief's VOYAGE MAP sends [`OpenMap`] (home opens the gate, as V).
 //!
@@ -130,7 +132,8 @@ pub struct VoyageMap {
 }
 
 /// A warp on the map: to the cluster `target`, from where the jump starts (galaxy px both), since `start` (real
-/// seconds) for `seconds`.
+/// seconds) for `seconds`; `launched` once it has run its time (it then holds at its end until the map closes, so
+/// nothing of the pick shows again for the frames before flight).
 #[derive(Clone, Copy, Debug, PartialEq)]
 struct Warp {
     target: u32,
@@ -138,6 +141,7 @@ struct Warp {
     to: Vec2,
     start: f32,
     seconds: f32,
+    launched: bool,
 }
 
 /// The debrief's VOYAGE MAP: home flies to the gate and opens the map, as V does.
@@ -854,6 +858,7 @@ fn input(
     act: world::settings::Act,
     pointer: Res<UiPointer>,
     time: Res<Time<Real>>,
+    params: Res<kit::params::Params>,
     fleet: FleetNow,
     geo: Res<MapGeometry>,
     mut view: ResMut<MapView>,
@@ -870,8 +875,12 @@ fn input(
     let career = fleet.career.career();
     let known = &fleet.known.0;
     let geo = &geo.0;
-    // While warping, only Esc (it ends the warp) and the way home.
-    if map.warp.is_some() {
+    // While warping, only Esc (it ends the warp) and the way home; once launched, nothing.
+    if let Some(w) = map.warp {
+        if w.launched {
+            clicks.clear();
+            return;
+        }
         if keys.just_pressed(KeyCode::Escape) && !pointer.typing {
             map.warp = None;
             map.say = Some("WARP ENDED  ·  NOTHING LAUNCHED".into());
@@ -957,10 +966,15 @@ fn input(
                     (Pick::Voyage(id), _) => {
                         start.write(StartVoyage { to: Destination::Voyage(id.clone()) });
                     }
+                    // A known cluster: at once (Niklas, 21 Oct 2026: the warp's seconds were in the way).
+                    (Pick::Cluster(_), Some(k)) => {
+                        start.write(StartVoyage { to: Destination::Cluster(k) });
+                    }
                     (_, Some(k)) => {
                         let from = career.jump_from(content, k).and_then(|f| geo.clusters.get(f as usize)).copied().unwrap_or(geo.home);
-                        let seconds = career.warp_seconds(content, k).unwrap_or(0.0);
-                        map.warp = Some(Warp { target: k, from, to: geo.clusters[k as usize], start: time.elapsed_secs(), seconds });
+                        // `?slowmo=N` stretches it too, for headless screenshots of its frames.
+                        let seconds = career.warp_seconds(content, k).unwrap_or(0.0) / world::hud::slowmo(&params);
+                        map.warp = Some(Warp { target: k, from, to: geo.clusters[k as usize], start: time.elapsed_secs(), seconds, launched: false });
                     }
                     (_, None) => {}
                 }
@@ -969,20 +983,24 @@ fn input(
     }
 }
 
-/// A warp that has run its time launches.
+/// A blind jump's warp that has run its time launches, and holds at its end: the light stays on the cluster the
+/// fleet lands at until the map closes (it was cleared here, and for the frames before flight the dotted course and
+/// the crosshair at the picked spot came back: the snap Niklas saw, 21 Oct 2026).
 fn warp(time: Res<Time<Real>>, mut map: ResMut<VoyageMap>, mut start: MessageWriter<StartVoyage>) {
-    if let Some(w) = map.warp
+    if let Some(w) = map.warp.as_mut()
+        && !w.launched
         && time.elapsed_secs() - w.start >= w.seconds
     {
-        map.warp = None;
+        w.launched = true;
         start.write(StartVoyage { to: Destination::Cluster(w.target) });
     }
 }
 
-/// A launch `voyage.rs` refused: the panel says why.
+/// A launch `voyage.rs` refused: the panel says why (a held warp ends).
 fn refused(mut refusals: MessageReader<LaunchRefused>, mut map: ResMut<VoyageMap>) {
     if let Some(LaunchRefused(why)) = refusals.read().last() {
         map.say = Some(why.clone());
+        map.warp = None;
     }
 }
 

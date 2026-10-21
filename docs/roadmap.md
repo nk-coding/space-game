@@ -893,6 +893,13 @@ Next session:
   Lead defaults for Niklas: the format, lab runs in by default, replace not merge, the place in SETTINGS.
 - Open: a reminder to export (e.g. when the browser didn't grant persistent storage), Android's file picker.
 
+### 21 Oct 2026: the voyage map's warp only for blind jumps (GDR-0097)
+
+- Niklas: the warp's seconds on the map were in the way. A known cluster launches at once; a blind jump (a spot or a
+  signal) still runs the warp, half as long (1.5 s + 1 s per S, `galaxy.ron`). Its end no longer snaps: the spot's
+  crosshair hides while the light runs to the cluster the jump lands at, and the launched warp holds at its end until
+  the map closes (the dotted course to the spot came back for the frames before flight).
+
 ## Phase 4: measurement
 
 Status 12 Oct 2026 (new VM): `results/spike-summary.md` written. Determinism native vs wasm IDENTICAL on the new VM

@@ -519,8 +519,11 @@ pub fn build_detail(geo: &Geometry, look: &Look, to: impl Fn(Vec2) -> Vec2, area
         }
     }
 
-    // A blind jump's spot: a crosshair in a dotted ring.
-    if let Some(Pick::Spot(p)) = &look.selected {
+    // A blind jump's spot: a crosshair in a dotted ring; not during its warp, whose light runs to the cluster the
+    // jump lands at (a crosshair left at the spot made the end look like a jump elsewhere).
+    if look.warp.is_none()
+        && let Some(Pick::Spot(p)) = &look.selected
+    {
         let at = to(geo.to_galaxy(*p));
         let k = edge(at);
         if k > 0.0 {
